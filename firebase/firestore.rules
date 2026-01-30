@@ -1,0 +1,105 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Lee roles desde usuarios_access/{uid}
+    function accessDoc(uid) {
+      return get(/databases/$(database)/documents/usuarios_access/$(uid));
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && accessDoc(request.auth.uid).data.estadoAcceso == "HABILITADO"
+        && accessDoc(request.auth.uid).data.roles.hasAny(["ADMIN"]);
+    }
+
+    // Reglas generales: no permitir deletes desde cliente
+    function denyDeletes() {
+      return false;
+    }
+
+    /* =========================
+       USUARIOS (perfil)
+       ========================= */
+    match /usuarios/{uid} {
+      // Lectura: dueño o admin
+      allow get: if signedIn() && (request.auth.uid == uid || isAdmin());
+      // Listado: solo admin
+      allow list: if isAdmin();
+
+      // Escrituras:
+      // Recomendación segura al inicio: SOLO admin escribe perfiles.
+      // (Así evitas que usuarios modifiquen datos personales sin control.)
+      allow create, update: if isAdmin();
+
+      // No delete: siempre soft delete vía estado/audit
+      allow delete: if denyDeletes();
+    }
+
+    /* =========================
+       USUARIOS_ACCESS (accesos)
+       ========================= */
+    match /usuarios_access/{uid} {
+      // Lectura: dueño o admin
+      allow get: if signedIn() && (request.auth.uid == uid || isAdmin());
+      // Listado: solo admin
+      allow list: if isAdmin();
+
+      // Solo admin modifica accesos
+      allow create, update: if isAdmin();
+
+      // No delete
+      allow delete: if denyDeletes();
+    }
+
+    /* =========================
+       MODULOS (catálogo)
+       ========================= */
+    match /modulos/{modId} {
+      // Todos los autenticados pueden leer (para construir menú/UI)
+      allow get, list: if signedIn();
+
+      // Solo admin crea/actualiza
+      allow create, update: if isAdmin();
+
+      // No delete
+      allow delete: if denyDeletes();
+    }
+
+    /* =========================
+       ROLES (plantillas)
+       ========================= */
+    match /roles/{roleId} {
+      // Lectura para usuarios autenticados (para permisos/UI)
+      allow get, list: if signedIn();
+
+      // Solo admin crea/actualiza
+      allow create, update: if isAdmin();
+
+      // No delete
+      allow delete: if denyDeletes();
+    }
+
+    /* =========================
+       AUDITORIA (bitácora)
+       ========================= */
+    match /auditoria/{docId} {
+      // Solo admin lee auditoría
+      allow get, list: if isAdmin();
+
+      // Cliente no escribe auditoría (solo servidor con Admin SDK)
+      allow create, update, delete: if false;
+    }
+
+    /* =========================
+       DEFAULT: denegar todo lo demás
+       ========================= */
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

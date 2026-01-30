@@ -1,0 +1,44 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env files (NO subir)
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+**/node_modules/
+
+# Next.js
+.next/
+out/
+.turbo/
+.vercel/
+
+# Firebase
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+*.runtimeconfig.json
+
+# Build outputs
+dist/
+build/
+lib/
+coverage/
+
+# Mac/Windows junk
+*.swp

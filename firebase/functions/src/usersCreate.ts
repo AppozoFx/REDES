@@ -1,111 +1,125 @@
 import { onRequest } from "firebase-functions/v2/https";
-import { z } from "zod";
-import { db, FieldValue } from "./lib/admin";
-import { requireAdmin } from "./lib/security";
-import { writeAudit } from "./lib/audit";
+import * as logger from "firebase-functions/logger";
+import { getAuth } from "firebase-admin/auth";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 
-const AreaEnum = z.enum(["INSTALACIONES", "AVERIAS"]);
+import { UsersCreateSchema } from "./schemas/usersCreate.schema";
+import { verifyFirebaseToken, assertIsAdmin } from "./utils/authz";
 
-const CreateUserSchema = z.object({
-  uid: z.string().min(10),
-  nombres: z.string().min(2),
-  apellidos: z.string().min(2),
-  dni_ce: z.string().min(6),
-  celular: z.string().min(6),
-  direccion: z.string().optional(),
-  email: z.string().email(),
-  genero: z.string().optional(),
-  nacionalidad: z.string().optional(),
-  f_ingreso: z.string().optional(),
-  f_nacimiento: z.string().optional(),
-  rol: z.string().optional(),
-  area: AreaEnum.optional(),
-  estado: z.enum(["ACTIVO", "INACTIVO"]).default("ACTIVO"),
-
-  roles: z.array(z.string()).default([]),
-  areas: z.array(AreaEnum).default([]),
-  estadoAcceso: z.enum(["HABILITADO", "INHABILITADO"]).default("HABILITADO"),
-});
-
-export const usersCreate = onRequest(async (req, res) => {
+export const usersCreate = onRequest({ region: "us-central1" }, async (req, res) => {
   try {
     if (req.method !== "POST") {
       res.status(405).json({ ok: false, error: "METHOD_NOT_ALLOWED" });
       return;
     }
 
-    const { uid: actorUid } = await requireAdmin(req);
-    const input = CreateUserSchema.parse(req.body);
+    const decoded = await verifyFirebaseToken(req);
+    await assertIsAdmin(decoded.uid);
 
-    const userRef = db.doc(`usuarios/${input.uid}`);
-    const accessRef = db.doc(`usuarios_access/${input.uid}`);
+    const parsed = UsersCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ ok: false, error: "BAD_REQUEST", details: parsed.error.flatten() });
+      return;
+    }
 
-    await db.runTransaction(async (tx) => {
-      tx.set(
-        userRef,
-        {
-          nombres: input.nombres,
-          apellidos: input.apellidos,
-          dni_ce: input.dni_ce,
-          celular: input.celular,
-          direccion: input.direccion ?? null,
-          email: input.email,
-          estado: input.estado,
-          f_ingreso: input.f_ingreso ?? null,
-          f_nacimiento: input.f_nacimiento ?? null,
-          f_registro: FieldValue.serverTimestamp(),
-          genero: input.genero ?? null,
-          nacionalidad: input.nacionalidad ?? null,
-          rol: input.rol ?? null,
-          area: input.area ?? null,
-          uid: input.uid,
-          audit: {
-            createdAt: FieldValue.serverTimestamp(),
-            createdBy: actorUid,
-            updatedAt: FieldValue.serverTimestamp(),
-            updatedBy: actorUid,
-            deletedAt: null,
-            deletedBy: null,
-            motivoBaja: null,
-          },
-        },
-        { merge: true }
-      );
+    const input = parsed.data;
 
-      tx.set(
-        accessRef,
-        {
-          roles: input.roles,
-          areas: input.areas,
-          permissions: [],
-          estadoAcceso: input.estadoAcceso,
-          audit: {
-            createdAt: FieldValue.serverTimestamp(),
-            createdBy: actorUid,
-            updatedAt: FieldValue.serverTimestamp(),
-            updatedBy: actorUid,
-            deletedAt: null,
-            deletedBy: null,
-            motivoBaja: null,
-          },
-        },
-        { merge: true }
-      );
+    // 1) Crear Auth user
+    const userRecord = await getAuth().createUser({
+      email: input.email,
+      password: input.password ?? undefined,
+      disabled: input.estadoAcceso !== "HABILITADO",
     });
 
-    await writeAudit({
-      actorUid,
-      action: "USER_CREATE",
-      target: { collection: "usuarios", id: input.uid },
-      meta: { roles: input.roles, areas: input.areas, estadoAcceso: input.estadoAcceso },
+    const newUid = userRecord.uid;
+    const db = getFirestore();
+    const now = FieldValue.serverTimestamp();
+
+    const finalRoles = Array.from(new Set([...(input.roles ?? [])]));
+    const finalAreas = Array.from(new Set([...(input.areas ?? [])]));
+
+    const batch = db.batch();
+
+    batch.set(db.doc(`usuarios/${newUid}`), {
+      uid: newUid,
+      nombres: input.nombres,
+      apellidos: input.apellidos,
+      dni_ce: input.dni_ce,
+      celular: input.celular,
+      direccion: input.direccion ?? "",
+      email: input.email,
+      estado: input.estado,
+
+      f_ingreso: null,
+      f_nacimiento: null,
+      f_registro: now,
+
+      genero: input.genero ?? null,
+      nacionalidad: input.nacionalidad ?? null,
+
+      rol: input.rol,
+      area: input.area,
+
+      audit: {
+        createdAt: now,
+        createdBy: decoded.uid,
+        updatedAt: now,
+        updatedBy: decoded.uid,
+        deletedAt: null,
+        deletedBy: null,
+        motivoBaja: null,
+      },
     });
 
-    res.json({ ok: true });
+    batch.set(db.doc(`usuarios_access/${newUid}`), {
+      roles: finalRoles,
+      areas: finalAreas,
+      permissions: [],
+      estadoAcceso: input.estadoAcceso,
+      audit: {
+        createdAt: now,
+        createdBy: decoded.uid,
+        updatedAt: now,
+        updatedBy: decoded.uid,
+        deletedAt: null,
+        deletedBy: null,
+        motivoBaja: null,
+      },
+    });
+
+    const auditRef = db.collection("auditoria").doc();
+    batch.set(auditRef, {
+      action: "USERS_CREATE",
+      actorUid: decoded.uid,
+      meta: {
+        target: { collection: "usuarios", id: newUid },
+        email: input.email,
+        roles: finalRoles,
+        areas: finalAreas,
+      },
+      ts: now,
+    });
+
+    await batch.commit();
+
+    logger.info("usersCreate ok", { actorUid: decoded.uid, newUid });
+
+    res.status(201).json({ ok: true, uid: newUid });
     return;
   } catch (e: any) {
-    const msg = e?.message || "ERROR";
-    const status = msg === "UNAUTHENTICATED" ? 401 : msg === "FORBIDDEN" ? 403 : 400;
-    res.status(status).json({ ok: false, error: msg });
+    const msg = String(e?.message ?? e);
+
+    if (msg === "UNAUTHENTICATED") {
+      res.status(401).json({ ok: false, error: "UNAUTHENTICATED" });
+      return;
+    }
+    if (msg === "FORBIDDEN") {
+      res.status(403).json({ ok: false, error: "FORBIDDEN" });
+      return;
+    }
+
+    logger.error("usersCreate error", e);
+    res.status(500).json({ ok: false, error: "INTERNAL" });
     return;
   }
 });

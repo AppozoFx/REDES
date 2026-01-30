@@ -4,6 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "dev:web": "pnpm --filter web dev",
+    "dev:emulators": "cd firebase && firebase emulators:start --only auth,firestore,functions",
+    "build:functions": "pnpm --dir firebase/functions run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

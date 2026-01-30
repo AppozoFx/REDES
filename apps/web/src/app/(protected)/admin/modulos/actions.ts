@@ -110,3 +110,27 @@ export async function softDeleteModule(moduleId: string, formData: FormData) {
   revalidatePath(`/admin/modulos/${moduleId}`);
   return { ok: true };
 }
+
+
+
+export async function reactivateModule(moduleId: string) {
+  const session = await requireAdmin();
+
+  await adminDb().collection("modulos").doc(moduleId).set(
+    {
+      estado: "ACTIVO",
+      audit: {
+        updatedAt: new Date(),
+        updatedBy: session.uid,
+        deletedAt: null,
+        deletedBy: null,
+        motivoBaja: null,
+      },
+    },
+    { merge: true }
+  );
+
+  revalidatePath("/admin/modulos");
+  revalidatePath(`/admin/modulos/${moduleId}`);
+  return { ok: true };
+}

@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/core/auth/guards";
 import { adminDb } from "@/lib/firebase/admin";
-import { updateRole, softDeleteRole } from "../actions";
+import { updateRole, softDeleteRole, reactivateRole } from "../actions";
+
 
 export default async function RoleDetailPage({
   params,
@@ -74,10 +75,16 @@ export default async function RoleDetailPage({
       )}
 
       {role.estado === "INACTIVO" && (
-        <div className="rounded border border-yellow-400 p-4 text-sm">
-          Este rol está <b>INACTIVO</b>.
-        </div>
-      )}
+  <form action={reactivateRole.bind(null, role.id)} className="rounded border border-yellow-400 p-4">
+    <div className="text-sm mb-3">
+      Este rol está <b>INACTIVO</b>.
+    </div>
+    <button className="rounded border px-3 py-2 hover:bg-black/5">
+      Reactivar
+    </button>
+  </form>
+)}
+
     </div>
   );
 }

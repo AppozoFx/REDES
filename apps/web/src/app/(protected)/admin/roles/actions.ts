@@ -87,3 +87,27 @@ export async function softDeleteRole(roleId: string, formData: FormData) {
   revalidatePath("/admin/roles");
   return { ok: true };
 }
+
+
+export async function reactivateRole(roleId: string) {
+  const session = await requireAdmin();
+
+  await adminDb().collection("roles").doc(roleId).set(
+    {
+      estado: "ACTIVO",
+      audit: {
+        updatedAt: new Date(),
+        updatedBy: session.uid,
+        deletedAt: null,
+        deletedBy: null,
+        motivoBaja: null,
+      },
+    },
+    { merge: true }
+  );
+
+  revalidatePath("/admin/roles");
+  revalidatePath(`/admin/roles/${roleId}`);
+  return { ok: true };
+}
+

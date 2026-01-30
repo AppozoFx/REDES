@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev:web": "pnpm --filter web dev",
-    "dev:emulators": "cd firebase && firebase emulators:start --only auth,firestore,functions",
+    "dev:emulators": "firebase emulators:start --config ./firebase/firebase.json --project redes-5bb81 --import=./firebase/.emulator-data --export-on-exit=./firebase/.emulator-data",
     "build:functions": "pnpm --dir firebase/functions run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

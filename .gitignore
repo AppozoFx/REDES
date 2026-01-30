@@ -42,3 +42,9 @@ coverage/
 
 # Mac/Windows junk
 *.swp
+
+
+# Firebase Emulator persisted data
+/firebase/.emulator-data/
+/firebase/.emulator-data/
+/firebase/emulator-debug.log*

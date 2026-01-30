@@ -1,7 +1,10 @@
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/core/auth/guards";
 import { adminDb } from "@/lib/firebase/admin";
-import { updateModule, softDeleteModule } from "../actions";
+import { updateModule, softDeleteModule, reactivateModule } from "../actions";
+
+
+
 
 export default async function ModuleDetailPage({
   params,
@@ -80,10 +83,16 @@ export default async function ModuleDetailPage({
       )}
 
       {m.estado === "INACTIVO" && (
-        <div className="rounded border border-yellow-400 p-4 text-sm">
-          Este módulo está <b>INACTIVO</b>.
-        </div>
-      )}
+  <form action={reactivateModule.bind(null, m.id)} className="rounded border border-yellow-400 p-4">
+    <div className="text-sm mb-3">
+      Este módulo está <b>INACTIVO</b>.
+    </div>
+    <button className="rounded border px-3 py-2 hover:bg-black/5">
+      Reactivar
+    </button>
+  </form>
+)}
+
     </div>
   );
 }

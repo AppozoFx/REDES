@@ -35,7 +35,7 @@ export const UserCreateSchema = z.object({
     .max(20)
     .transform((v) => onlyDigits(v)),
 
-  direccion: z.string().min(5).max(160).trim(),
+  direccion: z.string().min(3).max(160).trim(),
 
   genero: GeneroSchema,
   nacionalidad: z.string().min(2).max(60).trim(),
@@ -90,7 +90,7 @@ export const UserPerfilUpdateSchema = z.object({
     .max(20)
     .transform((v) => onlyDigits(v))
     .optional(),
-  direccion: z.string().min(5).max(160).trim().optional(),
+  direccion: z.string().min(3).max(160).trim().optional(),
   genero: GeneroSchema.optional(),
   nacionalidad: z.string().min(2).max(60).trim().optional(),
   fIngreso: DateYmdSchema.optional(),
@@ -116,7 +116,7 @@ export const UserSelfUpdateSchema = z.object({
     .optional()
     .or(z.literal("")),
 
-  direccion: z.string().min(5).max(160).trim().optional().or(z.literal("")),
+  direccion: z.string().min(3).max(160).trim().optional().or(z.literal("")),
 });
 
 export type UserSelfUpdateInput = z.infer<typeof UserSelfUpdateSchema>;
@@ -137,7 +137,7 @@ export const UserOperativePerfilUpdateSchema = z.object({
     .optional()
     .or(z.literal("")),
 
-  direccion: z.string().min(5).max(160).trim().optional().or(z.literal("")),
+  direccion: z.string().min(3).max(160).trim().optional().or(z.literal("")),
 });
 
 export type UserOperativePerfilUpdateInput = z.infer<
@@ -156,7 +156,7 @@ export const HomeUserCreateSchema = z.object({
   nroDoc: z.string().min(6).max(15).trim(),
 
   celular: z.string().min(7).max(20).transform((v) => onlyDigits(v)),
-  direccion: z.string().min(5).max(160).trim(),
+  direccion: z.string().min(3).max(160).trim(),
 
   genero: GeneroSchema,
   nacionalidad: z.string().min(2).max(60).trim(),

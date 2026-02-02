@@ -14,7 +14,7 @@ export const ADMIN_NAV_OVERRIDES: Record<string, Partial<AdminNavItem>> = {
   // Por área
   INSTALACIONES: { href: "/admin/instalaciones", adminOnly: false, label: "Instalaciones" },
   AVERIAS: { href: "/admin/averias", adminOnly: false, label: "Averías" },
-  ADMIN_COMUNICADOS: { href: "/admin/comunicados", adminOnly: false, label: "Comunicados" },
+  COMUNICADOS: { href: "/admin/comunicados", adminOnly: false, label: "Comunicados" },
   
 
   

@@ -21,15 +21,25 @@ export default function LoginPage() {
       const auth = getFirebaseAuth();
       const cred = await signInWithEmailAndPassword(auth, email, password);
 
-      const idToken = await cred.user.getIdToken();
+     const idToken = await cred.user.getIdToken(true);
 
-      const res = await fetch("/api/auth/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken }),
-      });
+const res = await fetch("/api/auth/session", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  credentials: "include",
+  body: JSON.stringify({ idToken }),
 
-      if (!res.ok) throw new Error("No se pudo crear sesión server");
+});
+const payload = JSON.parse(atob(idToken.split(".")[1]));
+console.log("TOKEN iss:", payload.iss);
+console.log("TOKEN aud:", payload.aud);
+
+const text = await res.text();
+if (!res.ok) throw new Error(`session (${res.status}): ${text}`);
+
+
+
+
 
       router.push("/admin");
     } catch (err: any) {
@@ -70,6 +80,7 @@ export default function LoginPage() {
         <button
           disabled={loading}
           className="w-full rounded border px-3 py-2 hover:bg-black/5 disabled:opacity-50"
+          type="submit"
         >
           {loading ? "Entrando..." : "Entrar"}
         </button>

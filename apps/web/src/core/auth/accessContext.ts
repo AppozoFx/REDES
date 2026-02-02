@@ -30,8 +30,12 @@ export async function getUserAccessContext(uid: string): Promise<AccessContext |
   const roles = asStringArray(data.roles);
   const areas = asStringArray(data.areas);
   const directPermissions = asStringArray(data.permissions);
+  // Normaliza valores históricos: aceptar "ACTIVO" como habilitado
+  const rawEstado = String(data.estadoAcceso ?? "").toUpperCase();
   const estadoAcceso: EstadoAcceso =
-    data.estadoAcceso === "HABILITADO" ? "HABILITADO" : "INHABILITADO";
+    rawEstado === "HABILITADO" || rawEstado === "ACTIVO"
+      ? "HABILITADO"
+      : "INHABILITADO";
 
   // permisos por roles (reusa tu repo)
   const rolesDocs = await getRolesByIds(roles);

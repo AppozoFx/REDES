@@ -1,47 +1,50 @@
 "use client";
 
-import { auth } from "@/lib/firebaseClient";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
-import { getIdToken } from "firebase/auth";
+import { useState } from "react";
 
 export default function DevEmulatorsPage() {
-  async function createUser() {
-    await createUserWithEmailAndPassword(auth, "admin@test.com", "123456");
-    alert("Usuario creado en Auth Emulator");
-  }
-
-  async function login() {
-    await signInWithEmailAndPassword(auth, "admin@test.com", "123456");
-    alert("Login OK (Auth Emulator)");
-  }
+  const [out, setOut] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
 
   async function bootstrapAdmin() {
-    const user = auth.currentUser;
-    if (!user) return alert("Primero haz login");
+    setLoading(true);
+    setOut(null);
+    try {
+      const res = await fetch("/api/dev/bootstrap-admin", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  credentials: "include",
+});
 
-    const token = await getIdToken(user, true);
 
-    const res = await fetch("http://127.0.0.1:5001/redes-5bb81/us-central1/bootstrapAdmin", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({}),
-    });
 
-    const data = await res.json();
-    console.log("bootstrapAdmin", res.status, data);
-    alert(`bootstrapAdmin: ${res.status} ${JSON.stringify(data)}`);
+      const text = await res.text();
+      let data: any = null;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        data = { raw: text };
+      }
+
+      setOut({ status: res.status, data });
+    } catch (e: any) {
+      setOut({ status: "FETCH_ERROR", data: { message: e?.message ?? String(e) } });
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
-    <div style={{ padding: 16, display: "grid", gap: 12 }}>
+    <div style={{ padding: 24 }}>
       <h1>Dev Emulators</h1>
-      <button onClick={createUser}>1) Crear usuario (Auth Emulator)</button>
-      <button onClick={login}>2) Login (Auth Emulator)</button>
-      <button onClick={bootstrapAdmin}>3) Bootstrap Admin (Functions Emulator)</button>
-      <p>Revisa Emulator UI: http://127.0.0.1:4000</p>
+
+      <button onClick={bootstrapAdmin} disabled={loading}>
+        {loading ? "Bootstrap..." : "Bootstrap Admin (DEV)"}
+      </button>
+
+      <pre style={{ marginTop: 16, whiteSpace: "pre-wrap" }}>
+        {out ? JSON.stringify(out, null, 2) : "Sin ejecutar"}
+      </pre>
     </div>
   );
 }

@@ -56,7 +56,8 @@ async function getCurrentAccess(uid: string): Promise<any | null> {
   return snap.exists ? (snap.data() as any) : null;
 }
 
-export async function createUsuario(formData: FormData) {
+export async function createUsuario(_prevState: any, formData: FormData) {
+
   let session: any;
   try {
     session = await requireServerPermission("USERS_CREATE");
@@ -102,9 +103,11 @@ export async function createUsuario(formData: FormData) {
   const now = new Date();
 
   let user: { uid: string } | null = null;
+  let stage: string = "start";
 
   try {
     // 1) Auth
+    stage = "auth.createUser";
     user = await adminAuth().createUser({
       email: parsed.data.email,
       password: parsed.data.password,
@@ -112,6 +115,7 @@ export async function createUsuario(formData: FormData) {
     });
 
     // 2) Firestore (batch)
+    stage = "firestore.batch";
     const batch = adminDb().batch();
 
     const perfilRef = adminDb().collection("usuarios").doc(user.uid);
@@ -167,9 +171,11 @@ export async function createUsuario(formData: FormData) {
       },
     });
 
+    stage = "firestore.commit";
     await batch.commit();
 
     // 3) Auditoría
+    stage = "auditoria.add";
     await adminDb().collection("auditoria").add({
       action: "USUARIO_CREATE",
       actorUid: session.uid,
@@ -184,9 +190,37 @@ export async function createUsuario(formData: FormData) {
       ts: now,
     });
 
+    stage = "revalidate";
     revalidatePath("/admin/usuarios");
     return { ok: true as const, uid: user.uid };
   } catch (e) {
+    const anyErr = e as any;
+    const code = anyErr?.code || anyErr?.errorInfo?.code;
+    const message = anyErr?.message || String(anyErr);
+    const stack = anyErr?.stack;
+    try {
+      const projectId = ((): string | undefined => {
+        try {
+          const fs: any = adminDb();
+          if (fs && typeof fs === "object" && "projectId" in fs) return fs.projectId as string;
+        } catch {}
+        try {
+          const au: any = adminAuth();
+          return au?.app?.options?.projectId as string | undefined;
+        } catch {}
+        return process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
+      })();
+      console.error("[createUsuario] ERROR", {
+        stage,
+        code,
+        message,
+        stack,
+        authEmu: process.env.FIREBASE_AUTH_EMULATOR_HOST ? true : false,
+        fsEmu: process.env.FIRESTORE_EMULATOR_HOST ? true : false,
+        nodeEnv: process.env.NODE_ENV,
+        projectId,
+      });
+    } catch {}
     // rollback auth si ya se creó
     if (user?.uid) {
       try {
@@ -195,7 +229,16 @@ export async function createUsuario(formData: FormData) {
         // no bloqueamos
       }
     }
-    return { ok: false as const, error: { formErrors: ["No se pudo crear el usuario."] } };
+    return {
+      ok: false as const,
+      error: {
+        formErrors: [
+          "No se pudo crear el usuario.",
+          `stage=${stage}`,
+          `reason=${(code ?? "unknown")}`,
+        ],
+      },
+    };
   }
 }
 

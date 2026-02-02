@@ -20,7 +20,7 @@ export const UsersCreateSchema = z.object({
   areas: z.array(z.enum(["INSTALACIONES", "AVERIAS"])).default([]),
 
   estado: z.enum(["ACTIVO", "INACTIVO"]).default("ACTIVO"),
-  estadoAcceso: z.enum(["HABILITADO", "BLOQUEADO"]).default("HABILITADO"),
+  estadoAcceso: z.enum(["HABILITADO", "INHABILITADO"]).default("HABILITADO"),
 });
 
 export type UsersCreateInput = z.infer<typeof UsersCreateSchema>;

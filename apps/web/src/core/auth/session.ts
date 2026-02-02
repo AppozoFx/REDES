@@ -1,44 +1,43 @@
 import { cookies } from "next/headers";
-import { adminAuth, adminDb } from "@/lib/firebase/admin";
-
-export type AccessDoc = {
-  roles: string[];
-  areas: string[];
-  estadoAcceso: "HABILITADO" | "INHABILITADO";
-};
+import { adminAuth } from "@/lib/firebase/admin";
+import { getUserAccessContextCached } from "@/core/auth/accessContext.cached";
 
 export type ServerSession = {
   uid: string;
-  access: AccessDoc;
+  access: {
+    roles: string[];
+    areas: string[];
+    permissions: string[]; // directPermissions (doc)
+    estadoAcceso: "HABILITADO" | "INHABILITADO";
+  };
   isAdmin: boolean;
+  permissions: string[]; // efectivos
 };
 
 const COOKIE_NAME = "__session";
 
 export async function getServerSession(): Promise<ServerSession | null> {
-  const cookieStore = await cookies(); // ✅ importante en tu Next
+  const cookieStore = await cookies();
   const cookie = cookieStore.get(COOKIE_NAME)?.value;
   if (!cookie) return null;
 
-  // Verifica cookie y extrae UID
   const decoded = await adminAuth().verifySessionCookie(cookie, true);
   const uid = decoded.uid;
 
-  // Lee access doc (RBAC)
-  const snap = await adminDb().collection("usuarios_access").doc(uid).get();
-  if (!snap.exists) return null;
+  const ctx = await getUserAccessContextCached(uid);
+  if (!ctx) return null;
 
-  const data = snap.data() as Partial<AccessDoc>;
-
-  const access: AccessDoc = {
-    roles: Array.isArray(data.roles) ? data.roles : [],
-    areas: Array.isArray(data.areas) ? data.areas : [],
-    estadoAcceso: data.estadoAcceso === "HABILITADO" ? "HABILITADO" : "INHABILITADO",
-  };
+  const isAdmin = ctx.roles.includes("ADMIN");
 
   return {
     uid,
-    access,
-    isAdmin: access.roles.includes("ADMIN"),
+    access: {
+      roles: ctx.roles,
+      areas: ctx.areas,
+      permissions: ctx.directPermissions,
+      estadoAcceso: ctx.estadoAcceso,
+    },
+    isAdmin,
+    permissions: ctx.effectivePermissions,
   };
 }

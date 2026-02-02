@@ -1,109 +1,244 @@
 "use server";
 
-import { requireAdmin } from "@/core/auth/guards";
+import { requireServerPermission } from "@/core/auth/require";
 import { adminAuth, adminDb } from "@/lib/firebase/admin";
 import {
   UserAccessUpdateSchema,
   UserCreateSchema,
   UserDisableSchema,
+  UserPerfilUpdateSchema,
 } from "@/domain/usuarios/schema";
+import { ymdToTimestamp } from "@/lib/dates";
 import { revalidatePath } from "next/cache";
 
 function normalizeArray(values: FormDataEntryValue[] | null): string[] {
   if (!values) return [];
-  return values
-    .map((v) => String(v).trim())
-    .filter(Boolean);
+  return values.map((v) => String(v).trim()).filter(Boolean);
+}
+
+const stripUndefined = (obj: Record<string, any>) =>
+  Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
+
+function mapAuthzError(e: unknown) {
+  const msg = String((e as any)?.message ?? "ERROR");
+  if (msg === "UNAUTHENTICATED") {
+    return { ok: false as const, error: { formErrors: ["No autenticado."] } };
+  }
+  if (msg === "ACCESS_DISABLED") {
+    return { ok: false as const, error: { formErrors: ["Acceso inhabilitado."] } };
+  }
+  if (msg === "FORBIDDEN") {
+    return { ok: false as const, error: { formErrors: ["No tienes permisos para esta acción."] } };
+  }
+  return null;
+}
+
+/** Verifica que el uid exista en Firebase Auth (fuente de verdad). */
+async function assertAuthUserExists(uid: string) {
+  try {
+    await adminAuth().getUser(uid);
+  } catch {
+    throw new Error("TARGET_NOT_FOUND");
+  }
+}
+
+function mapTargetError(e: unknown) {
+  const msg = String((e as any)?.message ?? "ERROR");
+  if (msg === "TARGET_NOT_FOUND") {
+    return { ok: false as const, error: { formErrors: ["El usuario objetivo no existe (uid inválido)."] } };
+  }
+  return null;
+}
+
+/** Lee el access actual (para reglas de negocio como "ADMIN no se deshabilita") */
+async function getCurrentAccess(uid: string): Promise<any | null> {
+  const snap = await adminDb().collection("usuarios_access").doc(uid).get();
+  return snap.exists ? (snap.data() as any) : null;
 }
 
 export async function createUsuario(formData: FormData) {
-  const session = await requireAdmin();
+  let session: any;
+  try {
+    session = await requireServerPermission("USERS_CREATE");
+  } catch (e) {
+    return mapAuthzError(e) ?? { ok: false as const, error: { formErrors: ["ERROR"] } };
+  }
 
   const parsed = UserCreateSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
-    displayName: formData.get("displayName"),
+
+    nombres: formData.get("nombres"),
+    apellidos: formData.get("apellidos"),
+
+    tipoDoc: formData.get("tipoDoc"),
+    nroDoc: formData.get("nroDoc"),
+
+    celular: formData.get("celular"),
+    direccion: formData.get("direccion"),
+
+    genero: formData.get("genero"),
+    nacionalidad: formData.get("nacionalidad"),
+
+    fIngreso: formData.get("fIngreso"),
+    fNacimiento: formData.get("fNacimiento"),
+
+    estadoPerfil: formData.get("estadoPerfil"),
+
     roles: normalizeArray(formData.getAll("roles")),
     areas: normalizeArray(formData.getAll("areas")),
+
+    permissions: normalizeArray(formData.getAll("permissions")),
+
+    sede: String(formData.get("sede") ?? "").trim() || undefined,
+    cargo: String(formData.get("cargo") ?? "").trim() || undefined,
+    cuadrillaId: String(formData.get("cuadrillaId") ?? "").trim() || undefined,
+    supervisorUid: String(formData.get("supervisorUid") ?? "").trim() || undefined,
   });
 
-  if (!parsed.success) return { ok: false, error: parsed.error.flatten() };
+  if (!parsed.success) return { ok: false as const, error: parsed.error.flatten() };
 
+  const displayName = `${parsed.data.nombres} ${parsed.data.apellidos}`.trim();
   const now = new Date();
 
-  // 1) Auth user
-  const user = await adminAuth().createUser({
-    email: parsed.data.email,
-    password: parsed.data.password,
-    displayName: parsed.data.displayName || undefined,
-  });
+  let user: { uid: string } | null = null;
 
-  // 2) Firestore docs (perfil + acceso)
-  await adminDb().collection("usuarios").doc(user.uid).set({
-    uid: user.uid,
-    email: parsed.data.email,
-    displayName: parsed.data.displayName || "",
-    estadoPerfil: "ACTIVO",
-    audit: {
-      createdAt: now,
-      createdBy: session.uid,
-      updatedAt: now,
-      updatedBy: session.uid,
-    },
-  });
-
-  await adminDb().collection("usuarios_access").doc(user.uid).set({
-    roles: parsed.data.roles,
-    areas: parsed.data.areas,
-    estadoAcceso: "HABILITADO",
-    permissions: [],
-    audit: {
-      createdAt: now,
-      createdBy: session.uid,
-      updatedAt: now,
-      updatedBy: session.uid,
-      deletedAt: null,
-      deletedBy: null,
-      motivoBaja: null,
-    },
-  });
-
-  // 3) Auditoría (backend-only)
-  await adminDb().collection("auditoria").add({
-    action: "USUARIO_CREATE",
-    actorUid: session.uid,
-    meta: {
+  try {
+    // 1) Auth
+    user = await adminAuth().createUser({
       email: parsed.data.email,
+      password: parsed.data.password,
+      displayName,
+    });
+
+    // 2) Firestore (batch)
+    const batch = adminDb().batch();
+
+    const perfilRef = adminDb().collection("usuarios").doc(user.uid);
+    batch.set(perfilRef, {
+      uid: user.uid,
+      email: parsed.data.email,
+
+      nombres: parsed.data.nombres,
+      apellidos: parsed.data.apellidos,
+      displayName,
+
+      tipoDoc: parsed.data.tipoDoc,
+      nroDoc: parsed.data.nroDoc,
+
+      celular: parsed.data.celular,
+      direccion: parsed.data.direccion,
+
+      genero: parsed.data.genero,
+      nacionalidad: parsed.data.nacionalidad,
+
+      fIngreso: ymdToTimestamp(parsed.data.fIngreso),
+      fNacimiento: ymdToTimestamp(parsed.data.fNacimiento),
+
+      estadoPerfil: parsed.data.estadoPerfil,
+
+      ...(parsed.data.sede ? { sede: parsed.data.sede } : {}),
+      ...(parsed.data.cargo ? { cargo: parsed.data.cargo } : {}),
+      ...(parsed.data.cuadrillaId ? { cuadrillaId: parsed.data.cuadrillaId } : {}),
+      ...(parsed.data.supervisorUid ? { supervisorUid: parsed.data.supervisorUid } : {}),
+
+      audit: {
+        createdAt: now,
+        createdBy: session.uid,
+        updatedAt: now,
+        updatedBy: session.uid,
+      },
+    });
+
+    const accessRef = adminDb().collection("usuarios_access").doc(user.uid);
+    batch.set(accessRef, {
       roles: parsed.data.roles,
       areas: parsed.data.areas,
-    },
-    target: { collection: "usuarios_access", id: user.uid },
-    ts: now,
-  });
+      estadoAcceso: "HABILITADO",
+      permissions: parsed.data.permissions ?? [],
+      audit: {
+        createdAt: now,
+        createdBy: session.uid,
+        updatedAt: now,
+        updatedBy: session.uid,
+        deletedAt: null,
+        deletedBy: null,
+        motivoBaja: null,
+      },
+    });
 
-  revalidatePath("/admin/usuarios");
-  return { ok: true, uid: user.uid };
+    await batch.commit();
+
+    // 3) Auditoría
+    await adminDb().collection("auditoria").add({
+      action: "USUARIO_CREATE",
+      actorUid: session.uid,
+      meta: {
+        email: parsed.data.email,
+        roles: parsed.data.roles,
+        areas: parsed.data.areas,
+        tipoDoc: parsed.data.tipoDoc,
+        nroDoc: parsed.data.nroDoc,
+      },
+      target: { collection: "usuarios_access", id: user.uid },
+      ts: now,
+    });
+
+    revalidatePath("/admin/usuarios");
+    return { ok: true as const, uid: user.uid };
+  } catch (e) {
+    // rollback auth si ya se creó
+    if (user?.uid) {
+      try {
+        await adminAuth().deleteUser(user.uid);
+      } catch {
+        // no bloqueamos
+      }
+    }
+    return { ok: false as const, error: { formErrors: ["No se pudo crear el usuario."] } };
+  }
 }
 
 export async function updateUsuarioAccess(uid: string, formData: FormData) {
-  const session = await requireAdmin();
+  let session: any;
+  try {
+    session = await requireServerPermission("USERS_EDIT");
+  } catch (e) {
+    return mapAuthzError(e) ?? { ok: false as const, error: { formErrors: ["ERROR"] } };
+  }
+
+  try {
+    await assertAuthUserExists(uid);
+  } catch (e) {
+    return mapTargetError(e) ?? { ok: false as const, error: { formErrors: ["ERROR"] } };
+  }
 
   const parsed = UserAccessUpdateSchema.safeParse({
     roles: normalizeArray(formData.getAll("roles")),
     areas: normalizeArray(formData.getAll("areas")),
+    permissions: normalizeArray(formData.getAll("permissions")),
     estadoAcceso: formData.get("estadoAcceso"),
   });
 
-  if (!parsed.success) return { ok: false, error: parsed.error.flatten() };
+  if (!parsed.success) return { ok: false as const, error: parsed.error.flatten() };
 
-  // ✅ Safety: no puedes quitarte ADMIN a ti mismo
-if (uid === session.uid && !parsed.data.roles.includes("ADMIN")) {
-  return {
-    ok: false,
-    error: { formErrors: ["No puedes quitarte el rol ADMIN a ti mismo."] },
-  };
-}
+  // Safety: no puedes quitarte ADMIN a ti mismo
+  if (uid === session.uid && !parsed.data.roles.includes("ADMIN")) {
+    return {
+      ok: false as const,
+      error: { formErrors: ["No puedes quitarte el rol ADMIN a ti mismo."] },
+    };
+  }
 
+  // 🔒 Regla opcional aplicada: no permitir inhabilitar a un ADMIN (target)
+  // (Incluye el caso "ADMIN -> ADMIN" que pediste)
+  const curAccess = await getCurrentAccess(uid);
+  if (curAccess?.roles?.includes?.("ADMIN") && parsed.data.estadoAcceso === "INHABILITADO") {
+    return {
+      ok: false as const,
+      error: { formErrors: ["No puedes inhabilitar el acceso de un ADMIN."] },
+    };
+  }
 
   const now = new Date();
 
@@ -111,11 +246,9 @@ if (uid === session.uid && !parsed.data.roles.includes("ADMIN")) {
     {
       roles: parsed.data.roles,
       areas: parsed.data.areas,
+      permissions: parsed.data.permissions,
       estadoAcceso: parsed.data.estadoAcceso,
-      audit: {
-        updatedAt: now,
-        updatedBy: session.uid,
-      },
+      audit: { updatedAt: now, updatedBy: session.uid },
     },
     { merge: true }
   );
@@ -123,33 +256,55 @@ if (uid === session.uid && !parsed.data.roles.includes("ADMIN")) {
   await adminDb().collection("auditoria").add({
     action: "USUARIO_ACCESS_UPDATE",
     actorUid: session.uid,
-    meta: parsed.data,
+    meta: {
+      roles: parsed.data.roles,
+      areas: parsed.data.areas,
+      permissions: parsed.data.permissions,
+      estadoAcceso: parsed.data.estadoAcceso,
+    },
     target: { collection: "usuarios_access", id: uid },
     ts: now,
   });
 
   revalidatePath("/admin/usuarios");
   revalidatePath(`/admin/usuarios/${uid}`);
-  return { ok: true };
+  return { ok: true as const };
 }
 
 export async function disableUsuario(uid: string, formData: FormData) {
-  const session = await requireAdmin();
+  let session: any;
+  try {
+    session = await requireServerPermission("USERS_DISABLE");
+  } catch (e) {
+    return mapAuthzError(e) ?? { ok: false as const, error: { formErrors: ["ERROR"] } };
+  }
 
+  try {
+    await assertAuthUserExists(uid);
+  } catch (e) {
+    return mapTargetError(e) ?? { ok: false as const, error: { formErrors: ["ERROR"] } };
+  }
 
-  // ✅ Safety: no puedes deshabilitarte a ti mismo
-if (uid === session.uid) {
-  return {
-    ok: false,
-    error: { formErrors: ["No puedes deshabilitar tu propio acceso."] },
-  };
-}
+  if (uid === session.uid) {
+    return {
+      ok: false as const,
+      error: { formErrors: ["No puedes deshabilitar tu propio acceso."] },
+    };
+  }
 
+  // 🔒 Regla opcional aplicada: no permitir inhabilitar a un ADMIN (target)
+  const curAccess = await getCurrentAccess(uid);
+  if (curAccess?.roles?.includes?.("ADMIN")) {
+    return {
+      ok: false as const,
+      error: { formErrors: ["No puedes inhabilitar el acceso de un ADMIN."] },
+    };
+  }
 
   const parsed = UserDisableSchema.safeParse({
     motivoBaja: formData.get("motivoBaja"),
   });
-  if (!parsed.success) return { ok: false, error: parsed.error.flatten() };
+  if (!parsed.success) return { ok: false as const, error: parsed.error.flatten() };
 
   const now = new Date();
 
@@ -177,11 +332,23 @@ if (uid === session.uid) {
 
   revalidatePath("/admin/usuarios");
   revalidatePath(`/admin/usuarios/${uid}`);
-  return { ok: true };
+  return { ok: true as const };
 }
 
 export async function enableUsuario(uid: string) {
-  const session = await requireAdmin();
+  let session: any;
+  try {
+    session = await requireServerPermission("USERS_ENABLE");
+  } catch (e) {
+    return mapAuthzError(e) ?? { ok: false as const, error: { formErrors: ["ERROR"] } };
+  }
+
+  try {
+    await assertAuthUserExists(uid);
+  } catch (e) {
+    return mapTargetError(e) ?? { ok: false as const, error: { formErrors: ["ERROR"] } };
+  }
+
   const now = new Date();
 
   await adminDb().collection("usuarios_access").doc(uid).set(
@@ -208,7 +375,79 @@ export async function enableUsuario(uid: string) {
 
   revalidatePath("/admin/usuarios");
   revalidatePath(`/admin/usuarios/${uid}`);
-  return { ok: true };
+  return { ok: true as const };
 }
 
+export async function updateUsuarioPerfil(uid: string, formData: FormData) {
+  let session: any;
+  try {
+    session = await requireServerPermission("USERS_EDIT");
+  } catch (e) {
+    return mapAuthzError(e) ?? { ok: false as const, error: { formErrors: ["ERROR"] } };
+  }
 
+  try {
+    await assertAuthUserExists(uid);
+  } catch (e) {
+    return mapTargetError(e) ?? { ok: false as const, error: { formErrors: ["ERROR"] } };
+  }
+
+  const parsed = UserPerfilUpdateSchema.safeParse({
+    nombres: String(formData.get("nombres") ?? "").trim() || undefined,
+    apellidos: String(formData.get("apellidos") ?? "").trim() || undefined,
+    tipoDoc: String(formData.get("tipoDoc") ?? "").trim() || undefined,
+    nroDoc: String(formData.get("nroDoc") ?? "").trim() || undefined,
+    celular: String(formData.get("celular") ?? "").trim() || undefined,
+    direccion: String(formData.get("direccion") ?? "").trim() || undefined,
+    genero: String(formData.get("genero") ?? "").trim() || undefined,
+    nacionalidad: String(formData.get("nacionalidad") ?? "").trim() || undefined,
+    fIngreso: String(formData.get("fIngreso") ?? "").trim() || undefined,
+    fNacimiento: String(formData.get("fNacimiento") ?? "").trim() || undefined,
+    estadoPerfil: String(formData.get("estadoPerfil") ?? "").trim() || undefined,
+
+    sede: String(formData.get("sede") ?? "").trim() || undefined,
+    cargo: String(formData.get("cargo") ?? "").trim() || undefined,
+    cuadrillaId: String(formData.get("cuadrillaId") ?? "").trim() || undefined,
+    supervisorUid: String(formData.get("supervisorUid") ?? "").trim() || undefined,
+  });
+
+  if (!parsed.success) return { ok: false as const, error: parsed.error.flatten() };
+
+  const now = new Date();
+  const patch: Record<string, any> = stripUndefined({ ...parsed.data });
+
+  if (patch.fIngreso) patch.fIngreso = ymdToTimestamp(patch.fIngreso);
+  if (patch.fNacimiento) patch.fNacimiento = ymdToTimestamp(patch.fNacimiento);
+
+  if (patch.nombres !== undefined || patch.apellidos !== undefined) {
+    const ref = await adminDb().collection("usuarios").doc(uid).get();
+    const cur = ref.exists ? (ref.data() as any) : {};
+
+    const nombres = patch.nombres ?? cur.nombres ?? "";
+    const apellidos = patch.apellidos ?? cur.apellidos ?? "";
+    patch.displayName = `${nombres} ${apellidos}`.trim();
+  }
+
+  await adminDb().collection("usuarios").doc(uid).set(
+    {
+      ...patch,
+      audit: {
+        updatedAt: now,
+        updatedBy: session.uid,
+      },
+    },
+    { merge: true }
+  );
+
+  await adminDb().collection("auditoria").add({
+    action: "USUARIO_PERFIL_UPDATE",
+    actorUid: session.uid,
+    meta: { keys: Object.keys(patch) },
+    target: { collection: "usuarios", id: uid },
+    ts: now,
+  });
+
+  revalidatePath("/admin/usuarios");
+  revalidatePath(`/admin/usuarios/${uid}`);
+  return { ok: true as const };
+}

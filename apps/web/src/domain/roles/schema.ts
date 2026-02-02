@@ -8,6 +8,8 @@ export const RoleCreateSchema = z.object({
   descripcion: z.string().max(200).optional().default(""),
   permisos: z.array(z.string()).default([]),
   areasDefault: z.array(z.string()).default([]),
+  permissions: z.array(z.string().min(3).max(64)).default([]),
+
 });
 
 export const RoleUpdateSchema = RoleCreateSchema.omit({ id: true }).partial();

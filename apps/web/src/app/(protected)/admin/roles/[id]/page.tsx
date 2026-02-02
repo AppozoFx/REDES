@@ -3,6 +3,8 @@ import { requireAdmin } from "@/core/auth/guards";
 import { adminDb } from "@/lib/firebase/admin";
 import { updateRole, softDeleteRole, reactivateRole } from "../actions";
 
+import { listActivePermissions } from "@/domain/permissions/permissions.repo";
+import { RolePermissionsEditor } from "@/ui/admin/roles/RolePermissionsEditor";
 
 export default async function RoleDetailPage({
   params,
@@ -11,8 +13,7 @@ export default async function RoleDetailPage({
 }) {
   await requireAdmin();
 
-  const { id } = await params; // ✅ unwrap async params
-
+  const { id } = await params;
   if (!id) return notFound();
 
   const doc = await adminDb().collection("roles").doc(id).get();
@@ -20,12 +21,27 @@ export default async function RoleDetailPage({
 
   const role = doc.data() as any;
 
+  // ✅ Cargar permisos activos (catálogo)
+  const perms = await listActivePermissions();
+
+  // ✅ Sanitizar: pasar al client solo datos planos (sin audit/timestamps)
+  const available = perms.map((p: any) => ({
+    id: p.id,
+    modulo: String(p.modulo ?? ""),
+    nombre: String(p.nombre ?? ""),
+  }));
+
+  const selected = Array.isArray(role.permissions) ? role.permissions : [];
+
   return (
-    <div className="max-w-xl space-y-6">
+    <div className="max-w-2xl space-y-6">
       <h1 className="text-2xl font-semibold">Rol: {role.id}</h1>
 
       {/* EDITAR */}
-      <form action={updateRole.bind(null, role.id)} className="space-y-3 border rounded p-4">
+      <form
+        action={updateRole.bind(null, role.id)}
+        className="space-y-3 border rounded p-4"
+      >
         <h2 className="font-medium">Editar</h2>
 
         <div>
@@ -51,6 +67,11 @@ export default async function RoleDetailPage({
         </button>
       </form>
 
+      {/* ✅ NUEVO: PERMISOS DEL ROL */}
+      <div className="border rounded p-4">
+        <RolePermissionsEditor roleId={role.id} available={available} selected={selected} />
+      </div>
+
       {/* SOFT DELETE */}
       {role.estado === "ACTIVO" && (
         <form
@@ -75,16 +96,18 @@ export default async function RoleDetailPage({
       )}
 
       {role.estado === "INACTIVO" && (
-  <form action={reactivateRole.bind(null, role.id)} className="rounded border border-yellow-400 p-4">
-    <div className="text-sm mb-3">
-      Este rol está <b>INACTIVO</b>.
-    </div>
-    <button className="rounded border px-3 py-2 hover:bg-black/5">
-      Reactivar
-    </button>
-  </form>
-)}
-
+        <form
+          action={reactivateRole.bind(null, role.id)}
+          className="rounded border border-yellow-400 p-4"
+        >
+          <div className="text-sm mb-3">
+            Este rol está <b>INACTIVO</b>.
+          </div>
+          <button className="rounded border px-3 py-2 hover:bg-black/5">
+            Reactivar
+          </button>
+        </form>
+      )}
     </div>
   );
 }

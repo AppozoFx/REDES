@@ -10,8 +10,12 @@ export const ADMIN_NAV_OVERRIDES: Record<string, Partial<AdminNavItem>> = {
   ROLES: { href: "/admin/roles", adminOnly: true, label: "Roles" },
   MODULOS: { href: "/admin/modulos", adminOnly: true, label: "Módulos" },
   USUARIOS: { href: "/admin/usuarios", adminOnly: true, label: "Usuarios" },
-
+  PERMISSIONS: { href: "/admin/permissions", adminOnly: true, label: "Permisos" },
   // Por área
   INSTALACIONES: { href: "/admin/instalaciones", adminOnly: false, label: "Instalaciones" },
   AVERIAS: { href: "/admin/averias", adminOnly: false, label: "Averías" },
+  ADMIN_COMUNICADOS: { href: "/admin/comunicados", adminOnly: false, label: "Comunicados" },
+  
+
+  
 };

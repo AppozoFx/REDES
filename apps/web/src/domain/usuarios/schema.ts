@@ -102,3 +102,73 @@ export const UserPerfilUpdateSchema = z.object({
   cuadrillaId: z.string().min(1).max(60).trim().optional(),
   supervisorUid: UidSchema.optional(),
 });
+
+/**
+ * ✅ Update perfil (SELF) - usuario no-admin (Mi Perfil)
+ * Solo campos seguros: contacto. No tocar doc/fechas/estado/sede/cargo/etc.
+ */
+export const UserSelfUpdateSchema = z.object({
+  celular: z
+    .string()
+    .min(7)
+    .max(20)
+    .transform((v) => onlyDigits(v))
+    .optional()
+    .or(z.literal("")),
+
+  direccion: z.string().min(5).max(160).trim().optional().or(z.literal("")),
+});
+
+export type UserSelfUpdateInput = z.infer<typeof UserSelfUpdateSchema>;
+
+/**
+ * ✅ Update perfil OPERATIVO (desde /home/usuarios/[uid])
+ * Importante: NO incluye tipoDoc/nroDoc/fechas/estado/sede/cargo/cuadrilla/supervisor.
+ */
+export const UserOperativePerfilUpdateSchema = z.object({
+  nombres: z.string().min(2).max(80).trim().optional().or(z.literal("")),
+  apellidos: z.string().min(2).max(80).trim().optional().or(z.literal("")),
+
+  celular: z
+    .string()
+    .min(7)
+    .max(20)
+    .transform((v) => onlyDigits(v))
+    .optional()
+    .or(z.literal("")),
+
+  direccion: z.string().min(5).max(160).trim().optional().or(z.literal("")),
+});
+
+export type UserOperativePerfilUpdateInput = z.infer<
+  typeof UserOperativePerfilUpdateSchema
+>;
+
+
+export const HomeUserCreateSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6).max(64),
+
+  nombres: z.string().min(2).max(80).trim(),
+  apellidos: z.string().min(2).max(80).trim(),
+
+  tipoDoc: TipoDocSchema,
+  nroDoc: z.string().min(6).max(15).trim(),
+
+  celular: z.string().min(7).max(20).transform((v) => onlyDigits(v)),
+  direccion: z.string().min(5).max(160).trim(),
+
+  genero: GeneroSchema,
+  nacionalidad: z.string().min(2).max(60).trim(),
+
+  fIngreso: DateYmdSchema,
+  fNacimiento: DateYmdSchema,
+
+  // Rol inicial controlado (NO ADMIN)
+  rolInicial: z.string().min(2),
+});
+
+export type HomeUserCreateInput = z.infer<typeof HomeUserCreateSchema>;
+
+
+

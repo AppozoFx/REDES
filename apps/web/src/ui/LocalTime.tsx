@@ -5,4 +5,3 @@ export default function LocalTime({ dateMs }: { dateMs: number | null }) {
   const text = d ? d.toLocaleString() : "-";
   return <span suppressHydrationWarning>{text}</span>;
 }
-

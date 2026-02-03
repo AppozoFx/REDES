@@ -9,7 +9,9 @@ import {
   UserPerfilUpdateSchema,
 } from "@/domain/usuarios/schema";
 import { ymdToTimestamp } from "@/lib/dates";
+import { addGlobalNotification } from "@/domain/notificaciones/service";
 import { revalidatePath } from "next/cache";
+
 
 function normalizeArray(values: FormDataEntryValue[] | null): string[] {
   if (!values) return [];
@@ -99,7 +101,16 @@ export async function createUsuario(_prevState: any, formData: FormData) {
 
   if (!parsed.success) return { ok: false as const, error: parsed.error.flatten() };
 
+  // Hardening: rechazar si payload intenta asignar ADMIN
+  if ((parsed.data.roles ?? []).includes("ADMIN")) {
+    return {
+      ok: false as const,
+      error: { formErrors: ["No se permite asignar el rol ADMIN desde esta operación."] },
+    };
+  }
+
   const displayName = `${parsed.data.nombres} ${parsed.data.apellidos}`.trim();
+  const safeRolesCreate = (parsed.data.roles ?? []).filter((r) => r !== "ADMIN");
   const now = new Date();
 
   let user: { uid: string } | null = null;
@@ -156,7 +167,7 @@ export async function createUsuario(_prevState: any, formData: FormData) {
 
     const accessRef = adminDb().collection("usuarios_access").doc(user.uid);
     batch.set(accessRef, {
-      roles: parsed.data.roles,
+      roles: safeRolesCreate,
       areas: parsed.data.areas,
       estadoAcceso: "HABILITADO",
       permissions: parsed.data.permissions ?? [],
@@ -181,13 +192,26 @@ export async function createUsuario(_prevState: any, formData: FormData) {
       actorUid: session.uid,
       meta: {
         email: parsed.data.email,
-        roles: parsed.data.roles,
+        roles: safeRolesCreate,
         areas: parsed.data.areas,
         tipoDoc: parsed.data.tipoDoc,
         nroDoc: parsed.data.nroDoc,
       },
       target: { collection: "usuarios_access", id: user.uid },
       ts: now,
+    });
+
+    await addGlobalNotification({
+      title: "Usuario creado",
+      message: displayName,
+      type: "success",
+      scope: "ALL",
+      createdAt: now,
+      createdBy: session.uid,
+      entityType: "USUARIO",
+      entityId: user.uid,
+      action: "CREATE",
+      estado: "ACTIVO",
     });
 
     stage = "revalidate";
@@ -273,6 +297,14 @@ export async function updateUsuarioAccess(uid: string, formData: FormData) {
     };
   }
 
+  // Hardening: si actor no es admin y payload incluye ADMIN, rechazar
+  if (!session.isAdmin && (parsed.data.roles ?? []).includes("ADMIN")) {
+    return {
+      ok: false as const,
+      error: { formErrors: ["No tienes permisos para asignar el rol ADMIN."] },
+    };
+  }
+
   // 🔒 Regla opcional aplicada: no permitir inhabilitar a un ADMIN (target)
   // (Incluye el caso "ADMIN -> ADMIN" que pediste)
   const curAccess = await getCurrentAccess(uid);
@@ -284,10 +316,13 @@ export async function updateUsuarioAccess(uid: string, formData: FormData) {
   }
 
   const now = new Date();
+  const safeRolesUpdate = session.isAdmin
+    ? parsed.data.roles
+    : (parsed.data.roles ?? []).filter((r) => r !== "ADMIN");
 
   await adminDb().collection("usuarios_access").doc(uid).set(
     {
-      roles: parsed.data.roles,
+      roles: safeRolesUpdate,
       areas: parsed.data.areas,
       permissions: parsed.data.permissions,
       estadoAcceso: parsed.data.estadoAcceso,
@@ -300,13 +335,26 @@ export async function updateUsuarioAccess(uid: string, formData: FormData) {
     action: "USUARIO_ACCESS_UPDATE",
     actorUid: session.uid,
     meta: {
-      roles: parsed.data.roles,
+      roles: safeRolesUpdate,
       areas: parsed.data.areas,
       permissions: parsed.data.permissions,
       estadoAcceso: parsed.data.estadoAcceso,
     },
     target: { collection: "usuarios_access", id: uid },
     ts: now,
+  });
+
+  await addGlobalNotification({
+    title: "Acceso actualizado",
+    message: `uid ${uid}`,
+    type: "info",
+    scope: "ALL",
+    createdAt: now,
+    createdBy: session.uid,
+    entityType: "USUARIO",
+    entityId: uid,
+    action: "UPDATE",
+    estado: "ACTIVO",
   });
 
   revalidatePath("/admin/usuarios");
@@ -373,6 +421,19 @@ export async function disableUsuario(uid: string, formData: FormData) {
     ts: now,
   });
 
+  await addGlobalNotification({
+    title: "Usuario deshabilitado",
+    message: `uid ${uid}`,
+    type: "warn",
+    scope: "ALL",
+    createdAt: now,
+    createdBy: session.uid,
+    entityType: "USUARIO",
+    entityId: uid,
+    action: "DISABLE",
+    estado: "ACTIVO",
+  });
+
   revalidatePath("/admin/usuarios");
   revalidatePath(`/admin/usuarios/${uid}`);
   return { ok: true as const };
@@ -414,6 +475,19 @@ export async function enableUsuario(uid: string) {
     meta: {},
     target: { collection: "usuarios_access", id: uid },
     ts: now,
+  });
+
+  await addGlobalNotification({
+    title: "Usuario habilitado",
+    message: `uid ${uid}`,
+    type: "success",
+    scope: "ALL",
+    createdAt: now,
+    createdBy: session.uid,
+    entityType: "USUARIO",
+    entityId: uid,
+    action: "ENABLE",
+    estado: "ACTIVO",
   });
 
   revalidatePath("/admin/usuarios");
@@ -488,6 +562,19 @@ export async function updateUsuarioPerfil(uid: string, formData: FormData) {
     meta: { keys: Object.keys(patch) },
     target: { collection: "usuarios", id: uid },
     ts: now,
+  });
+
+  await addGlobalNotification({
+    title: "Perfil actualizado",
+    message: `uid ${uid}`,
+    type: "info",
+    scope: "ALL",
+    createdAt: now,
+    createdBy: session.uid,
+    entityType: "USUARIO",
+    entityId: uid,
+    action: "UPDATE",
+    estado: "ACTIVO",
   });
 
   revalidatePath("/admin/usuarios");

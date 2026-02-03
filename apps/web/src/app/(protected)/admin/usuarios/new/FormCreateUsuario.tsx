@@ -3,6 +3,7 @@
 import React from "react";
 import { useFormStatus } from "react-dom";
 import { createUsuario } from "../actions";
+import { toast } from "sonner";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -21,6 +22,15 @@ function SubmitButton() {
 export function FormCreateUsuario({ roles, areas }: { roles: string[]; areas: string[] }) {
   // ✅ React 19 / Next 16: useActionState (no useFormState)
   const [state, formAction] = React.useActionState(createUsuario as any, undefined as any);
+
+  React.useEffect(() => {
+    if (!state) return;
+    if ((state as any).ok) toast.success("Usuario creado");
+    else if ((state as any)?.error) {
+      const msg = (state as any)?.error?.formErrors?.[0] ?? "Error al crear usuario";
+      toast.error(msg);
+    }
+  }, [state]);
 
   return (
     <form action={formAction} className="space-y-4 rounded border p-4">

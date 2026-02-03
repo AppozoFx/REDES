@@ -1,30 +1,36 @@
 "use client";
 
-export function AdminTopbar({
-  uid,
-  roles,
-}: {
-  uid: string;
-  roles: string[];
-}) {
-  async function logout() {
-    await fetch("/api/auth/session", { method: "DELETE" });
-    window.location.href = "/login";
-  }
+import Link from "next/link";
+import { NotificationsBell } from "@/ui/common/NotificationsBell";
 
+type Props = {
+  uid: string;
+};
+
+export default function Topbar({ uid }: Props) {
   return (
-    <header className="border-b px-6 py-3 flex items-center justify-between">
-      <div className="text-sm opacity-80">
-        <span className="font-medium">uid:</span> {uid} ·{" "}
-        <span className="font-medium">roles:</span> {roles.join(", ") || "(none)"}
+    <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <Link href="/admin" className="text-sm font-semibold">
+          REDES
+        </Link>
+
+        <span className="text-xs opacity-70">uid: {uid}</span>
       </div>
 
-      <button
-        onClick={logout}
-        className="rounded border px-3 py-1 text-sm hover:bg-black/5"
-      >
-        Cerrar sesión
-      </button>
-    </header>
+      <div className="flex items-center gap-3">
+        <NotificationsBell uid={uid} />
+
+        <button
+          className="rounded border px-3 py-1 text-sm hover:bg-muted"
+          onClick={async () => {
+            await fetch("/api/auth/session", { method: "DELETE" });
+            window.location.href = "/login";
+          }}
+        >
+          Cerrar sesión
+        </button>
+      </div>
+    </div>
   );
 }

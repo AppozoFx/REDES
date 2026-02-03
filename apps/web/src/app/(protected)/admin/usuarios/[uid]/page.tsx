@@ -29,7 +29,7 @@ export default async function UsuarioDetailPage({
 }: {
   params: Promise<{ uid: string }>;
 }) {
-  await requirePermission("USERS_EDIT");
+  const session = await requirePermission("USERS_EDIT");
 
   const { uid } = await params;
   if (!uid) return notFound();
@@ -49,7 +49,11 @@ export default async function UsuarioDetailPage({
     .where("estado", "==", "ACTIVO")
     .get();
 
-  const roles = rolesSnap.docs.map((d) => d.id);
+  // Ocultar ADMIN en UI normal; si el actor es admin puede verla
+  const roles = rolesSnap
+    .docs
+    .map((d) => d.id)
+    .filter((r) => (session.isAdmin ? true : r !== "ADMIN"));
 
   const modSnap = await adminDb()
     .collection("modulos")

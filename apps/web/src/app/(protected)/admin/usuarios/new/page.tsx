@@ -10,7 +10,9 @@ export default async function NewUsuarioPage() {
     .where("estado", "==", "ACTIVO")
     .get();
 
-  const roles = rolesSnap.docs.map((d) => d.id);
+  // No listar rol ADMIN en el formulario de creación
+  const roles = rolesSnap.docs.map(d => d.id).filter(r => r !== "ADMIN");
+
 
   const modSnap = await adminDb()
     .collection("modulos")

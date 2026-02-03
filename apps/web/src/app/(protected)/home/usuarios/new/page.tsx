@@ -6,7 +6,10 @@ export default async function HomeUsuariosNewPage() {
   await requireAuth();
   await requirePermission("USERS_CREATE");
 
-  const roles = await listRoles(200);
+  const roles = await listRoles(200); // all roles
+  
+  
+
 
   const rolesAllowed = roles
     .filter((r: any) => r.id !== "ADMIN" && (r.estado ?? "ACTIVO") === "ACTIVO")

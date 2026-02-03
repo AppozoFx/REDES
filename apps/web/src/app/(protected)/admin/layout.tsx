@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { requireAdmin } from "@/core/auth/guards";
 import { AdminSidebar } from "@/ui/admin/Sidebar";
-import { AdminTopbar } from "@/ui/admin/Topbar";
+import AdminTopbar from "@/ui/admin/Topbar";
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const session = await requireAdmin();

@@ -33,6 +33,11 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     items.push({ key: "USUARIOS", label: "Usuarios", href: "/home/usuarios" });
   }
 
+  // Zonas para no-admins con permiso específico
+  if (hasPerm(session, "ZONAS_MANAGE")) {
+    items.push({ key: "ZONAS", label: "Zonas", href: "/home/zonas" });
+  }
+
   items.push({ key: "PERFIL", label: "Mi perfil", href: "/home/perfil" });
 
   return items;

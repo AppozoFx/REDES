@@ -43,6 +43,11 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     items.push({ key: "CUADRILLAS", label: "Cuadrillas", href: "/home/cuadrillas" });
   }
 
+  // Órdenes -> Importar (solo con permiso)
+  if (hasPerm(session, "ORDENES_IMPORT")) {
+    items.push({ key: "ORDENES_IMPORT", label: "Órdenes: Importar", href: "/home/ordenes/import" });
+  }
+
   items.push({ key: "PERFIL", label: "Mi perfil", href: "/home/perfil" });
 
   return items;

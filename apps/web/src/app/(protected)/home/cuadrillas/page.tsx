@@ -1,4 +1,5 @@
 import Link from "next/link";
+import React from "react";
 import { requirePermission } from "@/core/auth/guards";
 import { listCuadrillas } from "@/domain/cuadrillas/repo";
 
@@ -21,34 +22,41 @@ export default async function CuadrillasListPage() {
             <tr>
               <th className="p-2 text-left">ID</th>
               <th className="p-2 text-left">Nombre</th>
-              <th className="p-2 text-left">N°</th>
-              <th className="p-2 text-left">Categoría</th>
-              <th className="p-2 text-left">Vehículo</th>
+              <th className="p-2 text-left">Nro</th>
+              <th className="p-2 text-left">Categoria</th>
+              <th className="p-2 text-left">Vehiculo</th>
               <th className="p-2 text-left">Estado</th>
-              <th className="p-2 text-left">Acción</th>
+              <th className="p-2 text-left">Accion</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r: any) => (
-              <tr key={r.id} className="border-t">
-                <td className="p-2 font-mono">{r.id}</td>
-                <td className="p-2">{r.nombre}</td>
-                <td className="p-2">{r.numeroCuadrilla}</td>
-                <td className="p-2">{r.categoria}</td>
-                <td className="p-2">{r.vehiculo}</td>
-                <td className="p-2">{r.estado}</td>
-                <td className="p-2">
-                  <Link className="underline" href={`/home/cuadrillas/${r.id}`}>
-                    Ver / editar
-                  </Link>
-                </td>
-              </tr>
+            {rows.map((r: any, idx: number) => (
+              <React.Fragment key={r.id}>
+                {(idx === 0 || rows[idx - 1].categoria !== r.categoria) ? (
+                  <tr className="bg-black/10">
+                    <td colSpan={7} className="p-2 font-medium">{r.categoria}</td>
+                  </tr>
+                ) : null}
+                <tr className="border-t">
+                  <td className="p-2 font-mono">{r.id}</td>
+                  <td className="p-2">{r.nombre}</td>
+                  <td className="p-2">{r.numeroCuadrilla}</td>
+                  <td className="p-2">{r.categoria}</td>
+                  <td className="p-2">{r.vehiculo}</td>
+                  <td className="p-2">{r.estado}</td>
+                  <td className="p-2">
+                    <Link className="underline" href={`/home/cuadrillas/${r.id}`}>
+                      Ver / editar
+                    </Link>
+                  </td>
+                </tr>
+              </React.Fragment>
             ))}
 
             {rows.length === 0 && (
               <tr>
                 <td className="p-4 opacity-70" colSpan={7}>
-                  No hay cuadrillas todavía.
+                  No hay cuadrillas todavia.
                 </td>
               </tr>
             )}

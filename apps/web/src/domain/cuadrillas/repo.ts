@@ -39,7 +39,10 @@ function computeVigencia(ts: Timestamp | null | undefined): "NO_CUENTA" | "VIGEN
 }
 
 export async function listCuadrillas() {
-  const qs = await cuadrillasCol().orderBy("numeroCuadrilla", "asc").get();
+  const qs = await cuadrillasCol()
+    .orderBy("categoria", "desc")
+    .orderBy("numeroCuadrilla", "asc")
+    .get();
   return qs.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
 }
 

@@ -1,33 +1,23 @@
 "use server";
 
 import { adminDb } from "@/lib/firebase/admin";
-import { serverTimestamp } from "firebase-admin/firestore";
-
-export type NotifType = "success" | "info" | "warn" | "error";
-export type NotifAction = "CREATE" | "UPDATE" | "DISABLE" | "ENABLE" | "DELETE";
-export type NotifScope = "ALL";
+import { FieldValue } from "firebase-admin/firestore";
 
 export type GlobalNotificationInput = {
   title: string;
   message: string;
-  type: NotifType;
-  scope?: NotifScope; // default ALL
+  type: "success" | "info" | "warn" | "error";
+  scope: "ALL";
   createdBy: string;
-
   entityType: string;
   entityId: string;
-  action: NotifAction;
-
-  estado?: "ACTIVO" | "ARCHIVADO";
+  action: "CREATE" | "UPDATE" | "DISABLE" | "ENABLE" | "DELETE";
+  estado: "ACTIVO" | "ARCHIVADO";
 };
 
 export async function addGlobalNotification(input: GlobalNotificationInput) {
-  const doc = {
+  await adminDb().collection("notificaciones").add({
     ...input,
-    scope: input.scope ?? "ALL",
-    estado: input.estado ?? "ACTIVO",
-    createdAt: serverTimestamp(),
-  };
-
-  await adminDb().collection("notificaciones").add(doc);
+    createdAt: FieldValue.serverTimestamp(), // ✅ ESTA ES LA CLAVE
+  });
 }

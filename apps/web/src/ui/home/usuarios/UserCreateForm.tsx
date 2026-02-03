@@ -1,117 +1,238 @@
 "use client";
 
+import * as React from "react";
 import { useActionState } from "react";
-import { homeCreateUserAction, type CreateState } from "@/app/(protected)/home/usuarios/new/actions";
+import { toast } from "sonner";
+import { createUsuario } from "@/app/(protected)/admin/usuarios/actions";
 
-export default function UserCreateForm({
-  rolesAllowed,
-}: {
-  rolesAllowed: { id: string; nombre: string }[];
-}) {
-  const [state, action, pending] = useActionState<CreateState, FormData>(
-    homeCreateUserAction,
-    { ok: true }
-  );
+type RoleOpt = { id: string; nombre: string };
+
+type Props = {
+  rolesAllowed: RoleOpt[];
+};
+
+type ActionState =
+  | null
+  | { ok: true; uid: string }
+  | { ok: false; error: { formErrors?: string[]; fieldErrors?: Record<string, string[]> } };
+
+function firstErr(err?: string[] | undefined) {
+  return err && err.length ? err[0] : undefined;
+}
+
+export default function UserCreateForm({ rolesAllowed }: Props) {
+  const [state, action, pending] = useActionState<ActionState, FormData>(createUsuario as any, null);
+
+  // defaults UI
+  const todayYMD = React.useMemo(() => {
+    const d = new Date();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${d.getFullYear()}-${mm}-${dd}`;
+  }, []);
+
+  React.useEffect(() => {
+    if (!state) return;
+
+    if (state.ok) {
+      toast.success("Usuario creado");
+    } else {
+      const msg =
+        firstErr(state.error?.formErrors) ??
+        "No se pudo crear el usuario. Revisa los campos.";
+      toast.error(msg);
+    }
+  }, [state]);
+
+  const fe = state && !state.ok ? state.error?.fieldErrors ?? {} : {};
 
   return (
-    <form action={action} className="space-y-4 max-w-2xl">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <label className="text-sm font-medium">Email</label>
-          <input name="email" className="w-full rounded border px-3 py-2 text-sm" />
-        </div>
+    <form action={action} className="space-y-4 rounded border p-4">
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field label="Email" name="email" type="email" required error={firstErr(fe.email)} />
+        <Field label="Password" name="password" type="password" required error={firstErr(fe.password)} />
 
-        <div className="space-y-1">
-          <label className="text-sm font-medium">Password</label>
-          <input name="password" type="password" className="w-full rounded border px-3 py-2 text-sm" />
-        </div>
+        <Field label="Nombres" name="nombres" required error={firstErr(fe.nombres)} />
+        <Field label="Apellidos" name="apellidos" required error={firstErr(fe.apellidos)} />
 
-        <div className="space-y-1">
-          <label className="text-sm font-medium">Nombres</label>
-          <input name="nombres" className="w-full rounded border px-3 py-2 text-sm" />
-        </div>
+        <Select
+          label="Tipo doc"
+          name="tipoDoc"
+          required
+          options={[
+            { value: "DNI", label: "DNI" },
+            { value: "CE", label: "CE" },
+          ]}
+          error={firstErr(fe.tipoDoc)}
+        />
 
-        <div className="space-y-1">
-          <label className="text-sm font-medium">Apellidos</label>
-          <input name="apellidos" className="w-full rounded border px-3 py-2 text-sm" />
-        </div>
+        <Field label="Nro doc" name="nroDoc" required error={firstErr(fe.nroDoc)} />
+        <Field label="Celular" name="celular" required error={firstErr(fe.celular)} />
+        <Field label="Dirección" name="direccion" required error={firstErr(fe.direccion)} />
 
-        <div className="space-y-1">
-          <label className="text-sm font-medium">Tipo Doc</label>
-          <select name="tipoDoc" className="w-full rounded border px-3 py-2 text-sm">
-            <option value="DNI">DNI</option>
-            <option value="CE">CE</option>
-          </select>
-        </div>
+        <Select
+          label="Género"
+          name="genero"
+          options={[
+            { value: "", label: "-" },
+            { value: "M", label: "M" },
+            { value: "F", label: "F" },
+          ]}
+          error={firstErr(fe.genero)}
+        />
 
-        <div className="space-y-1">
-          <label className="text-sm font-medium">Nro Doc</label>
-          <input name="nroDoc" className="w-full rounded border px-3 py-2 text-sm" />
-        </div>
+        <Field label="Nacionalidad" name="nacionalidad" required defaultValue="PERUANA" error={firstErr(fe.nacionalidad)} />
 
-        <div className="space-y-1">
-          <label className="text-sm font-medium">Celular</label>
-          <input name="celular" className="w-full rounded border px-3 py-2 text-sm" />
-        </div>
+        <Field label="Fecha ingreso" name="fIngreso" type="date" required defaultValue={todayYMD} error={firstErr(fe.fIngreso)} />
+        <Field label="Fecha nacimiento" name="fNacimiento" type="date" required error={firstErr(fe.fNacimiento)} />
 
-        <div className="space-y-1">
-          <label className="text-sm font-medium">Dirección</label>
-          <input name="direccion" className="w-full rounded border px-3 py-2 text-sm" />
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-sm font-medium">Género</label>
-          <select name="genero" className="w-full rounded border px-3 py-2 text-sm">
-            <option value="M">M</option>
-            <option value="F">F</option>
-            <option value="OTRO">OTRO</option>
-            <option value="NO_ESPECIFICA">NO ESPECIFICA</option>
-          </select>
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-sm font-medium">Nacionalidad</label>
-          <input name="nacionalidad" className="w-full rounded border px-3 py-2 text-sm" />
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-sm font-medium">F. Ingreso</label>
-          <input name="fIngreso" type="date" className="w-full rounded border px-3 py-2 text-sm" />
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-sm font-medium">F. Nacimiento</label>
-          <input name="fNacimiento" type="date" className="w-full rounded border px-3 py-2 text-sm" />
-        </div>
-
-        <div className="space-y-1 col-span-2">
-          <label className="text-sm font-medium">Rol inicial</label>
-          <select name="rolInicial" className="w-full rounded border px-3 py-2 text-sm">
-            {rolesAllowed.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.nombre} ({r.id})
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-muted-foreground">
-            No se asignan áreas ni permisos directos desde Home.
-          </p>
-        </div>
+        <Select
+          label="Estado perfil"
+          name="estadoPerfil"
+          required
+          options={[
+            { value: "ACTIVO", label: "ACTIVO" },
+            { value: "INACTIVO", label: "INACTIVO" },
+          ]}
+          error={firstErr(fe.estadoPerfil)}
+        />
       </div>
 
-      {state.ok === false && (
-        <div className="rounded border border-red-300 bg-red-50 p-3 text-sm">
-          {state.error}
-        </div>
-      )}
+      <div className="grid gap-3 md:grid-cols-2">
+        <MultiSelect
+          label="Roles"
+          name="roles"
+          required
+          options={rolesAllowed.map((r) => ({ value: r.id, label: r.nombre }))}
+          helper="No incluye ADMIN (bloqueado por UI + server)."
+          error={firstErr(fe.roles)}
+        />
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded border px-4 py-2 text-sm hover:bg-muted disabled:opacity-60"
-      >
-        {pending ? "Creando..." : "Crear usuario"}
-      </button>
+        {/* Áreas: aquí puedes cambiar el listado según tu negocio */}
+        <MultiSelect
+          label="Áreas"
+          name="areas"
+          required
+          options={[
+            { value: "COMUNICADOS", label: "COMUNICADOS" },
+            { value: "INSTALACIONES", label: "INSTALACIONES" },
+            { value: "AVERIAS", label: "AVERIAS" },
+          ]}
+          error={firstErr(fe.areas)}
+        />
+      </div>
+
+      {/* permissions opcional: si no lo usas en Home, no lo incluyas */}
+      {/* <MultiSelect ... name="permissions" /> */}
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field label="Sede (opcional)" name="sede" error={firstErr(fe.sede)} />
+        <Field label="Cargo (opcional)" name="cargo" error={firstErr(fe.cargo)} />
+        <Field label="CuadrillaId (opcional)" name="cuadrillaId" error={firstErr(fe.cuadrillaId)} />
+        <Field label="Supervisor UID (opcional)" name="supervisorUid" error={firstErr(fe.supervisorUid)} />
+      </div>
+
+      {/* errores generales */}
+      {state && !state.ok && state.error?.formErrors?.length ? (
+        <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+          {state.error.formErrors[0]}
+        </div>
+      ) : null}
+
+      <div className="flex items-center gap-3">
+        <button
+          type="submit"
+          disabled={pending}
+          className="rounded border px-4 py-2 text-sm hover:bg-muted disabled:opacity-60"
+        >
+          {pending ? "Creando..." : "Crear usuario"}
+        </button>
+
+        {state && state.ok ? (
+          <div className="text-xs text-muted-foreground">
+            Creado UID: <span className="font-mono">{state.uid}</span>
+          </div>
+        ) : null}
+      </div>
     </form>
+  );
+}
+
+function Field(props: {
+  label: string;
+  name: string;
+  type?: string;
+  required?: boolean;
+  defaultValue?: string;
+  error?: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <label className="text-sm font-medium">{props.label}</label>
+      <input
+        name={props.name}
+        type={props.type ?? "text"}
+        required={props.required}
+        defaultValue={props.defaultValue}
+        className="w-full rounded border px-3 py-2 text-sm"
+      />
+      {props.error ? <div className="text-xs text-red-600">{props.error}</div> : null}
+    </div>
+  );
+}
+
+function Select(props: {
+  label: string;
+  name: string;
+  required?: boolean;
+  options: { value: string; label: string }[];
+  error?: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <label className="text-sm font-medium">{props.label}</label>
+      <select
+        name={props.name}
+        required={props.required}
+        className="w-full rounded border px-3 py-2 text-sm"
+        defaultValue={props.options[0]?.value ?? ""}
+      >
+        {props.options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      {props.error ? <div className="text-xs text-red-600">{props.error}</div> : null}
+    </div>
+  );
+}
+
+function MultiSelect(props: {
+  label: string;
+  name: string;
+  required?: boolean;
+  options: { value: string; label: string }[];
+  helper?: string;
+  error?: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <label className="text-sm font-medium">{props.label}</label>
+      <select
+        name={props.name}
+        multiple
+        required={props.required}
+        className="w-full rounded border px-3 py-2 text-sm"
+      >
+        {props.options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      {props.helper ? <div className="text-xs text-muted-foreground">{props.helper}</div> : null}
+      {props.error ? <div className="text-xs text-red-600">{props.error}</div> : null}
+    </div>
   );
 }

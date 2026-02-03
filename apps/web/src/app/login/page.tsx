@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { getFirebaseAuth } from "@/lib/firebase/client";
 
 export default function LoginPage() {
@@ -19,6 +19,8 @@ export default function LoginPage() {
 
     try {
       const auth = getFirebaseAuth();
+      // Garantiza que currentUser persista tras refresh
+      await setPersistence(auth, browserLocalPersistence);
       const cred = await signInWithEmailAndPassword(auth, email, password);
 
      const idToken = await cred.user.getIdToken(true);
@@ -33,6 +35,8 @@ const res = await fetch("/api/auth/session", {
 const payload = JSON.parse(atob(idToken.split(".")[1]));
 console.log("TOKEN iss:", payload.iss);
 console.log("TOKEN aud:", payload.aud);
+// Log del projectId del cliente para comparar con aud
+try { console.log("APP projectId:", (auth.app.options as any)?.projectId); } catch {}
 
 const text = await res.text();
 if (!res.ok) throw new Error(`session (${res.status}): ${text}`);

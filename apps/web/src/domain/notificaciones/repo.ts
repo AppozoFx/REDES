@@ -13,10 +13,15 @@ import {
   where,
   getFirestore,
 } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 
 import { getFirebaseApp } from "@/lib/firebase/client";
 
-const db = getFirestore(getFirebaseApp());
+const app = getFirebaseApp();
+const db = getFirestore(app);
+// Debug: confirmar projectId del Firestore client
+// eslint-disable-next-line no-console
+try { console.log("[notifications repo] db.app.projectId", (db.app.options as any)?.projectId); } catch {}
 
 export type NotificacionDoc = {
   id: string;
@@ -46,29 +51,42 @@ export function listenGlobalNotifications(
     limit(n)
   );
 
-  return onSnapshot(q, async (snap) => {
-    const items = await Promise.all(
-      snap.docs.map(async (d) => {
-        const data = d.data() as any;
-        const notifId = d.id;
-        const readId = `${uid}_${notifId}`;
-        const readRef = doc(db, "notificaciones_reads", readId);
-        const readSnap = await getDoc(readRef);
+  // Log de subscripción (auth vs props)
+  // eslint-disable-next-line no-console
+  try { console.log("[listenGlobalNotifications] subscribe", { uid }); } catch {}
+  return onSnapshot(
+    q,
+    async (snap) => {
+      const authUid = getAuth(getFirebaseApp()).currentUser?.uid || uid;
+      const items = await Promise.all(
+        snap.docs.map(async (d) => {
+          const data = d.data() as any;
+          const notifId = d.id;
+          const readId = `${authUid}_${notifId}`;
+          const readRef = doc(db, "notificaciones_reads", readId);
+          const readSnap = await getDoc(readRef);
 
-        return {
-          id: notifId,
-          ...data,
-          read: readSnap.exists(),
-        } as NotificacionDoc;
-      })
-    );
+          return {
+            id: notifId,
+            ...data,
+            read: readSnap.exists(),
+          } as NotificacionDoc;
+        })
+      );
 
-    onChange(items);
-  });
+      onChange(items);
+    },
+    (error) => {
+      // Evitar "Uncaught Error in snapshot listener" y dejar la UI vacía
+      console.error("[listenGlobalNotifications]", error?.code || error?.name, error?.message);
+      onChange([]);
+    }
+  );
 }
 
 export async function markNotificationRead(uid: string, notifId: string) {
-  const readId = `${uid}_${notifId}`;
+  const authUid = getAuth(getFirebaseApp()).currentUser?.uid || uid;
+  const readId = `${authUid}_${notifId}`;
   const ref = doc(db, "notificaciones_reads", readId);
 
   await setDoc(

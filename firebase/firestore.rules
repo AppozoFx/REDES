@@ -31,9 +31,7 @@ service cloud.firestore {
       // Listado: solo admin
       allow list: if isAdmin();
 
-      // Escrituras:
-      // Recomendación segura al inicio: SOLO admin escribe perfiles.
-      // (Así evitas que usuarios modifiquen datos personales sin control.)
+      // Escrituras: solo admin escribe perfiles
       allow create, update: if isAdmin();
 
       // No delete: siempre soft delete vía estado/audit
@@ -96,6 +94,30 @@ service cloud.firestore {
     }
 
     /* =========================
+       NOTIFICACIONES (lectura global)
+       ========================= */
+    match /notificaciones/{id} {
+      // Todos los autenticados pueden leer
+      allow get, list: if signedIn();
+      // Cliente NO escribe notificaciones (solo Admin SDK del servidor)
+      allow create, update, delete: if false;
+    }
+
+    /* =========================
+       NOTIFICACIONES_READS (lecturas y escrituras propias)
+       ========================= */
+    match /notificaciones_reads/{rid} {
+      // Solo el dueño puede leer su propio read-flag (rid = `${uid}_${notifId}`)
+      allow get: if signedIn() && rid.matches('^' + request.auth.uid + '_.*$');
+      // Listar reads está prohibido
+      allow list: if false;
+      // Crear/actualizar únicamente si el doc pertenece al usuario autenticado
+      allow create, update: if signedIn() && rid.matches('^' + request.auth.uid + '_.*$');
+      // Delete prohibido
+      allow delete: if denyDeletes();
+    }
+
+    /* =========================
        DEFAULT: denegar todo lo demás
        ========================= */
     match /{document=**} {
@@ -103,3 +125,4 @@ service cloud.firestore {
     }
   }
 }
+

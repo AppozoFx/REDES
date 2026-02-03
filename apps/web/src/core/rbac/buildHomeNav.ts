@@ -38,6 +38,11 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     items.push({ key: "ZONAS", label: "Zonas", href: "/home/zonas" });
   }
 
+  // Cuadrillas (Instalaciones) para no-admins con permiso específico
+  if (hasPerm(session, "CUADRILLAS_MANAGE")) {
+    items.push({ key: "CUADRILLAS", label: "Cuadrillas", href: "/home/cuadrillas" });
+  }
+
   items.push({ key: "PERFIL", label: "Mi perfil", href: "/home/perfil" });
 
   return items;

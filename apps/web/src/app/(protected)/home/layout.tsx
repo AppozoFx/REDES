@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { requireAuth } from "@/core/auth/guards";
 import HomeSidebar from "@/ui/home/Sidebar";
 import HomeTopbar from "@/ui/home/Topbar";
+import { NotificationsRealtime } from "@/ui/common/NotificationsRealtime";
 
 export default async function HomeLayout({
   children,
@@ -24,6 +25,7 @@ export default async function HomeLayout({
         </div>
 
         <main className="p-6">{children}</main>
+        <NotificationsRealtime />
       </div>
     </div>
   );

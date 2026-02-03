@@ -8,6 +8,7 @@ import {
   markNotificationRead,
   NotificacionDoc,
 } from "@/domain/notificaciones/repo";
+import { markAllNotificationsRead } from "@/domain/notificaciones/repo";
 
 export function NotificationsBell({ uid }: { uid: string }) {
   const [open, setOpen] = React.useState(false);
@@ -34,11 +35,61 @@ export function NotificationsBell({ uid }: { uid: string }) {
 
   const unread = items.filter((n) => !n.read).length;
 
+  const markingRef = React.useRef(false);
+
+React.useEffect(() => {
+  if (!open) return;
+  if (!authUid) return;
+
+  const unreadIds = items.filter((n) => !n.read).map((n) => n.id);
+  if (!unreadIds.length) return;
+  if (markingRef.current) return;
+
+  // Optimistic: marcar como leído localmente
+  setItems((prev) => prev.map((n) => (unreadIds.includes(n.id) ? { ...n, read: true } : n)));
+
+  markingRef.current = true;
+  markAllNotificationsRead(authUid, unreadIds)
+    .catch(() => {
+      // revertir optimismo si falla
+      setItems((prev) => prev.map((n) => (unreadIds.includes(n.id) ? { ...n, read: false } : n)));
+    })
+    .finally(() => {
+      // permitir futuros “open” si llegan nuevas notifs
+      markingRef.current = false;
+    });
+}, [open, authUid, items]);
+
   return (
     <div className="relative">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() =>
+          setOpen((prev) => {
+            const opening = !prev;
+            if (opening && authUid) {
+              const unreadIds = items.filter((n) => !n.read).map((n) => n.id);
+              if (unreadIds.length && !markingRef.current) {
+                // Optimistic local update
+                setItems((prevItems) =>
+                  prevItems.map((n) => (unreadIds.includes(n.id) ? { ...n, read: true } : n))
+                );
+                markingRef.current = true;
+                markAllNotificationsRead(authUid, unreadIds)
+                  .catch(() => {
+                    // revert optimistic in case of error
+                    setItems((prevItems) =>
+                      prevItems.map((n) => (unreadIds.includes(n.id) ? { ...n, read: false } : n))
+                    );
+                  })
+                  .finally(() => {
+                    markingRef.current = false;
+                  });
+              }
+            }
+            return opening;
+          })
+        }
         className="relative rounded-md px-3 py-2 hover:bg-white/10"
       >
         Notificaciones
@@ -85,7 +136,15 @@ export function NotificationsBell({ uid }: { uid: string }) {
                       <button
                         type="button"
                         className="text-xs text-gray-600 hover:text-gray-900 dark:text-white/80 dark:hover:text-white"
-                        onClick={() => authUid && markNotificationRead(authUid, n.id)}
+                        onClick={() => {
+                          if (!authUid) return;
+                          // Optimistic inmediato
+                          setItems((prev) => prev.map((it) => (it.id === n.id ? { ...it, read: true } : it)));
+                          markNotificationRead(authUid, n.id).catch(() => {
+                            // revertir si falla
+                            setItems((prev) => prev.map((it) => (it.id === n.id ? { ...it, read: false } : it)));
+                          });
+                        }}
                       >
                         Marcar leído
                       </button>
@@ -100,4 +159,3 @@ export function NotificationsBell({ uid }: { uid: string }) {
     </div>
   );
 }
-

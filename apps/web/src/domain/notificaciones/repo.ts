@@ -14,6 +14,8 @@ import {
   getFirestore,
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
+import { writeBatch } from "firebase/firestore";
+
 
 import { getFirebaseApp } from "@/lib/firebase/client";
 
@@ -58,6 +60,7 @@ export function listenGlobalNotifications(
     q,
     async (snap) => {
       const authUid = getAuth(getFirebaseApp()).currentUser?.uid || uid;
+      try { console.log("[listenGlobalNotifications] snapshot", { size: snap.size, ids: snap.docs.map(d=>d.id) }); } catch {}
       const items = await Promise.all(
         snap.docs.map(async (d) => {
           const data = d.data() as any;
@@ -91,7 +94,22 @@ export async function markNotificationRead(uid: string, notifId: string) {
 
   await setDoc(
     ref,
-    { uid, notifId, readAt: serverTimestamp() },
+    { uid: authUid, notifId, readAt: serverTimestamp() },
     { merge: true }
   );
+}
+
+export async function markAllNotificationsRead(uid: string, notifIds: string[]) {
+  const authUid = getAuth(getFirebaseApp()).currentUser?.uid || uid;
+  const batch = writeBatch(db);
+  try { console.log("[markAllNotificationsRead] start", { uid: authUid, count: notifIds.length }); } catch {}
+
+  for (const notifId of notifIds) {
+    const readId = `${authUid}_${notifId}`;
+    const ref = doc(db, "notificaciones_reads", readId);
+    batch.set(ref, { uid: authUid, notifId, readAt: serverTimestamp() }, { merge: true });
+  }
+
+  await batch.commit();
+  try { console.log("[markAllNotificationsRead] committed", { uid: authUid }); } catch {}
 }

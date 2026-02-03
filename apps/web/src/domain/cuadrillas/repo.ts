@@ -8,15 +8,16 @@ import {
 import { ymdToTimestamp } from "@/lib/dates";
 
 export const CUADRILLAS_COL = "cuadrillas";
-export const CUADRILLAS_NUMBERS_COL = "cuadrillas_numbers"; // docId: INST_{numero}
+export const CUADRILLAS_NUMBERS_COL = "cuadrillas_numbers"; // docId: INST_{categoria}_{numero}
+export const CUADRILLAS_COUNTERS_COL = "cuadrillas_counters"; // docId: CATEGORIA
 
 export function cuadrillasCol() {
   return adminDb().collection(CUADRILLAS_COL);
 }
 
-export function cuadrillasNumbersCol() {
-  return adminDb().collection(CUADRILLAS_NUMBERS_COL);
-}
+export function cuadrillasNumbersCol() { return adminDb().collection(CUADRILLAS_NUMBERS_COL); }
+
+export function cuadrillasCountersCol() { return adminDb().collection(CUADRILLAS_COUNTERS_COL); }
 
 function normalizeSpaces(s: string) {
   return s.replace(/\s+/g, " ").trim();
@@ -69,11 +70,24 @@ function assertRole(access: any | null, role: string, label: string) {
   }
 }
 
+async function assertTecnicosNoAsignados(tecnicos: string[], exceptId?: string) {
+  const db = adminDb();
+  for (const uid of tecnicos) {
+    const qs = await db
+      .collection(CUADRILLAS_COL)
+      .where("tecnicosUids", "array-contains", uid)
+      .get();
+    const conflict = qs.docs.find((d) => (exceptId ? d.id !== exceptId : true));
+    if (conflict) {
+      throw new Error("TECNICO_OCUPADO");
+    }
+  }
+}
+
 export async function createCuadrilla(input: unknown, actorUid: string): Promise<{ id: string }> {
   const parsed = CuadrillaCreateSchema.parse(input);
 
   const categoria = parsed.categoria;
-  const numero = parsed.numeroCuadrilla;
   const zonaId = parsed.zonaId?.trim() || undefined;
   const placa = parsed.placa ? normalizePlaca(parsed.placa) : undefined;
   const estado = parsed.estado ?? "HABILITADO";
@@ -104,12 +118,14 @@ export async function createCuadrilla(input: unknown, actorUid: string): Promise
   if (gestor) assertRole(accessMap.get(gestor), "GESTOR", "GESTOR");
   if (conductor) assertRole(accessMap.get(conductor), "TECNICO", "CONDUCTOR");
 
+  // Evitar asignar técnicos ya ocupados en otras cuadrillas
+  if (tecnicos.length) {
+    await assertTecnicosNoAsignados(tecnicos);
+  }
+
   // Derivados
   const r_c = categoria;
   const vehiculo = categoria === "CONDOMINIO" ? "MOTO" : "AUTO";
-  const nombre = categoria === "CONDOMINIO" ? `K${numero} MOTO` : `K${numero} RESIDENCIAL`;
-  const id = categoria === "CONDOMINIO" ? `K${numero}_MOTO` : `K${numero}_RESIDENCIAL`;
-
   // Fechas -> Timestamps y estados
   const licTs = parsed.licenciaVenceAt ? ymdToTimestamp(parsed.licenciaVenceAt) : null;
   const soatTs = parsed.soatVenceAt ? ymdToTimestamp(parsed.soatVenceAt) : null;
@@ -121,28 +137,26 @@ export async function createCuadrilla(input: unknown, actorUid: string): Promise
 
   const db = adminDb();
 
-  const result = await db.runTransaction(async (tx) => {
-    // Lock por número
-    const lockId = `INST_${numero}`;
+      const result = await db.runTransaction(async (tx) => {
+    const counterRef = cuadrillasCountersCol().doc(categoria);
+    const counterSnap = await tx.get(counterRef);
+    const lastNumero = (counterSnap.exists ? (counterSnap.data() as any)?.lastNumero : 0) || 0;
+    const numero = Number(lastNumero) + 1;
+
+    const id = categoria === "CONDOMINIO" ? `K${numero}_MOTO` : `K${numero}_RESIDENCIAL`;
+    const nombre = categoria === "CONDOMINIO" ? `K${numero} MOTO` : `K${numero} RESIDENCIAL`;
+
+    const lockId = `INST_${categoria}_${numero}`;
     const lockRef = cuadrillasNumbersCol().doc(lockId);
     const lockSnap = await tx.get(lockRef);
-    if (lockSnap.exists) {
-      throw new Error("CUADRILLA_NUMERO_DUPLICADO");
-    }
+    if (lockSnap.exists) throw new Error("CUADRILLA_NUMERO_DUPLICADO");
 
     const docRef = cuadrillasCol().doc(id);
     const docSnap = await tx.get(docRef);
-    if (docSnap.exists) {
-      // extremadamente raro: colisión por derivación del id
-      throw new Error("CUADRILLA_ID_CONFLICT");
-    }
+    if (docSnap.exists) throw new Error("CUADRILLA_ID_CONFLICT");
 
-    tx.set(lockRef, {
-      area: "INSTALACIONES",
-      numero,
-      createdAt: FieldValue.serverTimestamp(),
-      createdBy: actorUid,
-    });
+    tx.set(counterRef, { lastNumero: numero }, { merge: true });
+    tx.set(lockRef, { area: "INSTALACIONES", categoria, numero, createdAt: FieldValue.serverTimestamp(), createdBy: actorUid });
 
     const data: Record<string, any> = {
       nombre,
@@ -162,10 +176,7 @@ export async function createCuadrilla(input: unknown, actorUid: string): Promise
 
     if (parsed.vehiculoModelo !== undefined && parsed.vehiculoModelo !== "") data.vehiculoModelo = parsed.vehiculoModelo;
     if (parsed.vehiculoMarca !== undefined && parsed.vehiculoMarca !== "") data.vehiculoMarca = parsed.vehiculoMarca;
-    if (zona) {
-      data.zonaId = zona.id;
-      data.tipoZona = zona.tipo;
-    }
+    if (zona) { data.zonaId = zona.id; data.tipoZona = zona.tipo; }
     if (placa) data.placa = placa;
     if (tecnicos.length) data.tecnicosUids = tecnicos;
     if (coordinador) data.coordinadorUid = coordinador;
@@ -184,11 +195,8 @@ export async function createCuadrilla(input: unknown, actorUid: string): Promise
     if (parsed.lng !== undefined) data.lng = parsed.lng;
 
     tx.set(docRef, data);
-
     return { id };
-  });
-
-  return result;
+  });  return result;
 }
 
 export async function updateCuadrilla(id: string, patchInput: unknown, actorUid: string) {
@@ -242,6 +250,11 @@ export async function updateCuadrilla(id: string, patchInput: unknown, actorUid:
   assertRole(accessMap.get(coord), "COORDINADOR", "COORDINADOR");
   assertRole(accessMap.get(gest), "GESTOR", "GESTOR");
   assertRole(accessMap.get(cond), "TECNICO", "CONDUCTOR");
+
+  // Evitar asignar técnicos ya ocupados en otras cuadrillas (excepto esta misma)
+  if (tecnicos.length) {
+    await assertTecnicosNoAsignados(tecnicos, id);
+  }
 
   const toSet: Record<string, any> = {};
   if (patch.placa !== undefined) toSet.placa = next.placa;

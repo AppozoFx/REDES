@@ -49,9 +49,7 @@ export const CuadrillaDocSchema = z.object({
 
 // Crear (inputs provenientes del form)
 export const CuadrillaCreateSchema = z.object({
-  categoria: CuadrillaCategoriaSchema,
-  numeroCuadrilla: z.coerce.number().int().positive(),
-  zonaId: z.string().min(1).optional(),
+  categoria: CuadrillaCategoriaSchema,zonaId: z.string().min(1).optional(),
   placa: z.string().trim().optional(),
 
   tecnicosUids: z.array(z.string().min(1)).default([]),

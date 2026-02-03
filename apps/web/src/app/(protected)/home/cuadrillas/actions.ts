@@ -25,23 +25,25 @@ function mapErrorMsg(e: unknown): string {
     case "ACCESS_DISABLED":
       return "Acceso inhabilitado.";
     case "FORBIDDEN":
-      return "No tienes permisos para esta acción.";
+      return "No tienes permisos para esta accion.";
     case "ZONA_INVALIDA":
-      return "Zona inválida o no habilitada.";
+      return "Zona invalida o no habilitada.";
     case "CUADRILLA_NUMERO_DUPLICADO":
-      return "El número de cuadrilla ya está en uso";
+      return "El numero de cuadrilla ya esta en uso";
     case "CONDUCTOR_NO_EN_TECNICOS":
-      return "El conductor debe estar entre los técnicos seleccionados.";
+      return "El conductor debe estar entre los tecnicos seleccionados.";
     case "TECNICO_ROL_INVALIDO":
-      return "Uno o más técnicos no tienen rol TECNICO.";
+      return "Uno o mas tecnicos no tienen rol TECNICO.";
     case "COORDINADOR_ROL_INVALIDO":
       return "El coordinador no tiene rol COORDINADOR.";
     case "GESTOR_ROL_INVALIDO":
       return "El gestor no tiene rol GESTOR.";
     case "CONDUCTOR_ROL_INVALIDO":
       return "El conductor no tiene rol TECNICO.";
+    case "TECNICO_OCUPADO":
+      return "Uno o mas tecnicos ya estan asignados a otra cuadrilla.";
     case "INVALID_FORMDATA":
-      return "Formulario inválido.";
+      return "Formulario invalido.";
     default:
       return code;
   }
@@ -57,9 +59,7 @@ export async function createCuadrillaAction(arg1: any, arg2?: any) {
   const session = await requireServerPermission(PERM);
   const formData = resolveFormData(arg1, arg2);
 
-  const categoria = String(formData.get("categoria") ?? "").trim();
-  const numeroCuadrilla = Number(String(formData.get("numeroCuadrilla") ?? "0"));
-  const zonaId = String(formData.get("zonaId") ?? "").trim();
+  const categoria = String(formData.get("categoria") ?? "").trim();  const zonaId = String(formData.get("zonaId") ?? "").trim();
   const placa = String(formData.get("placa") ?? "");
 
   const tecnicosUids = normalizeArray(formData.getAll("tecnicosUids"));
@@ -84,9 +84,7 @@ export async function createCuadrillaAction(arg1: any, arg2?: any) {
   try {
     const { id } = await createCuadrilla(
       {
-        categoria,
-        numeroCuadrilla,
-        zonaId: zonaId || undefined,
+        categoria,zonaId: zonaId || undefined,
         placa: placa || undefined,
         tecnicosUids,
         coordinadorUid: coordinadorUid || undefined,
@@ -109,7 +107,6 @@ export async function createCuadrillaAction(arg1: any, arg2?: any) {
     return { ok: false as const, error: { formErrors: [mapErrorMsg(e)] } };
   }
 
-  // Redirige fuera del try/catch para no atrapar NEXT_REDIRECT
   revalidatePath("/home/cuadrillas");
   redirect(`/home/cuadrillas/${createdId}`);
 }

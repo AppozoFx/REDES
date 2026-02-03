@@ -42,16 +42,15 @@ export default function CuadrillaCreateForm({
           </select>
         </div>
         <div>
-          <label className="text-sm">N° de cuadrilla</label>
-          <input name="numeroCuadrilla" type="number" min={1} className="w-full border rounded px-3 py-2" required />
-        </div>
-        <div>
           <label className="text-sm">Estado</label>
           <select name="estado" className="w-full border rounded px-3 py-2" defaultValue="HABILITADO">
             <option value="HABILITADO">HABILITADO</option>
             <option value="INHABILITADO">INHABILITADO</option>
           </select>
         </div>
+      </div>
+      <div className="text-xs text-muted-foreground">
+        El número de cuadrilla se asigna automáticamente por categoría.
       </div>
 
       <ZonaTipoDependent zonas={zonas} />

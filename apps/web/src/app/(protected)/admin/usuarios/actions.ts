@@ -4,7 +4,7 @@ import { requireServerPermission } from "@/core/auth/require";
 import { adminAuth, adminDb } from "@/lib/firebase/admin";
 import {
   UserAccessUpdateSchema,
-  UserCreateSchema,
+  UserCreateNonAdminSchema,
   UserDisableSchema,
   UserPerfilUpdateSchema,
 } from "@/domain/usuarios/schema";
@@ -67,7 +67,7 @@ export async function createUsuario(_prevState: any, formData: FormData) {
     return mapAuthzError(e) ?? { ok: false as const, error: { formErrors: ["ERROR"] } };
   }
 
-  const parsed = UserCreateSchema.safeParse({
+  const parsed = UserCreateNonAdminSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
 
@@ -110,7 +110,6 @@ export async function createUsuario(_prevState: any, formData: FormData) {
   }
 
   const displayName = `${parsed.data.nombres} ${parsed.data.apellidos}`.trim();
-  const safeRolesCreate = (parsed.data.roles ?? []).filter((r) => r !== "ADMIN");
   const now = new Date();
 
   let user: { uid: string } | null = null;
@@ -167,7 +166,7 @@ export async function createUsuario(_prevState: any, formData: FormData) {
 
     const accessRef = adminDb().collection("usuarios_access").doc(user.uid);
     batch.set(accessRef, {
-      roles: safeRolesCreate,
+      roles: parsed.data.roles,
       areas: parsed.data.areas,
       estadoAcceso: "HABILITADO",
       permissions: parsed.data.permissions ?? [],
@@ -192,7 +191,7 @@ export async function createUsuario(_prevState: any, formData: FormData) {
       actorUid: session.uid,
       meta: {
         email: parsed.data.email,
-        roles: safeRolesCreate,
+        roles: parsed.data.roles,
         areas: parsed.data.areas,
         tipoDoc: parsed.data.tipoDoc,
         nroDoc: parsed.data.nroDoc,
@@ -206,7 +205,6 @@ export async function createUsuario(_prevState: any, formData: FormData) {
       message: displayName,
       type: "success",
       scope: "ALL",
-      createdAt: now,
       createdBy: session.uid,
       entityType: "USUARIO",
       entityId: user.uid,
@@ -316,13 +314,10 @@ export async function updateUsuarioAccess(uid: string, formData: FormData) {
   }
 
   const now = new Date();
-  const safeRolesUpdate = session.isAdmin
-    ? parsed.data.roles
-    : (parsed.data.roles ?? []).filter((r) => r !== "ADMIN");
 
   await adminDb().collection("usuarios_access").doc(uid).set(
     {
-      roles: safeRolesUpdate,
+      roles: parsed.data.roles,
       areas: parsed.data.areas,
       permissions: parsed.data.permissions,
       estadoAcceso: parsed.data.estadoAcceso,
@@ -335,7 +330,7 @@ export async function updateUsuarioAccess(uid: string, formData: FormData) {
     action: "USUARIO_ACCESS_UPDATE",
     actorUid: session.uid,
     meta: {
-      roles: safeRolesUpdate,
+      roles: parsed.data.roles,
       areas: parsed.data.areas,
       permissions: parsed.data.permissions,
       estadoAcceso: parsed.data.estadoAcceso,
@@ -349,7 +344,6 @@ export async function updateUsuarioAccess(uid: string, formData: FormData) {
     message: `uid ${uid}`,
     type: "info",
     scope: "ALL",
-    createdAt: now,
     createdBy: session.uid,
     entityType: "USUARIO",
     entityId: uid,
@@ -426,7 +420,6 @@ export async function disableUsuario(uid: string, formData: FormData) {
     message: `uid ${uid}`,
     type: "warn",
     scope: "ALL",
-    createdAt: now,
     createdBy: session.uid,
     entityType: "USUARIO",
     entityId: uid,
@@ -482,7 +475,6 @@ export async function enableUsuario(uid: string) {
     message: `uid ${uid}`,
     type: "success",
     scope: "ALL",
-    createdAt: now,
     createdBy: session.uid,
     entityType: "USUARIO",
     entityId: uid,
@@ -569,7 +561,6 @@ export async function updateUsuarioPerfil(uid: string, formData: FormData) {
     message: `uid ${uid}`,
     type: "info",
     scope: "ALL",
-    createdAt: now,
     createdBy: session.uid,
     entityType: "USUARIO",
     entityId: uid,

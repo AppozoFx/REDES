@@ -60,6 +60,21 @@ export const UserCreateSchema = z.object({
 });
 
 /**
+ * Crear usuario (NO ADMIN): restringe roles a catálogo permitido sin ADMIN.
+ * Devuelve errores en path roles[i] cuando corresponda.
+ */
+export const UserCreateNonAdminSchema = UserCreateSchema.extend({
+  roles: z
+    .array(
+      z.enum(["COORDINADOR", "GESTOR", "SUPERVISOR", "TECNICO"], {
+        required_error: "Rol requerido",
+        invalid_type_error: "Rol inválido",
+      })
+    )
+    .default([]),
+});
+
+/**
  * ✅ Update acceso (RBAC) - ya existente
  */
 export const UserAccessUpdateSchema = z.object({

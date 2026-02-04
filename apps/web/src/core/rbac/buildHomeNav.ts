@@ -28,7 +28,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     items.push({ key: "AVERIAS", label: "Averías", href: "/home/averias" });
   }
 
-  // ✅ Permiso real en tu sistema
+  // ? Permiso real en tu sistema
   if (hasPerm(session, "USERS_LIST")) {
     items.push({ key: "USUARIOS", label: "Usuarios", href: "/home/usuarios" });
   }

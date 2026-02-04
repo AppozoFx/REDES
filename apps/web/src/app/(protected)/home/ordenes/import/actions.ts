@@ -72,7 +72,7 @@ export async function importOrdenesAction(arg1: any, arg2?: any): Promise<Import
       const zonaDistrito = String(row[13] ?? "").trim() || undefined;
       const codiSeguiClien = String(row[14] ?? "").trim() || undefined;
       const numeroDocumento = String(row[15] ?? "").trim() || undefined;
-      const teleMovilNume = String(row[16] ?? "").trim() || undefined;
+      const telefono = String(row[16] ?? "").trim() || undefined;
       const fechaFinVisi = getDateOrNull(row[17]);
       const fechaIniVisi = getDateOrNull(row[18]);
       const motivoCancelacion = String(row[19] ?? "").trim() || undefined;
@@ -96,7 +96,7 @@ export async function importOrdenesAction(arg1: any, arg2?: any): Promise<Import
           zonaDistrito,
           codiSeguiClien,
           numeroDocumento,
-          teleMovilNume,
+          telefono,
           fechaFinVisi,
           fechaIniVisi,
           motivoCancelacion,

@@ -118,7 +118,7 @@ export default function ImportClient() {
       {rows.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <div className="text-sm text-muted-foreground">Prevista: {rows.length} filas</div>
+            <div className="text-sm text-muted-foreground">Vista previa: {rows.length} filas</div>
             <div className="flex items-center gap-2">
               <button disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="rounded border px-2 py-1 disabled:opacity-50">Prev</button>
               <div className="text-sm">{page}/{totalPages}</div>

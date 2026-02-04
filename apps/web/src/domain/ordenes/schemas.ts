@@ -17,7 +17,7 @@ export const OrdenDocSchema = z.object({
   zonaDistrito: z.string().optional(),
   codiSeguiClien: z.string().optional(),
   numeroDocumento: z.string().optional(),
-  teleMovilNume: z.string().optional(),
+  telefono: z.string().optional(),
   motivoCancelacion: z.string().optional(),
 
   // Georeferencia
@@ -40,16 +40,26 @@ export const OrdenDocSchema = z.object({
 
   // Cuadrilla enriquecida
   cuadrillaRaw: z.string().optional(),
-  cuadrillaCodigo: z.string().optional(), // K{n}
   cuadrillaId: z.string().optional(), // K{n}_{MOTO|RESIDENCIAL}
-  cuadrillaNombre: z.string().optional(),
+  cuadrillaNombre: z.string().optional(), // Derivado: K{n} {MOTO|RESIDENCIAL}
   tipoCuadrilla: z.string().optional(), // MOTO | RESIDENCIAL
   zonaCuadrilla: z.string().optional(), // zonaId
   gestorCuadrilla: z.string().optional(), // uid
   coordinadorCuadrilla: z.string().optional(), // uid
 
+  // Derivados varios
+  dia: z.string().optional(), // Lunes, Martes, ... (Lima)
+
+  // Opcionales derivados de IdenServi
+  planGamer: z.string().optional(),
+  cat6: z.string().optional(),
+  kitWifiPro: z.string().optional(),
+  servicioCableadoMesh: z.string().optional(),
+  cantMESHwin: z.string().optional(),
+  cantFONOwin: z.string().optional(),
+  cantBOXwin: z.string().optional(),
+
   audit: z.any().optional(),
 });
 
 export type OrdenDoc = z.infer<typeof OrdenDocSchema>;
-

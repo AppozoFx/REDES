@@ -48,6 +48,11 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     items.push({ key: "ORDENES_IMPORT", label: "Órdenes: Importar", href: "/home/ordenes/import" });
   }
 
+  // Equipos -> Importar (solo con permiso)
+  if (hasPerm(session, "EQUIPOS_IMPORT")) {
+    items.push({ key: "EQUIPOS_IMPORT", label: "Equipos: Importar", href: "/home/equipos/import" });
+  }
+
   items.push({ key: "PERFIL", label: "Mi perfil", href: "/home/perfil" });
 
   return items;

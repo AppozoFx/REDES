@@ -53,8 +53,12 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     items.push({ key: "EQUIPOS_IMPORT", label: "Equipos: Importar", href: "/home/equipos/import" });
   }
 
+  // Materiales: si tiene vista o creación, apuntar a listado
+  if (hasPerm(session, "MATERIALES_CREATE") || hasPerm(session, "MATERIALES_VIEW")) {
+    items.push({ key: "MATERIALES", label: "Materiales", href: "/home/materiales" });
+  }
+
   items.push({ key: "PERFIL", label: "Mi perfil", href: "/home/perfil" });
 
   return items;
 }
-

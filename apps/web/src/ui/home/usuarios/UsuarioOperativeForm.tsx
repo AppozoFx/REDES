@@ -1,8 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import type { UserEditState } from "@/app/(protected)/home/usuarios/[uid]/actions";
-import { updateUsuarioOperativeProfileAction } from "@/app/(protected)/home/usuarios/[uid]/actions";
+import type { EditState } from "@/app/(protected)/home/usuarios/[uid]/actions";
+import { homeUpdateUsuarioAction } from "@/app/(protected)/home/usuarios/[uid]/actions";
 
 export default function UsuarioOperativeForm({
   uid,
@@ -11,9 +11,9 @@ export default function UsuarioOperativeForm({
   uid: string;
   defaults: { celular: string; direccion: string };
 }) {
-  const bound = updateUsuarioOperativeProfileAction.bind(null, uid);
+  const bound = homeUpdateUsuarioAction.bind(null, uid);
 
-  const [state, action, pending] = useActionState<UserEditState, FormData>(bound, { ok: true });
+  const [state, action, pending] = useActionState<EditState, FormData>(bound, { ok: true } as EditState);
 
   return (
     <form action={action} className="space-y-4 max-w-xl">

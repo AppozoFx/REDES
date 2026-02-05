@@ -8,7 +8,13 @@ export default async function NuevaZonaPage() {
     <div className="max-w-xl space-y-4">
       <h1 className="text-2xl font-semibold">Nueva zona</h1>
 
-      <form action={createZonaAction} className="space-y-3 rounded border p-4">
+      <form
+        action={async (formData) => {
+          "use server";
+          await createZonaAction(formData);
+        }}
+        className="space-y-3 rounded border p-4"
+      >
         <div>
           <label className="text-sm">Zona (ej: NORTE)</label>
           <input name="zona" className="w-full border rounded px-3 py-2" required />
@@ -40,4 +46,3 @@ export default async function NuevaZonaPage() {
     </div>
   );
 }
-

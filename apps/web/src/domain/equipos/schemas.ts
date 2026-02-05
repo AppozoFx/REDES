@@ -78,3 +78,4 @@ export const ImportEquiposRowSchema = z.object({
 });
 
 export type ImportEquiposRow = z.infer<typeof ImportEquiposRowSchema>;
+

@@ -86,7 +86,10 @@ export default async function UsuarioDetailPage({
 
       {/* PERFIL */}
       <form
-        action={updateUsuarioPerfil.bind(null, uid)}
+        action={async (formData) => {
+          "use server";
+          await updateUsuarioPerfil(uid, formData);
+        }}
         className="space-y-4 rounded border p-4"
       >
         <h2 className="font-medium">Perfil</h2>
@@ -248,7 +251,10 @@ export default async function UsuarioDetailPage({
 
       {/* ACCESO */}
       <form
-        action={updateUsuarioAccess.bind(null, uid)}
+        action={async (formData) => {
+          "use server";
+          await updateUsuarioAccess(uid, formData);
+        }}
         className="space-y-4 rounded border p-4"
       >
         <h2 className="font-medium">Acceso</h2>
@@ -309,7 +315,10 @@ export default async function UsuarioDetailPage({
       {/* HABILITAR / DESHABILITAR */}
       {access.estadoAcceso === "HABILITADO" ? (
         <form
-          action={disableUsuario.bind(null, uid)}
+          action={async (formData) => {
+            "use server";
+            await disableUsuario(uid, formData);
+          }}
           className="rounded border border-red-300 p-4 space-y-3"
         >
           <div className="font-medium text-red-700">Deshabilitar usuario</div>
@@ -325,7 +334,10 @@ export default async function UsuarioDetailPage({
         </form>
       ) : (
         <form
-          action={enableUsuario.bind(null, uid)}
+          action={async () => {
+            "use server";
+            await enableUsuario(uid);
+          }}
           className="rounded border border-yellow-400 p-4"
         >
           <div className="text-sm mb-3">

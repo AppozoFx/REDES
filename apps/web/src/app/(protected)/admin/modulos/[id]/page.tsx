@@ -25,7 +25,13 @@ export default async function ModuleDetailPage({
     <div className="max-w-xl space-y-6">
       <h1 className="text-2xl font-semibold">Módulo: {m.id}</h1>
 
-      <form action={updateModule.bind(null, m.id)} className="space-y-3 border rounded p-4">
+      <form
+        action={async (formData) => {
+          "use server";
+          await updateModule(m.id, formData);
+        }}
+        className="space-y-3 border rounded p-4"
+      >
         <h2 className="font-medium">Editar</h2>
 
         <div>
@@ -66,7 +72,10 @@ export default async function ModuleDetailPage({
 
       {m.estado === "ACTIVO" && (
         <form
-          action={softDeleteModule.bind(null, m.id)}
+          action={async (formData) => {
+            "use server";
+            await softDeleteModule(m.id, formData);
+          }}
           className="space-y-3 border rounded p-4 border-red-300"
         >
           <h2 className="font-medium text-red-700">Desactivar módulo</h2>
@@ -83,7 +92,13 @@ export default async function ModuleDetailPage({
       )}
 
       {m.estado === "INACTIVO" && (
-  <form action={reactivateModule.bind(null, m.id)} className="rounded border border-yellow-400 p-4">
+  <form
+    action={async () => {
+      "use server";
+      await reactivateModule(m.id);
+    }}
+    className="rounded border border-yellow-400 p-4"
+  >
     <div className="text-sm mb-3">
       Este módulo está <b>INACTIVO</b>.
     </div>

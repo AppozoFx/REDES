@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import { parseEquiposAction, saveEquiposChunkAction, notifyEquiposImportAction } from "./actions";
 
 type ParseResult = Awaited<ReturnType<typeof parseEquiposAction>>;
-type SaveResult = Awaited<ReturnType<typeof saveEquiposAction>>;
 
 const HEADERS = [
   "SN",
@@ -130,7 +129,7 @@ export default function ImportClient() {
   }
 
   function exportDuplicados() {
-    const d = (result as any)?.data;
+    const d = (parseResult as any)?.data;
     if (!d) return;
     const rows = d.duplicadosBD.map((x: any) => ({ SN: x.SN, equipo: x.equipo ?? "", descripcion: x.descripcion ?? "", ubicacion: x.ubicacion ?? "" }));
     const ws = XLSX.utils.json_to_sheet(rows, { header: ["SN", "equipo", "descripcion", "ubicacion"] });
@@ -388,3 +387,4 @@ export default function ImportClient() {
     </div>
   );
 }
+

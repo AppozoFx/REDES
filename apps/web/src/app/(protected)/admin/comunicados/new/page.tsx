@@ -15,5 +15,11 @@ export default async function ComunicadoCreatePage() {
 
   const areasCatalog = ["INSTALACIONES", "AVERIAS", "ADMIN_COMUNICADOS"];
 
-  return <ComunicadoCreateFormClient rolesCatalog={rolesCatalog} areasCatalog={areasCatalog} />;
+  return (
+    <ComunicadoCreateFormClient
+      rolesCatalog={rolesCatalog}
+      areasCatalog={areasCatalog}
+      backHref="/admin/comunicados"
+    />
+  );
 }

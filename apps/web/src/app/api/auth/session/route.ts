@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { adminAuth } from "@/lib/firebase/admin";
 
+// Debug import shape en entorno server
+try {
+  // eslint-disable-next-line no-console
+  console.log("[session/api] typeof adminAuth", typeof adminAuth);
+} catch {}
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -16,10 +22,16 @@ export async function POST(req: Request) {
     }
 
     // ✅ valida token real (detecta mismatch emulador/real)
-    await adminAuth().verifyIdToken(idToken, true);
+    const auth = adminAuth();
+    try {
+      // eslint-disable-next-line no-console
+      console.log("[session/api] admin projectId", (auth.app?.options as any)?.projectId);
+    } catch {}
+
+    await auth.verifyIdToken(idToken, true);
 
     const expiresIn = 5 * 24 * 60 * 60 * 1000; // 5 días
-    const sessionCookie = await adminAuth().createSessionCookie(idToken, { expiresIn });
+    const sessionCookie = await auth.createSessionCookie(idToken, { expiresIn });
 
     const res = NextResponse.json({ ok: true });
 

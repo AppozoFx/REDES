@@ -102,7 +102,7 @@ export async function createUsuario(_prevState: any, formData: FormData) {
   if (!parsed.success) return { ok: false as const, error: parsed.error.flatten() };
 
   // Hardening: rechazar si payload intenta asignar ADMIN
-  if ((parsed.data.roles ?? []).includes("ADMIN")) {
+  if (((parsed.data.roles ?? []) as string[]).includes("ADMIN")) {
     return {
       ok: false as const,
       error: { formErrors: ["No se permite asignar el rol ADMIN desde esta operación."] },

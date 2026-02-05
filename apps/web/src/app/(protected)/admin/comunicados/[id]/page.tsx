@@ -8,6 +8,24 @@ import { comunicadosUpdateFromFormAction, comunicadosToggleByIdAction } from "..
 
 const PERM = "ANNOUNCEMENTS_MANAGE";
 
+type FormDefaults = {
+  titulo: string;
+  cuerpo: string;
+  imageUrl: string;
+  linkUrl: string;
+  linkLabel: string;
+  estado: "ACTIVO" | "INACTIVO";
+  target: "ALL" | "ROLES" | "AREAS" | "USERS";
+  rolesTarget: string[];
+  areasTarget: string[];
+  uidsTarget: string[];
+  visibleDesde: string;
+  visibleHasta: string;
+  prioridad: number;
+  obligatorio: boolean;
+  persistencia: "ONCE" | "ALWAYS";
+};
+
 function tsToYmd(ts: any): string {
   try {
     const d = ts?.toDate ? ts.toDate() : ts instanceof Date ? ts : null;
@@ -21,7 +39,7 @@ function tsToYmd(ts: any): string {
   }
 }
 
-function toPlainDefaults(c: any) {
+function toPlainDefaults(c: any): FormDefaults {
   const currentEstado = c?.estado === "INACTIVO" ? "INACTIVO" : "ACTIVO";
   const target = ["ALL", "ROLES", "AREAS", "USERS"].includes(c?.target) ? c.target : "ALL";
 
@@ -36,9 +54,9 @@ function toPlainDefaults(c: any) {
     estado: currentEstado as "ACTIVO" | "INACTIVO",
     target: target as "ALL" | "ROLES" | "AREAS" | "USERS",
 
-    rolesTarget: Array.isArray(c?.rolesTarget) ? c.rolesTarget.map(String) : [],
-    areasTarget: Array.isArray(c?.areasTarget) ? c.areasTarget.map(String) : [],
-    uidsTarget: Array.isArray(c?.uidsTarget) ? c.uidsTarget.map(String) : [],
+    rolesTarget: (Array.isArray(c?.rolesTarget) ? c.rolesTarget.map((v: any) => String(v)) : []) as string[],
+    areasTarget: (Array.isArray(c?.areasTarget) ? c.areasTarget.map((v: any) => String(v)) : []) as string[],
+    uidsTarget: (Array.isArray(c?.uidsTarget) ? c.uidsTarget.map((v: any) => String(v)) : []) as string[],
 
     visibleDesde: tsToYmd(c?.visibleDesde),
     visibleHasta: tsToYmd(c?.visibleHasta),
@@ -46,7 +64,7 @@ function toPlainDefaults(c: any) {
     prioridad: typeof c?.prioridad === "number" ? c.prioridad : 100,
     obligatorio: !!c?.obligatorio,
     // incluir persistencia para que el select refleje el valor actual
-    persistencia: c?.persistencia === "ALWAYS" ? "ALWAYS" : "ONCE",
+    persistencia: (c?.persistencia === "ALWAYS" ? "ALWAYS" : "ONCE") as "ALWAYS" | "ONCE",
   };
 }
 

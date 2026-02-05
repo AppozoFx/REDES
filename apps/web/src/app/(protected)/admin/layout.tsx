@@ -12,7 +12,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       <AdminSidebar isAdmin={session.isAdmin} areas={session.access.areas} />
 
       <div className="flex-1">
-        <AdminTopbar uid={session.uid} roles={session.access.roles} />
+        <AdminTopbar uid={session.uid} />
         <main className="p-6">{children}</main>
         <NotificationsRealtime />
       </div>

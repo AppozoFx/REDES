@@ -30,7 +30,10 @@ export default async function ZonaDetailPage(props: { params: Promise<{ id: stri
 
       <form
         key={`${z.tipo}|${z.estado}|${(z.distritos ?? []).join(',')}`}
-        action={updateZonaAction.bind(null, id)}
+        action={async (formData) => {
+          "use server";
+          await updateZonaAction(id, formData);
+        }}
         className="space-y-3 rounded border p-4"
       >
         <h2 className="font-medium">Editar</h2>
@@ -65,14 +68,26 @@ export default async function ZonaDetailPage(props: { params: Promise<{ id: stri
       </form>
 
       {z.estado === "HABILITADO" ? (
-        <form action={disableZonaAction.bind(null, id)} className="rounded border border-red-300 p-4 space-y-3">
+        <form
+          action={async () => {
+            "use server";
+            await disableZonaAction(id);
+          }}
+          className="rounded border border-red-300 p-4 space-y-3"
+        >
           <div className="font-medium text-red-700">Inhabilitar zona</div>
           <button className="rounded border border-red-400 px-3 py-2 text-red-700 hover:bg-red-50">
             Inhabilitar
           </button>
         </form>
       ) : (
-        <form action={enableZonaAction.bind(null, id)} className="rounded border border-yellow-400 p-4">
+        <form
+          action={async () => {
+            "use server";
+            await enableZonaAction(id);
+          }}
+          className="rounded border border-yellow-400 p-4"
+        >
           <div className="text-sm mb-3">Esta zona está <b>INHABILITADA</b>.</div>
           <button className="rounded border px-3 py-2 hover:bg-black/5">Habilitar</button>
         </form>

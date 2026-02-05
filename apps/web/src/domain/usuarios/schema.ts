@@ -64,13 +64,7 @@ export const UserCreateSchema = z.object({
  * Devuelve errores en path roles[i] cuando corresponda.
  */
 export const UserCreateNonAdminSchema = UserCreateSchema.extend({
-  roles: z
-    .array(
-      z.enum(["COORDINADOR", "GESTOR", "SUPERVISOR", "TECNICO"], {
-        required_error: "Rol requerido",
-        invalid_type_error: "Rol inválido",
-      })
-    )
+  roles: z.array(z.enum(["COORDINADOR", "GESTOR", "SUPERVISOR", "TECNICO"]))
     .default([]),
 });
 

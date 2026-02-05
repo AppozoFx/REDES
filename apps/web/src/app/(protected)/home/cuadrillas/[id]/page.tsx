@@ -73,7 +73,10 @@ export default async function CuadrillaDetailPage(props: { params: Promise<{ id:
 
       <form
         key={`${c.estado}|${c.placa}|${(c.tecnicosUids ?? []).join(',')}|${c.coordinadorUid}|${c.gestorUid}|${c.conductorUid}|${tsToYmd(c.licenciaVenceAt)}|${tsToYmd(c.soatVenceAt)}|${tsToYmd(c.revTecVenceAt)}`}
-        action={updateCuadrillaAction.bind(null, id)}
+        action={async (formData) => {
+          "use server";
+          await updateCuadrillaAction(id, formData);
+        }}
         className="space-y-4 rounded border p-4"
       >
         <h2 className="font-medium">Editar</h2>
@@ -155,12 +158,24 @@ export default async function CuadrillaDetailPage(props: { params: Promise<{ id:
       </form>
 
       {c.estado === "HABILITADO" ? (
-        <form action={disableCuadrillaAction.bind(null, id)} className="rounded border border-red-300 p-4 space-y-3">
+        <form
+          action={async () => {
+            "use server";
+            await disableCuadrillaAction(id);
+          }}
+          className="rounded border border-red-300 p-4 space-y-3"
+        >
           <div className="font-medium text-red-700">Inhabilitar cuadrilla</div>
           <button className="rounded border border-red-400 px-3 py-2 text-red-700 hover:bg-red-50">Inhabilitar</button>
         </form>
       ) : (
-        <form action={enableCuadrillaAction.bind(null, id)} className="rounded border border-yellow-400 p-4">
+        <form
+          action={async () => {
+            "use server";
+            await enableCuadrillaAction(id);
+          }}
+          className="rounded border border-yellow-400 p-4"
+        >
           <div className="text-sm mb-3">Esta cuadrilla está <b>INHABILITADA</b>.</div>
           <button className="rounded border px-3 py-2 hover:bg-black/5">Habilitar</button>
         </form>

@@ -8,7 +8,13 @@ export default async function NewRolePage() {
     <div className="max-w-xl space-y-4">
       <h1 className="text-2xl font-semibold">Nuevo rol</h1>
 
-      <form action={createRole} className="space-y-3 rounded border p-4">
+      <form
+        action={async (formData) => {
+          "use server";
+          await createRole(formData);
+        }}
+        className="space-y-3 rounded border p-4"
+      >
         <div>
           <label className="text-sm">ID (ej: ADMIN)</label>
           <input name="id" className="w-full border rounded px-3 py-2" />

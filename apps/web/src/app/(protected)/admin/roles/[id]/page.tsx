@@ -39,7 +39,10 @@ export default async function RoleDetailPage({
 
       {/* EDITAR */}
       <form
-        action={updateRole.bind(null, role.id)}
+        action={async (formData) => {
+          "use server";
+          await updateRole(role.id, formData);
+        }}
         className="space-y-3 border rounded p-4"
       >
         <h2 className="font-medium">Editar</h2>
@@ -75,7 +78,10 @@ export default async function RoleDetailPage({
       {/* SOFT DELETE */}
       {role.estado === "ACTIVO" && (
         <form
-          action={softDeleteRole.bind(null, role.id)}
+          action={async (formData) => {
+            "use server";
+            await softDeleteRole(role.id, formData);
+          }}
           className="space-y-3 border rounded p-4 border-red-300"
         >
           <h2 className="font-medium text-red-700">Desactivar rol</h2>
@@ -97,7 +103,10 @@ export default async function RoleDetailPage({
 
       {role.estado === "INACTIVO" && (
         <form
-          action={reactivateRole.bind(null, role.id)}
+          action={async () => {
+            "use server";
+            await reactivateRole(role.id);
+          }}
           className="rounded border border-yellow-400 p-4"
         >
           <div className="text-sm mb-3">

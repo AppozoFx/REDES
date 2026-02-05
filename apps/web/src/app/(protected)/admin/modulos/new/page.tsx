@@ -8,7 +8,13 @@ export default async function NewModulePage() {
     <div className="max-w-xl space-y-4">
       <h1 className="text-2xl font-semibold">Nuevo módulo</h1>
 
-      <form action={createModule} className="space-y-3 rounded border p-4">
+      <form
+        action={async (formData) => {
+          "use server";
+          await createModule(formData);
+        }}
+        className="space-y-3 rounded border p-4"
+      >
         <div>
           <label className="text-sm">ID (ej: INSTALACIONES)</label>
           <input name="id" className="w-full border rounded px-3 py-2" />

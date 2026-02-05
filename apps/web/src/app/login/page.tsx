@@ -3,7 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signInWithEmailAndPassword, setPersistence, browserLocalPersistence } from "firebase/auth";
-import { getFirebaseAuth } from "@/lib/firebase/client";
+import { getFirebaseAuth } from "../../lib/firebase/client";
+
+// Debug import/forma de la exportación
+try {
+  // eslint-disable-next-line no-console
+  console.log("[login] typeof getFirebaseAuth", typeof getFirebaseAuth, { ts: Date.now() });
+  // eslint-disable-next-line no-console
+  console.log("[login] getFirebaseAuth.name", (getFirebaseAuth as any)?.name);
+} catch {}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,6 +26,9 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      // Verificar nuevamente antes de invocar
+      // eslint-disable-next-line no-console
+      console.log("[login] calling getFirebaseAuth, typeof:", typeof getFirebaseAuth);
       const auth = getFirebaseAuth();
       // Garantiza que currentUser persista tras refresh
       await setPersistence(auth, browserLocalPersistence);

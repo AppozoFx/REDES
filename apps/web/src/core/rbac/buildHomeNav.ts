@@ -58,6 +58,17 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     items.push({ key: "MATERIALES", label: "Materiales", href: "/home/materiales" });
   }
 
+  // Transferencias (INSTALACIONES): si tiene algún permiso de despacho o devolución
+  if (
+    hasPerm(session, "EQUIPOS_DESPACHO") ||
+    hasPerm(session, "MATERIALES_TRANSFER_SERVICIO") ||
+    hasPerm(session, "EQUIPOS_DEVOLUCION") ||
+    hasPerm(session, "MATERIALES_DEVOLUCION")
+  ) {
+    items.push({ key: "TR_INST_DESP", label: "Despacho (Inst)", href: "/home/transferencias/instalaciones/despacho" });
+    items.push({ key: "TR_INST_DEV", label: "Devoluciones (Inst)", href: "/home/transferencias/instalaciones/devoluciones" });
+  }
+
   items.push({ key: "PERFIL", label: "Mi perfil", href: "/home/perfil" });
 
   return items;

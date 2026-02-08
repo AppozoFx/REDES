@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { despacharInstalacionesAction } from "../../server-actions";
 
 /**
- * Mantiene tu lógica:
+ * Mantiene tu lgica:
  * - Server Action: despacharInstalacionesAction
  * - Payload: { cuadrillaId, equipos, materiales, bobinasResidenciales? }
  * - Print area: usa lastPayload + result
@@ -24,8 +24,8 @@ const MATS_INST = [
   "PRECON_150",
   "PRECON_200",
   "ACTA",
-  "BOBINA", // residencial con códigos (WIN-XXXX o lo que uses)
-  "BOBINA(CONDOMINIO)",
+  "BOBINA", // residencial con cdigos (WIN-XXXX o lo que uses)
+  
   "CONECTOR",
   "ROSETA",
   "ACOPLADOR",
@@ -36,7 +36,7 @@ const MATS_INST = [
   "CINTA_AISLANTE",
   "TEMPLADOR",
   "ANCLAJE_P",
-  "TARUGO_P",
+  "TARUGOS_P",
   "CLEVI",
   "HEBILLA_1_2",
   "CINTA_BANDI_1_2",
@@ -88,7 +88,7 @@ function useClickGuard(defaultCooldownMs = 700) {
     untilRef.current = Date.now() + ms;
     try {
       const r = fn();
-      // no await: guard solo bloquea el doble click; pending cubre lo demás
+      // no await: guard solo bloquea el doble click; pending cubre lo dems
       return r as any;
     } finally {
       setTimeout(() => {
@@ -96,14 +96,6 @@ function useClickGuard(defaultCooldownMs = 700) {
       }, ms);
     }
   };
-}
-
-function uniqLines(text: string) {
-  const lines = text
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return Array.from(new Set(lines));
 }
 
 function numOr0(v: string | undefined) {
@@ -136,13 +128,17 @@ export default function DespachoClient() {
   // (Opcional) Stock
   const [stock, setStock] = useState<CuadrillaStock | null>(null);
   const [stockLoading, setStockLoading] = useState(false);
+  const [materialUnits, setMaterialUnits] = useState<Record<string, "UND" | "METROS" | undefined>>({});
 
   // Paso 2 - Equipos (modo scanner + modo bulk)
   const [snInput, setSnInput] = useState("");
-  const [equipos, setEquipos] = useState<string[]>([]);
+  const snInputRef = useRef<HTMLInputElement | null>(null);
+  const [equipos, setEquipos] = useState<Array<{ sn: string; tipo: string }>>([]);
+  const [snValidating, setSnValidating] = useState(false);
 
   // Paso 2 - Bobinas / Materiales
-  const [bobinaCodesText, setBobinaCodesText] = useState(""); // residencial (códigos crudos)
+  const [bobinaInput, setBobinaInput] = useState("");
+  const [bobinaCodes, setBobinaCodes] = useState<string[]>([]);
   const [bobinaCondominioMetros, setBobinaCondominioMetros] = useState<string>("300");
   const [matUnd, setMatUnd] = useState<Record<string, string>>({});
   const [matMetros, setMatMetros] = useState<Record<string, string>>({});
@@ -156,12 +152,12 @@ export default function DespachoClient() {
 
   // -----------------------
   // Cargar lista de cuadrillas (opcional)
-  // No rompe si no existe endpoint: queda vacío y todo funciona con ID manual.
+  // No rompe si no existe endpoint: queda vaco y todo funciona con ID manual.
   // -----------------------
   useEffect(() => {
     (async () => {
       try {
-        // Si tienes un endpoint diferente, cámbialo aquí.
+        // Si tienes un endpoint diferente, cmbialo aqu.
         setCuadrillasLoading(true);
         const res = await fetch("/api/cuadrillas/list?area=INSTALACIONES", { cache: "no-store" });
         if (!res.ok) return;
@@ -177,6 +173,26 @@ export default function DespachoClient() {
     })();
   }, []);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/materiales/list?area=INSTALACIONES", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        const items = Array.isArray(data?.items) ? data.items : [];
+        const map: Record<string, "UND" | "METROS" | undefined> = {};
+        for (const it of items) {
+          const id = String(it?.id || "");
+          const unidad = String(it?.unidadTipo || "").toUpperCase();
+          if (id) map[id] = unidad === "METROS" ? "METROS" : unidad === "UND" ? "UND" : undefined;
+        }
+        setMaterialUnits(map);
+      } catch {
+        // silencioso
+      }
+    })();
+  }, []);
+
   // -----------------------
   // Resultado del server action
   // -----------------------
@@ -184,11 +200,11 @@ export default function DespachoClient() {
     if (!result) return;
     if ((result as any).ok) {
       const r: any = result;
-      toast.success("Despacho generado", { description: `Guía: ${r.guia}` });
+      toast.success("Despacho generado", { description: `Gua: ${r.guia}` });
       if (r.resumen?.warnings?.length) {
         toast.message("Avisos", { description: r.resumen.warnings.join("; ") });
       }
-      // Cierra preview al éxito
+      // Cierra preview al xito
       setShowPreview(false);
     } else {
       const msg = (result as any)?.error?.formErrors?.join(", ") || "Error en despacho";
@@ -229,7 +245,7 @@ export default function DespachoClient() {
   async function cargarStockCuadrillaById(id: string, seg: Segmento) {
     setStockLoading(true);
     try {
-      // Si no tienes endpoint de stock todavía, esto no rompe: queda en null.
+      // Si no tienes endpoint de stock todava, esto no rompe: queda en null.
       const res = await fetch(`/api/cuadrillas/stock?id=${encodeURIComponent(id)}&segmento=${encodeURIComponent(seg)}`, {
         cache: "no-store",
       });
@@ -254,16 +270,18 @@ export default function DespachoClient() {
         cuadrillas.find((c) => c.nombre?.trim().toLowerCase() === q.toLowerCase());
 
       if (!found?.id) {
-        toast.error("Cuadrilla no encontrada o no está habilitada.");
+        toast.error("Cuadrilla no encontrada o no est habilitada.");
         return;
       }
 
       setCuadrillaId(found.id);
+      setBusqueda(found.nombre || found.id);
       try {
         await cargarInfoCuadrillaById(found.id);
         await cargarStockCuadrillaById(found.id, segmento);
         toast.success("Cuadrilla cargada");
         setComboOpen(false);
+        setTimeout(() => snInputRef.current?.focus(), 0);
       } catch (e: any) {
         toast.error(e?.message || "Error cargando cuadrilla");
       }
@@ -293,36 +311,94 @@ export default function DespachoClient() {
   // Paso 2: Equipos (scanner + bulk)
   // -----------------------
   const resumenEquipos = useMemo(() => {
-    // aquí solo tienes SN. Si luego guardas tipo, lo mejoras.
-    return `${equipos.length} SN`;
-  }, [equipos.length]);
+    const counts = new Map<string, number>();
+    for (const e of equipos) {
+      const k = e.tipo || "OTROS";
+      counts.set(k, (counts.get(k) || 0) + 1);
+    }
+    const order = ["ONT", "MESH", "FONO", "BOX", "OTROS"];
+    const parts: string[] = [];
+    for (const k of order) {
+      const v = counts.get(k);
+      if (v) parts.push(`${v} ${k}`);
+    }
+    for (const [k, v] of counts.entries()) {
+      if (!order.includes(k)) parts.push(`${v} ${k}`);
+    }
+    return parts.length ? parts.join(" - ") : "0";
+  }, [equipos]);
 
-  const handleAddSN = () =>
-    guard(() => {
+  const handleAddSN = async () =>
+    guard(async () => {
       const sn = snInput.trim().toUpperCase();
       if (!sn) return;
-      if (equipos.includes(sn)) {
+      if (equipos.some((e) => e.sn === sn)) {
         toast.error("Este SN ya fue agregado");
         setSnInput("");
         return;
       }
-      setEquipos((p) => [...p, sn]);
-      setSnInput("");
-      toast.success("SN agregado");
+      try {
+        setSnValidating(true);
+        const res = await fetch(`/api/equipos/validate?sn=${encodeURIComponent(sn)}`, { cache: "no-store" });
+        if (res.status === 404) {
+          toast.error("La SN no existe");
+          setSnInput("");
+          return;
+        }
+        const data = await res.json();
+        if (!data?.ok) {
+          toast.error(data?.error || "Error validando SN");
+          return;
+        }
+        if (data.status === "ALMACEN") {
+          const tipoEq = String(data.equipo || "OTROS").toUpperCase();
+          setEquipos((p) => [...p, { sn, tipo: tipoEq }]);
+          setSnInput("");
+          toast.success("SN en almacen");
+          return;
+        }
+        if (data.status === "DESPACHADO") {
+          toast.error(`Serie ya despachada. Cuadrilla: ${data.ubicacion || "N/A"}`);
+          return;
+        }
+        toast.error(`Serie no esta en almacen. Ubicacion: ${data.ubicacion || "N/A"}`);
+      } catch {
+        toast.error("Error validando SN");
+      } finally {
+        setSnValidating(false);
+        setTimeout(() => snInputRef.current?.focus(), 0);
+      }
     });
 
-  const handleRemoveSN = (sn: string) => setEquipos((p) => p.filter((x) => x !== sn));
+  const handleRemoveSN = (sn: string) => setEquipos((p) => p.filter((x) => x.sn !== sn));
+
+  const handleAddBobina = () =>
+    guard(() => {
+      const code = bobinaInput.trim().toUpperCase();
+      if (!code) return;
+      if (bobinaCodes.includes(code)) {
+        toast.error("Esta bobina ya fue agregada");
+        setBobinaInput("");
+        return;
+      }
+      setBobinaCodes((p) => [...p, code]);
+      setBobinaInput("");
+      toast.success("Bobina agregada");
+    });
+
+  const handleRemoveBobina = (code: string) =>
+    setBobinaCodes((p) => p.filter((x) => x !== code));
 
 
   // -----------------------
-  // Construcción payload (MISMA lógica que tú ya tienes)
+  // Construccin payload (MISMA lgica que t ya tienes)
   // -----------------------
   function buildPayload() {
     const materiales: any[] = [];
 
     for (const id of MATS_INST) {
       if (id === "BOBINA") continue;
-      if (id === "BOBINA(CONDOMINIO)") continue;
+
 
       const und = Math.max(0, Math.trunc(numOr0(matUnd[id] || "0")));
       const m = Math.max(0, numOr0(matMetros[id] || "0"));
@@ -332,12 +408,12 @@ export default function DespachoClient() {
     }
 
     if (segmento === "RESIDENCIAL") {
-      const codes = uniqLines(bobinaCodesText);
+      const codes = bobinaCodes;
       if (codes.length) materiales.push({ materialId: "BOBINA", metros: codes.length * 1000 });
 
       const payload = {
         cuadrillaId,
-        equipos,
+        equipos: equipos.map((e) => e.sn),
         materiales,
         bobinasResidenciales: codes.map((codigoRaw) => ({ codigoRaw })),
       };
@@ -345,15 +421,15 @@ export default function DespachoClient() {
       return { payload, extra: { codesCount: codes.length } };
     } else {
       const m = Math.max(0, numOr0(bobinaCondominioMetros || "0"));
-      if (m > 0) materiales.push({ materialId: "BOBINA(CONDOMINIO)", metros: m });
+      if (m > 0) materiales.push({ materialId: "BOBINA", metros: m });
 
-      const payload = { cuadrillaId, equipos, materiales };
+      const payload = { cuadrillaId, equipos: equipos.map((e) => e.sn), materiales };
       return { payload, extra: { metros: m } };
     }
   }
 
   // -----------------------
-  // Validación para abrir preview (como el otro)
+  // Validacin para abrir preview (como el otro)
   // -----------------------
   function canOpenPreview() {
     if (!cuadrillaId) return { ok: false, msg: "Falta cuadrillaId." };
@@ -364,10 +440,10 @@ export default function DespachoClient() {
     const tieneEquipos = equipos.length > 0;
 
     if (segmento === "RESIDENCIAL") {
-      const codes = uniqLines(bobinaCodesText);
+      const codes = bobinaCodes;
       const tieneBobinas = codes.length > 0;
       if (!tieneMateriales && !tieneEquipos && !tieneBobinas) {
-        return { ok: false, msg: "Para RESIDENCIAL: agrega equipos, materiales o al menos 1 bobina (código)." };
+        return { ok: false, msg: "Para RESIDENCIAL: agrega equipos, materiales o al menos 1 bobina (cdigo)." };
       }
     } else {
       const m = Math.max(0, numOr0(bobinaCondominioMetros));
@@ -407,13 +483,13 @@ export default function DespachoClient() {
       {step === 1 && (
         <div className="space-y-4">
           <div className="rounded border p-3">
-            <div className="text-sm font-medium">Paso 1 · Seleccionar cuadrilla</div>
+            <div className="text-sm font-medium">Paso 1  -  Seleccionar cuadrilla</div>
             <div className="text-xs text-muted-foreground">
               Puedes buscar por nombre (si existe /api/cuadrillas/list) o ingresar el ID manual.
             </div>
           </div>
 
-          {/* Combobox con búsqueda (si hay lista) */}
+          {/* Combobox con bsqueda (si hay lista) */}
           {cuadrillas.length > 0 && (
             <div className="grid grid-cols-1 gap-3">
               <div className="relative">
@@ -441,11 +517,14 @@ export default function DespachoClient() {
                   className="mt-1 w-full rounded border px-2 py-2"
                   placeholder="Escribe nombre o ID (ej: K1 MOTO o K1_MOTO)"
                 />
+                {cuadrillaId && (
+                  <div className="mt-1 text-xs text-muted-foreground">ID: {cuadrillaId}</div>
+                )}
 
                 {comboOpen && (
                   <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow max-h-56 overflow-auto">
                     {cuadrillasLoading && (
-                      <div className="px-3 py-2 text-xs text-muted-foreground">Cargando…</div>
+                      <div className="px-3 py-2 text-xs text-muted-foreground">Cargando</div>
                     )}
                     {!cuadrillasLoading && filteredCuadrillas.length === 0 && (
                       <div className="px-3 py-2 text-xs text-muted-foreground">Sin resultados</div>
@@ -471,6 +550,7 @@ export default function DespachoClient() {
                               toast.error(err?.message || "Error cargando cuadrilla");
                             } finally {
                               setComboOpen(false);
+                              setTimeout(() => snInputRef.current?.focus(), 0);
                             }
                           }}
                           className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
@@ -528,12 +608,12 @@ export default function DespachoClient() {
             <div className="rounded border p-3 text-sm space-y-1">
               <div className="font-medium">Resumen</div>
               <div>
-                ID: <b>{cuadrillaId || "—"}</b> · Segmento: <b>{segmento}</b> · Tipo: <b>{tipo}</b>
+                ID: <b>{cuadrillaId || ""}</b>  -  Segmento: <b>{segmento}</b>  -  Tipo: <b>{tipo}</b>
               </div>
-              <div>Nombre: {cuadrillaNombre || "—"}</div>
-              <div>Zona: {zonaId || "—"}</div>
-              <div>Coordinador: {coordinador || "—"}</div>
-              <div>Técnicos: {tecnicos || "—"}</div>
+              <div>Nombre: {cuadrillaNombre || ""}</div>
+              <div>Zona: {zonaId || ""}</div>
+              <div>Coordinador: {coordinador || ""}</div>
+              <div>Tcnicos: {tecnicos || ""}</div>
 
               <div className="pt-2 flex items-center gap-2">
                 <button
@@ -544,7 +624,7 @@ export default function DespachoClient() {
                 >
                   {stockLoading ? "Cargando stock..." : "Ver stock (opcional)"}
                 </button>
-                {!stock && <span className="text-xs text-muted-foreground">Si no existe el endpoint, no se mostrará.</span>}
+                {!stock && <span className="text-xs text-muted-foreground">Si no existe el endpoint, no se mostrar.</span>}
               </div>
 
               {stock && (
@@ -559,7 +639,7 @@ export default function DespachoClient() {
                         </div>
                       ))}
                       {(stock.materiales || []).length > 10 && (
-                        <div className="text-[11px] text-muted-foreground">+{(stock.materiales || []).length - 10} más</div>
+                        <div className="text-[11px] text-muted-foreground">+{(stock.materiales || []).length - 10} ms</div>
                       )}
                     </div>
                   </div>
@@ -573,7 +653,7 @@ export default function DespachoClient() {
                         </div>
                       ))}
                       {(stock.equipos || []).length > 10 && (
-                        <div className="text-[11px] text-muted-foreground">+{(stock.equipos || []).length - 10} más</div>
+                        <div className="text-[11px] text-muted-foreground">+{(stock.equipos || []).length - 10} ms</div>
                       )}
                     </div>
                   </div>
@@ -587,7 +667,7 @@ export default function DespachoClient() {
                         </div>
                       ))}
                       {(stock.bobinas || []).length > 10 && (
-                        <div className="text-[11px] text-muted-foreground">+{(stock.bobinas || []).length - 10} más</div>
+                        <div className="text-[11px] text-muted-foreground">+{(stock.bobinas || []).length - 10} ms</div>
                       )}
                     </div>
                   </div>
@@ -610,13 +690,13 @@ export default function DespachoClient() {
                 toast.message("Regresaste al Paso 1");
               }}
             >
-              ← Paso 1
+               Paso 1
             </button>
 
             <div className="rounded border px-3 py-2 text-xs">
               <div className="font-medium">Cuadrilla</div>
               <div>
-                ID: {cuadrillaId} · Segmento: {segmento} · Tipo: {tipo}
+                ID: {cuadrillaId}  -  Segmento: {segmento}  -  Tipo: {tipo}
               </div>
               {!!cuadrillaNombre && <div>Nombre: {cuadrillaNombre}</div>}
             </div>
@@ -624,23 +704,35 @@ export default function DespachoClient() {
 
           {/* Equipos: scanner */}
           <div className="rounded border p-3">
-            <div className="font-medium">Equipos (SN) · Scanner</div>
+            <div className="font-medium">Equipos (SN)  -  Scanner</div>
             <div className="mt-2 flex gap-2">
               <input
+                ref={snInputRef}
                 value={snInput}
                 onChange={(e) => setSnInput(e.target.value.toUpperCase())}
-                onKeyDown={(e) => e.key === "Enter" && handleAddSN()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (snValidating) return;
+                    handleAddSN();
+                  }
+                }}
                 className="w-full rounded border px-2 py-2 font-mono"
                 placeholder="Escanea o escribe el SN y Enter"
+                disabled={snValidating}
               />
               <button
                 type="button"
                 onClick={handleAddSN}
-                className="rounded bg-indigo-600 px-3 py-2 text-white hover:bg-indigo-700"
+                className="rounded bg-indigo-600 px-3 py-2 text-white hover:bg-indigo-700 disabled:opacity-50"
+                disabled={snValidating}
               >
-                Agregar
+                {snValidating ? "Validando..." : "Agregar"}
               </button>
             </div>
+            {snValidating && (
+              <div className="mt-1 text-xs text-muted-foreground">Validando SN...</div>
+            )}
 
             <div className="mt-2 text-xs text-muted-foreground">Total: {resumenEquipos}</div>
 
@@ -650,15 +742,17 @@ export default function DespachoClient() {
                   <thead className="bg-muted">
                     <tr>
                       <th className="text-left px-3 py-2">SN</th>
-                      <th className="text-right px-3 py-2">Acción</th>
+                      <th className="text-left px-3 py-2">Equipo</th>
+                      <th className="text-right px-3 py-2">Accion</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {equipos.map((sn) => (
-                      <tr key={sn} className="border-t">
-                        <td className="px-3 py-2 font-mono">{sn}</td>
+                    {equipos.map((e) => (
+                      <tr key={e.sn} className="border-t">
+                        <td className="px-3 py-2 font-mono">{e.sn}</td>
+                        <td className="px-3 py-2">{e.tipo || "OTROS"}</td>
                         <td className="px-3 py-2 text-right">
-                          <button className="text-red-600 hover:underline" onClick={() => handleRemoveSN(sn)}>
+                          <button className="text-red-600 hover:underline" onClick={() => handleRemoveSN(e.sn)}>
                             Eliminar
                           </button>
                         </td>
@@ -671,32 +765,86 @@ export default function DespachoClient() {
 
           </div>
 
+          {/* Bobinas residencial */}
+          {segmento === "RESIDENCIAL" && (
+            <div className="rounded border p-3 space-y-2">
+              <div className="font-medium">Bobinas (RESIDENCIAL)  -  Codigos</div>
+              <div className="flex gap-2">
+                <input
+                  value={bobinaInput}
+                  onChange={(e) => setBobinaInput(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddBobina()}
+                  placeholder="WIN-1234"
+                  className="w-full rounded border px-2 py-2 font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddBobina}
+                  className="rounded bg-indigo-600 px-3 py-2 text-white hover:bg-indigo-700"
+                >
+                  Agregar
+                </button>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Total bobinas: {bobinaCodes.length}  -  Total metros: {bobinaCodes.length * 1000}
+              </div>
+
+              {bobinaCodes.length > 0 && (
+                <div className="mt-2 overflow-x-auto">
+                  <table className="min-w-full text-sm border rounded">
+                    <thead className="bg-muted">
+                      <tr>
+                        <th className="text-left px-3 py-2">Codigo</th>
+                        <th className="text-right px-3 py-2">Accion</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bobinaCodes.map((code) => (
+                        <tr key={code} className="border-t">
+                          <td className="px-3 py-2 font-mono">{code}</td>
+                          <td className="px-3 py-2 text-right">
+                            <button
+                              className="text-red-600 hover:underline"
+                              onClick={() => handleRemoveBobina(code)}
+                            >
+                              Eliminar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+
           {/* Materiales */}
+
           <div className="rounded border p-3 space-y-2">
             <div className="font-medium">Materiales (INSTALACIONES)</div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {MATS_INST.map((id) => (
-                <div key={id} className="rounded border p-2">
-                  <div className="text-sm font-medium">{id}</div>
+              {MATS_INST.map((id) => {
+                if (id === "BOBINA" && segmento === "RESIDENCIAL") return null;
+                const unidad = materialUnits[id];
+                return (
+                  <div key={id} className="rounded border p-2">
+                    <div className="text-sm font-medium">{id}</div>
 
-                  {id === "BOBINA" && segmento === "RESIDENCIAL" ? (
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      Se ingresa abajo como códigos (uno por línea). Cada código suma 1000 m.
-                    </div>
-                  ) : id === "BOBINA(CONDOMINIO)" && segmento === "CONDOMINIO" ? (
-                    <div className="mt-2">
-                      <label className="block text-xs">Metros</label>
-                      <input
-                        value={bobinaCondominioMetros}
-                        onChange={(e) => setBobinaCondominioMetros(e.target.value)}
-                        className="mt-1 w-full rounded border px-2 py-1"
-                        inputMode="decimal"
-                      />
-                    </div>
-                  ) : (
-                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-                      <div>
+                    {id === "BOBINA" && segmento === "CONDOMINIO" ? (
+                      <div className="mt-2">
+                        <label className="block text-xs">Metros</label>
+                        <input
+                          value={bobinaCondominioMetros}
+                          onChange={(e) => setBobinaCondominioMetros(e.target.value)}
+                          className="mt-1 w-full rounded border px-2 py-1"
+                          inputMode="decimal"
+                        />
+                      </div>
+                    ) : unidad === "UND" ? (
+                      <div className="mt-2 text-xs">
                         <label className="block">UND</label>
                         <input
                           value={matUnd[id] || ""}
@@ -706,7 +854,8 @@ export default function DespachoClient() {
                           pattern="[0-9]*"
                         />
                       </div>
-                      <div>
+                    ) : unidad === "METROS" ? (
+                      <div className="mt-2 text-xs">
                         <label className="block">Metros</label>
                         <input
                           value={matMetros[id] || ""}
@@ -715,27 +864,33 @@ export default function DespachoClient() {
                           inputMode="decimal"
                         />
                       </div>
-                    </div>
-                  )}
-                </div>
-              ))}
+                    ) : (
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <label className="block">UND</label>
+                          <input
+                            value={matUnd[id] || ""}
+                            onChange={(e) => setMatUnd((p) => ({ ...p, [id]: e.target.value.replace(/\D/g, "") }))}
+                            className="mt-1 w-full rounded border px-2 py-1"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                          />
+                        </div>
+                        <div>
+                          <label className="block">Metros</label>
+                          <input
+                            value={matMetros[id] || ""}
+                            onChange={(e) => setMatMetros((p) => ({ ...p, [id]: e.target.value }))}
+                            className="mt-1 w-full rounded border px-2 py-1"
+                            inputMode="decimal"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-
-            {/* Bobinas residencial */}
-            {segmento === "RESIDENCIAL" && (
-              <div className="space-y-1 pt-2">
-                <div className="font-medium">Bobinas (RESIDENCIAL) · Códigos (uno por línea)</div>
-                <textarea
-                  value={bobinaCodesText}
-                  onChange={(e) => setBobinaCodesText(e.target.value)}
-                  placeholder="WIN-1234\nWIN-5678"
-                  className="w-full rounded border px-2 py-2 h-24 font-mono"
-                />
-                <div className="text-xs text-muted-foreground">
-                  Total bobinas: {uniqLines(bobinaCodesText).length} · Total metros: {uniqLines(bobinaCodesText).length * 1000}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Acciones: Preview / Confirmar */}
@@ -751,7 +906,7 @@ export default function DespachoClient() {
 
             {result?.ok && (
               <button type="button" onClick={() => window.print()} className="rounded border px-3 py-2 hover:bg-muted">
-                Imprimir guía
+                Imprimir gua
               </button>
             )}
 
@@ -760,13 +915,13 @@ export default function DespachoClient() {
             )}
           </div>
 
-          {/* Printable area (tu misma lógica) */}
+          {/* Printable area (tu misma lgica) */}
           {result?.ok && (
             <div id="print-area" className="hidden print:block">
               <div>
-                <div>Guía: {(result as any).guia}</div>
+                <div>Gua: {(result as any).guia}</div>
                 <div>
-                  Cuadrilla: {cuadrillaId} · Segmento: {segmento}
+                  Cuadrilla: {cuadrillaId}  -  Segmento: {segmento}
                 </div>
                 <div>Fecha: {new Date().toLocaleString()}</div>
               </div>
@@ -826,7 +981,7 @@ export default function DespachoClient() {
                 className="text-gray-500 hover:text-gray-700"
                 aria-label="Cerrar"
               >
-                ✕
+                
               </button>
             </div>
 
@@ -856,7 +1011,7 @@ export default function DespachoClient() {
                     )}
                     {!!tecnicos && (
                       <div className="sm:col-span-2">
-                        <b>Técnicos:</b> {tecnicos}
+                        <b>Tecnicos:</b> {tecnicos}
                       </div>
                     )}
                   </div>
@@ -864,12 +1019,12 @@ export default function DespachoClient() {
                   <div className="rounded border p-3">
                     <b>Equipos ({equipos.length})</b>
                     {equipos.length === 0 ? (
-                      <div className="text-muted-foreground">—</div>
+                      <div className="text-muted-foreground">-</div>
                     ) : (
                       <ul className="list-disc pl-5 mt-1">
-                        {equipos.map((sn) => (
-                          <li key={sn} className="font-mono">
-                            {sn}
+                        {equipos.map((e) => (
+                          <li key={e.sn} className="font-mono">
+                            {e.sn}
                           </li>
                         ))}
                       </ul>
@@ -879,7 +1034,7 @@ export default function DespachoClient() {
                   <div className="rounded border p-3">
                     <b>Materiales ({mats.length})</b>
                     {mats.length === 0 ? (
-                      <div className="text-muted-foreground">—</div>
+                      <div className="text-muted-foreground"></div>
                     ) : (
                       <ul className="list-disc pl-5 mt-1">
                         {mats.map((m: any, i: number) => (
@@ -895,11 +1050,11 @@ export default function DespachoClient() {
                     <div className="rounded border p-3">
                       <b>Bobinas RESIDENCIAL</b>
                       {bobinasRes.length === 0 ? (
-                        <div className="text-muted-foreground">—</div>
+                        <div className="text-muted-foreground"></div>
                       ) : (
                         <>
                           <div className="text-xs text-muted-foreground">
-                            Cantidad: {bobinasRes.length} · Total metros: {bobinasRes.length * 1000}
+                            Cantidad: {bobinasRes.length}  -  Total metros: {bobinasRes.length * 1000}
                           </div>
                           <div className="mt-1 text-xs break-words">
                             {bobinasRes.map((b: any) => b.codigoRaw).join(", ")}
@@ -942,3 +1097,5 @@ export default function DespachoClient() {
     </div>
   );
 }
+
+

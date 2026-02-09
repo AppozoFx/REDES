@@ -68,6 +68,9 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     items.push({ key: "TR_INST_DESP", label: "Despacho (Inst)", href: "/home/transferencias/instalaciones/despacho" });
     items.push({ key: "TR_INST_DEV", label: "Devoluciones (Inst)", href: "/home/transferencias/instalaciones/devoluciones" });
   }
+  if (hasPerm(session, "EQUIPOS_VIEW") || hasPerm(session, "EQUIPOS_EDIT")) {
+    items.push({ key: "TR_INST_EQ", label: "Equipos (Inst)", href: "/home/transferencias/instalaciones/equipos" });
+  }
 
   items.push({ key: "PERFIL", label: "Mi perfil", href: "/home/perfil" });
 

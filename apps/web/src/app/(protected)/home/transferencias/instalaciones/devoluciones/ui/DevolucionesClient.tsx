@@ -236,8 +236,7 @@ function generarPDFTermico80mm(guiaId: string, data: GuiaThermalData) {
         pdf.text(`- ${code}`, 40, y, C);
         y += 4;
       });
-      pdf.text(`TOTAL: ${drumps.length * RES_BOBINA_METROS} m`, 40, y, C);
-      y += 5;
+      y += 3;
     }
   } else if (String(data.tipo).toLowerCase() === "condominio") {
     const m = Number(data.metrosCondominio) || 0;
@@ -365,9 +364,13 @@ async function enviarGuiaPorWhatsAppATecnicos(args: {
   fechaHora: string;
   urlComprobante: string;
   extraInfo?: string;
+  preOpenWindow?: Window | null;
 }) {
   const celulares = await obtenerCelularesTecnicos(args.tecnicosUID);
-  if (!celulares.length) return { total: 0 };
+  if (!celulares.length) {
+    if (args.preOpenWindow && !args.preOpenWindow.closed) args.preOpenWindow.close();
+    return { total: 0 };
+  }
 
   const lines: string[] = [];
   lines.push(`*${args.tipoGuia}*`);
@@ -385,9 +388,16 @@ async function enviarGuiaPorWhatsAppATecnicos(args: {
   const numero = celulares[0];
   try {
     const url = `https://wa.me/51${numero}?text=${encodeURIComponent(mensaje)}`;
-    const win = window.open(url, "_blank", "noopener,noreferrer");
-    if (!win) {
-      toast.message("WhatsApp bloqueado por el navegador");
+    if (args.preOpenWindow && !args.preOpenWindow.closed) {
+      args.preOpenWindow.location.href = url;
+      args.preOpenWindow.focus();
+    } else {
+      const win = window.open(url, "_blank");
+      if (win) {
+        win.opener = null;
+      } else {
+        window.location.href = url;
+      }
     }
   } catch {
     // silent
@@ -449,6 +459,7 @@ export default function DevolucionesClient() {
   const [result, run, pending] = useActionState(devolverInstalacionesAction as any, null as any);
   const [lastPayload, setLastPayload] = useState<any>(null);
   const printedGuiaRef = useRef<string>("");
+  const waWindowRef = useRef<Window | null>(null);
 
   // -----------------------
   // Cargar lista de cuadrillas (opcional)
@@ -695,6 +706,15 @@ export default function DevolucionesClient() {
     const list = (stock?.bobinas || []).map((b) => String(b?.id || b?.nombre || "").toUpperCase()).filter(Boolean);
     return Array.from(new Set(list));
   }, [stock]);
+  const bobinaFechaMap = useMemo(() => {
+    const map = new Map<string, string>();
+    (stock?.bobinas || []).forEach((b: any) => {
+      const code = String(b?.id || b?.nombre || "").toUpperCase();
+      const fecha = String(b?.fecha || "").trim();
+      if (code && fecha) map.set(code, fecha);
+    });
+    return map;
+  }, [stock]);
   const availableBobinasToPick = useMemo(
     () => availableBobinas.filter((b) => !bobinaCodes.includes(b)),
     [availableBobinas, bobinaCodes]
@@ -907,7 +927,7 @@ export default function DevolucionesClient() {
         });
       const bobinasRes = (payload as any)?.bobinasResidenciales || [];
       if (bobinasRes.length > 0) {
-        materialesDetalleList.push(`BOBINA: ${bobinasRes.length * 1000} m`);
+        materialesDetalleList.push(`BOBINAS: ${bobinasRes.length}`);
         materialesDetalleList.push(`DRUMP: ${bobinasRes.map((b: any) => b.codigo).join(", ")}`);
       } else {
         const bobinaMetros = mats
@@ -941,8 +961,11 @@ export default function DevolucionesClient() {
           fechaHora: new Date().toLocaleString("es-PE"),
           urlComprobante: directUrl,
           extraInfo,
+          preOpenWindow: waWindowRef.current,
         });
         if (!r.total) toast.message("No se encontro celular de coordinador");
+      } else if (waWindowRef.current && !waWindowRef.current.closed) {
+        waWindowRef.current.close();
       }
     } catch {
       toast.error("No se pudo subir la guia a Storage");
@@ -985,8 +1008,6 @@ export default function DevolucionesClient() {
 
     if (segmento === "RESIDENCIAL") {
       const codes = bobinaCodes;
-      if (codes.length) materiales.push({ materialId: "BOBINA", metros: codes.length * 1000 });
-
       const payload = {
         cuadrillaId,
         equipos: equipos.map((e) => e.sn),
@@ -1045,6 +1066,11 @@ export default function DevolucionesClient() {
   const confirmar = () =>
     guard(() => {
       if (pending) return;
+      if (!waWindowRef.current || waWindowRef.current.closed) {
+        const w = window.open("about:blank", "_blank");
+        if (w) w.opener = null;
+        waWindowRef.current = w;
+      }
       const { payload } = buildPayload();
       setLastPayload({ ...payload, segmento });
 
@@ -1366,7 +1392,11 @@ export default function DevolucionesClient() {
                 />
                 <datalist id="bobinas-residenciales">
                   {availableBobinasToPick.map((code) => (
-                    <option key={code} value={code} />
+                    <option
+                      key={code}
+                      value={code}
+                      label={`${code}${bobinaFechaMap.get(code) ? ` - ${bobinaFechaMap.get(code)}` : ""}`}
+                    />
                   ))}
                 </datalist>
                 <button
@@ -1384,7 +1414,7 @@ export default function DevolucionesClient() {
                 </div>
               )}
               <div className="text-xs text-muted-foreground">
-                Total bobinas: {bobinaCodes.length}  -  Total metros: {bobinaCodes.length * 1000}
+                Total bobinas: {bobinaCodes.length}
               </div>
 
               {bobinaCodes.length > 0 && (
@@ -1393,6 +1423,7 @@ export default function DevolucionesClient() {
                     <thead className="bg-muted">
                       <tr>
                         <th className="text-left px-3 py-2">Codigo</th>
+                        <th className="text-left px-3 py-2">Fecha despacho</th>
                         <th className="text-right px-3 py-2">Accion</th>
                       </tr>
                     </thead>
@@ -1400,6 +1431,7 @@ export default function DevolucionesClient() {
                       {bobinaCodes.map((code) => (
                         <tr key={code} className="border-t">
                           <td className="px-3 py-2 font-mono">{code}</td>
+                          <td className="px-3 py-2 text-xs">{bobinaFechaMap.get(code) || "-"}</td>
                           <td className="px-3 py-2 text-right">
                             <button
                               className="text-red-600 hover:underline"
@@ -1669,7 +1701,7 @@ export default function DevolucionesClient() {
                       ) : (
                         <>
                           <div className="text-xs text-muted-foreground">
-                            Cantidad: {bobinasRes.length}  -  Total metros: {bobinasRes.length * 1000}
+                            Cantidad: {bobinasRes.length}
                           </div>
                           <div className="mt-1 text-xs break-words">
                             {bobinasRes.map((b: any) => b.codigo).join(", ")}

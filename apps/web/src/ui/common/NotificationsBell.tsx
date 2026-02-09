@@ -148,7 +148,7 @@ React.useEffect(() => {
                         )}
                       </div>
                       <div className="text-xs text-gray-700 dark:text-white/80">{n.message}</div>
-                      {n.entityType === "DESPACHO" && n.entityId && (
+                      {(n.entityType === "DESPACHO" || n.entityType === "DEVOLUCION") && n.entityId && (
                         <div className="mt-2">
                           <button
                             type="button"
@@ -158,7 +158,7 @@ React.useEffect(() => {
                                 const res = await fetch(
                                   `/api/transferencias/instalaciones/guia/url?guiaId=${encodeURIComponent(
                                     n.entityId
-                                  )}&tipo=despacho`,
+                                  )}&tipo=${n.entityType === "DEVOLUCION" ? "devolucion" : "despacho"}`,
                                   { cache: "no-store" }
                                 );
                                 if (!res.ok) throw new Error("URL_FAIL");

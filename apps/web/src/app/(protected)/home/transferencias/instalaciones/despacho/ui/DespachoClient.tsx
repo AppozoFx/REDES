@@ -365,9 +365,13 @@ async function enviarGuiaPorWhatsAppATecnicos(args: {
   fechaHora: string;
   urlComprobante: string;
   extraInfo?: string;
+  preOpenWindow?: Window | null;
 }) {
   const celulares = await obtenerCelularesTecnicos(args.tecnicosUID);
-  if (!celulares.length) return { total: 0 };
+  if (!celulares.length) {
+    if (args.preOpenWindow && !args.preOpenWindow.closed) args.preOpenWindow.close();
+    return { total: 0 };
+  }
 
   const lines: string[] = [];
   lines.push(`*${args.tipoGuia}*`);
@@ -385,9 +389,16 @@ async function enviarGuiaPorWhatsAppATecnicos(args: {
   const numero = celulares[0];
   try {
     const url = `https://wa.me/51${numero}?text=${encodeURIComponent(mensaje)}`;
-    const win = window.open(url, "_blank", "noopener,noreferrer");
-    if (!win) {
-      toast.message("WhatsApp bloqueado por el navegador");
+    if (args.preOpenWindow && !args.preOpenWindow.closed) {
+      args.preOpenWindow.location.href = url;
+      args.preOpenWindow.focus();
+    } else {
+      const win = window.open(url, "_blank");
+      if (win) {
+        win.opener = null;
+      } else {
+        window.location.href = url;
+      }
     }
   } catch {
     // silent
@@ -448,6 +459,7 @@ export default function DespachoClient() {
   const [result, run, pending] = useActionState(despacharInstalacionesAction as any, null as any);
   const [lastPayload, setLastPayload] = useState<any>(null);
   const printedGuiaRef = useRef<string>("");
+  const waWindowRef = useRef<Window | null>(null);
 
   // -----------------------
   // Cargar lista de cuadrillas (opcional)
@@ -890,8 +902,11 @@ export default function DespachoClient() {
           fechaHora: new Date().toLocaleString("es-PE"),
           urlComprobante: directUrl,
           extraInfo,
+          preOpenWindow: waWindowRef.current,
         });
         if (!r.total) toast.message("No se encontro celular de coordinador");
+      } else if (waWindowRef.current && !waWindowRef.current.closed) {
+        waWindowRef.current.close();
       }
     } catch {
       toast.error("No se pudo subir la guia a Storage");
@@ -984,6 +999,11 @@ export default function DespachoClient() {
   const confirmar = () =>
     guard(() => {
       if (pending) return;
+      if (!waWindowRef.current || waWindowRef.current.closed) {
+        const w = window.open("about:blank", "_blank");
+        if (w) w.opener = null;
+        waWindowRef.current = w;
+      }
       const { payload } = buildPayload();
       setLastPayload({ ...payload, segmento });
 

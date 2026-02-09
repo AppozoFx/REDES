@@ -3,7 +3,7 @@ import { adminDb } from "@/lib/firebase/admin";
 
 export const runtime = "nodejs";
 
-type StockItem = { id: string; nombre?: string; cantidad?: number; metros?: number; tipo?: string };
+type StockItem = { id: string; nombre?: string; cantidad?: number; metros?: number; tipo?: string; fecha?: string };
 
 export async function GET(req: Request) {
   try {
@@ -60,7 +60,10 @@ export async function GET(req: Request) {
     const bobinas: StockItem[] = bobSnap.docs.map((doc) => {
       const data = doc.data() as any;
       const metros = Number(data?.metrosRestantes ?? data?.metrosIniciales ?? 0);
-      return { id: doc.id, nombre: doc.id, metros, cantidad: 1 };
+      const ymd = String(data?.f_despachoYmd || "").trim();
+      const hm = String(data?.f_despachoHm || "").trim();
+      const fecha = ymd && hm ? `${ymd} ${hm}` : ymd || hm || "";
+      return { id: doc.id, nombre: doc.id, metros, cantidad: 1, fecha };
     });
 
     return NextResponse.json({ ok: true, stock: { materiales, equipos, bobinas } });

@@ -394,7 +394,7 @@ export async function despacharInstalacionesAction(arg1: any, arg2?: any): Promi
 }
 
 export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promise<TransferOk | { ok: false; error: { formErrors: string[] } }> {
-  await requireServerPermission("EQUIPOS_DEVOLUCION");
+  const session = await requireServerPermission("EQUIPOS_DEVOLUCION");
   await requireServerPermission("MATERIALES_DEVOLUCION");
   try {
     const raw = parseMaybeFormData(arg1, arg2);
@@ -449,8 +449,6 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
     if (segmento === "RESIDENCIAL") {
       const bobCodes = (input.bobinasResidenciales || []).map((b) => String(b.codigo || "").toUpperCase());
       if (bobCodes.length) {
-        const prev = matMap.get("BOBINA") || { und: 0, metros: 0 };
-        matMap.set("BOBINA", { und: prev.und, metros: prev.metros + bobCodes.length * 1000 });
         await db.runTransaction(async (tx) => {
           const refs = bobCodes.map((code) =>
             db.collection("cuadrillas").doc(input.cuadrillaId).collection("bobinas").doc(code)
@@ -510,6 +508,27 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
     try {
       const ymd = d.ymd || new Date().toISOString().slice(0, 10);
       await db.collection("kpi_daily_instalaciones").doc(ymd).set({ equipos_devoluciones_count: FieldValue.increment(itemsEquipos.filter(x=>x.status==='OK').length), materiales_devoluciones_count: FieldValue.increment(itemsMateriales.filter(x=>x.status==='OK').length), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    } catch {}
+
+    // Notificacion global
+    try {
+      const usuario = await getUsuarioDisplayName(session.uid);
+      const cuadName = c?.nombre ? String(c.nombre) : input.cuadrillaId;
+      const equiposOk = itemsEquipos.filter((x) => x.status === "OK").length;
+      const materialesOk = itemsMateriales.filter((x) => x.status === "OK").length;
+      const bobinaMetros = Math.max(0, Number(matMap.get("BOBINA")?.metros || 0));
+      const msg = `${usuario} realizo una devolucion para \"${cuadName}\". Equipos: ${equiposOk}, Materiales: ${materialesOk}, Bobina: ${bobinaMetros} m`;
+      await addGlobalNotification({
+        title: "Devolucion",
+        message: msg,
+        type: "success",
+        scope: "ALL",
+        createdBy: session.uid,
+        entityType: "DEVOLUCION",
+        entityId: guia,
+        action: "CREATE",
+        estado: "ACTIVO",
+      });
     } catch {}
 
     const resumen = { equipos: { ok: itemsEquipos.filter(x=>x.status==='OK').length, fail: itemsEquipos.filter(x=>x.status==='ERROR').length }, materiales: { ok: itemsMateriales.filter(x=>x.status==='OK').length, fail: itemsMateriales.filter(x=>x.status==='ERROR').length }, warnings: [] as string[] };

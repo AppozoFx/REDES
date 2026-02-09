@@ -437,9 +437,10 @@ export default function DevolucionesClient() {
   // Paso 2 - Bobinas / Materiales
   const [bobinaInput, setBobinaInput] = useState("");
   const [bobinaCodes, setBobinaCodes] = useState<string[]>([]);
-  const [bobinaCondominioMetros, setBobinaCondominioMetros] = useState<string>("300");
+  const [bobinaCondominioMetros, setBobinaCondominioMetros] = useState<string>("0");
   const [matUnd, setMatUnd] = useState<Record<string, string>>({});
   const [matMetros, setMatMetros] = useState<Record<string, string>>({});
+  const [includeAutoONT, setIncludeAutoONT] = useState(true);
 
   // Preview modal
   const [showPreview, setShowPreview] = useState(false);
@@ -505,6 +506,17 @@ export default function DevolucionesClient() {
     })();
   }, []);
 
+  useEffect(() => {
+    if (step !== 2) return;
+    if (!cuadrillaId || stockLoading) return;
+    if (stock) return;
+    (async () => {
+      try {
+        await cargarStockCuadrillaById(cuadrillaId, segmento);
+      } catch {}
+    })();
+  }, [step, cuadrillaId, segmento, stockLoading, stock]);
+
   function resetDevolucionForm() {
     setStep(1);
     setCuadrillaId("");
@@ -525,9 +537,10 @@ export default function DevolucionesClient() {
     setEquipos([]);
     setBobinaInput("");
     setBobinaCodes([]);
-    setBobinaCondominioMetros("300");
+    setBobinaCondominioMetros("0");
     setMatUnd({});
     setMatMetros({});
+    setIncludeAutoONT(true);
     setObservacion("");
     setShowPreview(false);
     setLastPayload(null);
@@ -678,6 +691,23 @@ export default function DevolucionesClient() {
     return parts.length ? parts.join(" - ") : "0";
   }, [equipos]);
 
+  const availableBobinas = useMemo(() => {
+    const list = (stock?.bobinas || []).map((b) => String(b?.id || b?.nombre || "").toUpperCase()).filter(Boolean);
+    return Array.from(new Set(list));
+  }, [stock]);
+  const availableBobinasToPick = useMemo(
+    () => availableBobinas.filter((b) => !bobinaCodes.includes(b)),
+    [availableBobinas, bobinaCodes]
+  );
+
+  function normalizeCuadrillaName(raw: string) {
+    const base = String(raw || "").replace(/\s+/g, " ").trim();
+    if (!base) return "";
+    const m = base.match(/^(K)\s*(\d+)\s+(MOTO|RESIDENCIAL)$/i);
+    if (m) return `K${m[2]} ${String(m[3] || "").toUpperCase()}`;
+    return base.toUpperCase();
+  }
+
   const handleAddSN = async () =>
     guard(async () => {
       const sn = snInput.trim().toUpperCase();
@@ -702,18 +732,25 @@ export default function DevolucionesClient() {
           return;
         }
         if (data.status === "ALMACEN") {
-          const tipoEq = String(data.equipo || "OTROS").toUpperCase();
-          setEquipos((p) => [...p, { sn, tipo: tipoEq }]);
+          toast.error("Serie esta en almacen. No se puede devolver.");
           setSnInput("");
-          toast.success("SN en almacen");
           return;
         }
         if (data.status === "DESPACHADO") {
-          toast.error(`Serie ya despachada. Cuadrilla: ${data.ubicacion || "N/A"}`);
+          const expectedUb = normalizeCuadrillaName(cuadrillaNombre || cuadrillaId);
+          const actualUb = normalizeCuadrillaName(data.ubicacion || "");
+          if (expectedUb && actualUb === expectedUb) {
+            const tipoEq = String(data.equipo || "OTROS").toUpperCase();
+            setEquipos((p) => [...p, { sn, tipo: tipoEq }]);
+            setSnInput("");
+            toast.success("SN en cuadrilla");
+            return;
+          }
+          toast.error(`Serie despachada en otra cuadrilla: ${data.ubicacion || "N/A"}`);
           setSnInput("");
           return;
         }
-        toast.error(`Serie no esta en almacen. Ubicacion: ${data.ubicacion || "N/A"}`);
+        toast.error(`Serie no esta en cuadrilla. Ubicacion: ${data.ubicacion || "N/A"}`);
         setSnInput("");
       } catch {
         toast.error("Error validando SN");
@@ -730,6 +767,10 @@ export default function DevolucionesClient() {
     guard(() => {
       const code = bobinaInput.trim().toUpperCase();
       if (!code) return;
+      if (availableBobinas.length && !availableBobinas.includes(code)) {
+        toast.error("Selecciona una bobina valida de la cuadrilla");
+        return;
+      }
       if (bobinaCodes.includes(code)) {
         toast.error("Esta bobina ya fue agregada");
         setBobinaInput("");
@@ -766,18 +807,28 @@ export default function DevolucionesClient() {
     const mats = (payload as any).materiales || [];
     const countONT = equipos.filter((e) => String(e.tipo || "").toUpperCase() === "ONT").length;
     const automaticos: Record<string, number> = {};
-    if (countONT > 0) {
+    if (includeAutoONT && countONT > 0) {
       for (const [k, v] of Object.entries(KIT_BASE_POR_ONT_LOCAL)) {
         automaticos[k] = (automaticos[k] || 0) + v * countONT;
       }
     }
-    const manuales: Record<string, number> = {};
+    const autoIds = new Set(Object.keys(KIT_BASE_POR_ONT_LOCAL));
+    const totals: Record<string, number> = {};
     for (const m of mats) {
       const id = String(m?.materialId || "");
       if (!id || id === "TARUGOS_P") continue;
       const n = Number(m?.und ?? m?.metros ?? 0);
       if (!n) continue;
-      manuales[id] = (manuales[id] || 0) + n;
+      totals[id] = (totals[id] || 0) + n;
+    }
+    const manuales: Record<string, number> = {};
+    for (const [id, total] of Object.entries(totals)) {
+      if (includeAutoONT && autoIds.has(id)) {
+        const extra = Number(total) - Number(automaticos[id] || 0);
+        if (extra > 0) manuales[id] = extra;
+      } else {
+        manuales[id] = total;
+      }
     }
 
     const data: GuiaThermalData = {
@@ -792,7 +843,7 @@ export default function DevolucionesClient() {
       materiales: {
         automaticos,
         manuales,
-        drumps: (payload as any)?.bobinasResidenciales?.map((b: any) => b.codigoRaw) || [],
+        drumps: (payload as any)?.bobinasResidenciales?.map((b: any) => b.codigo) || [],
       },
       metrosCondominio: Math.max(0, numOr0(bobinaCondominioMetros || "0")),
     };
@@ -850,13 +901,20 @@ export default function DevolucionesClient() {
       Object.entries(manuales)
         .sort(([a], [b]) => a.localeCompare(b))
         .forEach(([k, v]) => {
+          if (String(k) === "BOBINA") return;
           const n = Number(v) || 0;
           if (n > 0) materialesDetalleList.push(`${k}: ${n}`);
         });
-      const bobinaMetros = mats
-        .filter((m: any) => String(m?.materialId || "") === "BOBINA")
-        .reduce((acc: number, m: any) => acc + Number(m?.metros || 0), 0);
-      if (bobinaMetros > 0) materialesDetalleList.push(`BOBINA: ${bobinaMetros} m`);
+      const bobinasRes = (payload as any)?.bobinasResidenciales || [];
+      if (bobinasRes.length > 0) {
+        materialesDetalleList.push(`BOBINA: ${bobinasRes.length * 1000} m`);
+        materialesDetalleList.push(`DRUMP: ${bobinasRes.map((b: any) => b.codigo).join(", ")}`);
+      } else {
+        const bobinaMetros = mats
+          .filter((m: any) => String(m?.materialId || "") === "BOBINA")
+          .reduce((acc: number, m: any) => acc + Number(m?.metros || 0), 0);
+        if (bobinaMetros > 0) materialesDetalleList.push(`BOBINA: ${bobinaMetros} m`);
+      }
 
       const partsMsg: string[] = [];
       if (equipos.length > 0) {
@@ -915,6 +973,16 @@ export default function DevolucionesClient() {
     const anclajeUnd = Math.max(0, Math.trunc(numOr0(matUnd.ANCLAJE_P || "0")));
     if (anclajeUnd > 0) materiales.push({ materialId: "TARUGOS_P", und: anclajeUnd });
 
+    // Materiales automticos por ONT (opcional)
+    if (includeAutoONT) {
+      const countONT = equipos.filter((e) => String(e.tipo || "").toUpperCase() === "ONT").length;
+      if (countONT > 0) {
+        for (const [matId, perOnt] of Object.entries(KIT_BASE_POR_ONT_LOCAL)) {
+          materiales.push({ materialId: matId, und: perOnt * countONT });
+        }
+      }
+    }
+
     if (segmento === "RESIDENCIAL") {
       const codes = bobinaCodes;
       if (codes.length) materiales.push({ materialId: "BOBINA", metros: codes.length * 1000 });
@@ -923,7 +991,7 @@ export default function DevolucionesClient() {
         cuadrillaId,
         equipos: equipos.map((e) => e.sn),
         materiales,
-        bobinasResidenciales: codes.map((codigoRaw) => ({ codigoRaw })),
+        bobinasResidenciales: codes.map((codigo) => ({ codigo })),
         observacion,
       };
 
@@ -1291,17 +1359,30 @@ export default function DevolucionesClient() {
                   value={bobinaInput}
                   onChange={(e) => setBobinaInput(e.target.value.toUpperCase())}
                   onKeyDown={(e) => e.key === "Enter" && handleAddBobina()}
-                  placeholder="WIN-1234"
+                  placeholder="Escribe y selecciona bobina activa"
                   className="w-full rounded border px-2 py-2 font-mono"
+                  list="bobinas-residenciales"
+                  disabled={availableBobinasToPick.length === 0}
                 />
+                <datalist id="bobinas-residenciales">
+                  {availableBobinasToPick.map((code) => (
+                    <option key={code} value={code} />
+                  ))}
+                </datalist>
                 <button
                   type="button"
                   onClick={handleAddBobina}
-                  className="rounded bg-indigo-600 px-3 py-2 text-white hover:bg-indigo-700"
+                  className="rounded bg-indigo-600 px-3 py-2 text-white hover:bg-indigo-700 disabled:opacity-50"
+                  disabled={!bobinaInput}
                 >
                   Agregar
                 </button>
               </div>
+              {availableBobinas.length === 0 && (
+                <div className="text-xs text-muted-foreground">
+                  No hay bobinas activas en esta cuadrilla (o no se carg el stock).
+                </div>
+              )}
               <div className="text-xs text-muted-foreground">
                 Total bobinas: {bobinaCodes.length}  -  Total metros: {bobinaCodes.length * 1000}
               </div>
@@ -1341,6 +1422,14 @@ export default function DevolucionesClient() {
 
           <div className="rounded border p-3 space-y-2">
             <div className="font-medium">Materiales (INSTALACIONES)</div>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={includeAutoONT}
+                onChange={(e) => setIncludeAutoONT(e.target.checked)}
+              />
+              Incluir materiales automticos por ONT
+            </label>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {MATS_INST.map((id) => {
@@ -1466,7 +1555,7 @@ export default function DevolucionesClient() {
                 ))}
                 {segmento === "RESIDENCIAL" && (lastPayload?.bobinasResidenciales || []).length > 0 && (
                   <div className="text-xs">
-                    Bobinas: {(lastPayload?.bobinasResidenciales || []).map((b: any) => b.codigoRaw).join(", ")}
+                    Bobinas: {(lastPayload?.bobinasResidenciales || []).map((b: any) => b.codigo).join(", ")}
                   </div>
                 )}
               </div>
@@ -1583,7 +1672,7 @@ export default function DevolucionesClient() {
                             Cantidad: {bobinasRes.length}  -  Total metros: {bobinasRes.length * 1000}
                           </div>
                           <div className="mt-1 text-xs break-words">
-                            {bobinasRes.map((b: any) => b.codigoRaw).join(", ")}
+                            {bobinasRes.map((b: any) => b.codigo).join(", ")}
                           </div>
                         </>
                       )}

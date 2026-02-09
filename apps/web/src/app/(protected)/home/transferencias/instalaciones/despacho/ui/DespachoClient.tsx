@@ -850,13 +850,20 @@ export default function DespachoClient() {
       Object.entries(manuales)
         .sort(([a], [b]) => a.localeCompare(b))
         .forEach(([k, v]) => {
+          if (String(k) === "BOBINA") return;
           const n = Number(v) || 0;
           if (n > 0) materialesDetalleList.push(`${k}: ${n}`);
         });
-      const bobinaMetros = mats
-        .filter((m: any) => String(m?.materialId || "") === "BOBINA")
-        .reduce((acc: number, m: any) => acc + Number(m?.metros || 0), 0);
-      if (bobinaMetros > 0) materialesDetalleList.push(`BOBINA: ${bobinaMetros} m`);
+      const bobinasRes = (payload as any)?.bobinasResidenciales || [];
+      if (bobinasRes.length > 0) {
+        materialesDetalleList.push(`BOBINA: ${bobinasRes.length * 1000} m`);
+        materialesDetalleList.push(`DRUMP: ${bobinasRes.map((b: any) => b.codigoRaw).join(", ")}`);
+      } else {
+        const bobinaMetros = mats
+          .filter((m: any) => String(m?.materialId || "") === "BOBINA")
+          .reduce((acc: number, m: any) => acc + Number(m?.metros || 0), 0);
+        if (bobinaMetros > 0) materialesDetalleList.push(`BOBINA: ${bobinaMetros} m`);
+      }
 
       const partsMsg: string[] = [];
       if (equipos.length > 0) {

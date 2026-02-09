@@ -280,10 +280,12 @@ export async function despacharInstalacionesAction(arg1: any, arg2?: any): Promi
           if ((e.ubicacion || "") !== "ALMACEN") { itemsEquipos.push({ sn, status: "ERROR", reason: "EQUIPO_NOT_IN_ALMACEN" }); continue; }
           const loc = normalizeUbicacion(c.nombre || input.cuadrillaId);
           if (!loc.isCuadrilla) { itemsEquipos.push({ sn, status: "ERROR", reason: "CUADRILLA_INVALID" }); continue; }
-          tx.update(ref, { ubicacion: loc.ubicacion, estado: loc.estado, f_despachoAt: d.at, f_despachoYmd: d.ymd, f_despachoHm: d.hm, guia_despacho: guia, audit: { ...(e.audit || {}), updatedAt: FieldValue.serverTimestamp() } });
+          tx.update(ref, { ubicacion: loc.ubicacion, estado: "CAMPO", f_despachoAt: d.at, f_despachoYmd: d.ymd, f_despachoHm: d.hm, guia_despacho: guia, audit: { ...(e.audit || {}), updatedAt: FieldValue.serverTimestamp() } });
           const tipo = String(e.equipo || "UNKNOWN").toUpperCase();
           movedTypes[tipo] = (movedTypes[tipo] || 0) + 1;
           updateEquiposStockTx(tx, { cuadrillaId: input.cuadrillaId, tipo, delta: 1 });
+          const seriesRef = db.collection("cuadrillas").doc(input.cuadrillaId).collection("equipos_series").doc(sn);
+          tx.set(seriesRef, { SN: sn, equipo: tipo, descripcion: String(e.descripcion || ""), ubicacion: loc.ubicacion, estado: "CAMPO", guia_despacho: guia, f_despachoAt: d.at, f_despachoYmd: d.ymd, f_despachoHm: d.hm, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
           tx.set(markRef, { transferId, type: "EQUIPO", id: sn, appliedAt: FieldValue.serverTimestamp() });
           itemsEquipos.push({ sn, status: "OK" });
         }
@@ -418,12 +420,13 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
         const refs = part.map((sn) => ({
           sn,
           ref: db.collection("equipos").doc(sn),
+          seriesRef: db.collection("cuadrillas").doc(input.cuadrillaId).collection("equipos_series").doc(sn),
         }));
         const eqSnaps = await Promise.all(refs.map((r) => tx.get(r.ref)));
         const expectedUb = normalizeUbicacion(c.nombre || input.cuadrillaId).ubicacion;
 
         for (let idx = 0; idx < refs.length; idx++) {
-          const { sn, ref } = refs[idx];
+          const { sn, ref, seriesRef } = refs[idx];
           const snap = eqSnaps[idx];
           if (!snap.exists) { itemsEquipos.push({ sn, status: "ERROR", reason: "EQUIPO_NOT_FOUND" }); continue; }
           const e = snap.data() as any;
@@ -432,6 +435,7 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
           const tipo = String(e.equipo || "UNKNOWN").toUpperCase();
           movedTypes[tipo] = (movedTypes[tipo] || 0) + 1;
           updateEquiposStockTx(tx, { cuadrillaId: input.cuadrillaId, tipo, delta: -1 });
+          tx.delete(seriesRef);
           itemsEquipos.push({ sn, status: "OK" });
         }
       });
@@ -448,11 +452,26 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
         const prev = matMap.get("BOBINA") || { und: 0, metros: 0 };
         matMap.set("BOBINA", { und: prev.und, metros: prev.metros + bobCodes.length * 1000 });
         await db.runTransaction(async (tx) => {
-          for (const code of bobCodes) {
-            const bRef = db.collection("cuadrillas").doc(input.cuadrillaId).collection("bobinas").doc(code);
-            const snap = await tx.get(bRef);
-            if (!snap.exists || (snap.data() as any)?.estado !== "ACTIVA") throw new Error("BOBINA_NO_ENCONTRADA_O_NO_ACTIVA");
-            tx.update(bRef, { estado: "DEVUELTA", guia_devolucion: guia, f_devolucionAt: d.at, f_devolucionYmd: d.ymd, f_devolucionHm: d.hm, updatedAt: FieldValue.serverTimestamp() });
+          const refs = bobCodes.map((code) =>
+            db.collection("cuadrillas").doc(input.cuadrillaId).collection("bobinas").doc(code)
+          );
+          const snaps = await Promise.all(refs.map((r) => tx.get(r)));
+          for (let i = 0; i < refs.length; i++) {
+            const snap = snaps[i];
+            if (!snap.exists || (snap.data() as any)?.estado !== "ACTIVA") {
+              throw new Error("BOBINA_NO_ENCONTRADA_O_NO_ACTIVA");
+            }
+          }
+          for (let i = 0; i < refs.length; i++) {
+            const bRef = refs[i];
+            tx.update(bRef, {
+              estado: "DEVUELTA",
+              guia_devolucion: guia,
+              f_devolucionAt: d.at,
+              f_devolucionYmd: d.ymd,
+              f_devolucionHm: d.hm,
+              updatedAt: FieldValue.serverTimestamp(),
+            });
           }
         });
       }

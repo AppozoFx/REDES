@@ -995,9 +995,10 @@ export default function DespachoClient() {
           </div>
         </div>
       )}
-      {/* Paso 1 */}
-      {step === 1 && (
-        <div className="space-y-4">
+      <fieldset disabled={pending} className={pending ? "opacity-60" : ""}>
+        {/* Paso 1 */}
+        {step === 1 && (
+          <div className="space-y-4">
           <div className="rounded border p-3">
             <div className="text-sm font-medium">Paso 1  -  Seleccionar cuadrilla</div>
             <div className="text-xs text-muted-foreground">
@@ -1192,11 +1193,11 @@ export default function DespachoClient() {
             </div>
           )}
         </div>
-      )}
+        )}
 
-      {/* Paso 2 */}
-      {step === 2 && (
-        <div className="space-y-4">
+        {/* Paso 2 */}
+        {step === 2 && (
+          <div className="space-y-4">
           <div className="flex items-center justify-between gap-2">
             <button
               type="button"
@@ -1618,7 +1619,8 @@ export default function DespachoClient() {
             </div>
           </div>
         </div>
-      )}
+        )}
+      </fieldset>
     </div>
   );
 }

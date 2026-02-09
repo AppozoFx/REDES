@@ -42,6 +42,11 @@ export async function moverEquipoManualAction(input: {
   toUbicacion: string;
   fromCuadrillaId?: string;
   toCuadrillaId?: string;
+  caso?: string;
+  observacion?: string;
+  pri_tec?: string;
+  tec_liq?: string;
+  inv?: string;
 }) {
   const session = await requireServerPermission("EQUIPOS_EDIT");
   const db = adminDb();
@@ -67,20 +72,26 @@ export async function moverEquipoManualAction(input: {
     tipoEq = String(e.equipo || "UNKNOWN").toUpperCase();
     descripcion = String(e.descripcion || "");
 
-    if (prevUb === nextUb) return;
-
-    tx.update(ref, {
-      ubicacion: nextUb,
-      estado: nextEstado,
+    const cambios: any = {
       audit: { ...(e.audit || {}), updatedAt: FieldValue.serverTimestamp() },
-    });
+    };
+    if (prevUb !== nextUb) {
+      cambios.ubicacion = nextUb;
+      cambios.estado = nextEstado;
+    }
+    if (typeof input.caso === "string") cambios.caso = input.caso;
+    if (typeof input.observacion === "string") cambios.observacion = input.observacion;
+    if (typeof input.pri_tec === "string") cambios.pri_tec = input.pri_tec;
+    if (typeof input.tec_liq === "string") cambios.tec_liq = input.tec_liq;
+    if (typeof input.inv === "string") cambios.inv = input.inv;
+    tx.update(ref, cambios);
 
-    if (input.fromCuadrillaId) {
+    if (prevUb !== nextUb && input.fromCuadrillaId) {
       updateEquiposStockTx(tx, { cuadrillaId: input.fromCuadrillaId, tipo: tipoEq, delta: -1 });
       const seriesRef = db.collection("cuadrillas").doc(input.fromCuadrillaId).collection("equipos_series").doc(sn);
       tx.delete(seriesRef);
     }
-    if (input.toCuadrillaId) {
+    if (prevUb !== nextUb && input.toCuadrillaId) {
       updateEquiposStockTx(tx, { cuadrillaId: input.toCuadrillaId, tipo: tipoEq, delta: 1 });
       const seriesRef = db.collection("cuadrillas").doc(input.toCuadrillaId).collection("equipos_series").doc(sn);
       tx.set(
@@ -105,18 +116,20 @@ export async function moverEquipoManualAction(input: {
 
   try {
     const usuario = await getUsuarioDisplayName(session.uid);
-    const msg = `${usuario} movió ${tipoEq} (SN: ${sn}) de "${prevUb}" a "${nextUb}"`;
-    await addGlobalNotification({
-      title: "Movimiento de Equipo",
-      message: msg,
-      type: "info",
-      scope: "ALL",
-      createdBy: session.uid,
-      entityType: "EQUIPO_MOVE",
-      entityId: sn,
-      action: "UPDATE",
-      estado: "ACTIVO",
-    });
+    if (prevUb !== nextUb) {
+      const msg = `${usuario} movió ${tipoEq} (SN: ${sn}) de "${prevUb}" a "${nextUb}"`;
+      await addGlobalNotification({
+        title: "Movimiento de Equipo",
+        message: msg,
+        type: "info",
+        scope: "ALL",
+        createdBy: session.uid,
+        entityType: "EQUIPO_MOVE",
+        entityId: sn,
+        action: "UPDATE",
+        estado: "ACTIVO",
+      });
+    }
   } catch {}
 
   return { ok: true, sn, ubicacion: nextUb, estado: nextEstado };

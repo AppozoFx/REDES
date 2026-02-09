@@ -6,6 +6,7 @@ export const EquipoDocSchema = z.object({
   SN: z.string().min(1),
   equipo: EquipoEnum,
   descripcion: z.string().min(1),
+  sn_tail: z.string().optional(),
 
   // Condicional: solo ONT
   proId: z.string().nullable().optional(),
@@ -78,4 +79,3 @@ export const ImportEquiposRowSchema = z.object({
 });
 
 export type ImportEquiposRow = z.infer<typeof ImportEquiposRowSchema>;
-

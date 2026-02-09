@@ -118,8 +118,10 @@ export async function createEquipo(doc: Omit<EquipoDoc, "audit">, actorUid: stri
   const snap = await ref.get();
   if (snap.exists) return; // create-only
 
+  const sn_tail = doc.sn_tail || id.slice(-6);
   const payload: Partial<EquipoDoc> = {
     ...omitUndefined(doc),
+    sn_tail,
     audit: {
       createdAt: FieldValue.serverTimestamp(),
       createdBy: actorUid,
@@ -130,4 +132,3 @@ export async function createEquipo(doc: Omit<EquipoDoc, "audit">, actorUid: stri
 
   await ref.set(payload);
 }
-

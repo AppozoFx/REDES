@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { onAuthStateChanged } from "firebase/auth";
@@ -10,6 +10,26 @@ import {
 } from "@/domain/notificaciones/repo";
 import { markAllNotificationsRead } from "@/domain/notificaciones/repo";
 
+function timeAgo(ts: any) {
+  if (!ts) return "";
+  const d =
+    typeof ts?.toDate === "function"
+      ? ts.toDate()
+      : typeof ts?.seconds === "number"
+      ? new Date(ts.seconds * 1000)
+      : null;
+  if (!d) return "";
+  const diffMs = Date.now() - d.getTime();
+  const sec = Math.max(1, Math.floor(diffMs / 1000));
+  if (sec < 60) return "hace unos segundos";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `hace ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `hace ${h} h`;
+  const days = Math.floor(h / 24);
+  return `hace ${days} d`;
+}
+
 export function NotificationsBell({ uid }: { uid: string }) {
   const [open, setOpen] = React.useState(false);
   const [items, setItems] = React.useState<NotificacionDoc[]>([]);
@@ -20,7 +40,7 @@ export function NotificationsBell({ uid }: { uid: string }) {
     const unsub = onAuthStateChanged(auth, (user) => {
       const u = user?.uid ?? null;
       setAuthUid(u);
-      // Debug de autenticación en cliente
+      // Debug de autenticaciÃ³n en cliente
       // eslint-disable-next-line no-console
       console.log("[NotificationsBell] auth.currentUser", { uidProp: uid, authUid: u, isReady: !!u });
     });
@@ -45,7 +65,7 @@ React.useEffect(() => {
   if (!unreadIds.length) return;
   if (markingRef.current) return;
 
-  // Optimistic: marcar como leído localmente
+  // Optimistic: marcar como leÃ­do localmente
   setItems((prev) => prev.map((n) => (unreadIds.includes(n.id) ? { ...n, read: true } : n)));
 
   markingRef.current = true;
@@ -55,7 +75,7 @@ React.useEffect(() => {
       setItems((prev) => prev.map((n) => (unreadIds.includes(n.id) ? { ...n, read: false } : n)));
     })
     .finally(() => {
-      // permitir futuros “open” si llegan nuevas notifs
+      // permitir futuros âopenâ si llegan nuevas notifs
       markingRef.current = false;
     });
 }, [open, authUid, items]);
@@ -128,8 +148,34 @@ React.useEffect(() => {
                         )}
                       </div>
                       <div className="text-xs text-gray-700 dark:text-white/80">{n.message}</div>
+                      {n.entityType === "DESPACHO" && n.entityId && (
+                        <div className="mt-2">
+                          <button
+                            type="button"
+                            className="text-xs text-blue-700 hover:underline dark:text-blue-300"
+                            onClick={async () => {
+                              try {
+                                const res = await fetch(
+                                  `/api/transferencias/instalaciones/guia/url?guiaId=${encodeURIComponent(
+                                    n.entityId
+                                  )}&tipo=despacho`,
+                                  { cache: "no-store" }
+                                );
+                                if (!res.ok) throw new Error("URL_FAIL");
+                                const data = await res.json();
+                                if (data?.url) window.open(data.url, "_blank");
+                              } catch {
+                                // silent
+                              }
+                            }}
+                          >
+                            Ver comprobante
+                          </button>
+                        </div>
+                      )}
                       <div className="mt-1 text-[11px] text-gray-500 dark:text-white/60">
                         {n.entityType} · {n.action}
+                        {n.createdAt ? ` · ${timeAgo(n.createdAt)}` : ""}
                       </div>
                     </div>
                     {!n.read && (
@@ -146,7 +192,7 @@ React.useEffect(() => {
                           });
                         }}
                       >
-                        Marcar leído
+                        Marcar leÃ­do
                       </button>
                     )}
                   </div>
@@ -159,3 +205,4 @@ React.useEffect(() => {
     </div>
   );
 }
+

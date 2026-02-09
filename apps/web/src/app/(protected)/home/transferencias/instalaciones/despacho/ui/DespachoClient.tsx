@@ -1,9 +1,11 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import { useActionState } from "react";
 import { toast } from "sonner";
 import { despacharInstalacionesAction } from "../../server-actions";
+import jsPDF from "jspdf";
+import QRCode from "qrcode";
 
 /**
  * Mantiene tu lgica:
@@ -36,7 +38,6 @@ const MATS_INST = [
   "CINTA_AISLANTE",
   "TEMPLADOR",
   "ANCLAJE_P",
-  "TARUGOS_P",
   "CLEVI",
   "HEBILLA_1_2",
   "CINTA_BANDI_1_2",
@@ -78,6 +79,238 @@ type CuadrillaStock = {
   bobinas?: StockItem[];
 };
 
+type GuiaThermalData = {
+  fechaStr?: string;
+  usuario?: string;
+  cuadrilla?: string;
+  coordinador?: string;
+  tecnicos?: string[];
+  tipo?: string;
+  observacion?: string;
+  equipos?: Array<{ SN?: string; equipo?: string }>;
+  materiales?: {
+    automaticos?: Record<string, number>;
+    manuales?: Record<string, number>;
+    drumps?: string[];
+  };
+  metrosCondominio?: number;
+  qrDataUrl?: string;
+};
+
+const RES_BOBINA_METROS = 1000;
+const KIT_BASE_POR_ONT_LOCAL: Record<string, number> = {
+  ACTA: 1,
+  CONECTOR: 1,
+  ROSETA: 1,
+  ACOPLADOR: 1,
+  PACHCORD: 1,
+  CINTILLO_30: 4,
+  CINTILLO_BANDERA: 1,
+};
+
+function shortName(name: string) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "";
+  const first = parts[0];
+  const last = parts.length > 1 ? parts[parts.length - 1] : "";
+  return last ? `${first} ${last}` : first;
+}
+
+async function makeQrDataUrl(value: string) {
+  return QRCode.toDataURL(value, {
+    errorCorrectionLevel: "H",
+    margin: 0,
+    width: 320,
+  });
+}
+
+function calcHeight80mm(data: GuiaThermalData) {
+  const line = 5;
+  let lines = 0;
+  lines += 6;
+  lines += 4;
+  lines += (data.tecnicos || []).length;
+  lines += 2;
+  lines += Object.keys(data.materiales?.automaticos || {}).length;
+  lines += Object.entries(data.materiales?.manuales || {}).filter(([, v]) => Number(v) > 0).length;
+  if (String(data.tipo || "").toLowerCase() === "residencial") {
+    lines += (data.materiales?.drumps || []).length;
+    if ((data.materiales?.drumps || []).length > 0) lines += 2;
+  } else {
+    if (Number(data.metrosCondominio || 0) > 0) lines += 1;
+  }
+  if ((data.equipos || []).length > 0) {
+    lines += 2;
+    lines += (data.equipos || []).length;
+  }
+  const obs = String(data.observacion || "");
+  const obsLines = obs ? Math.max(1, Math.ceil(obs.length / 24)) : 1;
+  lines += obsLines + 1;
+  const extra = (data.qrDataUrl ? 60 : 10) + 22;
+  const altura = 10 + lines * line + extra;
+  return Math.max(120, altura);
+}
+
+function generarPDFTermico80mm(guiaId: string, data: GuiaThermalData) {
+  const altura = calcHeight80mm(data);
+  const pdf = new jsPDF({ unit: "mm", format: [80, altura] });
+
+  const C = { align: "center" as const };
+  let y = 10;
+
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(9);
+
+  pdf.text("CONSTRUCCION DE REDES M&D S.A.C", 40, y, C); y += 5;
+  pdf.text("RUC: 20601345979", 40, y, C); y += 5;
+  pdf.text("Cal. Juan Prado de Zela Mza. F2 Lt. 3", 40, y, C); y += 5;
+  pdf.text("Apv. San Francisco de Cayran", 40, y, C); y += 5;
+  pdf.text("Cel/WSP: 913 637 815", 40, y, C); y += 7;
+
+  pdf.setFont("helvetica", "bold");
+  pdf.text(`GUIA: ${guiaId}`, 40, y, C); y += 5;
+  pdf.setFont("helvetica", "normal");
+  const fecha = data.fechaStr || new Date().toLocaleString("es-PE");
+  pdf.text(`FECHA: ${fecha}`, 40, y, C); y += 5;
+  pdf.text(`USUARIO: ${data.usuario || "-"}`, 40, y, C); y += 5;
+  pdf.setFont("helvetica", "bold");
+  pdf.text(`CUADRILLA: ${data.cuadrilla || "-"}`, 40, y, C); y += 5;
+  pdf.text(`COORDINADOR: ${data.coordinador || "-"}`, 40, y, C); y += 5;
+  pdf.setFont("helvetica", "normal");
+
+  (data.tecnicos || []).forEach((t, i) => {
+    pdf.text(`TECNICO ${i + 1}: ${t}`, 40, y, C);
+    y += 5;
+  });
+
+  y += 3;
+  pdf.setFont("helvetica", "bold");
+  pdf.text("DESPACHO", 40, y, C);
+  y += 6;
+  pdf.setFont("helvetica", "normal");
+
+  const colX1 = 6;
+  const colX2 = 42;
+  const rowH = 4;
+  const renderTwoCols = (items: string[]) => {
+    const rows = Math.ceil(items.length / 2);
+    for (let i = 0; i < rows; i++) {
+      const left = items[i * 2];
+      const right = items[i * 2 + 1];
+      if (left) pdf.text(left, colX1, y);
+      if (right) pdf.text(right, colX2, y);
+      y += rowH;
+    }
+  };
+
+  pdf.setFontSize(7);
+
+  const automaticos = data.materiales?.automaticos || {};
+  const autosList = Object.entries(automaticos)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k.replaceAll("_", " ")}: ${v}`);
+  const manuales = data.materiales?.manuales || {};
+  const manualesList = Object.entries(manuales)
+    .map(([k, v]) => ({ k, n: Number(v) || 0 }))
+    .filter((x) => x.n > 0)
+    .map((x) => `${x.k.replaceAll("_", " ")}: ${x.n}`);
+  const matsList = [...autosList, ...manualesList];
+  if (matsList.length) {
+    pdf.setFont("helvetica", "bold");
+    pdf.text("MATERIALES", 40, y, C);
+    y += 4;
+    pdf.setFont("helvetica", "normal");
+    renderTwoCols(matsList);
+    y += 1;
+  }
+  pdf.setFontSize(9);
+
+  if (String(data.tipo).toLowerCase() === "residencial") {
+    const drumps = data.materiales?.drumps || [];
+    if (drumps.length > 0) {
+      pdf.text("BOBINAS DRUMP:", 40, y, C); y += 5;
+      drumps.forEach((code) => {
+        pdf.text(`- ${code}`, 40, y, C);
+        y += 4;
+      });
+      pdf.text(`TOTAL: ${drumps.length * RES_BOBINA_METROS} m`, 40, y, C);
+      y += 5;
+    }
+  } else if (String(data.tipo).toLowerCase() === "condominio") {
+    const m = Number(data.metrosCondominio) || 0;
+    if (m > 0) {
+      pdf.text(`BOBINA (METROS): ${m}`, 40, y, C);
+      y += 5;
+    }
+  }
+
+  if ((data.equipos || []).length > 0) {
+    y += 3;
+    pdf.setFont("helvetica", "bold");
+    pdf.text("EQUIPOS:", 40, y, C);
+    y += 5;
+    pdf.setFont("helvetica", "normal");
+    (data.equipos || []).forEach((eq) => {
+      const sn = eq.SN || "-";
+      const tipoEq = eq.equipo || "-";
+      pdf.text(`${sn} - ${tipoEq}`, 40, y, C);
+      y += 5;
+    });
+  }
+
+  y += 4;
+  const obsText = `OBS: ${data.observacion || "Sin observaciones"}`;
+  const obsLines = pdf.splitTextToSize(obsText, 60) as string[];
+  pdf.text(obsLines, 10, y);
+  y += obsLines.length * 4;
+  y += 2;
+
+  if (data.qrDataUrl) {
+    pdf.addImage(data.qrDataUrl, "PNG", 20, y, 40, 40);
+    y += 52;
+  } else {
+    y += 6;
+  }
+
+  pdf.line(10, y, 40, y);
+  pdf.line(45, y, 75, y);
+  y += 10;
+  const firmaTec = (data.tecnicos || [])[0] || "Tecnico";
+  const firmaAlm = data.usuario || "Almacen";
+  pdf.text(firmaTec, 25, y, { align: "center" });
+  pdf.text(firmaAlm, 60, y, { align: "center" });
+
+  return pdf;
+}
+
+function printThermalBlobTwice(pdf: jsPDF) {
+  const blob = pdf.output("blob");
+  const urlBlob = URL.createObjectURL(blob);
+
+  const iframe = document.createElement("iframe");
+  iframe.style.display = "none";
+  iframe.src = urlBlob;
+  document.body.appendChild(iframe);
+
+  iframe.onload = () => {
+    iframe.contentWindow?.focus();
+    iframe.contentWindow?.print();
+    setTimeout(() => iframe.contentWindow?.print(), 1000);
+  };
+
+  setTimeout(() => {
+    try {
+      document.body.removeChild(iframe);
+    } catch {}
+    URL.revokeObjectURL(urlBlob);
+  }, 15000);
+
+  return blob;
+}
+
 // -----------------------
 // Hook: click guard
 // -----------------------
@@ -103,6 +336,66 @@ function numOr0(v: string | undefined) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function normalizePhone(raw: string) {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (!digits) return "";
+  const noPrefix = digits.startsWith("51") && digits.length >= 11 ? digits.slice(2) : digits;
+  return noPrefix.length >= 9 ? noPrefix : "";
+}
+
+async function obtenerCelularesTecnicos(tecnicosUID: string[] = []) {
+  if (!tecnicosUID.length) return [];
+  const qs = encodeURIComponent(tecnicosUID.join(","));
+  const res = await fetch(`/api/usuarios/phones?uids=${qs}`, { cache: "no-store" });
+  if (!res.ok) return [];
+  const data = await res.json();
+  const items = Array.isArray(data?.items) ? data.items : [];
+  const celulares = items.map((it: any) => normalizePhone(String(it?.celular || ""))).filter(Boolean);
+  return Array.from(new Set(celulares));
+}
+
+async function enviarGuiaPorWhatsAppATecnicos(args: {
+  tecnicosUID: string[];
+  tipoGuia: string;
+  guiaId: string;
+  cuadrilla: string;
+  tecnicosNombres: string[];
+  coordinador: string;
+  usuario: string;
+  fechaHora: string;
+  urlComprobante: string;
+  extraInfo?: string;
+}) {
+  const celulares = await obtenerCelularesTecnicos(args.tecnicosUID);
+  if (!celulares.length) return { total: 0 };
+
+  const lines: string[] = [];
+  lines.push(`*${args.tipoGuia}*`);
+  lines.push(`Guia: ${args.guiaId}`);
+  lines.push(`Cuadrilla: ${args.cuadrilla}`);
+  if (args.coordinador) lines.push(`Coordinador: ${args.coordinador}`);
+  if (args.tecnicosNombres.length) lines.push(`Tecnicos: ${args.tecnicosNombres.join(", ")}`);
+  if (args.usuario) lines.push(`Registrado por: ${args.usuario}`);
+  if (args.fechaHora) lines.push(`Fecha/Hora: ${args.fechaHora}`);
+  if (args.extraInfo) lines.push(args.extraInfo);
+  lines.push("Puedes ver el comprobante aqui:");
+  lines.push(args.urlComprobante);
+  const mensaje = lines.join("\n");
+
+  const numero = celulares[0];
+  try {
+    const url = `https://wa.me/51${numero}?text=${encodeURIComponent(mensaje)}`;
+    const win = window.open(url, "_blank", "noopener,noreferrer");
+    if (!win) {
+      toast.message("WhatsApp bloqueado por el navegador");
+    }
+  } catch {
+    // silent
+  }
+
+  return { total: 1 };
+}
+
 // -----------------------
 // Componente
 // -----------------------
@@ -120,6 +413,9 @@ export default function DespachoClient() {
   const [cuadrillaNombre, setCuadrillaNombre] = useState("");
   const [coordinador, setCoordinador] = useState("");
   const [tecnicos, setTecnicos] = useState("");
+  const [coordinadorUid, setCoordinadorUid] = useState("");
+  const [tecnicosUids, setTecnicosUids] = useState<string[]>([]);
+  const [tecnicosNombres, setTecnicosNombres] = useState<string[]>([]);
   const [tipo, setTipo] = useState<Tipo>("REGULAR");
   const [segmento, setSegmento] = useState<Segmento>("RESIDENCIAL");
   const [zonaId, setZonaId] = useState("");
@@ -129,6 +425,8 @@ export default function DespachoClient() {
   const [stock, setStock] = useState<CuadrillaStock | null>(null);
   const [stockLoading, setStockLoading] = useState(false);
   const [materialUnits, setMaterialUnits] = useState<Record<string, "UND" | "METROS" | undefined>>({});
+  const [usuarioNombre, setUsuarioNombre] = useState("");
+  const [observacion, setObservacion] = useState("");
 
   // Paso 2 - Equipos (modo scanner + modo bulk)
   const [snInput, setSnInput] = useState("");
@@ -149,6 +447,7 @@ export default function DespachoClient() {
   // Server action
   const [result, run, pending] = useActionState(despacharInstalacionesAction as any, null as any);
   const [lastPayload, setLastPayload] = useState<any>(null);
+  const printedGuiaRef = useRef<string>("");
 
   // -----------------------
   // Cargar lista de cuadrillas (opcional)
@@ -193,6 +492,47 @@ export default function DespachoClient() {
     })();
   }, []);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/me", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data?.ok && data?.nombre) setUsuarioNombre(shortName(String(data.nombre)));
+      } catch {
+        // silencioso
+      }
+    })();
+  }, []);
+
+  function resetDespachoForm() {
+    setStep(1);
+    setCuadrillaId("");
+    setBusqueda("");
+    setCuadrillaNombre("");
+    setCoordinador("");
+    setCoordinadorUid("");
+    setTecnicos("");
+    setTecnicosUids([]);
+    setTecnicosNombres([]);
+    setTipo("REGULAR");
+    setSegmento("RESIDENCIAL");
+    setZonaId("");
+    setInfoLoaded(false);
+    setStock(null);
+    setStockLoading(false);
+    setSnInput("");
+    setEquipos([]);
+    setBobinaInput("");
+    setBobinaCodes([]);
+    setBobinaCondominioMetros("300");
+    setMatUnd({});
+    setMatMetros({});
+    setObservacion("");
+    setShowPreview(false);
+    setLastPayload(null);
+  }
+
   // -----------------------
   // Resultado del server action
   // -----------------------
@@ -204,8 +544,15 @@ export default function DespachoClient() {
       if (r.resumen?.warnings?.length) {
         toast.message("Avisos", { description: r.resumen.warnings.join("; ") });
       }
-      // Cierra preview al xito
       setShowPreview(false);
+
+      if (r.guia && printedGuiaRef.current !== r.guia) {
+        printedGuiaRef.current = r.guia;
+        (async () => {
+          const ok = await imprimirGuiaTermica();
+          if (ok) resetDespachoForm();
+        })();
+      }
     } else {
       const msg = (result as any)?.error?.formErrors?.join(", ") || "Error en despacho";
       toast.error(msg);
@@ -222,14 +569,17 @@ export default function DespachoClient() {
 
     const info: CuadrillaInfo = data;
     setCuadrillaNombre(info.nombre || "");
-    const coordName = info.coordinadorNombre || info.coordinadorUid || "";
+    const coordName = shortName(info.coordinadorNombre || info.coordinadorUid || "");
     const techNames = Array.isArray(info.tecnicosNombres)
-      ? info.tecnicosNombres
+      ? info.tecnicosNombres.map((n: string) => shortName(n))
       : Array.isArray(info.tecnicosUids)
       ? info.tecnicosUids
       : [];
     setCoordinador(coordName);
+    setCoordinadorUid(String(info.coordinadorUid || info.coordinador || ""));
     setTecnicos(techNames.join(", "));
+    setTecnicosUids(Array.isArray(info.tecnicosUids) ? info.tecnicosUids : []);
+    setTecnicosNombres(techNames);
     const rawTipo = String(info.tipoZona || info.tipo || "").trim().toUpperCase();
     const nextTipo: Tipo = rawTipo === "ALTO_VALOR" ? "ALTO_VALOR" : "REGULAR";
     const rawSegmento = String(info.segmento || info.r_c || info.categoria || "")
@@ -348,6 +698,7 @@ export default function DespachoClient() {
         const data = await res.json();
         if (!data?.ok) {
           toast.error(data?.error || "Error validando SN");
+          setSnInput("");
           return;
         }
         if (data.status === "ALMACEN") {
@@ -359,11 +710,14 @@ export default function DespachoClient() {
         }
         if (data.status === "DESPACHADO") {
           toast.error(`Serie ya despachada. Cuadrilla: ${data.ubicacion || "N/A"}`);
+          setSnInput("");
           return;
         }
         toast.error(`Serie no esta en almacen. Ubicacion: ${data.ubicacion || "N/A"}`);
+        setSnInput("");
       } catch {
         toast.error("Error validando SN");
+        setSnInput("");
       } finally {
         setSnValidating(false);
         setTimeout(() => snInputRef.current?.focus(), 0);
@@ -389,6 +743,157 @@ export default function DespachoClient() {
   const handleRemoveBobina = (code: string) =>
     setBobinaCodes((p) => p.filter((x) => x !== code));
 
+  function handleMatUndChange(id: string, raw: string) {
+    const value = raw.replace(/\D/g, "");
+    setMatUnd((p) => {
+      const next = { ...p, [id]: value };
+      if (id === "CLEVI") {
+        const n = value ? Number(value) : 0;
+        next.HEBILLA_1_2 = n ? String(n * 2) : "";
+      }
+      return next;
+    });
+  }
+
+  async function imprimirGuiaTermica(): Promise<boolean> {
+    const guia = (result as any)?.guia;
+    if (!guia) {
+      toast.error("No hay guia para imprimir");
+      return false;
+    }
+
+    const { payload } = buildPayload();
+    const mats = (payload as any).materiales || [];
+    const countONT = equipos.filter((e) => String(e.tipo || "").toUpperCase() === "ONT").length;
+    const automaticos: Record<string, number> = {};
+    if (countONT > 0) {
+      for (const [k, v] of Object.entries(KIT_BASE_POR_ONT_LOCAL)) {
+        automaticos[k] = (automaticos[k] || 0) + v * countONT;
+      }
+    }
+    const manuales: Record<string, number> = {};
+    for (const m of mats) {
+      const id = String(m?.materialId || "");
+      if (!id || id === "TARUGOS_P") continue;
+      const n = Number(m?.und ?? m?.metros ?? 0);
+      if (!n) continue;
+      manuales[id] = (manuales[id] || 0) + n;
+    }
+
+    const data: GuiaThermalData = {
+      fechaStr: new Date().toLocaleString("es-PE"),
+      usuario: usuarioNombre || "",
+      cuadrilla: cuadrillaNombre || cuadrillaId,
+      coordinador: coordinador || "",
+      tecnicos: tecnicos ? tecnicos.split(",").map((t) => t.trim()).filter(Boolean) : [],
+      tipo: segmento,
+      observacion: observacion || "",
+      equipos: equipos.map((e) => ({ SN: e.sn, equipo: e.tipo })),
+      materiales: {
+        automaticos,
+        manuales,
+        drumps: (payload as any)?.bobinasResidenciales?.map((b: any) => b.codigoRaw) || [],
+      },
+      metrosCondominio: Math.max(0, numOr0(bobinaCondominioMetros || "0")),
+    };
+
+    const token = typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const bucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "";
+    const path = `guias/instalaciones/despacho/${guia}.pdf`;
+    const encodedPath = encodeURIComponent(path);
+    const directUrl = bucket
+      ? `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodedPath}?alt=media&token=${token}`
+      : "";
+
+    if (directUrl) {
+      try {
+        data.qrDataUrl = await makeQrDataUrl(directUrl);
+      } catch {}
+    }
+
+    const pdf = generarPDFTermico80mm(guia, data);
+
+    try {
+      const blob = pdf.output("blob");
+      const res = await fetch(
+        `/api/transferencias/instalaciones/guia/upload?guiaId=${encodeURIComponent(guia)}&tipo=despacho&token=${encodeURIComponent(token)}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/pdf" },
+          body: await blob.arrayBuffer(),
+        }
+      );
+      if (!res.ok) throw new Error("UPLOAD_FAILED");
+
+      printThermalBlobTwice(pdf);
+
+      const equiposByTipo: Record<string, number> = {};
+      equipos.forEach((e) => {
+        const tipo = String(e.tipo || "OTROS").toUpperCase();
+        equiposByTipo[tipo] = (equiposByTipo[tipo] || 0) + 1;
+      });
+      const equiposResumen = Object.entries(equiposByTipo)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => `${v} ${k}`)
+        .join("\n");
+      const equiposDetalle = equipos
+        .map((e) => `${e.sn} - ${String(e.tipo || "").toUpperCase() || "OTROS"}`)
+        .join("\n");
+
+      const materialesDetalleList: string[] = [];
+      Object.entries(automaticos)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .forEach(([k, v]) => {
+          const n = Number(v) || 0;
+          if (n > 0) materialesDetalleList.push(`${k}: ${n}`);
+        });
+      Object.entries(manuales)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .forEach(([k, v]) => {
+          const n = Number(v) || 0;
+          if (n > 0) materialesDetalleList.push(`${k}: ${n}`);
+        });
+      const bobinaMetros = mats
+        .filter((m: any) => String(m?.materialId || "") === "BOBINA")
+        .reduce((acc: number, m: any) => acc + Number(m?.metros || 0), 0);
+      if (bobinaMetros > 0) materialesDetalleList.push(`BOBINA: ${bobinaMetros} m`);
+
+      const partsMsg: string[] = [];
+      if (equipos.length > 0) {
+        partsMsg.push("*Resumen equipos:*");
+        partsMsg.push(equiposResumen || "-");
+        partsMsg.push("*Equipos (SN - equipo):*");
+        partsMsg.push(equiposDetalle || "-");
+      }
+      if (materialesDetalleList.length > 0) {
+        partsMsg.push("*Materiales:*");
+        partsMsg.push(materialesDetalleList.join("\n"));
+      }
+      const extraInfo = partsMsg.length ? partsMsg.join("\n") : "";
+
+      if (directUrl && coordinadorUid) {
+        const r = await enviarGuiaPorWhatsAppATecnicos({
+          tecnicosUID: [coordinadorUid],
+          tipoGuia: "Despacho",
+          guiaId: guia,
+          cuadrilla: cuadrillaNombre || cuadrillaId,
+          tecnicosNombres: tecnicosNombres,
+          coordinador: coordinador || "",
+          usuario: usuarioNombre || "",
+          fechaHora: new Date().toLocaleString("es-PE"),
+          urlComprobante: directUrl,
+          extraInfo,
+        });
+        if (!r.total) toast.message("No se encontro celular de coordinador");
+      }
+    } catch {
+      toast.error("No se pudo subir la guia a Storage");
+      return false;
+    }
+
+    return true;
+  }
+
 
   // -----------------------
   // Construccin payload (MISMA lgica que t ya tienes)
@@ -406,6 +911,9 @@ export default function DespachoClient() {
       if (und > 0) materiales.push({ materialId: id, und });
       else if (m > 0) materiales.push({ materialId: id, metros: m });
     }
+    // TARUGOS_P siempre acompaña a ANCLAJE_P (1:1), interno
+    const anclajeUnd = Math.max(0, Math.trunc(numOr0(matUnd.ANCLAJE_P || "0")));
+    if (anclajeUnd > 0) materiales.push({ materialId: "TARUGOS_P", und: anclajeUnd });
 
     if (segmento === "RESIDENCIAL") {
       const codes = bobinaCodes;
@@ -416,6 +924,7 @@ export default function DespachoClient() {
         equipos: equipos.map((e) => e.sn),
         materiales,
         bobinasResidenciales: codes.map((codigoRaw) => ({ codigoRaw })),
+        observacion,
       };
 
       return { payload, extra: { codesCount: codes.length } };
@@ -423,7 +932,7 @@ export default function DespachoClient() {
       const m = Math.max(0, numOr0(bobinaCondominioMetros || "0"));
       if (m > 0) materiales.push({ materialId: "BOBINA", metros: m });
 
-      const payload = { cuadrillaId, equipos: equipos.map((e) => e.sn), materiales };
+      const payload = { cuadrillaId, equipos: equipos.map((e) => e.sn), materiales, observacion };
       return { payload, extra: { metros: m } };
     }
   }
@@ -479,6 +988,13 @@ export default function DespachoClient() {
   // -----------------------
   return (
     <div className="space-y-4">
+      {pending && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30">
+          <div className="rounded-lg bg-white px-4 py-3 text-sm shadow">
+            Registrando despacho...
+          </div>
+        </div>
+      )}
       {/* Paso 1 */}
       {step === 1 && (
         <div className="space-y-4">
@@ -848,7 +1364,7 @@ export default function DespachoClient() {
                         <label className="block">UND</label>
                         <input
                           value={matUnd[id] || ""}
-                          onChange={(e) => setMatUnd((p) => ({ ...p, [id]: e.target.value.replace(/\D/g, "") }))}
+                          onChange={(e) => handleMatUndChange(id, e.target.value)}
                           className="mt-1 w-full rounded border px-2 py-1"
                           inputMode="numeric"
                           pattern="[0-9]*"
@@ -870,7 +1386,7 @@ export default function DespachoClient() {
                           <label className="block">UND</label>
                           <input
                             value={matUnd[id] || ""}
-                            onChange={(e) => setMatUnd((p) => ({ ...p, [id]: e.target.value.replace(/\D/g, "") }))}
+                            onChange={(e) => handleMatUndChange(id, e.target.value)}
                             className="mt-1 w-full rounded border px-2 py-1"
                             inputMode="numeric"
                             pattern="[0-9]*"
@@ -893,6 +1409,17 @@ export default function DespachoClient() {
             </div>
           </div>
 
+          <div className="rounded border p-3">
+            <div className="font-medium">Observación</div>
+            <textarea
+              value={observacion}
+              onChange={(e) => setObservacion(e.target.value)}
+              className="mt-2 w-full rounded border px-2 py-1"
+              rows={3}
+              placeholder="Observaciones del despacho"
+            />
+          </div>
+
           {/* Acciones: Preview / Confirmar */}
           <div className="pt-2 flex gap-2 items-center">
             <button
@@ -903,12 +1430,6 @@ export default function DespachoClient() {
             >
               {pending ? "Procesando..." : "Previsualizar"}
             </button>
-
-            {result?.ok && (
-              <button type="button" onClick={() => window.print()} className="rounded border px-3 py-2 hover:bg-muted">
-                Imprimir gua
-              </button>
-            )}
 
             {result?.ok && (result as any)?.resumen?.warnings?.length > 0 && (
               <span className="text-xs text-amber-700">{(result as any).resumen.warnings.length} aviso(s)</span>
@@ -935,7 +1456,9 @@ export default function DespachoClient() {
               </div>
               <div className="mt-2">
                 <div className="font-medium">Materiales</div>
-                {(lastPayload?.materiales || []).map((m: any, idx: number) => (
+                {(lastPayload?.materiales || [])
+                  .filter((m: any) => String(m?.materialId || "") !== "TARUGOS_P")
+                  .map((m: any, idx: number) => (
                   <div key={idx} className="text-xs">
                     {m.materialId}: {m.und || m.metros}
                   </div>
@@ -1037,7 +1560,9 @@ export default function DespachoClient() {
                       <div className="text-muted-foreground"></div>
                     ) : (
                       <ul className="list-disc pl-5 mt-1">
-                        {mats.map((m: any, i: number) => (
+                        {mats
+                          .filter((m: any) => String(m?.materialId || "") !== "TARUGOS_P")
+                          .map((m: any, i: number) => (
                           <li key={i}>
                             {m.materialId}: {m.und ? `${m.und} UND` : `${m.metros} m`}
                           </li>

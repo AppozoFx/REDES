@@ -13,6 +13,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { normalizeUbicacion, toDatePartsLima } from "@/domain/equipos/repo";
 import { metersToCm } from "@/domain/materiales/repo";
+import { addGlobalNotification } from "@/domain/notificaciones/service";
 
 function parseMaybeFormData(arg1: any, arg2?: any): any {
   if (typeof arg2 !== "undefined") return arg2;
@@ -54,6 +55,26 @@ function uniqueStrings(list: string[]): string[] {
   return Array.from(new Set((list || []).map((s) => String(s || "").trim()).filter(Boolean)));
 }
 
+function shortName(name: string) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "";
+  const first = parts[0];
+  const last = parts.length > 1 ? parts[parts.length - 1] : "";
+  return last ? `${first} ${last}` : first;
+}
+
+async function getUsuarioDisplayName(uid: string) {
+  const snap = await adminDb().collection("usuarios").doc(uid).get();
+  if (!snap.exists) return uid;
+  const data = snap.data() as any;
+  const nombres = String(data?.nombres || "").trim();
+  const apellidos = String(data?.apellidos || "").trim();
+  return shortName(`${nombres} ${apellidos}`.trim() || uid);
+}
+
 async function getMaterial(materialId: string): Promise<any | null> {
   const snap = await adminDb().collection("materiales").doc(materialId).get();
   return snap.exists ? snap.data() : null;
@@ -87,8 +108,26 @@ async function updateStockTx(
   }
 }
 
+function updateEquiposStockTx(
+  tx: FirebaseFirestore.Transaction,
+  opts: { cuadrillaId: string; tipo: string; delta: number }
+) {
+  const db = adminDb();
+  const tipo = String(opts.tipo || "UNKNOWN").toUpperCase();
+  const ref = db.collection("cuadrillas").doc(opts.cuadrillaId).collection("equipos_stock").doc(tipo);
+  tx.set(
+    ref,
+    {
+      tipo,
+      cantidad: FieldValue.increment(opts.delta),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
 export async function despacharInstalacionesAction(arg1: any, arg2?: any): Promise<TransferOk | { ok: false; error: { formErrors: string[] } }> {
-  await requireServerPermission("EQUIPOS_DESPACHO");
+  const session = await requireServerPermission("EQUIPOS_DESPACHO");
   await requireServerPermission("MATERIALES_TRANSFER_SERVICIO");
   try {
     const raw = parseMaybeFormData(arg1, arg2);
@@ -242,8 +281,9 @@ export async function despacharInstalacionesAction(arg1: any, arg2?: any): Promi
           const loc = normalizeUbicacion(c.nombre || input.cuadrillaId);
           if (!loc.isCuadrilla) { itemsEquipos.push({ sn, status: "ERROR", reason: "CUADRILLA_INVALID" }); continue; }
           tx.update(ref, { ubicacion: loc.ubicacion, estado: loc.estado, f_despachoAt: d.at, f_despachoYmd: d.ymd, f_despachoHm: d.hm, guia_despacho: guia, audit: { ...(e.audit || {}), updatedAt: FieldValue.serverTimestamp() } });
-          const tipo = String(e.equipo || "").toUpperCase();
+          const tipo = String(e.equipo || "UNKNOWN").toUpperCase();
           movedTypes[tipo] = (movedTypes[tipo] || 0) + 1;
+          updateEquiposStockTx(tx, { cuadrillaId: input.cuadrillaId, tipo, delta: 1 });
           tx.set(markRef, { transferId, type: "EQUIPO", id: sn, appliedAt: FieldValue.serverTimestamp() });
           itemsEquipos.push({ sn, status: "OK" });
         }
@@ -319,6 +359,27 @@ export async function despacharInstalacionesAction(arg1: any, arg2?: any): Promi
     } catch {}
 
     const resumen = { equipos: { ok: itemsEquipos.filter(x=>x.status==='OK').length, fail: itemsEquipos.filter(x=>x.status==='ERROR').length }, materiales: { ok: itemsMateriales.filter(x=>x.status==='OK').length, fail: itemsMateriales.filter(x=>x.status==='ERROR').length }, warnings };
+
+    // Notificacion global
+    try {
+      const usuario = await getUsuarioDisplayName(session.uid);
+      const cuadName = c?.nombre ? String(c.nombre) : input.cuadrillaId;
+      const equiposOk = itemsEquipos.filter((x) => x.status === "OK").length;
+      const materialesOk = itemsMateriales.filter((x) => x.status === "OK").length;
+      const bobinaMetros = Math.max(0, Number(matMap.get("BOBINA")?.metros || 0));
+      const msg = `${usuario} realizo un despacho para "${cuadName}". Equipos: ${equiposOk}, Materiales: ${materialesOk}, Bobina: ${bobinaMetros} m`;
+      await addGlobalNotification({
+        title: "Despacho",
+        message: msg,
+        type: "success",
+        scope: "ALL",
+        createdBy: session.uid,
+        entityType: "DESPACHO",
+        entityId: guia,
+        action: "CREATE",
+        estado: "ACTIVO",
+      });
+    } catch {}
     return { ok: true, transferId, guia, resumen, itemsEquipos, itemsMateriales };
   } catch (e: any) {
     const code = String(e?.message ?? "ERROR");
@@ -368,8 +429,9 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
           const e = snap.data() as any;
           if ((e.ubicacion || "") !== expectedUb) { itemsEquipos.push({ sn, status: "ERROR", reason: "EQUIPO_NOT_IN_CUADRILLA" }); continue; }
           tx.update(ref, { ubicacion: "ALMACEN", estado: "ALMACEN", f_devolucionAt: d.at, f_devolucionYmd: d.ymd, f_devolucionHm: d.hm, guia_devolucion: guia, audit: { ...(e.audit || {}), updatedAt: FieldValue.serverTimestamp() } });
-          const tipo = String(e.equipo || "").toUpperCase();
+          const tipo = String(e.equipo || "UNKNOWN").toUpperCase();
           movedTypes[tipo] = (movedTypes[tipo] || 0) + 1;
+          updateEquiposStockTx(tx, { cuadrillaId: input.cuadrillaId, tipo, delta: -1 });
           itemsEquipos.push({ sn, status: "OK" });
         }
       });

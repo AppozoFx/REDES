@@ -91,6 +91,11 @@ export async function moverEquipoManualAction(input: {
           descripcion,
           ubicacion: nextUb,
           estado: nextEstado,
+          guia_despacho: String((e as any)?.guia_despacho || ""),
+          f_despachoAt: (e as any)?.f_despachoAt || null,
+          f_despachoYmd: (e as any)?.f_despachoYmd || null,
+          f_despachoHm: (e as any)?.f_despachoHm || null,
+          tecnicos: Array.isArray((e as any)?.tecnicos) ? (e as any).tecnicos : [],
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }

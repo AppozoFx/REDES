@@ -75,6 +75,21 @@ async function getUsuarioDisplayName(uid: string) {
   return shortName(`${nombres} ${apellidos}`.trim() || uid);
 }
 
+async function getUsuariosDisplayNames(uids: string[] | undefined | null) {
+  const list = (uids || []).map((u) => String(u || "").trim()).filter(Boolean);
+  if (!list.length) return [];
+  const db = adminDb();
+  const refs = list.map((uid) => db.collection("usuarios").doc(uid));
+  const snaps = await db.getAll(...refs);
+  return snaps.map((snap, i) => {
+    if (!snap.exists) return list[i];
+    const data = snap.data() as any;
+    const nombres = String(data?.nombres || "").trim();
+    const apellidos = String(data?.apellidos || "").trim();
+    return shortName(`${nombres} ${apellidos}`.trim() || list[i]);
+  });
+}
+
 async function getMaterial(materialId: string): Promise<any | null> {
   const snap = await adminDb().collection("materiales").doc(materialId).get();
   return snap.exists ? snap.data() : null;
@@ -149,6 +164,8 @@ export async function despacharInstalacionesAction(arg1: any, arg2?: any): Promi
     const c = cSnap.data() as any;
     if ((c.area || "") !== "INSTALACIONES") throw new Error("INVALID_CUADRILLA");
     const segmento: "RESIDENCIAL" | "CONDOMINIO" = (c.segmento || "RESIDENCIAL").toUpperCase();
+    const tecnicosUids: string[] = Array.isArray(c.tecnicos) ? c.tecnicos : Array.isArray(c.tecnicosUids) ? c.tecnicosUids : [];
+    const tecnicosNombres = await getUsuariosDisplayNames(tecnicosUids);
     const loc = normalizeUbicacion(c.nombre || input.cuadrillaId);
     if (!loc.isCuadrilla) throw new Error("CUADRILLA_INVALID");
 
@@ -280,12 +297,12 @@ export async function despacharInstalacionesAction(arg1: any, arg2?: any): Promi
           if ((e.ubicacion || "") !== "ALMACEN") { itemsEquipos.push({ sn, status: "ERROR", reason: "EQUIPO_NOT_IN_ALMACEN" }); continue; }
           const loc = normalizeUbicacion(c.nombre || input.cuadrillaId);
           if (!loc.isCuadrilla) { itemsEquipos.push({ sn, status: "ERROR", reason: "CUADRILLA_INVALID" }); continue; }
-          tx.update(ref, { ubicacion: loc.ubicacion, estado: "CAMPO", f_despachoAt: d.at, f_despachoYmd: d.ymd, f_despachoHm: d.hm, guia_despacho: guia, audit: { ...(e.audit || {}), updatedAt: FieldValue.serverTimestamp() } });
+          tx.update(ref, { ubicacion: loc.ubicacion, estado: "CAMPO", f_despachoAt: d.at, f_despachoYmd: d.ymd, f_despachoHm: d.hm, guia_despacho: guia, tecnicos: tecnicosNombres, audit: { ...(e.audit || {}), updatedAt: FieldValue.serverTimestamp() } });
           const tipo = String(e.equipo || "UNKNOWN").toUpperCase();
           movedTypes[tipo] = (movedTypes[tipo] || 0) + 1;
           updateEquiposStockTx(tx, { cuadrillaId: input.cuadrillaId, tipo, delta: 1 });
           const seriesRef = db.collection("cuadrillas").doc(input.cuadrillaId).collection("equipos_series").doc(sn);
-          tx.set(seriesRef, { SN: sn, equipo: tipo, descripcion: String(e.descripcion || ""), ubicacion: loc.ubicacion, estado: "CAMPO", guia_despacho: guia, f_despachoAt: d.at, f_despachoYmd: d.ymd, f_despachoHm: d.hm, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+          tx.set(seriesRef, { SN: sn, equipo: tipo, descripcion: String(e.descripcion || ""), ubicacion: loc.ubicacion, estado: "CAMPO", guia_despacho: guia, f_despachoAt: d.at, f_despachoYmd: d.ymd, f_despachoHm: d.hm, tecnicos: tecnicosNombres, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
           tx.set(markRef, { transferId, type: "EQUIPO", id: sn, appliedAt: FieldValue.serverTimestamp() });
           itemsEquipos.push({ sn, status: "OK" });
         }

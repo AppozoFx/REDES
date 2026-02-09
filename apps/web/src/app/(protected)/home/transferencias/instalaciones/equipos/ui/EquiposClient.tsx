@@ -134,14 +134,36 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
       toast.error("No hay equipos para exportar");
       return;
     }
-    const ok = window.confirm(`Se exporta LISTA ${equipos.length} series. ¿Confirmar?`);
-    if (!ok) return;
-    const data = equipos.map(mapExportRow);
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Equipos");
-    XLSX.writeFile(wb, exportFilename("LISTA"));
-    toast.success(`Equipos exportados: ${equipos.length}`);
+    const toastId = toast(
+      (t) => (
+        <div>
+          <div className="text-sm font-medium">Se exporta LISTA {equipos.length} series.</div>
+          <div className="mt-2 flex justify-end gap-2">
+            <button
+              className="rounded bg-blue-600 px-3 py-1 text-white"
+              onClick={() => {
+                toast.dismiss(toastId);
+                const data = equipos.map(mapExportRow);
+                const ws = XLSX.utils.json_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Equipos");
+                XLSX.writeFile(wb, exportFilename("LISTA"));
+                toast.success(`Equipos exportados: ${equipos.length}`);
+              }}
+            >
+              Confirmar
+            </button>
+            <button
+              className="rounded border px-3 py-1"
+              onClick={() => toast.dismiss(toastId)}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ),
+      { duration: 10000 }
+    );
   };
 
   const exportarPriTec = async () => {
@@ -149,28 +171,50 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
       toast.error("No hay equipos para exportar");
       return;
     }
-    const ok = window.confirm(`Se exporta PRI-TEC ${equipos.length} series. ¿Confirmar?`);
-    if (!ok) return;
-    const data = equipos.map((e) => ({ ...mapExportRow(e), "Pri-Tec": "SI" }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "PRI-TEC");
-    XLSX.writeFile(wb, exportFilename("PRI-TEC"));
-    try {
-      await Promise.all(
-        equipos.map((e: any) =>
-          moverEquipoManualAction({
-            sn: String(e.SN || e.id || "").toUpperCase(),
-            toUbicacion: String(e.ubicacion || ""),
-            caso: String(e.caso || ""),
-            observacion: String(e.observacion || ""),
-            pri_tec: "SI",
-          })
-        )
-      );
-    } catch {}
-    setEquipos((prev) => prev.map((e: any) => ({ ...e, pri_tec: "SI" })));
-    toast.success(`PRI-TEC exportado y actualizado: ${equipos.length}`);
+    const toastId = toast(
+      (t) => (
+        <div>
+          <div className="text-sm font-medium">Se exporta PRI-TEC {equipos.length} series.</div>
+          <div className="mt-2 flex justify-end gap-2">
+            <button
+              className="rounded bg-purple-600 px-3 py-1 text-white"
+              onClick={async () => {
+                toast.dismiss(toastId);
+                const data = equipos.map((e) => ({ ...mapExportRow(e), "Pri-Tec": "SI" }));
+                const ws = XLSX.utils.json_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "PRI-TEC");
+                XLSX.writeFile(wb, exportFilename("PRI-TEC"));
+                try {
+                  await Promise.all(
+                    equipos.map((e: any) =>
+                      moverEquipoManualAction({
+                        sn: String(e.SN || e.id || "").toUpperCase(),
+                        toUbicacion: String(e.ubicacion || ""),
+                        caso: String(e.caso || ""),
+                        observacion: String(e.observacion || ""),
+                        pri_tec: "SI",
+                      })
+                    )
+                  );
+                } catch {}
+                setEquipos((prev) => prev.map((e: any) => ({ ...e, pri_tec: "SI" })));
+                toast.success(`PRI-TEC exportado y actualizado: ${equipos.length}`);
+              }}
+            >
+              Confirmar
+            </button>
+            <button
+              className="rounded border px-3 py-1"
+              onClick={() => toast.dismiss(toastId)}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ),
+      { duration: 10000 }
+    );
   };
 
   const exportarTecLiq = async () => {
@@ -178,28 +222,50 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
       toast.error("No hay equipos para exportar");
       return;
     }
-    const ok = window.confirm(`Se exporta TEC-LIQ ${equipos.length} series. ¿Confirmar?`);
-    if (!ok) return;
-    const data = equipos.map((e) => ({ ...mapExportRow(e), "Tec-Liq": "SI" }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "TEC-LIQ");
-    XLSX.writeFile(wb, exportFilename("TEC-LIQ"));
-    try {
-      await Promise.all(
-        equipos.map((e: any) =>
-          moverEquipoManualAction({
-            sn: String(e.SN || e.id || "").toUpperCase(),
-            toUbicacion: String(e.ubicacion || ""),
-            caso: String(e.caso || ""),
-            observacion: String(e.observacion || ""),
-            tec_liq: "SI",
-          })
-        )
-      );
-    } catch {}
-    setEquipos((prev) => prev.map((e: any) => ({ ...e, tec_liq: "SI" })));
-    toast.success(`TEC-LIQ exportado y actualizado: ${equipos.length}`);
+    const toastId = toast(
+      (t) => (
+        <div>
+          <div className="text-sm font-medium">Se exporta TEC-LIQ {equipos.length} series.</div>
+          <div className="mt-2 flex justify-end gap-2">
+            <button
+              className="rounded bg-green-600 px-3 py-1 text-white"
+              onClick={async () => {
+                toast.dismiss(toastId);
+                const data = equipos.map((e) => ({ ...mapExportRow(e), "Tec-Liq": "SI" }));
+                const ws = XLSX.utils.json_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "TEC-LIQ");
+                XLSX.writeFile(wb, exportFilename("TEC-LIQ"));
+                try {
+                  await Promise.all(
+                    equipos.map((e: any) =>
+                      moverEquipoManualAction({
+                        sn: String(e.SN || e.id || "").toUpperCase(),
+                        toUbicacion: String(e.ubicacion || ""),
+                        caso: String(e.caso || ""),
+                        observacion: String(e.observacion || ""),
+                        tec_liq: "SI",
+                      })
+                    )
+                  );
+                } catch {}
+                setEquipos((prev) => prev.map((e: any) => ({ ...e, tec_liq: "SI" })));
+                toast.success(`TEC-LIQ exportado y actualizado: ${equipos.length}`);
+              }}
+            >
+              Confirmar
+            </button>
+            <button
+              className="rounded border px-3 py-1"
+              onClick={() => toast.dismiss(toastId)}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ),
+      { duration: 10000 }
+    );
   };
 
   useEffect(() => {
@@ -424,9 +490,10 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
   return (
     <div className="space-y-3">
       <div className="rounded border px-3 py-2 text-sm">
-        <div className="font-medium">Resumen</div>
-        <div>Total: {resumenByEquipo.total}</div>
-        <div className="text-muted-foreground">{resumenByEquipo.parts.join(" - ") || "-"}</div>
+        <span className="font-medium">Resumen:</span>{" "}
+        <span className="text-muted-foreground">
+          {resumenByEquipo.parts.join(" - ") || "-"}
+        </span>
       </div>
       <div className="flex flex-wrap gap-2">
         <input

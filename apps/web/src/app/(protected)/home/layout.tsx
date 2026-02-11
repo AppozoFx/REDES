@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { requireAuth } from "@/core/auth/guards";
 import HomeSidebar from "@/ui/home/Sidebar";
 import HomeTopbar from "@/ui/home/Topbar";
@@ -10,8 +9,6 @@ export default async function HomeLayout({
   children: React.ReactNode;
 }) {
   const session = await requireAuth();
-
-  if (session.isAdmin) redirect("/admin");
 
   return (
     <div className="min-h-dvh grid grid-cols-[240px_1fr]">

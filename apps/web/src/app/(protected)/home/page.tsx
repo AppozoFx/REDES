@@ -6,8 +6,6 @@ import { listPendingComunicadosForUser } from "@/domain/comunicados/service";
 export default async function HomeRouterPage() {
   const session = await requireAuth();
 
-  if (session.isAdmin) redirect("/admin");
-
   const pending = await listPendingComunicadosForUser(session);
 
   // Gate por cualquier comunicado pendiente (obligatorio u opcional)

@@ -19,6 +19,10 @@ export default function Topbar({ uid }: Props) {
       </div>
 
       <div className="flex items-center gap-3">
+        <Link href="/home" className="rounded border px-3 py-1 text-sm hover:bg-muted">
+          Ir a Home
+        </Link>
+
         <NotificationsBell uid={uid} />
 
         <button

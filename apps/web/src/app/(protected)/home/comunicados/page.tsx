@@ -11,7 +11,6 @@ function getPersistencia(c: any): "ONCE" | "ALWAYS" {
 
 export default async function ComunicadosGatePage() {
   const session = await requireAuth();
-  if (session.isAdmin) redirect("/admin");
 
   const pending = await listPendingComunicadosForUser(session);
 
@@ -122,4 +121,3 @@ export default async function ComunicadosGatePage() {
     </div>
   );
 }
-

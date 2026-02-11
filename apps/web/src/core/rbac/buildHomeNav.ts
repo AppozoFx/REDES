@@ -7,11 +7,11 @@ export type NavItem = {
 };
 
 function hasArea(session: ServerSession, area: string) {
-  return session.access.areas?.includes(area) ?? false;
+  return session.isAdmin || (session.access.areas?.includes(area) ?? false);
 }
 
 function hasPerm(session: ServerSession, perm: string) {
-  return session.permissions?.includes(perm) ?? false;
+  return session.isAdmin || (session.permissions?.includes(perm) ?? false);
 }
 
 export function buildHomeNav(session: ServerSession): NavItem[] {

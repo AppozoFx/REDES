@@ -72,6 +72,17 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     items.push({ key: "TR_INST_EQ", label: "Equipos (Inst)", href: "/home/transferencias/instalaciones/equipos" });
   }
 
+  // Ventas
+  if (hasPerm(session, "VENTAS_VER") || hasPerm(session, "VENTAS_VER_ALL")) {
+    items.push({ key: "VENTAS", label: "Ventas", href: "/home/ventas" });
+  }
+  if (hasPerm(session, "VENTAS_DESPACHO_INST")) {
+    items.push({ key: "VENTAS_INST", label: "Ventas: Despacho (Inst)", href: "/home/ventas/instalaciones/despacho" });
+  }
+  if (hasPerm(session, "VENTAS_DESPACHO_AVER")) {
+    items.push({ key: "VENTAS_AVER", label: "Ventas: Despacho (AVERIAS)", href: "/home/ventas/averias/despacho" });
+  }
+
   items.push({ key: "PERFIL", label: "Mi perfil", href: "/home/perfil" });
 
   return items;

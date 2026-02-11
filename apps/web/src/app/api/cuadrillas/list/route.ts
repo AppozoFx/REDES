@@ -7,12 +7,16 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const area = searchParams.get("area");
+    const coordinadorUid = searchParams.get("coordinadorUid");
 
     let q = adminDb()
       .collection("cuadrillas")
       .where("estado", "==", "HABILITADO");
     if (area) {
       q = q.where("area", "==", area);
+    }
+    if (coordinadorUid) {
+      q = q.where("coordinadorUid", "==", coordinadorUid);
     }
 
     const snap = await q

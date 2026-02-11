@@ -35,7 +35,7 @@ async function getUsuarioDisplayName(uid: string) {
   const nombres = String(data?.nombres || "").trim();
   const apellidos = String(data?.apellidos || "").trim();
   const full = `${nombres} ${apellidos}`.trim();
-  return full || uid;
+  return shortName(full || uid);
 }
 
 async function assertCoordinadorRole(uid: string) {
@@ -44,6 +44,17 @@ async function assertCoordinadorRole(uid: string) {
   const data = snap.data() as any;
   const roles = Array.isArray(data?.roles) ? data.roles : [];
   if (!roles.includes("COORDINADOR")) throw new Error("COORDINADOR_ROL_INVALIDO");
+}
+
+function shortName(name: string) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "";
+  const first = parts[0];
+  const last = parts.length > 1 ? parts[parts.length - 1] : "";
+  return last ? `${first} ${last}` : first;
 }
 
 async function updateStockVentasTx(
@@ -285,9 +296,10 @@ export async function crearVentaAction(raw: any) {
   try {
     const usuario = await getUsuarioDisplayName(session.uid);
     const destinoLabel = destinoType === "CUADRILLA" ? `Cuadrilla: ${cuadNombre}` : "Destino: Coordinador";
-    const msg = `${usuario} realizo una venta (${input.area}). ${destinoLabel}. Coordinador: ${coordinadorNombre}. Total: ${centsToMoney(totalCents)}`;
+    const totalStr = `S/ ${centsToMoney(totalCents).toFixed(2)}`;
+    const msg = `${usuario} realizo una venta (${input.area}). ${destinoLabel}. Coordinador: ${coordinadorNombre}. Materiales: ${items.length}. Total: ${totalStr}`;
     await addGlobalNotification({
-      title: "Venta",
+      title: "VENTA",
       message: msg,
       type: "success",
       scope: "ALL",

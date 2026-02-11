@@ -148,17 +148,21 @@ React.useEffect(() => {
                         )}
                       </div>
                       <div className="text-xs text-gray-700 dark:text-white/80">{n.message}</div>
-                      {(n.entityType === "DESPACHO" || n.entityType === "DEVOLUCION") && n.entityId && (
+                      {(n.entityType === "DESPACHO" || n.entityType === "DEVOLUCION" || n.entityType === "VENTA") && n.entityId && (
                         <div className="mt-2">
                           <button
                             type="button"
                             className="text-xs text-blue-700 hover:underline dark:text-blue-300"
                             onClick={async () => {
                               try {
+                                const tipo =
+                                  n.entityType === "DEVOLUCION" ? "devolucion" :
+                                  n.entityType === "VENTA" ? "ventas" :
+                                  "despacho";
                                 const res = await fetch(
                                   `/api/transferencias/instalaciones/guia/url?guiaId=${encodeURIComponent(
                                     n.entityId
-                                  )}&tipo=${n.entityType === "DEVOLUCION" ? "devolucion" : "despacho"}`,
+                                  )}&tipo=${tipo}`,
                                   { cache: "no-store" }
                                 );
                                 if (!res.ok) throw new Error("URL_FAIL");

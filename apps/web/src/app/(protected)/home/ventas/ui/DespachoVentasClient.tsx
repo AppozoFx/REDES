@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useEffect, useMemo, useState, startTransition } from "react";
+import React, { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import { toast } from "sonner";
 import { crearVentaAction } from "../server-actions";
+import jsPDF from "jspdf";
+import QRCode from "qrcode";
 
 type Area = "INSTALACIONES" | "AVERIAS";
 
@@ -33,6 +35,18 @@ type ItemState = {
   precioInput: string;
 };
 
+type GuiaThermalData = {
+  fechaStr?: string;
+  usuario?: string;
+  coordinador?: string;
+  cuadrilla?: string;
+  area?: string;
+  observacion?: string;
+  items?: Array<{ nombre: string; qty: string; subtotal: string }>;
+  total?: string;
+  qrDataUrl?: string;
+};
+
 function toNum(raw: string) {
   const n = Number(String(raw || "").replace(",", "."));
   return Number.isFinite(n) ? n : 0;
@@ -55,6 +69,194 @@ function centsPerCmToPricePerMeter(centsPerCm: number) {
   return (Math.round((centsPerCm || 0) * 100) / 100).toFixed(2);
 }
 
+function shortName(name: string) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "";
+  const first = parts[0];
+  const last = parts.length > 1 ? parts[parts.length - 1] : "";
+  return last ? `${first} ${last}` : first;
+}
+
+async function makeQrDataUrl(value: string) {
+  return QRCode.toDataURL(value, {
+    errorCorrectionLevel: "H",
+    margin: 0,
+    width: 320,
+  });
+}
+
+function normalizePhone(raw: string) {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (!digits) return "";
+  const noPrefix = digits.startsWith("51") && digits.length >= 11 ? digits.slice(2) : digits;
+  return noPrefix.length >= 9 ? noPrefix : "";
+}
+
+async function obtenerCelulares(uids: string[] = []) {
+  if (!uids.length) return [];
+  const qs = encodeURIComponent(uids.join(","));
+  const res = await fetch(`/api/usuarios/phones?uids=${qs}`, { cache: "no-store" });
+  if (!res.ok) return [];
+  const data = await res.json();
+  const items = Array.isArray(data?.items) ? data.items : [];
+  const celulares = items.map((it: any) => normalizePhone(String(it?.celular || ""))).filter(Boolean);
+  return Array.from(new Set(celulares));
+}
+
+async function enviarGuiaPorWhatsApp(args: {
+  coordinadorUid: string;
+  tipoGuia: string;
+  guiaId: string;
+  cuadrilla: string;
+  coordinador: string;
+  usuario: string;
+  fechaHora: string;
+  urlComprobante: string;
+  extraInfo?: string;
+  preOpenWindow?: Window | null;
+}) {
+  const celulares = await obtenerCelulares([args.coordinadorUid]);
+  if (!celulares.length) {
+    if (args.preOpenWindow && !args.preOpenWindow.closed) args.preOpenWindow.close();
+    return { total: 0 };
+  }
+
+  const lines: string[] = [];
+  lines.push(`*${args.tipoGuia}*`);
+  lines.push(`Guia: ${args.guiaId}`);
+  lines.push(`*Cuadrilla:* ${args.cuadrilla}`);
+  if (args.coordinador) lines.push(`*Coordinador:* ${args.coordinador}`);
+  if (args.usuario) lines.push(`Registrado por: ${args.usuario}`);
+  if (args.fechaHora) lines.push(`Fecha/Hora: ${args.fechaHora}`);
+  if (args.extraInfo) lines.push(args.extraInfo);
+  lines.push("Puedes ver el comprobante aqui:");
+  lines.push(args.urlComprobante);
+  const mensaje = lines.join("\n");
+
+  const numero = celulares[0];
+  try {
+    const url = `https://wa.me/51${numero}?text=${encodeURIComponent(mensaje)}`;
+    if (args.preOpenWindow && !args.preOpenWindow.closed) {
+      args.preOpenWindow.location.href = url;
+      args.preOpenWindow.focus();
+    } else {
+      const win = window.open(url, "_blank");
+      if (win) {
+        win.opener = null;
+      } else {
+        window.location.href = url;
+      }
+    }
+  } catch {
+    // silent
+  }
+
+  return { total: 1 };
+}
+
+function calcHeight80mm(data: GuiaThermalData) {
+  const line = 5;
+  let lines = 0;
+  lines += 8; // header
+  lines += 4; // meta
+  lines += (data.items || []).length + 2;
+  const obs = String(data.observacion || "");
+  const obsLines = obs ? Math.max(1, Math.ceil(obs.length / 24)) : 1;
+  lines += obsLines + 2;
+  const extra = (data.qrDataUrl ? 60 : 10) + 22;
+  return Math.max(120, 10 + lines * line + extra);
+}
+
+function generarPDFTermico80mm(guiaId: string, data: GuiaThermalData) {
+  const altura = calcHeight80mm(data);
+  const pdf = new jsPDF({ unit: "mm", format: [80, altura] });
+  const C = { align: "center" as const };
+  let y = 10;
+
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(9);
+  pdf.text("CONSTRUCCION DE REDES M&D S.A.C", 40, y, C); y += 5;
+  pdf.text("RUC: 20601345979", 40, y, C); y += 5;
+  pdf.text("Cal. Juan Prado de Zela Mza. F2 Lt. 3", 40, y, C); y += 5;
+  pdf.text("Apv. San Francisco de Cayran", 40, y, C); y += 5;
+  pdf.text("Cel/WSP: 913 637 815", 40, y, C); y += 7;
+
+  pdf.setFont("helvetica", "bold");
+  pdf.text(`GUIA: ${guiaId}`, 40, y, C); y += 5;
+  pdf.setFont("helvetica", "normal");
+  pdf.text(`FECHA: ${data.fechaStr || new Date().toLocaleString("es-PE")}`, 40, y, C); y += 5;
+  pdf.text(`USUARIO: ${data.usuario || "-"}`, 40, y, C); y += 5;
+  pdf.setFont("helvetica", "bold");
+  pdf.text(`COORDINADOR: ${data.coordinador || "-"}`, 40, y, C); y += 5;
+  pdf.text(`CUADRILLA: ${data.cuadrilla || "-"}`, 40, y, C); y += 5;
+  pdf.setFont("helvetica", "normal");
+  pdf.text(`AREA: ${data.area || "-"}`, 40, y, C); y += 5;
+
+  y += 2;
+  pdf.setFont("helvetica", "bold");
+  pdf.text("VENTA", 40, y, C);
+  y += 6;
+  pdf.setFont("helvetica", "normal");
+
+  pdf.setFontSize(7);
+  (data.items || []).forEach((it) => {
+    pdf.text(`${it.nombre} - ${it.qty}`, 6, y);
+    pdf.text(`${it.subtotal}`, 74, y, { align: "right" });
+    y += 4;
+  });
+  y += 2;
+  pdf.setFont("helvetica", "bold");
+  pdf.text(`TOTAL: ${data.total || "-"}`, 40, y, C); y += 6;
+  pdf.setFont("helvetica", "normal");
+  if (data.observacion) {
+    pdf.text("OBS:", 6, y); y += 4;
+    const obs = String(data.observacion || "");
+    const chunks = obs.match(/.{1,24}/g) || [obs];
+    chunks.forEach((c) => { pdf.text(c, 6, y); y += 4; });
+  }
+
+  if (data.qrDataUrl) {
+    pdf.addImage(data.qrDataUrl, "PNG", 20, y, 40, 40);
+    y += 52;
+  } else {
+    y += 6;
+  }
+
+  pdf.line(10, y, 40, y);
+  pdf.line(45, y, 75, y);
+  y += 10;
+  pdf.text(data.coordinador || "Coordinador", 25, y, { align: "center" });
+  pdf.text(data.usuario || "Almacen", 60, y, { align: "center" });
+
+  return pdf;
+}
+
+function printThermalBlobTwice(pdf: jsPDF) {
+  const blob = pdf.output("blob");
+  const urlBlob = URL.createObjectURL(blob);
+
+  const iframe = document.createElement("iframe");
+  iframe.style.display = "none";
+  iframe.src = urlBlob;
+  document.body.appendChild(iframe);
+
+  iframe.onload = () => {
+    iframe.contentWindow?.focus();
+    iframe.contentWindow?.print();
+    setTimeout(() => iframe.contentWindow?.print(), 1000);
+  };
+
+  setTimeout(() => {
+    try {
+      document.body.removeChild(iframe);
+    } catch {}
+    URL.revokeObjectURL(urlBlob);
+  }, 15000);
+}
+
 export default function DespachoVentasClient({
   area,
   canEditPrecio,
@@ -71,6 +273,9 @@ export default function DespachoVentasClient({
   const [coordinadorNombre, setCoordinadorNombre] = useState("");
   const [cuadrillaQuery, setCuadrillaQuery] = useState("");
   const [observacion, setObservacion] = useState("");
+  const [usuarioNombre, setUsuarioNombre] = useState("");
+  const printedVentaRef = useRef<string>("");
+  const waWindowRef = useRef<Window | null>(null);
 
   const [coordinadores, setCoordinadores] = useState<Array<{ uid: string; label: string }>>([]);
 
@@ -150,10 +355,26 @@ export default function DespachoVentasClient({
         const data = await res.json();
         if (data?.ok && data?.uid) {
           setCoordinadorUid(String(data.uid));
-          setCoordinadorNombre(String(data.nombre || data.uid));
+          setCoordinadorNombre(shortName(String(data.nombre || data.uid)));
+        }
+        if (data?.ok && data?.nombre) {
+          setUsuarioNombre(shortName(String(data.nombre || "")));
         }
       } catch {}
     })();
+  }, [canEditCoordinador]);
+
+  useEffect(() => {
+    if (canEditCoordinador) {
+      (async () => {
+        try {
+          const res = await fetch("/api/auth/me", { cache: "no-store" });
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data?.ok && data?.nombre) setUsuarioNombre(shortName(String(data.nombre || "")));
+        } catch {}
+      })();
+    }
   }, [canEditCoordinador]);
 
   const materialMap = useMemo(() => {
@@ -244,6 +465,82 @@ export default function DespachoVentasClient({
       .slice(0, 100);
   }, [materiales, materialSearch]);
 
+  async function imprimirGuiaTermica(ventaId: string): Promise<boolean> {
+    const itemsList = items.map((it) => {
+      const mat = materialMap.get(it.materialId);
+      const unidad = mat?.unidadTipo === "METROS" ? "m" : "und";
+      const qty = mat?.unidadTipo === "METROS" ? `${toNum(it.metros).toFixed(2)} ${unidad}` : `${Math.floor(toNum(it.und))} ${unidad}`;
+      const subtotal = centsToMoney(calcSubtotal(it, mat as any));
+      return { nombre: mat?.nombre || it.materialId, qty, subtotal };
+    });
+    const data: GuiaThermalData = {
+      fechaStr: new Date().toLocaleString("es-PE"),
+      usuario: shortName(usuarioNombre || ""),
+      coordinador: shortName(coordinadorNombre || ""),
+      cuadrilla: cuadrillaNombre || "DIRECTO",
+      area,
+      observacion,
+      items: itemsList,
+      total: `S/ ${centsToMoney(totalCents)}`,
+    };
+
+    const token = typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const bucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "";
+    const path = `guias/instalaciones/ventas/${ventaId}.pdf`;
+    const encodedPath = encodeURIComponent(path);
+    const directUrl = bucket
+      ? `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodedPath}?alt=media&token=${token}`
+      : "";
+
+    if (directUrl) {
+      try {
+        data.qrDataUrl = await makeQrDataUrl(directUrl);
+      } catch {}
+    }
+
+    const pdf = generarPDFTermico80mm(ventaId, data);
+    try {
+      const blob = pdf.output("blob");
+      const res = await fetch(
+        `/api/transferencias/instalaciones/guia/upload?guiaId=${encodeURIComponent(ventaId)}&tipo=ventas&token=${encodeURIComponent(token)}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/pdf" },
+          body: await blob.arrayBuffer(),
+        }
+      );
+      if (!res.ok) throw new Error("UPLOAD_FAILED");
+
+      printThermalBlobTwice(pdf);
+
+      const extraInfo = itemsList.map((i) => `${i.nombre}: ${i.qty}`).join("\n");
+      const totalLine = `Total: S/ ${centsToMoney(totalCents)}`;
+
+      if (directUrl && coordinadorUid) {
+        if (!waWindowRef.current || waWindowRef.current.closed) {
+          const w = window.open("about:blank", "_blank");
+          if (w) waWindowRef.current = w;
+        }
+        await enviarGuiaPorWhatsApp({
+          coordinadorUid,
+          tipoGuia: `Venta ${area}`,
+          guiaId: ventaId,
+          cuadrilla: cuadrillaNombre || "DIRECTO",
+          coordinador: shortName(coordinadorNombre || ""),
+          usuario: shortName(usuarioNombre || ""),
+          fechaHora: data.fechaStr || "",
+          urlComprobante: directUrl,
+          extraInfo: extraInfo ? `Materiales:\n${extraInfo}\n${totalLine}` : totalLine,
+          preOpenWindow: waWindowRef.current,
+        });
+      }
+      return true;
+    } catch {
+      toast.error("No se pudo subir la guía a Storage");
+      return false;
+    }
+  }
+
   async function handleSubmit() {
     if (!coordinadorUid) return toast.error("Selecciona coordinador");
     if (!items.length) return toast.error("Agrega materiales");
@@ -277,10 +574,17 @@ export default function DespachoVentasClient({
         observacion: observacion || undefined,
       });
       if ((res as any)?.ok) {
-        toast.success("Venta registrada", { description: `ID: ${(res as any).ventaId}` });
-        setItems([]);
-        setSelectedMaterialId("");
-        setObservacion("");
+        const ventaId = (res as any).ventaId;
+        toast.success("Venta registrada", { description: `ID: ${ventaId}` });
+        if (ventaId && printedVentaRef.current !== ventaId) {
+          printedVentaRef.current = ventaId;
+          const ok = await imprimirGuiaTermica(ventaId);
+          if (ok) {
+            setItems([]);
+            setSelectedMaterialId("");
+            setObservacion("");
+          }
+        }
       } else {
         const msg = (res as any)?.error?.formErrors?.join(", ") || "Error al registrar venta";
         toast.error(msg);

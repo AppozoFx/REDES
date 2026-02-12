@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
@@ -64,6 +64,25 @@ const clusterIcon = (cluster: any) => {
     iconSize: [size, size],
   });
 };
+
+function EstadoPill({ estado }: { estado: string }) {
+  const bg = colorByEstado[estado] || colorByEstado.default;
+  return (
+    <span
+      style={{
+        background: bg,
+        color: "#fff",
+        borderRadius: 9999,
+        padding: "2px 8px",
+        fontSize: 11,
+        fontWeight: 700,
+        display: "inline-block",
+      }}
+    >
+      {estado || "Sin estado"}
+    </span>
+  );
+}
 
 function todayLimaYmd() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -248,19 +267,40 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
                     <Tooltip permanent direction="top" offset={[0, -14]} opacity={1}>
                       {(r.cuadrillaNombre || "").toUpperCase()}
                     </Tooltip>
-                    <Popup maxWidth={380}>
+                    <Popup maxWidth={560}>
                       <div className="text-xs">
-                        <div className="rounded-xl border p-3 bg-white shadow-sm">
-                          <div className="font-semibold text-sm">{r.cuadrillaNombre || ""}</div>
-                          <div className="text-[11px] text-gray-500 mb-2">{fecha}</div>
-                          <div><b>Cliente:</b> {r.cliente || ""}</div>
-                          <div><b>Código:</b> {r.codigoCliente || ""}</div>
-                          <div><b>Tramo:</b> {tramoLabel(r.tramo)}</div>
-                          <div><b>En camino:</b> {r.horaEnCamino || ""}</div>
-                          <div><b>Inicio:</b> {r.horaInicio || ""}</div>
-                          <div><b>Fin:</b> {r.horaFin || ""}</div>
-                          {r.plan ? <div><b>Plan:</b> {r.plan}</div> : null}
-                          {r.direccion ? <div><b>Dirección:</b> {r.direccion}</div> : null}
+                        <div className="rounded-xl border p-3 bg-white shadow-sm w-[520px] max-w-[80vw]">
+                          <div className="flex items-start justify-between gap-3 mb-2">
+                            <div className="font-semibold text-sm leading-tight">
+                              {r.cuadrillaNombre || ""}
+                              <div className="text-[11px] text-gray-500">{fecha}</div>
+                            </div>
+                            <EstadoPill estado={r.estado} />
+                          </div>
+
+                          <div className="space-y-1">
+                            <div><b>Cliente:</b></div>
+                            <div className="font-medium break-words">{r.cliente || "-"}</div>
+                            <div><b>Código:</b> {r.codigoCliente || "-"}</div>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                              <div><b>Tramo:</b> {tramoLabel(r.tramo)}</div>
+                              <div><b>En camino:</b> {r.horaEnCamino || "-"}</div>
+                              <div><b>Inicio:</b> {r.horaInicio || "-"}</div>
+                              <div><b>Fin:</b> {r.horaFin || "-"}</div>
+                            </div>
+                            {r.plan ? (
+                              <div className="pt-1">
+                                <div><b>Plan:</b></div>
+                                <div className="font-medium break-words whitespace-pre-wrap">{r.plan}</div>
+                              </div>
+                            ) : null}
+                            {r.direccion ? (
+                              <div className="pt-1">
+                                <div><b>Dirección:</b></div>
+                                <div className="font-medium break-words whitespace-pre-wrap">{r.direccion}</div>
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                         <div className="flex items-center justify-center gap-2 pt-3">
                           <a
@@ -268,6 +308,7 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="px-4 py-2 rounded-md font-semibold shadow-md hover:shadow-lg transition text-white bg-blue-600"
+                            style={{ color: "#ffffff" }}
                           >
                             Google Maps
                           </a>
@@ -276,6 +317,7 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="px-4 py-2 rounded-md font-semibold shadow-md hover:shadow-lg transition text-white bg-violet-600"
+                            style={{ color: "#ffffff" }}
                           >
                             Waze
                           </a>
@@ -292,4 +334,3 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
     </div>
   );
 }
-

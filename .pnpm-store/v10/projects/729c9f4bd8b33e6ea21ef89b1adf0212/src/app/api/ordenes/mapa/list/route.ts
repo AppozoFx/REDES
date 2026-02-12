@@ -39,8 +39,7 @@ export async function GET(req: Request) {
     }
     const canView =
       session.isAdmin ||
-      session.permissions.includes(PERM_VIEW) ||
-      session.permissions.includes("ORDENES_LIQUIDAR");
+      session.permissions.includes(PERM_VIEW);
     if (!canView) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const { searchParams } = new URL(req.url);
@@ -85,4 +84,3 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }
 }
-

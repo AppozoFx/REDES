@@ -18,8 +18,7 @@ export default async function Page() {
   const session = await requireAuth();
   const canView =
     session.isAdmin ||
-    session.permissions.includes("ORDENES_MAPA_VIEW") ||
-    session.permissions.includes("ORDENES_LIQUIDAR");
+    session.permissions.includes("ORDENES_MAPA_VIEW");
   if (!canView) redirect("/admin");
 
   return (
@@ -28,4 +27,3 @@ export default async function Page() {
     </div>
   );
 }
-

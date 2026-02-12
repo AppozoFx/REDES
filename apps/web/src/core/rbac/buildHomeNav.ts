@@ -53,7 +53,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
   if (hasPerm(session, "ORDENES_LIQUIDAR")) {
     items.push({ key: "ORDENES_LIQ", label: "Órdenes: Liquidación", href: "/home/ordenes/liquidacion" });
   }
-  if (hasPerm(session, "ORDENES_MAPA_VIEW") || hasPerm(session, "ORDENES_LIQUIDAR")) {
+  if (hasPerm(session, "ORDENES_MAPA_VIEW")) {
     items.push({ key: "ORDENES_MAPA", label: "Órdenes: Mapa", href: "/home/ordenes/mapa" });
   }
   if (hasPerm(session, "ORDENES_GARANTIAS_VIEW") || hasPerm(session, "ORDENES_GARANTIAS_EDIT")) {
@@ -105,5 +105,6 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
 
   return items;
 }
+
 
 

@@ -13,6 +13,7 @@ const TileLayer = dynamic(() => import("react-leaflet").then((m) => ({ default: 
 const Marker = dynamic(() => import("react-leaflet").then((m) => ({ default: m.Marker })), { ssr: false });
 const Popup = dynamic(() => import("react-leaflet").then((m) => ({ default: m.Popup })), { ssr: false });
 const Tooltip = dynamic(() => import("react-leaflet").then((m) => ({ default: m.Tooltip })), { ssr: false });
+const Polyline = dynamic(() => import("react-leaflet").then((m) => ({ default: m.Polyline })), { ssr: false });
 const MarkerClusterGroup = dynamic(
   () => import("react-leaflet-markercluster").then((m: any) => ({ default: m.default || m })),
   { ssr: false }
@@ -110,6 +111,12 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
   const [fCuadrilla, setFCuadrilla] = useState("");
   const [fEstado, setFEstado] = useState("");
   const [base, setBase] = useState("osm");
+  const [ordenAId, setOrdenAId] = useState("");
+  const [ordenBId, setOrdenBId] = useState("");
+  const [routing, setRouting] = useState(false);
+  const [routeCoords, setRouteCoords] = useState<[number, number][]>([]);
+  const [routeDistanceKm, setRouteDistanceKm] = useState<number | null>(null);
+  const [routeError, setRouteError] = useState("");
   const mapRef = useRef<any>(null);
   const outerRef = useRef<HTMLDivElement | null>(null);
   const [mapHeight, setMapHeight] = useState(600);
@@ -181,6 +188,13 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
     }, {});
   }, [filtered]);
 
+  const routeCandidates = useMemo(() => {
+    return filtered.filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
+  }, [filtered]);
+
+  const puntoA = useMemo(() => routeCandidates.find((r) => r.id === ordenAId) || null, [routeCandidates, ordenAId]);
+  const puntoB = useMemo(() => routeCandidates.find((r) => r.id === ordenBId) || null, [routeCandidates, ordenBId]);
+
   useEffect(() => {
     if (!mapRef.current) return;
     const bounds = new L.LatLngBounds([]);
@@ -191,6 +205,48 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
       setTimeout(() => mapRef.current.fitBounds(bounds, { padding: [60, 60] }), 120);
     }
   }, [filtered]);
+
+  async function trazarRuta() {
+    setRouteError("");
+    setRouteCoords([]);
+    setRouteDistanceKm(null);
+
+    if (!puntoA || !puntoB) {
+      setRouteError("Selecciona Punto A y Punto B.");
+      return;
+    }
+    if (puntoA.id === puntoB.id) {
+      setRouteError("Punto A y Punto B no pueden ser la misma orden.");
+      return;
+    }
+    if (!Number.isFinite(puntoA.lat) || !Number.isFinite(puntoA.lng) || !Number.isFinite(puntoB.lat) || !Number.isFinite(puntoB.lng)) {
+      setRouteError("Uno de los puntos no tiene coordenadas válidas.");
+      return;
+    }
+
+    try {
+      setRouting(true);
+      const url = `https://router.project-osrm.org/route/v1/driving/${puntoA.lng},${puntoA.lat};${puntoB.lng},${puntoB.lat}?overview=full&geometries=geojson`;
+      const res = await fetch(url, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok || data?.code !== "Ok" || !Array.isArray(data?.routes) || !data.routes[0]) {
+        throw new Error("ROUTE_PROVIDER_ERROR");
+      }
+      const route = data.routes[0];
+      const coords: [number, number][] = (route.geometry?.coordinates || []).map((c: number[]) => [c[1], c[0]]);
+      setRouteCoords(coords);
+      setRouteDistanceKm(Number(route.distance || 0) / 1000);
+
+      if (coords.length && mapRef.current) {
+        const b = new L.LatLngBounds(coords as any);
+        mapRef.current.fitBounds(b, { padding: [60, 60] });
+      }
+    } catch {
+      setRouteError("No se pudo calcular la ruta. Usa el fallback de Google Maps/Waze.");
+    } finally {
+      setRouting(false);
+    }
+  }
 
   const clusterKey = `${fecha}|${fCuadrilla}|${fEstado}`;
 
@@ -218,12 +274,82 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
               setFCuadrilla("");
               setFEstado("");
               setFecha(todayLimaYmd());
+              // Mantener Punto A y Punto B como solicitaste
             }}
           >
             Limpiar
           </button>
         </div>
       </header>
+
+      <div className="rounded-lg border p-3 bg-slate-50/60">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+          <div>
+            <label className="block text-xs mb-1">Punto A (Orden)</label>
+            <select
+              value={ordenAId}
+              onChange={(e) => setOrdenAId(e.target.value)}
+              className="w-full border px-3 py-2 rounded text-sm"
+            >
+              <option value="">Seleccionar A</option>
+              {routeCandidates.map((r) => (
+                <option key={`a-${r.id}`} value={r.id}>
+                  {r.cuadrillaNombre} | {r.codigoCliente || r.ordenId} | {r.cliente}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs mb-1">Punto B (Orden)</label>
+            <select
+              value={ordenBId}
+              onChange={(e) => setOrdenBId(e.target.value)}
+              className="w-full border px-3 py-2 rounded text-sm"
+            >
+              <option value="">Seleccionar B</option>
+              {routeCandidates.map((r) => (
+                <option key={`b-${r.id}`} value={r.id}>
+                  {r.cuadrillaNombre} | {r.codigoCliente || r.ordenId} | {r.cliente}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <button
+              type="button"
+              onClick={trazarRuta}
+              disabled={routing}
+              className="w-full bg-slate-900 text-white px-4 py-2 rounded disabled:opacity-60"
+            >
+              {routing ? "Trazando..." : "Trazar ruta"}
+            </button>
+          </div>
+          <div className="text-sm">
+            <div><b>Distancia:</b> {routeDistanceKm == null ? "-" : `${routeDistanceKm.toFixed(2)} km`}</div>
+            {routeError ? <div className="text-red-700">{routeError}</div> : null}
+          </div>
+        </div>
+        {puntoA && puntoB ? (
+          <div className="mt-2 flex flex-wrap gap-2">
+            <a
+              href={`https://www.google.com/maps/dir/?api=1&origin=${puntoA.lat},${puntoA.lng}&destination=${puntoB.lat},${puntoB.lng}&travelmode=driving`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded-md font-semibold text-white bg-blue-600"
+            >
+              Fallback Google Maps
+            </a>
+            <a
+              href={`https://waze.com/ul?ll=${puntoB.lat},${puntoB.lng}&navigate=yes`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded-md font-semibold text-white bg-violet-600"
+            >
+              Fallback Waze
+            </a>
+          </div>
+        ) : null}
+      </div>
 
       <div className="flex flex-wrap items-center gap-4 text-sm">
         {["Finalizada", "Cancelada", "En camino", "Iniciada", "Agendada"].map((estado) => (
@@ -260,6 +386,9 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
               spiderfyDistanceMultiplier={1.6}
               iconCreateFunction={clusterIcon}
             >
+              {routeCoords.length > 1 ? (
+                <Polyline positions={routeCoords} pathOptions={{ color: "#0ea5e9", weight: 5, opacity: 0.9 }} />
+              ) : null}
               {filtered.map((r) => {
                 const color = colorByEstado[r.estado] || colorByEstado.default;
                 return (

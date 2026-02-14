@@ -36,6 +36,7 @@ export function LiquidacionClient({ initialYmd }: { initialYmd?: string }) {
   const [ymd, setYmd] = useState(initialYmd || todayLimaYmd());
   const [q, setQ] = useState("");
   const [coordinador, setCoordinador] = useState("");
+  const [showLiquidadas, setShowLiquidadas] = useState(false);
   const [rows, setRows] = useState<Row[]>([]);
   const [kpi, setKpi] = useState({ finalizadas: 0, liquidadas: 0, pendientes: 0 });
   const [reloadTick, setReloadTick] = useState(0);
@@ -88,11 +89,12 @@ export function LiquidacionClient({ initialYmd }: { initialYmd?: string }) {
     return rows.filter((r) => {
       const byCoord = !coordinador || String(r.coordinador || "") === coordinador;
       if (!byCoord) return false;
+      if (!showLiquidadas && r.liquidado) return false;
       if (!text) return true;
       const hay = `${r.ordenId} ${r.cliente} ${r.codiSeguiClien} ${r.cuadrillaNombre} ${r.cuadrillaId} ${r.coordinador}`.toLowerCase();
       return hay.includes(text);
     });
-  }, [rows, q, coordinador]);
+  }, [rows, q, coordinador, showLiquidadas]);
 
   const coordinadores = useMemo(() => {
     return Array.from(
@@ -137,6 +139,14 @@ export function LiquidacionClient({ initialYmd }: { initialYmd?: string }) {
             ))}
           </select>
         </div>
+        <label className="inline-flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={showLiquidadas}
+            onChange={(e) => setShowLiquidadas(e.target.checked)}
+          />
+          Mostrar liquidadas
+        </label>
       </div>
 
       <div className="text-sm text-muted-foreground">

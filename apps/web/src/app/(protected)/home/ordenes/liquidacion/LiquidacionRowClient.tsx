@@ -1,9 +1,11 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
-import { liquidarOrdenAction } from "./actions";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { corregirOrdenAction, liquidarOrdenAction } from "./actions";
 
 type OrdenLite = {
+  id: string;
   ordenId: string;
   cliente: string;
   direccion: string;
@@ -19,6 +21,7 @@ type OrdenLite = {
   cantMESHwin: string;
   cantFONOwin: string;
   cantBOXwin: string;
+  liquidado?: boolean;
 };
 
 function tramoFromHm(hm: string) {
@@ -66,6 +69,9 @@ export function LiquidacionRowClient({
 }) {
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState(liquidarOrdenAction as any, null as any);
+  const [corrState, corrAction, corrPending] = useActionState(corregirOrdenAction as any, null as any);
+  const [corrMotivo, setCorrMotivo] = useState("");
+  const corrFormRef = useRef<HTMLFormElement | null>(null);
   const tramo = tramoFromHm(orden.fechaFinVisiHm);
   const tips = useMemo(() => detectTipificaciones(orden.idenServi || ""), [orden.idenServi]);
   const [snONT, setSnONT] = useState("");
@@ -233,11 +239,49 @@ export function LiquidacionRowClient({
     setProidONT(hit?.proid || "");
   }, [snONT, stock.ONT]);
 
+  const handledOkRef = useRef(false);
   useEffect(() => {
-    if (!state?.ok) return;
-    setOpen(false);
+    if (!state?.ok) {
+      handledOkRef.current = false;
+      return;
+    }
+    if (handledOkRef.current) return;
+    handledOkRef.current = true;
+    if (open) setOpen(false);
     onLiquidated?.();
-  }, [state?.ok, onLiquidated]);
+
+    const d = state?.details;
+    if (d) {
+      const fechaOrden = d.fechaOrdenYmd ? d.fechaOrdenYmd.split("-").reverse().join("/") : "-";
+      const ont = d.ont?.sn ? `ONT: ${d.ont.sn}${d.ont.proid ? ` (PROID ${d.ont.proid})` : ""}` : "ONT: -";
+      const desc = [
+        `✅ ${d.cliente || "-"} — Pedido ${d.codigoCliente || "-"} (${fechaOrden})`,
+        `Cuadrilla: ${d.cuadrilla || "-"}`,
+        ont,
+        `MESH: ${d.mesh ?? 0}`,
+        `BOX: ${d.box ?? 0}`,
+        `INTERNETGAMER: ${d.gamer ? "Si" : "No"}`,
+        `KIT WIFI PRO: ${d.kitWifiPro ? "Si" : "No"}`,
+        `Cableado MESH: ${d.cableadoMesh ? "Si" : "No"}`,
+        `UTP: ${d.puntosUTP ?? 0} (Cat5e ${d.cat5e ?? 0} / Cat6 ${d.cat6 ?? 0})`,
+        `Liquidado por: ${d.liquidadoPor || "-"}`,
+      ].join("\n");
+      toast.success("Liquidacion registrada", { description: desc, duration: 8000 });
+    }
+  }, [state?.ok, open]);
+
+  const handledCorrRef = useRef(false);
+  useEffect(() => {
+    if (!corrState?.ok) {
+      handledCorrRef.current = false;
+      return;
+    }
+    if (handledCorrRef.current) return;
+    handledCorrRef.current = true;
+    const msg = `Instalacion corregida para ${corrState?.cliente || "cliente"} (${corrState?.codigoCliente || "-"})`;
+    toast.success("Correccion registrada", { description: msg, duration: 6000 });
+    onLiquidated?.();
+  }, [corrState?.ok]);
 
   function updateAt(arr: string[], idx: number, value: string) {
     const next = [...arr];
@@ -249,7 +293,7 @@ export function LiquidacionRowClient({
     <div className="rounded-xl border p-4 space-y-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <div className="font-semibold">{orden.ordenId}</div>
+          <div className="font-semibold">{orden.codiSeguiClien || orden.ordenId}</div>
           <div className="text-sm text-muted-foreground">
             Cliente: {orden.cliente || "-"} | Codigo: {orden.codiSeguiClien || "-"}
           </div>
@@ -283,6 +327,27 @@ export function LiquidacionRowClient({
         >
           {open ? "Cerrar" : "Liquidar"}
         </button>
+        {orden.liquidado ? (
+          <>
+            <form ref={corrFormRef} action={corrAction} className="inline">
+              <input type="hidden" name="ordenId" value={orden.id} />
+              <input type="hidden" name="motivo" value={corrMotivo} />
+            </form>
+            <button
+              type="button"
+              className="rounded border px-3 py-1.5 text-sm border-amber-400 text-amber-700"
+              disabled={corrPending}
+              onClick={() => {
+                const motivo = window.prompt("Motivo de correccion (opcional):", corrMotivo || "");
+                if (motivo === null) return;
+                setCorrMotivo(motivo || "");
+                requestAnimationFrame(() => corrFormRef.current?.requestSubmit());
+              }}
+            >
+              {corrPending ? "Corrigiendo..." : "Corregir"}
+            </button>
+          </>
+        ) : null}
       </div>
 
       {open ? (
@@ -290,13 +355,13 @@ export function LiquidacionRowClient({
           <div className="absolute inset-0 bg-black/45" onClick={() => setOpen(false)} />
           <div className="absolute inset-x-0 top-4 bottom-4 mx-auto w-[96vw] max-w-4xl overflow-y-auto rounded-xl bg-white p-4 shadow-2xl">
             <div className="mb-3 flex items-center justify-between">
-              <div className="font-semibold text-base">Liquidar orden {orden.ordenId}</div>
+              <div className="font-semibold text-base">Liquidar orden {orden.codiSeguiClien || orden.ordenId}</div>
               <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => setOpen(false)}>
                 Cerrar
               </button>
             </div>
             <form action={action} className="space-y-3">
-          <input type="hidden" name="ordenId" value={orden.ordenId} />
+          <input type="hidden" name="ordenId" value={orden.id} />
           <input type="hidden" name="snsText" value={snsText} />
           <input type="hidden" name="rotuloNapCto" value={rotuloNapCto} />
           <input type="hidden" name="planGamer" value={planGamerChecked ? "GAMER" : ""} />
@@ -319,7 +384,7 @@ export function LiquidacionRowClient({
                 <span>{orden.cuadrillaNombre || orden.cuadrillaId || "-"}</span>
               </div>
               <div>
-                <span className="text-muted-foreground">Codigo de pedido:</span>{" "}
+                <span className="text-muted-foreground">Codigo cliente:</span>{" "}
                 <span>{orden.codiSeguiClien || orden.ordenId || "-"}</span>
               </div>
               <div>

@@ -87,6 +87,8 @@ async function main() {
   const FieldValue = admin.firestore.FieldValue;
   const args = process.argv.slice(2);
   const skipSeries = args.includes("--skip-series");
+  const forceKit = args.includes("--force-kit");
+  const ensureKitStock = args.includes("--ensure-kit-stock");
 
   const cuadrillaIdCache = new Map(); // nombre -> id | null
   const cuadrillaExistsCache = new Map(); // id -> boolean
@@ -221,18 +223,38 @@ async function main() {
     }
 
     // kit por ONT (idempotente via marcador)
-    if (c.onts > 0) {
+    if (c.onts > 0 || ensureKitStock) {
       const markRef = db.collection("migraciones").doc("ont_kit_v1").collection("cuadrillas").doc(cuadrillaId);
-      const markSnap = await markRef.get();
-      if (!markSnap.exists) {
-        for (const [matId, perOnt] of Object.entries(KIT_BASE_POR_ONT)) {
-          const unidadTipo = await getUnidadTipo(matId);
-          if (!unidadTipo) {
-            console.warn(`Material no encontrado: ${matId}`);
-            continue;
+      const markSnap = forceKit ? null : await markRef.get();
+      const shouldApplyAll = (forceKit || !markSnap?.exists) && c.onts > 0;
+
+      const matIds = Object.keys(KIT_BASE_POR_ONT);
+      const stockRefs = matIds.map((matId) =>
+        db.collection("cuadrillas").doc(cuadrillaId).collection("stock").doc(matId)
+      );
+      const stockSnaps = await db.getAll(...stockRefs);
+      const stockMap = new Map(stockSnaps.map((s) => [s.id, s]));
+
+      for (const [matId, perOnt] of Object.entries(KIT_BASE_POR_ONT)) {
+        const unidadTipo = await getUnidadTipo(matId);
+        if (!unidadTipo) {
+          console.warn(`Material no encontrado: ${matId}`);
+          continue;
+        }
+        const matRef = db.collection("cuadrillas").doc(cuadrillaId).collection("stock").doc(matId);
+        const base = { materialId: matId, unidadTipo, area: "CUADRILLA" };
+        const stockSnap = stockMap.get(matId);
+
+        if (!stockSnap?.exists) {
+          // create missing stock doc with 0
+          if (unidadTipo === "UND") {
+            writerStock.set(matRef, { ...base, stockUnd: 0 }, { merge: true });
+          } else {
+            writerStock.set(matRef, { ...base, stockCm: 0 }, { merge: true });
           }
-          const matRef = db.collection("cuadrillas").doc(cuadrillaId).collection("stock").doc(matId);
-          const base = { materialId: matId, unidadTipo, area: "CUADRILLA" };
+        }
+
+        if (shouldApplyAll) {
           if (unidadTipo === "UND") {
             writerStock.set(matRef, { ...base, stockUnd: FieldValue.increment(perOnt * c.onts) }, { merge: true });
           } else {
@@ -240,6 +262,9 @@ async function main() {
             writerStock.set(matRef, { ...base, stockCm: FieldValue.increment(perOnt * c.onts) }, { merge: true });
           }
         }
+      }
+
+      if (shouldApplyAll) {
         writerStock.set(markRef, { appliedAt: FieldValue.serverTimestamp(), ontCount: c.onts }, { merge: true });
       }
     }

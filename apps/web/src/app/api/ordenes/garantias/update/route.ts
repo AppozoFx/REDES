@@ -23,6 +23,17 @@ function jsonErr(code: string, status = 400) {
   return NextResponse.json({ ok: false, error: code }, { status });
 }
 
+function parseLimaYmd(ymd: string) {
+  const parts = String(ymd || "").split("-");
+  if (parts.length !== 3) return Number.NaN;
+  const y = Number(parts[0]);
+  const m = Number(parts[1]);
+  const d = Number(parts[2]);
+  if (!y || !m || !d) return Number.NaN;
+  // Lima timezone is UTC-05:00 (no DST). Convert local midnight to UTC.
+  return Date.UTC(y, m - 1, d, 5, 0, 0);
+}
+
 function isGarantia(x: any) {
   const txt = `${String(x?.tipo || "")} ${String(x?.tipoTraba || "")} ${String(x?.idenServi || "")} ${String(x?.tipoServicio || "")} ${String(x?.estado || "")}`.toUpperCase();
   return txt.includes("GARANTIA");
@@ -73,8 +84,8 @@ export async function POST(req: Request) {
       if (bestYmd) {
         fechaInstalacionBase = bestYmd;
         if (garantiaYmd) {
-          const d1 = Date.parse(`${garantiaYmd}T00:00:00Z`);
-          const d0 = Date.parse(`${bestYmd}T00:00:00Z`);
+          const d1 = parseLimaYmd(garantiaYmd);
+          const d0 = parseLimaYmd(bestYmd);
           if (!Number.isNaN(d1) && !Number.isNaN(d0)) {
             const diff = Math.floor((d1 - d0) / (24 * 60 * 60 * 1000));
             diasDesdeInstalacion = Math.max(0, diff);
@@ -104,4 +115,3 @@ export async function POST(req: Request) {
     return jsonErr(String(e?.message || "ERROR"), 500);
   }
 }
-

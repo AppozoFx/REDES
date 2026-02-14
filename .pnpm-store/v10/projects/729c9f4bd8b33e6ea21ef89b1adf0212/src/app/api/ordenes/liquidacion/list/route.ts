@@ -174,12 +174,11 @@ export async function GET(req: Request) {
 
     const finalizadas = rowsWithCoordinator.length;
     const liquidadas = rowsWithCoordinator.filter((r) => r.liquidado).length;
-    const pendientesRows = rowsWithCoordinator.filter((r) => !r.liquidado);
-    const pendientes = pendientesRows.length;
+    const pendientes = rowsWithCoordinator.filter((r) => !r.liquidado).length;
 
     return NextResponse.json({
       ok: true,
-      items: sortRows(pendientesRows),
+      items: sortRows(rowsWithCoordinator),
       kpi: { finalizadas, liquidadas, pendientes },
     });
   } catch (e: any) {

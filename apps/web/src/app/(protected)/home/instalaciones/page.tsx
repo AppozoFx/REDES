@@ -1,5 +1,5 @@
 import { requireAuth } from "@/core/auth/guards";
-import { InstalacionesClient } from "./InstalacionesClient";
+import InstalacionesClient from "./InstalacionesClient";
 
 export default async function InstalacionesPage() {
   await requireAuth();

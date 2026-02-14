@@ -65,6 +65,9 @@ export default function MaterialesLiquidacionClient() {
   const [cargando, setCargando] = useState(false);
   const [guardandoId, setGuardandoId] = useState<string | null>(null);
   const [editingRows, setEditingRows] = useState<Record<string, boolean>>({});
+  const [actaStatus, setActaStatus] = useState<
+    Record<string, { value: string; level: "ok" | "warn" | "error"; message: string }>
+  >({});
   const [filtros, setFiltros] = useState({
     mes: dayjs().format("YYYY-MM"),
     dia: "",
@@ -125,6 +128,45 @@ export default function MaterialesLiquidacionClient() {
     }));
   };
 
+  const validarActa = async (rowId: string, raw: string) => {
+    const code = formatActa(raw || "");
+    if (!code) {
+      setActaStatus((p) => {
+        const cp = { ...p };
+        delete cp[rowId];
+        return cp;
+      });
+      return;
+    }
+    const prev = actaStatus[rowId];
+    if (prev && prev.value === code) return;
+    try {
+      const res = await fetch(`/api/actas/validate?code=${encodeURIComponent(code)}`, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "ERROR");
+      const estado = String(data?.estado || "").toUpperCase();
+      const msg =
+        estado === "NO_RECEPCIONADA"
+          ? "Acta no recepcionada"
+          : "Acta válida";
+      const level = estado === "NO_RECEPCIONADA" ? "warn" : "ok";
+      setActaStatus((p) => ({
+        ...p,
+        [rowId]: { value: code, level, message: msg },
+      }));
+    } catch (e: any) {
+      const msg = String(e?.message || "ACTA_INVALIDA");
+      const friendly =
+        msg.includes("ACTA_NOT_FOUND") ? "Acta no registrada en recepción" :
+        msg.includes("ACTA_YA_LIQUIDADA") ? "Acta ya liquidada" :
+        "Acta inválida";
+      setActaStatus((p) => ({
+        ...p,
+        [rowId]: { value: code, level: "error", message: friendly },
+      }));
+    }
+  };
+
   const isLiquidado = (row: Row) => {
     const liq = row.materialesLiquidacion || {};
     const acta = String(liq.acta || "").trim();
@@ -164,6 +206,17 @@ export default function MaterialesLiquidacionClient() {
     if (precon && bobinaMetros > 0) return toast.error("Elige PRECON o BOBINA, no ambos");
     if (!precon && bobinaMetros <= 0) return toast.error("Ingresa metros de BOBINA o elige PRECON");
 
+    const needsAuto =
+      actaStatus[row.id]?.value === formatActa(acta) &&
+      actaStatus[row.id]?.level === "warn";
+    if (needsAuto) {
+      const clienteTxt = row.cliente || row.codigoCliente || row.id;
+      const ok = window.confirm(
+        `Acta ${formatActa(acta)} no recepcionada. ¿Deseas recepcionarla y liquidarla ahora?\nCliente: ${clienteTxt}`
+      );
+      if (!ok) return;
+    }
+
     const payload = {
       id: row.id,
       acta,
@@ -172,6 +225,7 @@ export default function MaterialesLiquidacionClient() {
       anclajeP: parseIntSafe(f.anclajeP ?? existing.anclajeP),
       templador: parseIntSafe(f.templador ?? existing.templador),
       clevi: parseIntSafe(f.clevi ?? existing.clevi),
+      autoRecepcionar: needsAuto,
     };
 
     const liquidado = isLiquidado(row);
@@ -208,7 +262,16 @@ export default function MaterialesLiquidacionClient() {
         return cp;
       });
     } catch (e: any) {
-      toast.error(e?.message || "No se pudo liquidar");
+      const msg = String(e?.message || "");
+      if (msg.includes("ACTA_YA_LIQUIDADA")) {
+        toast.error("Esta acta ya fue liquidada para otro cliente");
+      } else if (msg.includes("ACTA_NOT_FOUND")) {
+        toast.error("Acta no registrada en recepción");
+      } else if (msg.includes("ACTA_NO_RECEPCIONADA")) {
+        toast.error("Acta no recepcionada");
+      } else {
+        toast.error(e?.message || "No se pudo liquidar");
+      }
     } finally {
       setGuardandoId(null);
     }
@@ -418,14 +481,30 @@ export default function MaterialesLiquidacionClient() {
                         className={`rounded-md p-2 ${liquidado ? "border border-green-300 bg-green-50" : "border border-red-300 bg-red-50"}`}
                       >
                         <div className="grid gap-2 md:grid-cols-6">
-                        <input
-                          type="text"
-                          placeholder="ACTA (scan)"
-                          className="border rounded px-2 py-1 md:col-span-2"
-                          value={formatActa(f.acta ?? existing.acta ?? "")}
-                          onChange={(e) => setField(row.id, "acta", formatActa(e.target.value))}
-                          disabled={!editing}
-                        />
+                        <div className="md:col-span-2 flex flex-col">
+                          <input
+                            type="text"
+                            placeholder="ACTA (scan)"
+                            className="border rounded px-2 py-1"
+                            value={formatActa(f.acta ?? existing.acta ?? "")}
+                            onChange={(e) => setField(row.id, "acta", formatActa(e.target.value))}
+                            onBlur={() => validarActa(row.id, String(f.acta ?? existing.acta ?? ""))}
+                            disabled={!editing}
+                          />
+                          {actaStatus[row.id] && (
+                            <div
+                              className={`mt-1 text-xs ${
+                                actaStatus[row.id].level === "ok"
+                                  ? "text-emerald-700"
+                                  : actaStatus[row.id].level === "warn"
+                                  ? "text-amber-600"
+                                  : "text-red-600"
+                              }`}
+                            >
+                              {actaStatus[row.id].message}
+                            </div>
+                          )}
+                        </div>
 
                         <select
                           className="border rounded px-2 py-1"
@@ -500,7 +579,7 @@ export default function MaterialesLiquidacionClient() {
                           className={`px-3 py-1 rounded text-white disabled:opacity-60 ${
                             liquidado ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"
                           }`}
-                          disabled={saving}
+                          disabled={saving || (actaStatus[row.id]?.level === "error")}
                           onClick={() => {
                             if (liquidado && !editing) {
                               setEditingRows((p) => ({ ...p, [row.id]: true }));

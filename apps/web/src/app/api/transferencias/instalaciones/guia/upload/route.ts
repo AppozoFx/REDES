@@ -13,7 +13,7 @@ export async function POST(req: Request) {
     const { searchParams } = new URL(req.url);
     const guiaId = searchParams.get("guiaId");
     const tipoRaw = String(searchParams.get("tipo") || "despacho").toLowerCase();
-    const tipo = ["despacho", "devolucion", "ventas"].includes(tipoRaw) ? tipoRaw : "despacho";
+    const tipo = ["despacho", "devolucion", "ventas", "actas"].includes(tipoRaw) ? tipoRaw : "despacho";
     const tokenParam = searchParams.get("token") || "";
     if (!guiaId) return NextResponse.json({ ok: false, error: "MISSING_GUIA_ID" }, { status: 400 });
 

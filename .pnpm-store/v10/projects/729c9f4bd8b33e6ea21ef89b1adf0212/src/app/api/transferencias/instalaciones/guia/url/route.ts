@@ -13,7 +13,7 @@ export async function GET(req: Request) {
     const guiaId = searchParams.get("guiaId");
     if (!guiaId) return NextResponse.json({ ok: false, error: "MISSING_GUIA_ID" }, { status: 400 });
     const tipoRaw = String(searchParams.get("tipo") || "despacho").toLowerCase();
-    const tipo = ["despacho", "devolucion", "ventas"].includes(tipoRaw) ? tipoRaw : "despacho";
+    const tipo = ["despacho", "devolucion", "ventas", "actas"].includes(tipoRaw) ? tipoRaw : "despacho";
 
     const bucket = adminStorageBucket();
     const path = `guias/instalaciones/${tipo}/${guiaId}.pdf`;

@@ -40,7 +40,17 @@ export async function GET(req: Request) {
     }
 
     const snap = await q
-      .select("nombre", "r_c", "categoria", "zonaId", "tipoZona", "vehiculo", "numeroCuadrilla")
+      .select(
+        "nombre",
+        "r_c",
+        "categoria",
+        "zonaId",
+        "tipoZona",
+        "vehiculo",
+        "numeroCuadrilla",
+        "coordinadorUid",
+        "tecnicosUids"
+      )
       .limit(500)
       .get();
 
@@ -56,6 +66,8 @@ export async function GET(req: Request) {
           tipoZona: data?.tipoZona ?? "",
           vehiculo: data?.vehiculo ?? "",
           numeroCuadrilla: data?.numeroCuadrilla ?? "",
+          coordinadorUid: data?.coordinadorUid ?? "",
+          tecnicosUids: Array.isArray(data?.tecnicosUids) ? data.tecnicosUids : [],
         };
       })
       .sort((a, b) =>

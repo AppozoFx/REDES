@@ -16,6 +16,7 @@ const BodySchema = z.object({
   anclajeP: z.coerce.number().int().nonnegative().optional(),
   templador: z.coerce.number().int().nonnegative().optional(),
   clevi: z.coerce.number().int().nonnegative().optional(),
+  autoRecepcionar: z.boolean().optional(),
 });
 
 export async function POST(req: Request) {
@@ -98,11 +99,50 @@ export async function POST(req: Request) {
     const matRefs = materialIds.map((mid) => db.collection("materiales").doc(mid));
     const stockRefs = materialIds.map((mid) => db.collection("cuadrillas").doc(cuadrillaId).collection("stock").doc(mid));
 
+    let actorNombre = session.uid;
+    try {
+      const uSnap = await adminDb().collection("usuarios").doc(session.uid).get();
+      const u = uSnap.data() as any;
+      const full = `${u?.nombres || ""} ${u?.apellidos || ""}`.trim();
+      if (full) actorNombre = full;
+    } catch {}
+
     await db.runTransaction(async (tx) => {
+      const actaRef = db.collection("actas").doc(acta);
+      const actaSnap = await tx.get(actaRef);
+      if (!actaSnap.exists && !data.autoRecepcionar) throw new Error("ACTA_NO_RECEPCIONADA");
+      const actaData = actaSnap.exists ? (actaSnap.data() as any) : {};
+      const actaEstado = String(actaData?.estado || "").toUpperCase();
+      const actaInstId = String(actaData?.instalacionId || "");
+      if (actaEstado === "LIQUIDADA" && actaInstId && actaInstId !== data.id) {
+        throw new Error("ACTA_YA_LIQUIDADA");
+      }
+
+      const cliente = String(inst?.cliente || inst?.orden?.cliente || "").trim();
+      const codigoCliente = String(inst?.codigoCliente || inst?.orden?.codiSeguiClien || data.id || "").trim();
+      const fechaInstalacionYmd = String(inst?.orden?.fSoliYmd || "").trim();
+      const fechaInstalacionAt = inst?.orden?.fSoliAt || null;
+
       const matSnaps = materialIds.length ? await tx.getAll(...matRefs) : [];
       const stockSnaps = materialIds.length ? await tx.getAll(...stockRefs) : [];
       const matMap = new Map(matSnaps.map((s) => [s.id, s]));
       const stockMap = new Map(stockSnaps.map((s) => [s.id, s]));
+
+      const coordinadorUid = String(inst?.orden?.coordinadorCuadrilla || inst?.coordinadorCuadrilla || "").trim();
+      const cuadrillaNombre = String(inst?.cuadrillaNombre || inst?.orden?.cuadrillaNombre || "").trim();
+      let coordinadorNombre = "";
+      if (coordinadorUid) {
+        const uSnap = await tx.get(db.collection("usuarios").doc(coordinadorUid));
+        if (uSnap.exists) {
+          const u = uSnap.data() as any;
+          const nombres = String(u?.nombres || "").trim();
+          const apellidos = String(u?.apellidos || "").trim();
+          const full = `${nombres} ${apellidos}`.trim();
+          coordinadorNombre = full || coordinadorUid;
+        } else {
+          coordinadorNombre = coordinadorUid;
+        }
+      }
 
       const prevItems: Array<{ materialId: string; und?: number; metros?: number }> = Array.isArray(inst?.materialesConsumidos)
         ? inst.materialesConsumidos
@@ -189,6 +229,43 @@ export async function POST(req: Request) {
             clevi,
           },
           updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      if (!actaSnap.exists && data.autoRecepcionar) {
+        tx.set(
+          actaRef,
+          {
+            codigoActa: acta,
+            estado: "RECEPCIONADO",
+            autoRecepcion: true,
+            recibidoBy: session.uid,
+            recibidoByNombre: actorNombre,
+            recibidoAt: FieldValue.serverTimestamp(),
+            coordinadorUid: coordinadorUid || "",
+            coordinadorNombre: coordinadorNombre || "",
+            cuadrillaId,
+            cuadrillaNombre,
+          },
+          { merge: true }
+        );
+      }
+
+      tx.set(
+        actaRef,
+        {
+          estado: "LIQUIDADA",
+          codigoCliente,
+          cliente,
+          fechaInstalacionYmd: fechaInstalacionYmd || null,
+          fechaInstalacionAt: fechaInstalacionAt || null,
+          liquidadaAt: FieldValue.serverTimestamp(),
+          instalacionId: data.id,
+          coordinadorUid: coordinadorUid || "",
+          coordinadorNombre: coordinadorNombre || "",
+          cuadrillaId,
+          cuadrillaNombre,
         },
         { merge: true }
       );

@@ -32,6 +32,11 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
       label: "Instalaciones: Detalle",
       href: "/home/instalaciones/detalle",
     });
+    items.push({
+      key: "INSTALACIONES_ACTAS",
+      label: "Instalaciones: Actas",
+      href: "/home/instalaciones/actas",
+    });
   }
 
   if (hasArea(session, "AVERIAS")) {

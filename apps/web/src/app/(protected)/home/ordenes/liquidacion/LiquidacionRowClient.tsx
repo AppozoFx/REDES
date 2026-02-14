@@ -22,6 +22,10 @@ type OrdenLite = {
   cantFONOwin: string;
   cantBOXwin: string;
   liquidado?: boolean;
+  correccionPendiente?: boolean;
+  correccionBy?: string;
+  correccionYmd?: string;
+  rotuloNapCto?: string;
 };
 
 function tramoFromHm(hm: string) {
@@ -215,6 +219,7 @@ export function LiquidacionRowClient({
     setKitWifiProChecked(!!tips.kitWifiPro);
     setCableadoMeshChecked(!!tips.cableadoMesh);
     setCat5e(0);
+    if (orden.rotuloNapCto) setRotuloNapCto(orden.rotuloNapCto);
   }, [open, tips.gamer, tips.kitWifiPro, tips.cableadoMesh]);
 
   useEffect(() => {
@@ -322,10 +327,11 @@ export function LiquidacionRowClient({
         </div>
         <button
           type="button"
-          className="rounded border px-3 py-1.5 text-sm"
+          className="rounded border px-3 py-1.5 text-sm disabled:opacity-50"
           onClick={() => setOpen((v) => !v)}
+          disabled={!!orden.liquidado && !orden.correccionPendiente}
         >
-          {open ? "Cerrar" : "Liquidar"}
+          {open ? "Cerrar" : orden.correccionPendiente ? "Liquidar (correccion)" : "Liquidar"}
         </button>
         {orden.liquidado ? (
           <>
@@ -349,6 +355,13 @@ export function LiquidacionRowClient({
           </>
         ) : null}
       </div>
+      {orden.correccionPendiente || orden.correccionYmd ? (
+        <div className="rounded border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2 text-xs">
+          Pendiente por corregir. Devuelve equipos y vuelve a liquidar con las series correctas.
+          {orden.correccionYmd ? ` Corregida: ${orden.correccionYmd.split("-").reverse().join("/")}` : ""}
+          {orden.correccionBy ? ` • Por: ${orden.correccionBy}` : ""}
+        </div>
+      ) : null}
 
       {open ? (
         <div className="fixed inset-0 z-50">

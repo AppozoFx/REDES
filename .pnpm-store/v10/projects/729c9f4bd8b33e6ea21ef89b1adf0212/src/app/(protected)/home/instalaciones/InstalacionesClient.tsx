@@ -772,7 +772,7 @@ export default function InstalacionesClient() {
                 const planGamerChecked = (ediciones[l.id]?.planGamer ?? l.planGamer ?? "") !== "";
                 const cableadoChecked = (ediciones[l.id]?.servicioCableadoMesh ?? l.servicioCableadoMesh ?? "") !== "";
                 const cat5 = parseIntSafe(ediciones[l.id]?.cat5e ?? l.cat5e ?? 0);
-                const cat6 = planGamerChecked ? 1 : parseIntSafe(l.cat6 ?? 0);
+                const cat6 = planGamerChecked ? 1 : parseIntSafe(ediciones[l.id]?.cat6 ?? l.cat6 ?? 0);
                 const puntos = cat5 + cat6;
 
                 return (
@@ -835,9 +835,11 @@ export default function InstalacionesClient() {
                         type="checkbox"
                         className="scale-110"
                         checked={(ediciones[l.id]?.planGamer ?? l.planGamer ?? "") !== ""}
-                        onChange={(e) =>
-                          handleEdicionChange(l.id, "planGamer", e.target.checked ? "GAMER" : "")
-                        }
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          handleEdicionChange(l.id, "planGamer", checked ? "GAMER" : "");
+                          if (!checked) handleEdicionChange(l.id, "cat6", 0);
+                        }}
                       />
                     </td>
 

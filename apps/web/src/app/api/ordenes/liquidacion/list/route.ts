@@ -24,6 +24,10 @@ type Row = {
   cantFONOwin: string;
   cantBOXwin: string;
   liquidado: boolean;
+  correccionPendiente?: boolean;
+  correccionBy?: string;
+  correccionYmd?: string;
+  rotuloNapCto?: string;
 };
 
 function todayLimaYmd() {
@@ -142,7 +146,13 @@ export async function GET(req: Request) {
           cantMESHwin: String(x.cantMESHwin || "0"),
           cantFONOwin: String(x.cantFONOwin || "0"),
           cantBOXwin: String(x.cantBOXwin || "0"),
-          liquidado: String(x?.liquidacion?.estado || "").toUpperCase() === "LIQUIDADO" || !!x?.liquidadoAt,
+          correccionPendiente: !!x?.correccionPendiente,
+          correccionBy: String(x?.correccionBy || ""),
+          correccionYmd: String(x?.correccionYmd || ""),
+          rotuloNapCto: String(x?.liquidacion?.rotuloNapCto || ""),
+          liquidado:
+            (String(x?.liquidacion?.estado || "").toUpperCase() === "LIQUIDADO" || !!x?.liquidadoAt) &&
+            !x?.correccionPendiente,
         };
       })
       .filter((r) => !!r.cuadrillaId)
@@ -172,13 +182,33 @@ export async function GET(req: Request) {
       coordinador: coordinatorMap.get(r.coordinador) || shortName(r.coordinador) || r.coordinador,
     }));
 
-    const finalizadas = rowsWithCoordinator.length;
-    const liquidadas = rowsWithCoordinator.filter((r) => r.liquidado).length;
-    const pendientes = rowsWithCoordinator.filter((r) => !r.liquidado).length;
+    const corrKeys = Array.from(new Set(allRows.map((r) => String(r.correccionBy || "").trim()).filter(Boolean)));
+    const corrRefs = corrKeys.map((uid) => adminDb().collection("usuarios").doc(uid));
+    const corrSnaps = corrKeys.length ? await adminDb().getAll(...corrRefs) : [];
+    const corrMap = new Map(
+      corrSnaps.map((s, i) => {
+        const fallback = corrKeys[i] || s.id;
+        const data = s.data() as any;
+        const nombres = String(data?.nombres || "").trim();
+        const apellidos = String(data?.apellidos || "").trim();
+        const full = `${nombres} ${apellidos}`.trim();
+        const label = shortName(full || fallback);
+        return [fallback, label || fallback];
+      })
+    );
+
+    const rowsWithCorreccion = rowsWithCoordinator.map((r) => ({
+      ...r,
+      correccionBy: r.correccionBy ? corrMap.get(r.correccionBy) || r.correccionBy : "",
+    }));
+
+    const finalizadas = rowsWithCorreccion.length;
+    const liquidadas = rowsWithCorreccion.filter((r) => r.liquidado).length;
+    const pendientes = rowsWithCorreccion.filter((r) => !r.liquidado).length;
 
     return NextResponse.json({
       ok: true,
-      items: sortRows(rowsWithCoordinator),
+      items: sortRows(rowsWithCorreccion),
       kpi: { finalizadas, liquidadas, pendientes },
     });
   } catch (e: any) {

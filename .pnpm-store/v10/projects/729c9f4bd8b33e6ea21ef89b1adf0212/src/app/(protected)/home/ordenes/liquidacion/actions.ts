@@ -149,7 +149,10 @@ export async function liquidarOrdenAction(_: any, formData: FormData): Promise<L
       if (!ordSnap.exists) throw new Error("ORDEN_NOT_FOUND");
       const ord = ordSnap.data() as any;
       const liqEstado = String(ord?.liquidacion?.estado || "").toUpperCase();
-      if (liqEstado === "LIQUIDADO" || !!ord?.liquidadoAt) throw new Error("ORDEN_YA_LIQUIDADA");
+      const correccionPendiente = !!ord?.correccionPendiente;
+      if (!correccionPendiente && (liqEstado === "LIQUIDADO" || !!ord?.liquidadoAt)) {
+        throw new Error("ORDEN_YA_LIQUIDADA");
+      }
 
       const cliente = String(ord?.cliente || "").trim();
       const codigoCliente = String(ord?.codiSeguiClien || "").trim();
@@ -287,10 +290,10 @@ export async function liquidarOrdenAction(_: any, formData: FormData): Promise<L
       const cat5e = Number(parsed.data.cat5e || 0);
       const cat6 = Number(parsed.data.cat6 || 0);
       const puntosUTP = Number(parsed.data.puntosUTP || 0);
-      tx.set(
-        instalacionesRef,
-        {
-          codigoCliente,
+        tx.set(
+          instalacionesRef,
+          {
+            codigoCliente,
           cliente,
           ordenDocId: ordenId,
           ordenId: String(ord?.ordenId || ordenId),
@@ -316,28 +319,29 @@ export async function liquidarOrdenAction(_: any, formData: FormData): Promise<L
           equiposInstalados,
           equiposByTipo,
           materialesConsumidos: materialesItems,
-          liquidacion: {
-            estado: "LIQUIDADO",
+            liquidacion: {
+              estado: "LIQUIDADO",
             at: d.at,
             ymd: d.ymd,
             hm: d.hm,
             by: session.uid,
             rotuloNapCto: String(parsed.data.rotuloNapCto || ""),
             observacion: String(parsed.data.observacion || ""),
-            servicios: {
-              planGamer,
-              kitWifiPro,
-              servicioCableadoMesh,
-              cat5e,
-              cat6,
-              puntosUTP,
+              servicios: {
+                planGamer,
+                kitWifiPro,
+                servicioCableadoMesh,
+                cat5e,
+                cat6,
+                puntosUTP,
+              },
             },
+            correccionPendiente: false,
+            orden: ord,
+            updatedAt: FieldValue.serverTimestamp(),
           },
-          orden: ord,
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
+          { merge: true }
+        );
 
       details = {
         codigoCliente,
@@ -383,11 +387,11 @@ export async function liquidarOrdenAction(_: any, formData: FormData): Promise<L
         { merge: false }
       );
 
-      tx.set(
-        ordenRef,
-        {
-          liquidacion: {
-            estado: "LIQUIDADO",
+        tx.set(
+          ordenRef,
+          {
+            liquidacion: {
+              estado: "LIQUIDADO",
             at: FieldValue.serverTimestamp(),
             ymd: d.ymd,
             hm: d.hm,
@@ -399,16 +403,17 @@ export async function liquidarOrdenAction(_: any, formData: FormData): Promise<L
             materialesCount: materialesItems.length,
             rotuloNapCto: String(parsed.data.rotuloNapCto || ""),
             observacion: String(parsed.data.observacion || ""),
-            servicios: {
-              planGamer: String(parsed.data.planGamer || ""),
-              kitWifiPro: String(parsed.data.kitWifiPro || ""),
-              servicioCableadoMesh: String(parsed.data.servicioCableadoMesh || ""),
-              cat5e: Number(parsed.data.cat5e || 0),
-              cat6: Number(parsed.data.cat6 || 0),
-              puntosUTP: Number(parsed.data.puntosUTP || 0),
+              servicios: {
+                planGamer: String(parsed.data.planGamer || ""),
+                kitWifiPro: String(parsed.data.kitWifiPro || ""),
+                servicioCableadoMesh: String(parsed.data.servicioCableadoMesh || ""),
+                cat5e: Number(parsed.data.cat5e || 0),
+                cat6: Number(parsed.data.cat6 || 0),
+                puntosUTP: Number(parsed.data.puntosUTP || 0),
+              },
             },
-          },
-          liquidadoAt: FieldValue.serverTimestamp(),
+            correccionPendiente: false,
+            liquidadoAt: FieldValue.serverTimestamp(),
           liquidadoYmd: d.ymd,
           liquidadoBy: session.uid,
           "audit.updatedAt": FieldValue.serverTimestamp(),
@@ -590,42 +595,39 @@ export async function corregirOrdenAction(_: any, formData: FormData): Promise<C
         byTipo.set(tipo, (byTipo.get(tipo) || 0) + 1);
       }
 
-      tx.set(
-        instalacionesRef,
-        {
-          estado: "CORREGIDA",
-          corregidaAt: FieldValue.serverTimestamp(),
-          corregidaYmd: d.ymd,
-          corregidaHm: d.hm,
-          corregidaBy: session.uid,
-          corregidaMotivo: motivo || "",
-          equiposInstalados: [],
-          equiposByTipo: {},
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      tx.set(
-        ordenRef,
-        {
-          liquidacion: {
-            ...(ord?.liquidacion || {}),
-            estado: "CORREGIDA",
+        tx.set(
+          instalacionesRef,
+          {
+            correccionPendiente: true,
             corregidaAt: FieldValue.serverTimestamp(),
             corregidaYmd: d.ymd,
             corregidaHm: d.hm,
             corregidaBy: session.uid,
             corregidaMotivo: motivo || "",
+            equiposInstalados: [],
+            equiposByTipo: {},
+            updatedAt: FieldValue.serverTimestamp(),
           },
-          liquidadoAt: FieldValue.delete(),
-          liquidadoBy: FieldValue.delete(),
-          liquidadoYmd: FieldValue.delete(),
-          "audit.updatedAt": FieldValue.serverTimestamp(),
-          "audit.updatedBy": session.uid,
-        },
-        { merge: true }
-      );
+          { merge: true }
+        );
+
+        tx.set(
+          ordenRef,
+          {
+            correccionPendiente: true,
+            correccionAt: FieldValue.serverTimestamp(),
+            correccionYmd: d.ymd,
+            correccionHm: d.hm,
+            correccionBy: session.uid,
+            correccionMotivo: motivo || "",
+            liquidadoAt: FieldValue.delete(),
+            liquidadoBy: FieldValue.delete(),
+            liquidadoYmd: FieldValue.delete(),
+            "audit.updatedAt": FieldValue.serverTimestamp(),
+            "audit.updatedBy": session.uid,
+          },
+          { merge: true }
+        );
     });
 
     const cliente = String(orden?.cliente || "").trim();

@@ -53,6 +53,16 @@ export function parseExcelDateToDate(v: any): Date | null {
   if (typeof v === "string") {
     const s = v.trim();
     if (!s) return null;
+    // Soporte DD/MM/YYYY (formato local)
+    const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) {
+      const dd = Number(m[1]);
+      const mm = Number(m[2]);
+      const yyyy = Number(m[3]);
+      if (dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12) {
+        return new Date(yyyy, mm - 1, dd);
+      }
+    }
     const d = new Date(s);
     if (!isNaN(d.getTime())) return d;
   }

@@ -43,6 +43,14 @@ function normalizeList(base: string[]) {
   return Array.from(new Set(base.map((v) => String(v || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
 }
 
+function formatYmdToDmy(ymd?: string | null): string {
+  const s = String(ymd || "").trim();
+  if (!s) return "";
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  return s;
+}
+
 export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
   const [equipos, setEquipos] = useState<EquipoRow[]>([]);
   const [cuadrillas, setCuadrillas] = useState<CuadrillaRow[]>([]);
@@ -101,11 +109,11 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
 
   const mapExportRow = (e: any) => ({
     SN: e.SN || e.id,
-    "F. Despacho": e.f_despachoYmd || "",
+    "F. Despacho": formatYmdToDmy(e.f_despachoYmd) || "",
     Tecnicos: Array.isArray(e.tecnicos) ? e.tecnicos.join(", ") : e.tecnicos || "",
-    "F. Instalacion": e.f_instaladoYmd || "",
+    "F. Instalacion": formatYmdToDmy(e.f_instaladoYmd) || "",
     Cliente: e.cliente || "",
-    "F. Ingreso": e.f_ingresoYmd || "",
+    "F. Ingreso": formatYmdToDmy(e.f_ingresoYmd) || "",
     Estado: e.estado || "",
     Ubicacion: e.ubicacion || "",
     Equipo: e.equipo || "",
@@ -720,13 +728,13 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
               return (
                 <tr key={e.id} className="border-t">
                   <td className="p-2 font-mono">{e.SN || e.id}</td>
-                  <td className="p-2">{e.f_despachoYmd || "-"}</td>
+                  <td className="p-2">{formatYmdToDmy(e.f_despachoYmd) || "-"}</td>
                   <td className="p-2">
                     {Array.isArray(e.tecnicos) ? e.tecnicos.join(", ") : e.tecnicos || "-"}
                   </td>
-                  <td className="p-2">{e.f_instaladoYmd || "-"}</td>
+                  <td className="p-2">{formatYmdToDmy(e.f_instaladoYmd) || "-"}</td>
                   <td className="p-2">{e.cliente || "-"}</td>
-                  <td className="p-2">{e.f_ingresoYmd || "-"}</td>
+                  <td className="p-2">{formatYmdToDmy(e.f_ingresoYmd) || "-"}</td>
                   <td className="p-2">{e.estado || "-"}</td>
                   <td className="p-2">
                     {isEditing ? (

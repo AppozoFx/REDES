@@ -85,6 +85,8 @@ async function main() {
   initAdmin();
   const db = admin.firestore();
   const FieldValue = admin.firestore.FieldValue;
+  const args = process.argv.slice(2);
+  const skipSeries = args.includes("--skip-series");
 
   const cuadrillaIdCache = new Map(); // nombre -> id | null
   const cuadrillaExistsCache = new Map(); // id -> boolean
@@ -116,18 +118,11 @@ async function main() {
   }
 
   const countsByCuadrilla = new Map(); // id -> { total, tipos: Map<tipo, count>, onts }
-  const seriesCreates = [];
-
   let processed = 0;
   let skippedNoCuadrilla = 0;
   let skippedNoCuadrillaDoc = 0;
 
-  const writer = db.bulkWriter();
-  writer.onWriteError((err) => {
-    if (err.code === 6 || err.code === 5 || err.code === 9) return true; // already exists / not found race
-    console.error("Write error:", err);
-    return false;
-  });
+  const seriesCandidates = []; // { ref, payload }
 
   let lastDoc = null;
   const pageSize = 500;
@@ -165,26 +160,52 @@ async function main() {
       c.tipos.set(tipo, (c.tipos.get(tipo) || 0) + 1);
       if (tipo === "ONT") c.onts += 1;
 
-      const seriesRef = db.collection("cuadrillas").doc(cuadrillaId).collection("equipos_series").doc(sn);
-      const payload = {
-        SN: sn,
-        equipo: tipo,
-        descripcion: desc,
-        ubicacion: loc.ubicacion,
-        estado: "CAMPO",
-        guia_despacho: "",
-        updatedAt: FieldValue.serverTimestamp(),
-      };
-      seriesCreates.push(writer.create(seriesRef, payload));
+      if (!skipSeries) {
+        const seriesRef = db.collection("cuadrillas").doc(cuadrillaId).collection("equipos_series").doc(sn);
+        const payload = {
+          SN: sn,
+          equipo: tipo,
+          descripcion: desc,
+          ubicacion: loc.ubicacion,
+          estado: "CAMPO",
+          guia_despacho: "",
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+        seriesCandidates.push({ ref: seriesRef, payload });
+      }
     }
     lastDoc = snap.docs[snap.docs.length - 1];
     console.log(`Procesados: ${processed}`);
   }
 
-  console.log("Esperando escrituras de equipos_series...");
-  await Promise.all(seriesCreates);
+  if (!skipSeries) {
+    console.log("Creando equipos_series (solo faltantes)...");
+    const writerSeries = db.bulkWriter();
+    writerSeries.onWriteError((err) => {
+      console.error("Write error (series):", err);
+      return false;
+    });
+    const chunkSize = 300;
+    for (let i = 0; i < seriesCandidates.length; i += chunkSize) {
+      const part = seriesCandidates.slice(i, i + chunkSize);
+      const refs = part.map((x) => x.ref);
+      const snaps = await db.getAll(...refs);
+      const existsSet = new Set(snaps.filter((s) => s.exists).map((s) => s.ref.path));
+      for (const item of part) {
+        if (existsSet.has(item.ref.path)) continue;
+        writerSeries.create(item.ref, item.payload);
+      }
+      await writerSeries.flush();
+    }
+    await writerSeries.close();
+  }
 
   console.log("Actualizando equipos_stock y kit por ONT...");
+  const writerStock = db.bulkWriter();
+  writerStock.onWriteError((err) => {
+    console.error("Write error (stock):", err);
+    return false;
+  });
   const fixedTipos = ["ONT", "MESH", "BOX", "FONO"];
   for (const [cuadrillaId, c] of countsByCuadrilla.entries()) {
     // equipos_stock exacto
@@ -192,7 +213,7 @@ async function main() {
     for (const tipo of tiposSet) {
       const cantidad = c.tipos.get(tipo) || 0;
       const ref = db.collection("cuadrillas").doc(cuadrillaId).collection("equipos_stock").doc(tipo);
-      writer.set(
+      writerStock.set(
         ref,
         { tipo, cantidad, updatedAt: FieldValue.serverTimestamp() },
         { merge: true }
@@ -213,18 +234,18 @@ async function main() {
           const matRef = db.collection("cuadrillas").doc(cuadrillaId).collection("stock").doc(matId);
           const base = { materialId: matId, unidadTipo, area: "CUADRILLA" };
           if (unidadTipo === "UND") {
-            writer.set(matRef, { ...base, stockUnd: FieldValue.increment(perOnt * c.onts) }, { merge: true });
+            writerStock.set(matRef, { ...base, stockUnd: FieldValue.increment(perOnt * c.onts) }, { merge: true });
           } else {
             // fallback: no deberia pasar en este kit
-            writer.set(matRef, { ...base, stockCm: FieldValue.increment(perOnt * c.onts) }, { merge: true });
+            writerStock.set(matRef, { ...base, stockCm: FieldValue.increment(perOnt * c.onts) }, { merge: true });
           }
         }
-        writer.set(markRef, { appliedAt: FieldValue.serverTimestamp(), ontCount: c.onts }, { merge: true });
+        writerStock.set(markRef, { appliedAt: FieldValue.serverTimestamp(), ontCount: c.onts }, { merge: true });
       }
     }
   }
 
-  await writer.close();
+  await writerStock.close();
 
   console.log("Resumen:");
   console.log(`- Equipos procesados: ${processed}`);

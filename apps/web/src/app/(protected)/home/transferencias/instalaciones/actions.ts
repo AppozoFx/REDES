@@ -126,7 +126,6 @@ export async function despacharInstalacionesAction(arg1: any, arg2?: any): Promi
     const itemsEquipos: { sn: string; status: "OK" | "ERROR"; reason?: string }[] = [];
     const movedTypes: Record<string, number> = {};
     let countONT = 0;
-    const movedTypes: Record<string, number> = {};
     const chunkSize = 20;
     for (let i = 0; i < eqSet.length; i += chunkSize) {
       const part = eqSet.slice(i, i + chunkSize);
@@ -184,7 +183,7 @@ export async function despacharInstalacionesAction(arg1: any, arg2?: any): Promi
       }
     }
 
-    // Bobinas (RESIDENCIAL): cada código suma 1000 m al material BOBINA y crea doc en cuadrilla
+    // Bobinas (RESIDENCIAL): cada codigo suma 1000 m al material BOBINA y crea doc en cuadrilla
     const bobinas = segmento === "RESIDENCIAL" ? (input.bobinasResidenciales || []).map((b) => normalizeBobinaCode(b.codigoRaw)) : [];
     if (bobinas.length) {
       const prev = materialesMap.get("BOBINA") || { und: 0, metros: 0 };
@@ -212,37 +211,37 @@ export async function despacharInstalacionesAction(arg1: any, arg2?: any): Promi
     }
 
     // Apply materials stock movements per material
-  const itemsMateriales: { materialId: string; status: "OK" | "ERROR"; reason?: string }[] = [];
-  for (const [materialId, qty] of materialesMap.entries()) {
-    try {
-      const matDoc = await getMaterialDoc(materialId);
-      if (!matDoc) throw new Error("MATERIAL_NOT_FOUND");
-      await db.runTransaction(async (tx) => {
-        await updateStockTx(tx, {
-          from: { type: "ALMACEN", id: "ALMACEN" },
-          to: { type: "CUADRILLA", id: input.cuadrillaId },
-          material: { id: materialId, unidadTipo: matDoc.unidadTipo },
-          und: matDoc.unidadTipo === "UND" ? qty.und : undefined,
-          metros: matDoc.unidadTipo === "METROS" ? qty.metros : undefined,
+    const itemsMateriales: { materialId: string; status: "OK" | "ERROR"; reason?: string }[] = [];
+    for (const [materialId, qty] of materialesMap.entries()) {
+      try {
+        const matDoc = await getMaterialDoc(materialId);
+        if (!matDoc) throw new Error("MATERIAL_NOT_FOUND");
+        await db.runTransaction(async (tx) => {
+          await updateStockTx(tx, {
+            from: { type: "ALMACEN", id: "ALMACEN" },
+            to: { type: "CUADRILLA", id: input.cuadrillaId },
+            material: { id: materialId, unidadTipo: matDoc.unidadTipo },
+            und: matDoc.unidadTipo === "UND" ? qty.und : undefined,
+            metros: matDoc.unidadTipo === "METROS" ? qty.metros : undefined,
+          });
         });
-      });
-      // Verificar mínimos post-despacho en almacén
-      const almSnap = await db.collection("almacen_stock").doc(materialId).get();
-      const alm = almSnap.exists ? (almSnap.data() as any) : null;
-      if (alm && alm.unidadTipo === "UND") {
-        if (typeof alm.minStockUnd === "number" && (alm.stockUnd || 0) < alm.minStockUnd) {
-          // add warning (se acumula luego)
+        // Verificar minimos post-despacho en almacen
+        const almSnap = await db.collection("almacen_stock").doc(materialId).get();
+        const alm = almSnap.exists ? (almSnap.data() as any) : null;
+        if (alm && alm.unidadTipo === "UND") {
+          if (typeof alm.minStockUnd === "number" && (alm.stockUnd || 0) < alm.minStockUnd) {
+            // add warning (se acumula luego)
+          }
+        } else if (alm && alm.unidadTipo === "METROS") {
+          if (typeof alm.minStockCm === "number" && (alm.stockCm || 0) < alm.minStockCm) {
+            // add warning (se acumula luego)
+          }
         }
-      } else if (alm && alm.unidadTipo === "METROS") {
-        if (typeof alm.minStockCm === "number" && (alm.stockCm || 0) < alm.minStockCm) {
-          // add warning (se acumula luego)
-        }
+        itemsMateriales.push({ materialId, status: "OK" });
+      } catch (err: any) {
+        itemsMateriales.push({ materialId, status: "ERROR", reason: String(err?.message || "ERROR") });
       }
-      itemsMateriales.push({ materialId, status: "OK" });
-    } catch (err: any) {
-      itemsMateriales.push({ materialId, status: "ERROR", reason: String(err?.message || "ERROR") });
     }
-  }
 
     // Ledger
     await adminDb().collection("movimientos_inventario").doc(transferId).set({
@@ -255,9 +254,9 @@ export async function despacharInstalacionesAction(arg1: any, arg2?: any): Promi
       itemsMateriales,
       observacion: input.observacion || "",
       createdAt: FieldValue.serverTimestamp(),
-    // KPIs por tipo se calculan v�a movedTypes
-    }
-    // KPIs básicos: equipos por tipo en almacén/cuadrilla
+    });
+    // KPIs por tipo se calculan via movedTypes
+    // KPIs basicos: equipos por tipo en almacen/cuadrilla
     try {
       if (Object.keys(movedTypes).length) {
         const almKpiRef = db.collection("kpi_instalaciones").doc("almacen");
@@ -274,9 +273,9 @@ export async function despacharInstalacionesAction(arg1: any, arg2?: any): Promi
 
     // Daily counts
     const ymd = d.ymd || new Date().toISOString().slice(0, 10);
-    await db.collection("kpi_daily_instalaciones").doc(ymd).set({ equipos_despachos_count: FieldValue.increment(itemsEquipos.filter(x=>x.status==='OK').length), materiales_despachos_count: FieldValue.increment(itemsMateriales.filter(x=>x.status==='OK').length), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    await db.collection("kpi_daily_instalaciones").doc(ymd).set({ equipos_despachos_count: FieldValue.increment(itemsEquipos.filter((x) => x.status === "OK").length), materiales_despachos_count: FieldValue.increment(itemsMateriales.filter((x) => x.status === "OK").length), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 
-    // Recomputa warnings mínimos (post-despacho) de forma consolidada
+    // Recomputa warnings minimos (post-despacho) de forma consolidada
     const warnings: string[] = [];
     try {
       for (const [materialId] of materialesMap.entries()) {
@@ -285,11 +284,11 @@ export async function despacharInstalacionesAction(arg1: any, arg2?: any): Promi
         const alm2: any = almSnap2.data();
         if (alm2?.unidadTipo === "UND") {
           if (typeof alm2.minStockUnd === "number" && (alm2.stockUnd || 0) < alm2.minStockUnd) {
-            warnings.push(`Material ${materialId} por debajo del mínimo (UND)`);
+            warnings.push(`Material ${materialId} por debajo del minimo (UND)`);
           }
         } else if (alm2?.unidadTipo === "METROS") {
           if (typeof alm2.minStockCm === "number" && (alm2.stockCm || 0) < alm2.minStockCm) {
-            warnings.push(`Material ${materialId} por debajo del mínimo (METROS)`);
+            warnings.push(`Material ${materialId} por debajo del minimo (METROS)`);
           }
         }
       }
@@ -332,6 +331,7 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
 
     const eqSet = uniqueStrings(input.equipos || []);
     const itemsEquipos: { sn: string; status: "OK" | "ERROR"; reason?: string }[] = [];
+    const movedTypes: Record<string, number> = {};
     const chunkSize = 20;
     for (let i = 0; i < eqSet.length; i += chunkSize) {
       const part = eqSet.slice(i, i + chunkSize);
@@ -375,7 +375,7 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
       const prev = materialesMap.get(key) || { und: 0, metros: 0 };
       materialesMap.set(key, { und: prev.und + Math.floor(m.und || 0), metros: prev.metros + (m.metros || 0) });
     }
-    // Bobinas residenciales: marcar DEVUELTA y ajustar -1000 m en cuadrilla y +1000 m en almacén
+    // Bobinas residenciales: marcar DEVUELTA y ajustar -1000 m en cuadrilla y +1000 m en almacen
     const bobinas = segmento === "RESIDENCIAL" ? (input.bobinasResidenciales || []).map((b) => String(b.codigo || "").toUpperCase()) : [];
     if (bobinas.length) {
       const prev = materialesMap.get("BOBINA") || { und: 0, metros: 0 };
@@ -397,25 +397,25 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
       });
     }
 
-  const itemsMateriales: { materialId: string; status: "OK" | "ERROR"; reason?: string }[] = [];
-  for (const [materialId, qty] of materialesMap.entries()) {
-    try {
-      const matDoc = await getMaterialDoc(materialId);
-      if (!matDoc) throw new Error("MATERIAL_NOT_FOUND");
-      await db.runTransaction(async (tx) => {
-        await updateStockTx(tx, {
-          from: { type: "CUADRILLA", id: input.cuadrillaId },
-          to: { type: "ALMACEN", id: "ALMACEN" },
-          material: { id: materialId, unidadTipo: matDoc.unidadTipo },
-          und: matDoc.unidadTipo === "UND" ? qty.und : undefined,
-          metros: matDoc.unidadTipo === "METROS" ? qty.metros : undefined,
+    const itemsMateriales: { materialId: string; status: "OK" | "ERROR"; reason?: string }[] = [];
+    for (const [materialId, qty] of materialesMap.entries()) {
+      try {
+        const matDoc = await getMaterialDoc(materialId);
+        if (!matDoc) throw new Error("MATERIAL_NOT_FOUND");
+        await db.runTransaction(async (tx) => {
+          await updateStockTx(tx, {
+            from: { type: "CUADRILLA", id: input.cuadrillaId },
+            to: { type: "ALMACEN", id: "ALMACEN" },
+            material: { id: materialId, unidadTipo: matDoc.unidadTipo },
+            und: matDoc.unidadTipo === "UND" ? qty.und : undefined,
+            metros: matDoc.unidadTipo === "METROS" ? qty.metros : undefined,
+          });
         });
-      });
-      itemsMateriales.push({ materialId, status: "OK" });
-    } catch (err: any) {
-      itemsMateriales.push({ materialId, status: "ERROR", reason: String(err?.message || "ERROR") });
+        itemsMateriales.push({ materialId, status: "OK" });
+      } catch (err: any) {
+        itemsMateriales.push({ materialId, status: "ERROR", reason: String(err?.message || "ERROR") });
+      }
     }
-  }
 
     await adminDb().collection("movimientos_inventario").doc(transferId).set({
       area: "INSTALACIONES",
@@ -429,7 +429,7 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
       createdAt: FieldValue.serverTimestamp(),
     });
 
-    // KPIs básicos: revertir por tipo en almacén/cuadrilla
+    // KPIs basicos: revertir por tipo en almacen/cuadrilla
     try {
       if (Object.keys(movedTypes).length) {
         const almKpiRef = db.collection("kpi_instalaciones").doc("almacen");
@@ -445,7 +445,7 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
     } catch {}
 
     const ymd = d.ymd || new Date().toISOString().slice(0, 10);
-    await db.collection("kpi_daily_instalaciones").doc(ymd).set({ equipos_devoluciones_count: FieldValue.increment(itemsEquipos.filter(x=>x.status==='OK').length), materiales_devoluciones_count: FieldValue.increment(itemsMateriales.filter(x=>x.status==='OK').length), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    await db.collection("kpi_daily_instalaciones").doc(ymd).set({ equipos_devoluciones_count: FieldValue.increment(itemsEquipos.filter((x) => x.status === "OK").length), materiales_devoluciones_count: FieldValue.increment(itemsMateriales.filter((x) => x.status === "OK").length), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 
     const resumen = {
       equipos: { ok: itemsEquipos.filter((x) => x.status === "OK").length, fail: itemsEquipos.filter((x) => x.status === "ERROR").length },

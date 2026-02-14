@@ -17,15 +17,4 @@ export default async function PermissionDetailPage(props: { params: Promise<{ id
       <PermissionEditForm permission={toPlain(permission)} />
     </div>
   );
-
-  const dto = {
-  id: permission.id,
-  nombre: permission.nombre ?? "",
-  modulo: permission.modulo ?? "",
-  descripcion: permission.descripcion ?? "",
-  estado: permission.estado ?? "ACTIVO",
-};
-
-<PermissionEditForm permission={dto} />
-
 }

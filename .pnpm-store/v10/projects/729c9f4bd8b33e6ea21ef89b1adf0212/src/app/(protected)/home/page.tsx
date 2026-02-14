@@ -9,14 +9,9 @@ export default async function HomeRouterPage() {
   const pending = await listPendingComunicadosForUser(session);
 
   // Gate por cualquier comunicado pendiente (obligatorio u opcional)
-
-
-  //nst mustGate = pending.length > 0;// Modificado: solo gatear si hay comunicados obligatorios
-
   const mustGate = pending.some(
-  (c) => c.obligatorio === true && c.persistencia === "ONCE"
-);
-
+    (c) => c.obligatorio === true && c.persistencia === "ONCE"
+  );
 
   if (mustGate) {
     redirect("/home/comunicados");

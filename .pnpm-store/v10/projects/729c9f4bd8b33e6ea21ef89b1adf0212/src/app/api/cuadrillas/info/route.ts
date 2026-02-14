@@ -1,10 +1,30 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
+import { getServerSession } from "@/core/auth/session";
 
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   try {
+    const session = await getServerSession();
+    if (!session) return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
+    if (session.access.estadoAcceso !== "HABILITADO") {
+      return NextResponse.json({ ok: false, error: "ACCESS_DISABLED" }, { status: 403 });
+    }
+    const canUse =
+      session.isAdmin ||
+      session.permissions.includes("CUADRILLAS_MANAGE") ||
+      session.permissions.includes("EQUIPOS_DESPACHO") ||
+      session.permissions.includes("EQUIPOS_DEVOLUCION") ||
+      session.permissions.includes("MATERIALES_TRANSFER_SERVICIO") ||
+      session.permissions.includes("MATERIALES_DEVOLUCION") ||
+      session.permissions.includes("VENTAS_DESPACHO_INST") ||
+      session.permissions.includes("VENTAS_DESPACHO_AVER") ||
+      session.permissions.includes("VENTAS_EDIT") ||
+      session.permissions.includes("VENTAS_VER") ||
+      session.permissions.includes("VENTAS_VER_ALL");
+    if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     if (!id) return NextResponse.json({ ok: false, error: "MISSING_ID" }, { status: 400 });

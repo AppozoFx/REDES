@@ -40,7 +40,7 @@ export function NotificationsBell({ uid }: { uid: string }) {
     const unsub = onAuthStateChanged(auth, (user) => {
       const u = user?.uid ?? null;
       setAuthUid(u);
-      // Debug de autenticaciÃ³n en cliente
+      // Debug de autenticacion en cliente
       // eslint-disable-next-line no-console
       console.log("[NotificationsBell] auth.currentUser", { uidProp: uid, authUid: u, isReady: !!u });
     });
@@ -57,28 +57,28 @@ export function NotificationsBell({ uid }: { uid: string }) {
 
   const markingRef = React.useRef(false);
 
-React.useEffect(() => {
-  if (!open) return;
-  if (!authUid) return;
+  React.useEffect(() => {
+    if (!open) return;
+    if (!authUid) return;
 
-  const unreadIds = items.filter((n) => !n.read).map((n) => n.id);
-  if (!unreadIds.length) return;
-  if (markingRef.current) return;
+    const unreadIds = items.filter((n) => !n.read).map((n) => n.id);
+    if (!unreadIds.length) return;
+    if (markingRef.current) return;
 
-  // Optimistic: marcar como leÃ­do localmente
-  setItems((prev) => prev.map((n) => (unreadIds.includes(n.id) ? { ...n, read: true } : n)));
+    // Optimistic: marcar como leido localmente
+    setItems((prev) => prev.map((n) => (unreadIds.includes(n.id) ? { ...n, read: true } : n)));
 
-  markingRef.current = true;
-  markAllNotificationsRead(authUid, unreadIds)
-    .catch(() => {
-      // revertir optimismo si falla
-      setItems((prev) => prev.map((n) => (unreadIds.includes(n.id) ? { ...n, read: false } : n)));
-    })
-    .finally(() => {
-      // permitir futuros âopenâ si llegan nuevas notifs
-      markingRef.current = false;
-    });
-}, [open, authUid, items]);
+    markingRef.current = true;
+    markAllNotificationsRead(authUid, unreadIds)
+      .catch(() => {
+        // revertir optimismo si falla
+        setItems((prev) => prev.map((n) => (unreadIds.includes(n.id) ? { ...n, read: false } : n)));
+      })
+      .finally(() => {
+        // permitir futuros "open" si llegan nuevas notifs
+        markingRef.current = false;
+      });
+  }, [open, authUid, items]);
 
   return (
     <div className="relative">
@@ -196,7 +196,7 @@ React.useEffect(() => {
                           });
                         }}
                       >
-                        Marcar leÃ­do
+                        Marcar leido
                       </button>
                     )}
                   </div>

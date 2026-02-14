@@ -18,6 +18,6 @@ export type GlobalNotificationInput = {
 export async function addGlobalNotification(input: GlobalNotificationInput) {
   await adminDb().collection("notificaciones").add({
     ...input,
-    createdAt: FieldValue.serverTimestamp(), // ✅ ESTA ES LA CLAVE
+    createdAt: FieldValue.serverTimestamp(), // CLAVE
   });
 }

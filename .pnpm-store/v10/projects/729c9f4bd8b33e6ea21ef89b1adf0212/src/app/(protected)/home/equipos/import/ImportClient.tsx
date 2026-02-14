@@ -106,7 +106,7 @@ export default function ImportClient() {
         "PRO12345",
         "Modelo ABC",
         "K1 MOTO",
-        "2026-02-01",
+        "12/02/2026",
         "",
         "",
         "",
@@ -387,4 +387,3 @@ export default function ImportClient() {
     </div>
   );
 }
-

@@ -1,10 +1,25 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
+import { getServerSession } from "@/core/auth/session";
 
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   try {
+    const session = await getServerSession();
+    if (!session) return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
+    if (session.access.estadoAcceso !== "HABILITADO") {
+      return NextResponse.json({ ok: false, error: "ACCESS_DISABLED" }, { status: 403 });
+    }
+    const canUse =
+      session.isAdmin ||
+      session.permissions.includes("EQUIPOS_VIEW") ||
+      session.permissions.includes("EQUIPOS_EDIT") ||
+      session.permissions.includes("EQUIPOS_IMPORT") ||
+      session.permissions.includes("EQUIPOS_DESPACHO") ||
+      session.permissions.includes("EQUIPOS_DEVOLUCION");
+    if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
+
     const { searchParams } = new URL(req.url);
     const estados = searchParams.getAll("estado").map((e) => e.trim().toUpperCase()).filter(Boolean);
     const ubicacion = (searchParams.get("ubicacion") || "").trim().toUpperCase();

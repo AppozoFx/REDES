@@ -2,6 +2,17 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { getServerSession } from "@/core/auth/session";
 
+function shortName(name: string) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "";
+  const first = parts[0];
+  const last = parts.length > 1 ? parts[parts.length - 1] : "";
+  return last ? `${first} ${last}` : first;
+}
+
 export const runtime = "nodejs";
 
 function todayLimaYm() {
@@ -115,6 +126,10 @@ export async function GET(req: Request) {
           }))
         : [];
 
+      const coordinadorUid = String(
+        orden.coordinadorCuadrilla || orden.coordinador || orden.gestorCuadrilla || ""
+      ).trim();
+
       return {
         id: d.id,
         ...data,
@@ -123,6 +138,8 @@ export async function GET(req: Request) {
         codigoCliente: data.codigoCliente || orden.codiSeguiClien || "",
         documento: data.documento || orden.numeroDocumento || "",
         direccion: data.direccion || orden.direccion || "",
+        acta: String(data.ACTA || data.acta || ""),
+        coordinador: coordinadorUid,
         cuadrillaNombre: data.cuadrillaNombre || orden.cuadrillaNombre || "",
         tipoCuadrilla: data.tipoCuadrilla || orden.tipoCuadrilla || "",
         tipoOrden: data.tipoOrden || orden.tipoOrden || orden.tipo || "",
@@ -182,10 +199,26 @@ export async function GET(req: Request) {
       );
     }
 
+    const coordUids = Array.from(new Set(baseItems.map((i) => String(i.coordinador || "").trim()).filter(Boolean)));
+    const coordRefs = coordUids.map((uid) => adminDb().collection("usuarios").doc(uid));
+    const coordSnaps = coordUids.length ? await adminDb().getAll(...coordRefs) : [];
+    const coordMap = new Map(
+      coordSnaps.map((s, i) => {
+        const fallback = coordUids[i] || s.id;
+        const data = s.data() as any;
+        const nombres = String(data?.nombres || "").trim();
+        const apellidos = String(data?.apellidos || "").trim();
+        const full = `${nombres} ${apellidos}`.trim();
+        const label = shortName(full || fallback);
+        return [fallback, label || fallback];
+      })
+    );
+
     const items = baseItems.map((i) => ({
       ...i,
       liquidadoBy: i.liquidadoBy ? uidToName[i.liquidadoBy] || i.liquidadoBy : null,
       corregidoBy: i.corregidoBy ? uidToName[i.corregidoBy] || i.corregidoBy : null,
+      coordinador: i.coordinador ? coordMap.get(i.coordinador) || i.coordinador : "",
     }));
 
     return NextResponse.json({

@@ -630,9 +630,34 @@ export async function corregirOrdenAction(_: any, formData: FormData): Promise<C
         );
     });
 
-    const cliente = String(orden?.cliente || "").trim();
-    revalidatePath("/home/ordenes/liquidacion");
-    return { ok: true, codigoCliente, cliente };
+      const cliente = String(orden?.cliente || "").trim();
+      const codiSeguiClien = String(orden?.codiSeguiClien || "").trim();
+      const cuadrillaNombre = String(orden?.cuadrillaNombre || orden?.cuadrillaId || "").trim();
+      const fechaOrden = formatYmdToDmy(String(orden?.fechaFinVisiYmd || orden?.fSoliYmd || ""));
+      let corregidoPor = session.uid;
+      try {
+        const uSnap = await adminDb().collection("usuarios").doc(session.uid).get();
+        const u = uSnap.data() as any;
+        const full = `${u?.nombres || ""} ${u?.apellidos || ""}`.trim();
+        if (full) corregidoPor = full;
+      } catch {}
+
+      try {
+        await addGlobalNotification({
+          title: "Orden corregida",
+          message: `✅ Cliente: ${cliente || codiSeguiClien || "cliente"} • Pedido: ${codiSeguiClien || ordenId} • Cuadrilla: ${cuadrillaNombre || "-"} • Corregido por: ${corregidoPor} • Fecha: ${fechaOrden || "-"}`,
+          type: "warning",
+          scope: "ALL",
+          createdBy: session.uid,
+          entityType: "ORDENES",
+          entityId: codiSeguiClien || ordenId,
+          action: "UPDATE",
+          estado: "ACTIVO",
+        });
+      } catch {}
+
+      revalidatePath("/home/ordenes/liquidacion");
+      return { ok: true, codigoCliente, cliente };
   } catch (e: any) {
     const msg = String(e?.message || "ERROR");
     return { ok: false, error: { formErrors: [msg] } };

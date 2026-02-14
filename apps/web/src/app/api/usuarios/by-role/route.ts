@@ -13,7 +13,12 @@ export async function GET(req: Request) {
       session.isAdmin ||
       session.permissions.includes("VENTAS_EDIT") ||
       session.permissions.includes("VENTAS_DESPACHO_INST") ||
-      session.permissions.includes("VENTAS_DESPACHO_AVER");
+      session.permissions.includes("VENTAS_DESPACHO_AVER") ||
+      session.permissions.includes("CUADRILLAS_MANAGE") ||
+      session.permissions.includes("ORDENES_LIQUIDAR") ||
+      (session.access.areas || []).includes("INSTALACIONES") ||
+      (session.access.roles || []).includes("GESTOR") ||
+      (session.access.roles || []).includes("COORDINADOR");
     if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const { searchParams } = new URL(req.url);
@@ -29,12 +34,23 @@ export async function GET(req: Request) {
     const uids = accessSnap.docs.map((d) => d.id);
     const userRefs = uids.map((uid) => adminDb().collection("usuarios").doc(uid));
     const userSnaps = uids.length ? await adminDb().getAll(...userRefs) : [];
+    const shortName = (full: string, fallback: string) => {
+      const parts = String(full || "")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+      const first = parts[0] || "";
+      const last = parts.length > 1 ? parts[parts.length - 1] : "";
+      return last ? `${first} ${last}` : first || fallback;
+    };
+
     const userMap = new Map(
       userSnaps.map((s) => {
         const data = s.data() as any;
         const nombres = String(data?.nombres || "").trim();
         const apellidos = String(data?.apellidos || "").trim();
-        const displayName = `${nombres} ${apellidos}`.trim() || s.id;
+        const full = `${nombres} ${apellidos}`.trim() || s.id;
+        const displayName = shortName(full, s.id) || s.id;
         return [s.id, displayName];
       })
     );

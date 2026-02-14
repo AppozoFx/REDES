@@ -34,8 +34,18 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     });
     items.push({
       key: "INSTALACIONES_ACTAS",
-      label: "Instalaciones: Actas",
+      label: "Recepción de Actas",
       href: "/home/instalaciones/actas",
+    });
+    items.push({
+      key: "CUADRILLAS_GESTION",
+      label: "Cuadrillas Gestión",
+      href: "/home/cuadrillas/gestion",
+    });
+    items.push({
+      key: "TECNICOS_GESTION",
+      label: "Técnicos Gestión",
+      href: "/home/tecnicos/gestion",
     });
   }
 

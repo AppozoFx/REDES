@@ -22,16 +22,23 @@ export async function GET(req: Request) {
       session.permissions.includes("VENTAS_DESPACHO_AVER") ||
       session.permissions.includes("VENTAS_EDIT") ||
       session.permissions.includes("VENTAS_VER") ||
-      session.permissions.includes("VENTAS_VER_ALL");
+      session.permissions.includes("VENTAS_VER_ALL") ||
+      session.permissions.includes("ORDENES_LIQUIDAR") ||
+      (session.access.areas || []).includes("INSTALACIONES") ||
+      (session.access.roles || []).includes("GESTOR") ||
+      (session.access.roles || []).includes("COORDINADOR");
     if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const { searchParams } = new URL(req.url);
     const area = searchParams.get("area");
     const coordinadorUid = searchParams.get("coordinadorUid");
 
-    let q = adminDb()
-      .collection("cuadrillas")
-      .where("estado", "==", "HABILITADO");
+    const includeAll = String(searchParams.get("includeAll") || "").toLowerCase() === "true";
+
+    let q = adminDb().collection("cuadrillas");
+    if (!includeAll) {
+      q = q.where("estado", "==", "HABILITADO");
+    }
     if (area) {
       q = q.where("area", "==", area);
     }
@@ -46,10 +53,13 @@ export async function GET(req: Request) {
         "categoria",
         "zonaId",
         "tipoZona",
+        "placa",
         "vehiculo",
         "numeroCuadrilla",
         "coordinadorUid",
-        "tecnicosUids"
+        "gestorUid",
+        "tecnicosUids",
+        "estado"
       )
       .limit(500)
       .get();
@@ -64,10 +74,13 @@ export async function GET(req: Request) {
           categoria: data?.categoria ?? "",
           zonaId: data?.zonaId ?? "",
           tipoZona: data?.tipoZona ?? "",
+          placa: data?.placa ?? "",
           vehiculo: data?.vehiculo ?? "",
           numeroCuadrilla: data?.numeroCuadrilla ?? "",
           coordinadorUid: data?.coordinadorUid ?? "",
+          gestorUid: data?.gestorUid ?? "",
           tecnicosUids: Array.isArray(data?.tecnicosUids) ? data.tecnicosUids : [],
+          estado: data?.estado ?? "",
         };
       })
       .sort((a, b) =>

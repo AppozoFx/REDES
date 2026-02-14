@@ -139,10 +139,10 @@ export async function GET(req: Request) {
         documento: data.documento || orden.numeroDocumento || "",
         direccion: data.direccion || orden.direccion || "",
         acta: String(data.ACTA || data.acta || ""),
-        coordinador: coordinadorUid,
+        coordinadorUid,
         cuadrillaNombre: data.cuadrillaNombre || orden.cuadrillaNombre || "",
         tipoCuadrilla: data.tipoCuadrilla || orden.tipoCuadrilla || "",
-        tipoOrden: data.tipoOrden || orden.tipoOrden || orden.tipo || "",
+        tipoOrden: orden.tipoOrden || orden.tipo || data.tipoOrden || "",
         plan: data.plan || orden.plan || orden.idenServi || "",
         orderId: data.ordenId || orden.ordenId || orden.ordenDocId || "",
         fechaInstalacion: fechaInstalacionAt,
@@ -162,7 +162,7 @@ export async function GET(req: Request) {
         servicioCableadoMesh: servicios.servicioCableadoMesh || "",
         cat5e: servicios.cat5e ?? 0,
         cat6: servicios.cat6 ?? 0,
-        observacion: data.observacion || liquidacion.observacion || "",
+        observacion: liquidacion.observacion || data.observacion || "",
         liquidadoAt: toIso(liquidacion.at) || null,
         liquidadoBy: liquidacion.by || null,
         corregido: data.corregido || data.correccionPendiente || false,
@@ -199,7 +199,7 @@ export async function GET(req: Request) {
       );
     }
 
-    const coordUids = Array.from(new Set(baseItems.map((i) => String(i.coordinador || "").trim()).filter(Boolean)));
+    const coordUids = Array.from(new Set(baseItems.map((i) => String(i.coordinadorUid || "").trim()).filter(Boolean)));
     const coordRefs = coordUids.map((uid) => adminDb().collection("usuarios").doc(uid));
     const coordSnaps = coordUids.length ? await adminDb().getAll(...coordRefs) : [];
     const coordMap = new Map(
@@ -218,7 +218,8 @@ export async function GET(req: Request) {
       ...i,
       liquidadoBy: i.liquidadoBy ? uidToName[i.liquidadoBy] || i.liquidadoBy : null,
       corregidoBy: i.corregidoBy ? uidToName[i.corregidoBy] || i.corregidoBy : null,
-      coordinador: i.coordinador ? coordMap.get(i.coordinador) || i.coordinador : "",
+      coordinador: i.coordinadorUid ? coordMap.get(i.coordinadorUid) || i.coordinadorUid : "",
+      coordinadorNombre: i.coordinadorUid ? coordMap.get(i.coordinadorUid) || i.coordinadorUid : "",
     }));
 
     return NextResponse.json({

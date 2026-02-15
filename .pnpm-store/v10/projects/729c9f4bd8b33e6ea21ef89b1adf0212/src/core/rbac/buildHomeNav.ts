@@ -38,6 +38,11 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
       href: "/home/instalaciones/actas",
     });
     items.push({
+      key: "INSTALACIONES_ASISTENCIA",
+      label: "Asistencia Cuadrillas",
+      href: "/home/instalaciones/asistencia",
+    });
+    items.push({
       key: "CUADRILLAS_GESTION",
       label: "Cuadrillas Gestión",
       href: "/home/cuadrillas/gestion",

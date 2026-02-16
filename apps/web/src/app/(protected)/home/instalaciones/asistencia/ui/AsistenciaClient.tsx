@@ -31,6 +31,7 @@ type GestorDraft = {
   estado: string;
   confirmadoAt?: any;
   cerradoAt?: any;
+  updatedAt?: any;
 };
 
 type Option = { value: string; label: string };
@@ -72,8 +73,8 @@ export default function AsistenciaClient() {
   const [saving, setSaving] = useState(false);
   const [closing, setClosing] = useState(false);
   const [modoAdmin, setModoAdmin] = useState(false);
+  const [filtroEstadoGestor, setFiltroEstadoGestor] = useState<string>("");
   const [assignedAll, setAssignedAll] = useState<string[]>([]);
-
   const [tecnicos, setTecnicos] = useState<Option[]>([]);
 
   const cargarTecnicos = async () => {
@@ -142,6 +143,33 @@ export default function AsistenciaClient() {
     return map;
   }, [drafts]);
 
+  const formatTs = (v: any) => {
+    if (!v) return "-";
+    if (typeof v?.toDate === "function") return dayjs(v.toDate()).format("DD/MM/YYYY HH:mm");
+    if (typeof v?.seconds === "number") return dayjs(v.seconds * 1000).format("DD/MM/YYYY HH:mm");
+    if (typeof v?._seconds === "number") return dayjs(v._seconds * 1000).format("DD/MM/YYYY HH:mm");
+    if (typeof v === "string") return dayjs(v).isValid() ? dayjs(v).format("DD/MM/YYYY HH:mm") : v;
+    return "-";
+  };
+
+  const gestorCards = useMemo(() => {
+    return gestores.map((g) => {
+      const d = draftsMap.get(g.value);
+      const estado = d ? String(d.estado || "ABIERTO").toUpperCase() : "SIN BORRADOR";
+      return {
+        gestorUid: g.value,
+        nombre: g.label,
+        estado,
+        updatedAt: d?.updatedAt,
+      };
+    });
+  }, [gestores, draftsMap]);
+
+  const filteredCards = useMemo(() => {
+    if (!filtroEstadoGestor) return gestorCards;
+    return gestorCards.filter((c) => c.estado === filtroEstadoGestor);
+  }, [gestorCards, filtroEstadoGestor]);
+
   const filtered = useMemo(() => {
     const q = filtroNombre.toLowerCase().trim();
     return rows.filter((r) => {
@@ -154,14 +182,15 @@ export default function AsistenciaClient() {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   };
 
-  const assignedAllSet = useMemo(() => new Set(assignedAll.map((t) => String(t || "").trim())), [assignedAll]);
-  const allowedFromGestorSet = useMemo(() => {
-    const set = new Set<string>();
+  const assignedAllSet = useMemo(() => {
+    const s = new Set(assignedAll.map((t) => String(t || '').trim()));
+    // Remove originales de las filas cargadas y agrega la seleccion actual
     rows.forEach((r) => {
-      (r.tecnicosUids || []).forEach((t) => set.add(String(t || "").trim()));
+      (r.tecnicosUids || []).forEach((id) => s.delete(String(id || '').trim()));
+      (r.tecnicosIds || []).forEach((id) => s.add(String(id || '').trim()));
     });
-    return set;
-  }, [rows]);
+    return s;
+  }, [assignedAll, rows]);
 
   const guardarBorrador = async () => {
     if (draftEstado !== "ABIERTO") {
@@ -257,8 +286,12 @@ export default function AsistenciaClient() {
   return (
     <div className="space-y-4">
       <div className="rounded-xl border bg-white p-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-slate-800">Asistencia de Cuadrillas</h1>
+            <p className="text-xs text-slate-500">Borrador por gestora y cierre por Gerencia/Almacén/RRHH.</p>
+          </div>
+          <div className="flex items-center gap-2">
             <label className="text-sm font-medium">Fecha</label>
             <input
               type="date"
@@ -267,6 +300,9 @@ export default function AsistenciaClient() {
               className="border rounded px-3 py-2"
             />
           </div>
+        </div>
+
+        <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div className="flex items-center gap-2">
             <input
               type="text"
@@ -282,63 +318,91 @@ export default function AsistenciaClient() {
               Recargar
             </button>
           </div>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(resumen).map(([k, v]) => (
+              <span key={k} className={`px-2 py-1 text-xs rounded border ${estadoColor(k)}`}>
+                {k}: {v}
+              </span>
+            ))}
+            <span
+              className={`px-2 py-1 text-xs rounded border ${
+                draftEstado === "ABIERTO"
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : "bg-slate-50 text-slate-700 border-slate-200"
+              }`}
+            >
+              Borrador: {draftEstado}
+            </span>
+          </div>
         </div>
 
         {modoAdmin && (
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
-            <Select
-              options={gestores}
-              value={gestores.find((g) => g.value === gestorUid) || null}
-              onChange={(sel) => {
-                const uid = sel?.value || "";
-                setGestorUid(uid);
-                if (uid) cargar(uid);
-              }}
-              placeholder="Seleccionar gestora"
-            />
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <div className="px-3 py-2 rounded border text-sm flex items-center justify-between">
+              <span className="text-gray-500">Gestora</span>
+              <span className="font-medium">
+                {gestores.find((g) => g.value === gestorUid)?.label || gestorUid || "-"}
+              </span>
+            </div>
             <div className="px-3 py-2 rounded border text-sm flex items-center justify-between">
               <span className="text-gray-500">Estado</span>
               <span className="font-medium">
                 {draftsMap.get(gestorUid)?.estado || "ABIERTO"}
               </span>
             </div>
+            <select
+              value={filtroEstadoGestor}
+              onChange={(e) => setFiltroEstadoGestor(e.target.value)}
+              className="px-3 py-2 rounded border text-sm"
+            >
+              <option value="">Todos los estados</option>
+              <option value="SIN BORRADOR">Sin borrador</option>
+              <option value="ABIERTO">Abierto</option>
+              <option value="CONFIRMADO">Confirmado</option>
+              <option value="CERRADO">Cerrado</option>
+            </select>
             <button
-              onClick={() => cerrar(gestorUid, true)}
+              onClick={() => cerrar(gestorUid, false)}
               className="px-3 py-2 rounded bg-rose-600 text-white text-sm"
               disabled={closing}
             >
               Cerrar por gestora
             </button>
-            <button
-              onClick={() => {
-                const abiertos = drafts.filter((d) => d.estado === "ABIERTO");
-                if (abiertos.length > 0) {
-                  const ok = window.confirm(
-                    `Hay ${abiertos.length} borrador(es) ABIERTO. ¿Deseas cerrar todo el día de todas formas?`
-                  );
-                  if (!ok) return;
-                }
-                cerrar(undefined, true);
-              }}
-              className="px-3 py-2 rounded bg-amber-600 text-white text-sm"
-              disabled={closing}
-            >
-              Cerrar todo el día
-            </button>
           </div>
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {Object.entries(resumen).map(([k, v]) => (
-          <span key={k} className={`px-2 py-1 text-xs rounded border ${estadoColor(k)}`}>
-            {k}: {v}
-          </span>
-        ))}
-        <span className={`px-2 py-1 text-xs rounded border ${draftEstado === "ABIERTO" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-50 text-slate-700 border-slate-200"}`}>
-          Borrador: {draftEstado}
-        </span>
-      </div>
+      {modoAdmin && gestorCards.length > 0 && (
+        <div className="grid gap-3 md:grid-cols-3">
+          {filteredCards.map((c) => {
+            const color =
+              c.estado === "CERRADO"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : c.estado === "CONFIRMADO"
+                ? "border-amber-200 bg-amber-50 text-amber-700"
+                : c.estado === "ABIERTO"
+                ? "border-rose-200 bg-rose-50 text-rose-700"
+                : "border-slate-200 bg-slate-50 text-slate-700";
+            return (
+              <button
+                key={c.gestorUid}
+                className={`rounded-xl border p-4 text-left ${color} hover:shadow`}
+                onClick={() => {
+                  setGestorUid(c.gestorUid);
+                  cargar(c.gestorUid);
+                }}
+              >
+                <div className="text-xs text-gray-500">Gestora</div>
+                <div className="text-sm font-semibold">{c.nombre}</div>
+                <div className="mt-2 text-xs">Estado: {c.estado}</div>
+                <div className="mt-1 text-[11px] text-gray-500">
+                  Actualizado: {formatTs(c.updatedAt)}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-xl border bg-white">
         <table className="min-w-full text-sm">
@@ -377,9 +441,8 @@ export default function AsistenciaClient() {
                       isMulti
                       options={tecnicos.filter((t) => {
                         const inCurrent = (r.tecnicosIds || []).includes(t.value);
-                        const inOriginal = (r.tecnicosUids || []).includes(t.value);
-                        const assignedElsewhere = assignedAllSet.has(t.value);
-                        return inCurrent || inOriginal || !assignedElsewhere;
+                        const assignedElsewhere = assignedAllSet.has(t.value) && !inCurrent;
+                        return inCurrent || !assignedElsewhere;
                       })}
                       value={tecnicos.filter((t) => (r.tecnicosIds || []).includes(t.value))}
                       onChange={(sel) => updateRow(r.id, { tecnicosIds: (sel || []).map((s) => s.value) })}
@@ -431,6 +494,24 @@ export default function AsistenciaClient() {
         >
           Marcar conforme
         </button>
+        {modoAdmin && (
+          <button
+            onClick={() => {
+              const abiertos = drafts.filter((d) => d.estado === "ABIERTO");
+              if (abiertos.length > 0) {
+                const ok = window.confirm(
+                  `Hay ${abiertos.length} borrador(es) ABIERTO. ¿Deseas cerrar todo el día de todas formas?`
+                );
+                if (!ok) return;
+              }
+              cerrar(undefined, true);
+            }}
+            disabled={closing}
+            className="px-4 py-2 rounded bg-amber-600 text-white disabled:opacity-60"
+          >
+            {closing ? "Cerrando..." : "Cerrar todo el día"}
+          </button>
+        )}
       </div>
     </div>
   );

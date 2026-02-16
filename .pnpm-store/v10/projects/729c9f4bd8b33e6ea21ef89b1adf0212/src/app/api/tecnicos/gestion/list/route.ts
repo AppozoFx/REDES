@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { getServerSession } from "@/core/auth/session";
+import { getAsignacionData, resolveGestorVisible, todayLimaYmd } from "@/lib/gestorAsignacion";
 
 export const runtime = "nodejs";
 
@@ -38,6 +39,16 @@ export async function GET() {
         (roles.includes("GESTOR") || roles.includes("ALMACEN")));
     if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
+    const isGestor = roles.includes("GESTOR");
+    const isPriv = session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
+
+    let visibleSet: Set<string> | null = null;
+    if (isGestor && !isPriv) {
+      const data = await getAsignacionData(todayLimaYmd());
+      const visible = resolveGestorVisible(session.uid, data);
+      if (!visible.all) visibleSet = new Set((visible.ids || []).map((x) => String(x || "").trim()));
+    }
+
     const accessSnap = await adminDb()
       .collection("usuarios_access")
       .where("roles", "array-contains", "TECNICO")
@@ -52,13 +63,14 @@ export async function GET() {
     const tecnicoToCuadrilla = new Map<string, { id: string; nombre: string }>();
     cuadrillasSnap.docs.forEach((d) => {
       const data = d.data() as any;
+      if (visibleSet && !visibleSet.has(d.id)) return;
       const tecnicos = Array.isArray(data?.tecnicosUids) ? data.tecnicosUids : [];
       tecnicos.forEach((uid: string) => {
         tecnicoToCuadrilla.set(uid, { id: d.id, nombre: String(data?.nombre || d.id) });
       });
     });
 
-    const items = userSnaps.map((snap, i) => {
+    let items = userSnaps.map((snap) => {
       const data = (snap.data() as any) || {};
       const nombres = String(data?.nombres || "").trim();
       const apellidos = String(data?.apellidos || "").trim();
@@ -79,6 +91,10 @@ export async function GET() {
         cuadrillaNombre: cuad?.nombre || "",
       };
     });
+
+    if (visibleSet) {
+      items = items.filter((it) => it.cuadrillaId && visibleSet?.has(it.cuadrillaId));
+    }
 
     return NextResponse.json({ ok: true, items });
   } catch (e: any) {

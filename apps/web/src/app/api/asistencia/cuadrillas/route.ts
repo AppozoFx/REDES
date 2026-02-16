@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { getServerSession } from "@/core/auth/session";
+import { getAsignacionData, resolveGestorVisible } from "@/lib/gestorAsignacion";
 
 export const runtime = "nodejs";
 
@@ -36,14 +37,31 @@ export async function GET(req: Request) {
     const gestorUid = canAdmin ? (gestorUidParam || session.uid) : session.uid;
 
     const db = adminDb();
-    const cuadSnap = await db
+    let baseSnap = await db
       .collection("cuadrillas")
       .where("area", "==", "INSTALACIONES")
       .where("estado", "==", "HABILITADO")
-      .where("gestorUid", "==", gestorUid)
       .get();
 
-    const cuadrillas = cuadSnap.docs.map((d) => {
+    let docs = baseSnap.docs;
+    if (canGestor && !canAdmin) {
+      const data = await getAsignacionData(fecha);
+      const visible = resolveGestorVisible(gestorUid, data);
+      if (!visible.all) {
+        const setIds = new Set((visible.ids || []).map((x) => String(x || "").trim()));
+        docs = docs.filter((d) => setIds.has(d.id));
+      }
+    }
+    if (canAdmin && gestorUidParam) {
+      const data = await getAsignacionData(fecha);
+      const visible = resolveGestorVisible(gestorUidParam, data);
+      if (!visible.all) {
+        const setIds = new Set((visible.ids || []).map((x) => String(x || "").trim()));
+        docs = docs.filter((d) => setIds.has(d.id));
+      }
+    }
+
+    const cuadrillas = docs.map((d: any) => {
       const data = d.data() as any;
       return {
         id: d.id,
@@ -98,11 +116,11 @@ export async function GET(req: Request) {
     const assignedTecnicosAll = Array.from(
       new Set(
         allSnap.docs
-          .flatMap((d) => {
+          .flatMap((d: any) => {
             const data = d.data() as any;
             return Array.isArray(data?.tecnicosUids) ? data.tecnicosUids : [];
           })
-          .map((x) => String(x || "").trim())
+          .map((x: any) => String(x || "").trim())
           .filter(Boolean)
       )
     );

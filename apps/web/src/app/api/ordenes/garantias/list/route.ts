@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-
 import { adminDb } from "@/lib/firebase/admin";
 import { getServerSession } from "@/core/auth/session";
+import { getAsignacionData, resolveGestorVisible, todayLimaYmd } from "@/lib/gestorAsignacion";
 
 export const runtime = "nodejs";
 
@@ -79,6 +79,10 @@ export async function GET(req: Request) {
     const canView = canEdit || session.permissions.includes(PERM_VIEW);
     if (!canView) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
+    const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
+    const isGestor = roles.includes("GESTOR");
+    const isPriv = session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
+
     const { searchParams } = new URL(req.url);
     const ym = String(searchParams.get("ym") || todayLimaYm()); // YYYY-MM
     const startYmd = `${ym}-01`;
@@ -91,7 +95,17 @@ export async function GET(req: Request) {
       .limit(1500)
       .get();
 
-    const docs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+    let docs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+
+    if (isGestor && !isPriv) {
+      const data = await getAsignacionData(todayLimaYmd());
+      const visible = resolveGestorVisible(session.uid, data);
+      if (!visible.all) {
+        const setIds = new Set((visible.ids || []).map((x) => String(x || "").trim()));
+        docs = docs.filter((x: any) => setIds.has(String(x.cuadrillaId || "")));
+      }
+    }
+
     const onlyGarantias = docs.filter((x) => isGarantia(x));
     const finalizadasSinGarantia = docs.filter((x) => !isGarantia(x) && String(x?.estado || "").trim().toUpperCase() === "FINALIZADA").length;
 

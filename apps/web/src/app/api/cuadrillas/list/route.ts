@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { getServerSession } from "@/core/auth/session";
+import { getAsignacionData, resolveGestorVisible, todayLimaYmd } from "@/lib/gestorAsignacion";
 
 export const runtime = "nodejs";
 
@@ -28,6 +29,10 @@ export async function GET(req: Request) {
       (session.access.roles || []).includes("GESTOR") ||
       (session.access.roles || []).includes("COORDINADOR");
     if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
+
+    const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
+    const isGestor = roles.includes("GESTOR");
+    const isPriv = session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
 
     const { searchParams } = new URL(req.url);
     const area = searchParams.get("area");
@@ -64,7 +69,7 @@ export async function GET(req: Request) {
       .limit(500)
       .get();
 
-    const items = snap.docs
+    let items = snap.docs
       .map((d) => {
         const data = d.data() as any;
         return {
@@ -86,6 +91,15 @@ export async function GET(req: Request) {
       .sort((a, b) =>
         String(a.nombre).localeCompare(String(b.nombre), "es", { sensitivity: "base" })
       );
+
+    if (isGestor && !isPriv) {
+      const data = await getAsignacionData(todayLimaYmd());
+      const visible = resolveGestorVisible(session.uid, data);
+      if (!visible.all) {
+        const setIds = new Set((visible.ids || []).map((x) => String(x || "").trim()));
+        items = items.filter((it) => setIds.has(it.id));
+      }
+    }
 
     return NextResponse.json({ ok: true, items });
   } catch (e: any) {

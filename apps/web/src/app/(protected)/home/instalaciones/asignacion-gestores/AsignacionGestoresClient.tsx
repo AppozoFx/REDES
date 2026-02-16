@@ -29,6 +29,9 @@ const cls = (...x: (string | false | null | undefined)[]) => x.filter(Boolean).j
 
 const uniq = (arr: string[]) => Array.from(new Set((arr || []).filter(Boolean)));
 
+const sortCuads = (list: Opt[]) =>
+  [...list].sort((a, b) => String(a.label).localeCompare(String(b.label), "es", { sensitivity: "base" }));
+
 function normalizeMap(map: AssignMap): AssignMap {
   const out: AssignMap = {};
   Object.entries(map || {}).forEach(([k, v]) => {
@@ -78,6 +81,8 @@ export default function AsignacionGestoresClient() {
   const [tab, setTab] = useState<"base" | "dia">("dia");
   const [filtroGestor, setFiltroGestor] = useState("");
   const [soloCambios, setSoloCambios] = useState(false);
+  const [programState, setProgramState] = useState<Record<string, string>>({});
+  const [modalGestor, setModalGestor] = useState<string | null>(null);
 
   const cargar = async (ymd: string) => {
     setCargando(true);
@@ -86,11 +91,15 @@ export default function AsignacionGestoresClient() {
       const data: ApiResponse = await res.json();
       if (!res.ok || !data?.ok) throw new Error((data as any)?.error || "ERROR");
       setGestores(data.gestores || []);
-      setCuadrillas(data.cuadrillas || []);
+      setCuadrillas(sortCuads(data.cuadrillas || []));
       setBaseMap(normalizeMap(data.base || {}));
       setDayMap(normalizeMap(data.day || {}));
       setTopBase(Array.isArray(data.topBase) ? data.topBase : []);
       setTopDay(Array.isArray(data.topDay) ? data.topDay : null);
+      const ps = await fetch(`/api/instalaciones/asistencia-programada/estado?fecha=${encodeURIComponent(ymd)}`, { cache: "no-store" });
+      const psData = await ps.json();
+      if (ps.ok && psData?.ok) setProgramState(psData.map || {});
+      else setProgramState({});
     } catch (e: any) {
       toast.error(e?.message || "No se pudo cargar la asignacion");
     } finally {
@@ -132,6 +141,17 @@ export default function AsignacionGestoresClient() {
     }
     return list;
   }, [gestores, filtroGestor, tab, soloCambios, baseMap, currentMap]);
+
+  const maxListLen = useMemo(() => {
+    const lens = gestoresVisible.map((g) => (currentMap[g.value] || []).length);
+    return lens.length ? Math.max(...lens) : 0;
+  }, [gestoresVisible, currentMap]);
+
+  const cardMinH = useMemo(() => {
+    const base = 220;
+    const per = 20;
+    return base + maxListLen * per;
+  }, [maxListLen]);
 
   const asignadosPorGestor = (uid: string) => currentMap[uid] || [];
 
@@ -184,6 +204,93 @@ export default function AsignacionGestoresClient() {
     const cambiosTotales = gestores.reduce((acc, g) => acc + diffSets(baseMap[g.value] || [], currentMap[g.value] || []).total, 0);
     return { totalGestores, totalCuadrillas, totalAsignadas, totalTop, cambiosTotales };
   }, [gestores, cuadrillas, assignedSet, currentTop, baseMap, currentMap]);
+
+  const gestorLabel = (uid: string) => gestores.find((g) => g.value === uid)?.label || uid;
+
+  const visibleCuadrillas = useMemo(() => {
+    if (tab !== "dia") return cuadrillas;
+    if (!programState || Object.keys(programState).length === 0) return cuadrillas;
+    return cuadrillas.filter((c) => {
+      const v = String(programState?.[c.value] || "descanso").toLowerCase();
+      return v === "asistencia";
+    });
+  }, [cuadrillas, tab, programState]);
+  const isTopGestor = (uid: string) => currentTop.includes(uid);
+
+  const listNames = (ids: string[]) => ids
+    .map((id) => cuadrillas.find((c) => c.value === id)?.label || id)
+    .sort((a, b) => String(a).localeCompare(String(b), "es", { sensitivity: "base" }));
+
+  const copyResumenGestor = async (uid: string) => {
+    const nombre = gestorLabel(uid);
+    const lista = listNames(asignadosPorGestor(uid));
+    const header = `${nombre}\n`;
+    const body = lista.map((x) => `- ${x}`).join("\n");
+    const text = `${header}${body}`;
+    await navigator.clipboard.writeText(text);
+    toast.success("Resumen copiado");
+  };
+
+  const renderCardList = (uid: string) => {
+    const lista = listNames(asignadosPorGestor(uid));
+    if (!lista.length) return <div className="text-xs text-slate-500">Sin cuadrillas</div>;
+  
+  return (
+      <div className="text-xs text-slate-700 space-y-0.5">
+        {lista.map((x) => (
+          <div key={x} className="truncate">- {x}</div>
+        ))}
+      </div>
+    );
+  };
+
+  const availableFor = (uid: string) => {
+    const selected = asignadosPorGestor(uid);
+    return visibleCuadrillas.filter((c) => !assignedSet.has(c.value) || selected.includes(c.value));
+  };
+
+
+  const printResumenDiario = () => {
+    const ymd = dayjs(fecha, "YYYY-MM-DD").format("DD/MM/YYYY");
+    const rows = gestores
+      .map((g) => ({
+        nombre: g.label,
+        lista: listNames(asignadosPorGestor(g.value)),
+      }))
+      .filter((r) => r.lista.length > 0);
+
+    const html = `
+      <html>
+      <head>
+        <title>Resumen asignacion ${ymd}</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; }
+          h1 { font-size: 18px; margin-bottom: 4px; }
+          .meta { color: #666; font-size: 12px; margin-bottom: 16px; }
+          .card { border: 1px solid #ddd; border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+          .name { font-weight: 700; margin-bottom: 6px; }
+          ul { margin: 0; padding-left: 18px; }
+          li { margin: 2px 0; }
+        </style>
+      </head>
+      <body>
+        <h1>Resumen asignacion de gestores</h1>
+        <div class="meta">Fecha: ${ymd}</div>
+        ${rows.map(r => `
+          <div class="card">
+            <div class="name">${r.nombre}</div>
+            <ul>${r.lista.map(c => `<li>${c}</li>`).join()}</ul>
+          </div>`).join()}
+      </body>
+      </html>`;
+
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    w.print();
+  };
 
   return (
     <div className="p-4 space-y-4">
@@ -305,12 +412,12 @@ export default function AsignacionGestoresClient() {
           <div className="ml-auto flex items-center gap-2">
             <input
               type="text"
-              placeholder="Buscar gestora..."
+              placeholder="Buscar gestor..."
               value={filtroGestor}
               onChange={(e) => setFiltroGestor(e.target.value)}
               className="border rounded px-3 py-2 text-sm"
             />
-            <button
+                        <button
               onClick={guardar}
               disabled={saving}
               className="px-4 py-2 rounded bg-emerald-600 text-white text-sm disabled:opacity-60"
@@ -330,7 +437,7 @@ export default function AsignacionGestoresClient() {
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm font-semibold text-slate-700">Gestora TOP (ve todas las cuadrillas)</div>
+            <div className="text-sm font-semibold text-slate-700">Gestor TOP (ve todas las cuadrillas)</div>
             <div className="text-xs text-slate-500">
               {tab === "dia" ? "Si no defines, se usa la base." : "Configuracion base"}
             </div>
@@ -355,68 +462,161 @@ export default function AsignacionGestoresClient() {
               if (tab === "base") setTopBase(next);
               else setTopDay(next);
             }}
-            placeholder="Seleccionar gestora(s) TOP"
+            placeholder="Seleccionar gestor(es) TOP"
+            menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+            menuPosition="fixed"
+            styles={{ menuPortal: (base) => ({ ...base, zIndex: 9999 }) }}
           />
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {cargando ? (
           <div className="p-6 text-center text-slate-500">Cargando...</div>
         ) : (
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-100 text-slate-700">
-              <tr>
-                <th className="p-2 text-left">Gestora</th>
-                <th className="p-2 text-left">Cuadrillas asignadas</th>
-                {tab === "dia" && <th className="p-2 text-left">Cambios</th>}
-                <th className="p-2 text-right">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {gestoresVisible.map((g) => {
-                const selected = asignadosPorGestor(g.value);
-                const available = cuadrillas.filter((c) => !assignedSet.has(c.value) || selected.includes(c.value));
-                const diff = diffSets(baseMap[g.value] || [], selected);
-                return (
-                  <tr key={g.value} className="border-t">
-                    <td className="p-2 font-medium text-slate-700">{g.label}</td>
-                    <td className="p-2 min-w-[420px]">
-                      <Select
-                        isMulti
-                        options={available}
-                        value={cuadrillas.filter((c) => selected.includes(c.value))}
-                        onChange={(sel) => setAsignacion(g.value, (sel || []).map((s) => s.value))}
-                        placeholder="Asignar cuadrillas"
-                        menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                        menuPosition="fixed"
-                        styles={{ menuPortal: (base) => ({ ...base, zIndex: 9999 }) }}
-                      />
-                    </td>
-                    {tab === "dia" && (
-                      <td className="p-2 text-slate-600">
-                        {diff.total === 0 ? (
-                          <span className="text-xs px-2 py-1 rounded bg-slate-100">Sin cambios</span>
-                        ) : (
-                          <span className="text-xs px-2 py-1 rounded bg-amber-50 text-amber-700">
-                            +{diff.add} / -{diff.rem}
-                          </span>
-                        )}
-                      </td>
+          gestoresVisible.map((g) => {
+            const selected = asignadosPorGestor(g.value);
+            const diff = diffSets(baseMap[g.value] || [], selected);
+          
+  const printResumenDiario = () => {
+    const ymd = dayjs(fecha, "YYYY-MM-DD").format("DD/MM/YYYY");
+    const rows = gestores
+      .map((g) => ({
+        nombre: g.label,
+        lista: listNames(asignadosPorGestor(g.value)),
+      }))
+      .filter((r) => r.lista.length > 0);
+
+    const html = `
+      <html>
+      <head>
+        <title>Resumen asignacion ${ymd}</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; }
+          h1 { font-size: 18px; margin-bottom: 4px; }
+          .meta { color: #666; font-size: 12px; margin-bottom: 16px; }
+          .card { border: 1px solid #ddd; border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+          .name { font-weight: 700; margin-bottom: 6px; }
+          ul { margin: 0; padding-left: 18px; }
+          li { margin: 2px 0; }
+        </style>
+      </head>
+      <body>
+        <h1>Resumen asignacion de gestores</h1>
+        <div class="meta">Fecha: ${ymd}</div>
+        ${rows.map(r => `
+          <div class="card">
+            <div class="name">${r.nombre}</div>
+            <ul>${r.lista.map(c => `<li>${c}</li>`).join()}</ul>
+          </div>`).join()}
+      </body>
+      </html>`;
+
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    w.print();
+  };
+
+  return (
+              <div
+                key={g.value}
+                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                style={{ minHeight: cardMinH }}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="text-sm text-slate-500">Gestor</div>
+                    <div className="text-lg font-semibold text-slate-800">{g.label}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {isTopGestor(g.value) && (
+                      <span className="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        TOP
+                      </span>
                     )}
-                    <td className="p-2 text-right text-slate-600">{selected.length}</td>
-                  </tr>
-                );
-              })}
-              {gestoresVisible.length === 0 && (
-                <tr>
-                  <td colSpan={tab === "dia" ? 4 : 3} className="p-6 text-center text-slate-500">No hay gestoras para mostrar</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                    {tab === "dia" && diff.total > 0 && (
+                      <span className="text-xs px-2 py-1 rounded bg-amber-50 text-amber-700">
+                        +{diff.add} / -{diff.rem}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded border border-slate-100 bg-slate-50 p-3">
+                  {renderCardList(g.value)}
+                </div>
+
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    onClick={() => setModalGestor(g.value)}
+                    className="px-3 py-1.5 rounded bg-[#30518c] text-white text-xs"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => copyResumenGestor(g.value)}
+                    className="px-3 py-1.5 rounded border text-xs"
+                  >
+                    Copiar resumen
+                  </button>
+                  <span className="ml-auto text-xs text-slate-500">{selected.length} cuadrillas</span>
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
+
+      {gestoresVisible.length === 0 && !cargando && (
+        <div className="p-6 text-center text-slate-500">No hay gestores para mostrar</div>
+      )}
+
+      {modalGestor && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setModalGestor(null)} />
+          <div className="absolute left-1/2 top-1/2 w-[92%] max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white p-4 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs text-slate-500">Gestor</div>
+                <div className="text-lg font-semibold text-slate-800">{gestorLabel(modalGestor)}</div>
+              </div>
+              <button onClick={() => setModalGestor(null)} className="px-3 py-1 rounded border text-sm">X</button>
+            </div>
+
+            <div className="mt-4">
+              <Select
+                isMulti
+                options={availableFor(modalGestor)}
+                value={cuadrillas.filter((c) => asignadosPorGestor(modalGestor).includes(c.value))}
+                onChange={(sel) => setAsignacion(modalGestor, (sel || []).map((s) => s.value))}
+                placeholder="Asignar cuadrillas"
+                menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                menuPosition="fixed"
+                styles={{ menuPortal: (base) => ({ ...base, zIndex: 9999 }) }}
+              />
+              <div className="mt-2 text-xs text-slate-500">
+                Solo se muestran cuadrillas libres o ya asignadas a esta gestora.
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button onClick={() => setModalGestor(null)} className="px-3 py-2 rounded border text-sm">Cancelar</button>
+              <button
+                onClick={() => {
+                  toast.success("Cambios listos. Recuerda guardar.");
+                  setModalGestor(null);
+                }}
+                className="px-3 py-2 rounded bg-emerald-600 text-white text-sm"
+              >
+                Guardar y cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

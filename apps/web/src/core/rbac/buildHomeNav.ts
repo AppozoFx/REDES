@@ -74,6 +74,13 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
       label: "Asistencia Cuadrillas",
       href: "/home/instalaciones/asistencia",
     });
+    if (roles.includes("GERENCIA") || roles.includes("COORDINADOR")) {
+      items.push({
+        key: "INSTALACIONES_ASIST_PROG",
+        label: "Asistencia Programada",
+        href: "/home/instalaciones/asistencia-programada",
+      });
+    }
     if (roles.includes("GERENCIA")) {
       items.push({
         key: "INSTALACIONES_ASIG_GEST",

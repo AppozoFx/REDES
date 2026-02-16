@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { getServerSession } from "@/core/auth/session";
-import { getAsignacionData, resolveGestorVisible } from "@/lib/gestorAsignacion";
+import { getAsignacionData, resolveGestorVisible, todayLimaYmd } from "@/lib/gestorAsignacion";
 
 export const runtime = "nodejs";
 
@@ -13,6 +13,18 @@ function shortName(full: string, fallback: string) {
   const first = parts[0] || "";
   const last = parts.length > 1 ? parts[parts.length - 1] : "";
   return (last ? `${first} ${last}` : first) || fallback;
+}
+
+async function getProgramForDate(ymd: string) {
+  const db = adminDb();
+  const snap = await db
+    .collection("asistencia_programada")
+    .where("startYmd", "<=", ymd)
+    .where("endYmd", ">=", ymd)
+    .limit(1)
+    .get();
+  if (snap.empty) return null;
+  return snap.docs[0].data() as any;
 }
 
 export async function GET(req: Request) {
@@ -97,12 +109,16 @@ export async function GET(req: Request) {
     const itemsSnap = await draftRef.collection("cuadrillas").get();
     const draftMap = new Map(itemsSnap.docs.map((d) => [d.id, d.data() as any]));
 
+    const program = await getProgramForDate(fecha);
+    const progItems = (program?.items || {}) as Record<string, Record<string, string>>;
+
     const rows = cuadrillas.map((c) => {
       const d = draftMap.get(c.id) || {};
+      const progState = String(progItems?.[c.id]?.[fecha] || "descanso").toLowerCase();
       return {
         ...c,
         coordinadorNombre: c.coordinadorUid ? coordMap.get(c.coordinadorUid) || c.coordinadorUid : "",
-        estadoAsistencia: d.estadoAsistencia || "asistencia",
+        estadoAsistencia: d.estadoAsistencia || progState || "asistencia",
         tecnicosIds: Array.isArray(d.tecnicosIds) ? d.tecnicosIds : c.tecnicosUids,
         observacion: d.observacion || "",
         updatedAt: d.updatedAt || null,

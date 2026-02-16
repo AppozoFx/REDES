@@ -237,9 +237,9 @@ export async function upsertOrden(input: {
   const fSoliParts = input.fSoli ? toLimaStrings(input.fSoli) : null;
   const fSoliAt = input.fSoli ? limaLocalTimestampFrom(input.fSoli) : undefined;
   const iniParts = input.fechaIniVisi ? toLimaStrings(input.fechaIniVisi) : null;
-  const iniAt = input.fechaIniVisi ? limaLocalTimestampFrom(input.fechaIniVisi) : undefined;
+  const iniAt = input.fechaIniVisi ? limaLocalTimestampFrom(input.fechaIniVisi) : null;
   const finParts = input.fechaFinVisi ? toLimaStrings(input.fechaFinVisi) : null;
-  const finAt = input.fechaFinVisi ? limaLocalTimestampFrom(input.fechaFinVisi) : undefined;
+  const finAt = input.fechaFinVisi ? limaLocalTimestampFrom(input.fechaFinVisi) : null;
 
   const cuadrillaMeta = await enrichCuadrilla(input.cuadrilla);
   const opcionales = deriveOpcionalesFromIdenServi(input.idenServi);
@@ -281,12 +281,12 @@ export async function upsertOrden(input: {
     fSoliHm: fSoliParts?.hm,
 
     fechaIniVisiAt: iniAt,
-    fechaIniVisiYmd: iniParts?.ymd,
-    fechaIniVisiHm: iniParts?.hm,
+    fechaIniVisiYmd: iniParts?.ymd ?? "",
+    fechaIniVisiHm: iniParts?.hm ?? "",
 
     fechaFinVisiAt: finAt,
-    fechaFinVisiYmd: finParts?.ymd,
-    fechaFinVisiHm: finParts?.hm,
+    fechaFinVisiYmd: finParts?.ymd ?? "",
+    fechaFinVisiHm: finParts?.hm ?? "",
     dia,
     ...cuadrillaMeta,
     ...opcionales,

@@ -19,12 +19,18 @@ export async function GET(req: Request) {
     const snap = await adminDb()
       .collection("asistencia_programada")
       .where("startYmd", "<=", fecha)
-      .where("endYmd", ">=", fecha)
-      .limit(1)
+      .orderBy("startYmd", "desc")
+      .limit(5)
       .get();
 
     if (snap.empty) return NextResponse.json({ ok: true, map: {} });
-    const data = snap.docs[0].data() as any;
+    const doc = snap.docs.find((d) => {
+      const data = d.data() as any;
+      const endYmd = String(data?.endYmd || "");
+      return endYmd && endYmd >= fecha;
+    });
+    if (!doc) return NextResponse.json({ ok: true, map: {} });
+    const data = doc.data() as any;
     const items = (data?.items || {}) as Record<string, Record<string, string>>;
 
     const map: Record<string, string> = {};

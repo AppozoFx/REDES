@@ -36,10 +36,11 @@ export async function GET() {
       session.isAdmin ||
       session.permissions.includes("CUADRILLAS_MANAGE") ||
       ((session.access.areas || []).includes("INSTALACIONES") &&
-        (roles.includes("GESTOR") || roles.includes("ALMACEN")));
+        (roles.includes("GESTOR") || roles.includes("ALMACEN") || roles.includes("COORDINADOR")));
     if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const isGestor = roles.includes("GESTOR");
+    const isCoord = roles.includes("COORDINADOR");
     const isPriv = session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
 
     let visibleSet: Set<string> | null = null;
@@ -47,6 +48,13 @@ export async function GET() {
       const data = await getAsignacionData(todayLimaYmd());
       const visible = resolveGestorVisible(session.uid, data);
       if (!visible.all) visibleSet = new Set((visible.ids || []).map((x) => String(x || "").trim()));
+    }
+    if (isCoord && !isPriv && !session.isAdmin && !isGestor) {
+      const coordSnap = await adminDb()
+        .collection("cuadrillas")
+        .where("coordinadorUid", "==", session.uid)
+        .get();
+      visibleSet = new Set(coordSnap.docs.map((d) => d.id));
     }
 
     const accessSnap = await adminDb()

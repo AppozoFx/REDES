@@ -110,7 +110,7 @@ export async function GET(req: Request) {
 
     const ordenesSnap = await adminDb()
       .collection("ordenes")
-      .where("fechaFinVisiYmd", "==", ymd)
+      .where("fSoliYmd", "==", ymd)
       .limit(1200)
       .get();
 

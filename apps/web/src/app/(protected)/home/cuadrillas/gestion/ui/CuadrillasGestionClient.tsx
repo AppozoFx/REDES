@@ -32,6 +32,7 @@ export default function CuadrillasGestionClient() {
   const [gestores, setGestores] = useState<Option[]>([]);
   const [coordinadores, setCoordinadores] = useState<Option[]>([]);
   const [tecnicos, setTecnicos] = useState<Option[]>([]);
+  const [assignedAll, setAssignedAll] = useState<Set<string>>(new Set());
 
   const [filtroNombre, setFiltroNombre] = useState("");
   const [filtroGestor, setFiltroGestor] = useState("");
@@ -47,6 +48,8 @@ export default function CuadrillasGestionClient() {
     if (!res.ok || !data?.ok) throw new Error(data?.error || "ERROR");
     const items = Array.isArray(data.items) ? data.items : [];
     setRows(items);
+    const assigned = Array.isArray(data.assignedTecnicosAll) ? data.assignedTecnicosAll : [];
+    setAssignedAll(new Set(assigned.map((x: string) => String(x || "").trim()).filter(Boolean)));
   };
 
   const cargarZonas = async () => {
@@ -119,14 +122,6 @@ export default function CuadrillasGestionClient() {
       return String(a.nombre || "").localeCompare(String(b.nombre || ""), "es", { sensitivity: "base" });
     });
   }, [rows, filtroNombre, filtroGestor, filtroCoordinador]);
-
-  const tecnicosAsignados = useMemo(() => {
-    const set = new Set<string>();
-    rows.forEach((r) => {
-      (r.tecnicosUids || []).forEach((t) => set.add(t));
-    });
-    return set;
-  }, [rows]);
 
   const startEdit = (row: CuadrillaRow) => {
     setEditingId(row.id);
@@ -264,6 +259,8 @@ export default function CuadrillasGestionClient() {
                         className="border rounded px-2 py-1 w-full"
                         value={form.tipoZona || ""}
                         onChange={(e) => setForm((p) => ({ ...p, tipoZona: e.target.value }))}
+                        readOnly
+                        disabled
                       />
                     ) : (
                       row.tipoZona || "-"
@@ -299,12 +296,16 @@ export default function CuadrillasGestionClient() {
                     {editing ? (
                       <Select
                         isMulti
-                        options={tecnicos.filter((t) => !tecnicosAsignados.has(t.value) || (form.tecnicosUids || []).includes(t.value))}
+                        options={tecnicos.filter(
+                          (t) =>
+                            !assignedAll.has(String(t.value || "").trim()) ||
+                            (form.tecnicosUids || []).includes(t.value)
+                        )}
                         value={tecnicos.filter((t) => (form.tecnicosUids || []).includes(t.value))}
                         onChange={(sel) =>
                           setForm((p) => ({ ...p, tecnicosUids: (sel || []).map((s) => s.value) }))
                         }
-                        placeholder="Seleccionar técnicos"
+                        placeholder="Seleccionar tecnicos"
                       />
                     ) : (
                       (row.tecnicosUids || [])

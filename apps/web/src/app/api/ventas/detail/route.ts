@@ -10,6 +10,8 @@ export async function GET(req: Request) {
     if (!session) return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
     if (session.access.estadoAcceso !== "HABILITADO") return NextResponse.json({ ok: false, error: "ACCESS_DISABLED" }, { status: 403 });
 
+    const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
+    const isCoord = roles.includes("COORDINADOR");
     const canViewAll = session.isAdmin || session.permissions.includes("VENTAS_VER_ALL");
     const canView = canViewAll || session.permissions.includes("VENTAS_VER");
     if (!canView) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
@@ -29,7 +31,6 @@ export async function GET(req: Request) {
     };
 
     if (!canViewAll) {
-      const isCoord = (session.access.roles || []).includes("COORDINADOR");
       if (!isCoord || String(venta.coordinadorUid || "") !== session.uid) {
         return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
       }

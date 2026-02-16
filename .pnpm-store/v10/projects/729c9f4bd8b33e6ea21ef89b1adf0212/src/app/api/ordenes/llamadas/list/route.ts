@@ -95,7 +95,7 @@ export async function GET(req: Request) {
 
     const snap = await adminDb()
       .collection("ordenes")
-      .where("fechaFinVisiYmd", "==", ymd)
+      .where("fSoliYmd", "==", ymd)
       .limit(700)
       .get();
 
@@ -116,8 +116,8 @@ export async function GET(req: Request) {
         coordinadorUid: String(x.coordinadorCuadrilla || ""),
         tipoServicio: String(x.tipoTraba || x.tipoOrden || ""),
         estado: String(x.estado || ""),
-        fechaFinVisiYmd: String(x.fechaFinVisiYmd || ""),
-        fechaFinVisiHm: String(x.fechaFinVisiHm || ""),
+        fechaFinVisiYmd: String(x.fSoliYmd || ""),
+        fechaFinVisiHm: String(x.fSoliHm || ""),
         horaInicioLlamada: String(x.horaInicioLlamada || ""),
         horaFinLlamada: String(x.horaFinLlamada || ""),
         estadoLlamada: String(x.estadoLlamada || ""),

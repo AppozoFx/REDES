@@ -32,6 +32,7 @@ export async function GET(req: Request) {
 
     const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
     const isGestor = roles.includes("GESTOR");
+    const isCoord = roles.includes("COORDINADOR");
     const isPriv = session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
 
     const { searchParams } = new URL(req.url);
@@ -50,6 +51,9 @@ export async function GET(req: Request) {
     if (coordinadorUid) {
       q = q.where("coordinadorUid", "==", coordinadorUid);
     }
+    if (isCoord && !isPriv && !session.isAdmin && !isGestor) {
+      q = q.where("coordinadorUid", "==", session.uid);
+    }
 
     const snap = await q
       .select(
@@ -64,6 +68,7 @@ export async function GET(req: Request) {
         "coordinadorUid",
         "gestorUid",
         "tecnicosUids",
+        "tecnicos",
         "estado"
       )
       .limit(500)
@@ -84,13 +89,26 @@ export async function GET(req: Request) {
           numeroCuadrilla: data?.numeroCuadrilla ?? "",
           coordinadorUid: data?.coordinadorUid ?? "",
           gestorUid: data?.gestorUid ?? "",
-          tecnicosUids: Array.isArray(data?.tecnicosUids) ? data.tecnicosUids : [],
+          tecnicosUids: Array.isArray(data?.tecnicosUids)
+            ? data.tecnicosUids
+            : Array.isArray(data?.tecnicos)
+            ? data.tecnicos
+            : [],
           estado: data?.estado ?? "",
         };
       })
       .sort((a, b) =>
         String(a.nombre).localeCompare(String(b.nombre), "es", { sensitivity: "base" })
       );
+
+    const assignedTecnicosAll = Array.from(
+      new Set(
+        items
+          .flatMap((it) => (Array.isArray(it.tecnicosUids) ? it.tecnicosUids : []))
+          .map((x) => String(x || "").trim())
+          .filter(Boolean)
+      )
+    );
 
     if (isGestor && !isPriv) {
       const data = await getAsignacionData(todayLimaYmd());
@@ -101,7 +119,7 @@ export async function GET(req: Request) {
       }
     }
 
-    return NextResponse.json({ ok: true, items });
+    return NextResponse.json({ ok: true, items, assignedTecnicosAll });
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message ?? String(e) },

@@ -17,6 +17,7 @@ function hasPerm(session: ServerSession, perm: string) {
 export function buildHomeNav(session: ServerSession): NavItem[] {
   const roles = (session.access.roles ?? []).map((r) => String(r || "").toUpperCase());
   const isGestor = roles.includes("GESTOR");
+  const isCoord = roles.includes("COORDINADOR");
   const isPriv = roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
 
   if (isGestor && !session.isAdmin && !isPriv) {
@@ -24,26 +25,27 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
       { key: "HOME", label: "Inicio", href: "/home" },
       { key: "COMUNICADOS", label: "Comunicados", href: "/home/comunicados" },
       { key: "INSTALACIONES_ASISTENCIA", label: "Asistencia Cuadrillas", href: "/home/instalaciones/asistencia" },
-      { key: "CUADRILLAS_GESTION", label: "Cuadrillas Gestión", href: "/home/cuadrillas/gestion" },
-      { key: "TECNICOS_GESTION", label: "Técnicos Gestión", href: "/home/tecnicos/gestion" },
+      { key: "CUADRILLAS_GESTION", label: "Cuadrillas Gestion", href: "/home/cuadrillas/gestion" },
+      { key: "TECNICOS_GESTION", label: "Tecnicos Gestion", href: "/home/tecnicos/gestion" },
     ];
 
     if (hasPerm(session, "ORDENES_IMPORT")) {
-      items.push({ key: "ORDENES_IMPORT", label: "Órdenes: Importar", href: "/home/ordenes/import" });
+      items.push({ key: "ORDENES_IMPORT", label: "Ordenes: Importar", href: "/home/ordenes/import" });
     }
     if (hasPerm(session, "ORDENES_LLAMADAS_VIEW") || hasPerm(session, "ORDENES_LLAMADAS_EDIT")) {
-      items.push({ key: "ORDENES_CALLS", label: "Órdenes: Llamadas", href: "/home/ordenes/llamadas" });
+      items.push({ key: "ORDENES_CALLS", label: "Ordenes: Llamadas", href: "/home/ordenes/llamadas" });
     }
     if (hasPerm(session, "ORDENES_MAPA_VIEW")) {
-      items.push({ key: "ORDENES_MAPA", label: "Órdenes: Mapa", href: "/home/ordenes/mapa" });
+      items.push({ key: "ORDENES_MAPA", label: "Ordenes: Mapa", href: "/home/ordenes/mapa" });
     }
     if (hasPerm(session, "ORDENES_GARANTIAS_VIEW") || hasPerm(session, "ORDENES_GARANTIAS_EDIT")) {
-      items.push({ key: "ORDENES_GARANTIAS", label: "Órdenes: Garantías", href: "/home/ordenes/garantias" });
+      items.push({ key: "ORDENES_GARANTIAS", label: "Ordenes: Garantias", href: "/home/ordenes/garantias" });
     }
 
     items.push({ key: "PERFIL", label: "Mi perfil", href: "/home/perfil" });
     return items;
   }
+
   const items: NavItem[] = [
     { key: "HOME", label: "Inicio", href: "/home" },
     { key: "COMUNICADOS", label: "Comunicados", href: "/home/comunicados" },
@@ -51,29 +53,34 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
 
   if (hasArea(session, "INSTALACIONES")) {
     const roles = (session.access.roles ?? []).map((r) => String(r || "").toUpperCase());
-    const canAsistenciaResumen = session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
+    const canAsistenciaResumen =
+      session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
+    const coordOnly = isCoord && !isPriv && !session.isAdmin && !isGestor;
 
-    items.push({ key: "INSTALACIONES", label: "Instalaciones", href: "/home/instalaciones" });
-    items.push({
-      key: "INSTALACIONES_MAT",
-      label: "Instalaciones: Materiales",
-      href: "/home/instalaciones/materiales",
-    });
-    items.push({
-      key: "INSTALACIONES_DET",
-      label: "Instalaciones: Detalle",
-      href: "/home/instalaciones/detalle",
-    });
-    items.push({
-      key: "INSTALACIONES_ACTAS",
-      label: "Recepción de Actas",
-      href: "/home/instalaciones/actas",
-    });
-    items.push({
-      key: "INSTALACIONES_ASISTENCIA",
-      label: "Asistencia Cuadrillas",
-      href: "/home/instalaciones/asistencia",
-    });
+    if (!coordOnly) {
+      items.push({ key: "INSTALACIONES", label: "Instalaciones", href: "/home/instalaciones" });
+      items.push({
+        key: "INSTALACIONES_MAT",
+        label: "Instalaciones: Materiales",
+        href: "/home/instalaciones/materiales",
+      });
+      items.push({
+        key: "INSTALACIONES_DET",
+        label: "Instalaciones: Detalle",
+        href: "/home/instalaciones/detalle",
+      });
+      items.push({
+        key: "INSTALACIONES_ACTAS",
+        label: "Recepcion de Actas",
+        href: "/home/instalaciones/actas",
+      });
+      items.push({
+        key: "INSTALACIONES_ASISTENCIA",
+        label: "Asistencia Cuadrillas",
+        href: "/home/instalaciones/asistencia",
+      });
+    }
+
     if (roles.includes("GERENCIA") || roles.includes("COORDINADOR")) {
       items.push({
         key: "INSTALACIONES_ASIST_PROG",
@@ -84,7 +91,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     if (roles.includes("GERENCIA")) {
       items.push({
         key: "INSTALACIONES_ASIG_GEST",
-        label: "Asignación de Gestores",
+        label: "Asignacion de Gestores",
         href: "/home/instalaciones/asignacion-gestores",
       });
     }
@@ -97,50 +104,46 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     }
     items.push({
       key: "CUADRILLAS_GESTION",
-      label: "Cuadrillas Gestión",
+      label: "Cuadrillas Gestion",
       href: "/home/cuadrillas/gestion",
     });
     items.push({
       key: "TECNICOS_GESTION",
-      label: "Técnicos Gestión",
+      label: "Tecnicos Gestion",
       href: "/home/tecnicos/gestion",
     });
   }
 
   if (hasArea(session, "AVERIAS")) {
-    items.push({ key: "AVERIAS", label: "Averías", href: "/home/averias" });
+    items.push({ key: "AVERIAS", label: "Averias", href: "/home/averias" });
   }
 
-  // ? Permiso real en tu sistema
   if (hasPerm(session, "USERS_LIST")) {
     items.push({ key: "USUARIOS", label: "Usuarios", href: "/home/usuarios" });
   }
 
-  // Zonas para no-admins con permiso específico
   if (hasPerm(session, "ZONAS_MANAGE")) {
     items.push({ key: "ZONAS", label: "Zonas", href: "/home/zonas" });
   }
 
-  // Cuadrillas (Instalaciones) para no-admins con permiso específico
   if (hasPerm(session, "CUADRILLAS_MANAGE")) {
     items.push({ key: "CUADRILLAS", label: "Cuadrillas", href: "/home/cuadrillas" });
   }
 
-  // Órdenes -> Importar (solo con permiso)
   if (hasPerm(session, "ORDENES_IMPORT")) {
-    items.push({ key: "ORDENES_IMPORT", label: "Órdenes: Importar", href: "/home/ordenes/import" });
+    items.push({ key: "ORDENES_IMPORT", label: "Ordenes: Importar", href: "/home/ordenes/import" });
   }
   if (hasPerm(session, "ORDENES_LLAMADAS_VIEW") || hasPerm(session, "ORDENES_LLAMADAS_EDIT")) {
-    items.push({ key: "ORDENES_CALLS", label: "Órdenes: Llamadas", href: "/home/ordenes/llamadas" });
+    items.push({ key: "ORDENES_CALLS", label: "Ordenes: Llamadas", href: "/home/ordenes/llamadas" });
   }
   if (hasPerm(session, "ORDENES_LIQUIDAR")) {
-    items.push({ key: "ORDENES_LIQ", label: "Órdenes: Liquidación", href: "/home/ordenes/liquidacion" });
+    items.push({ key: "ORDENES_LIQ", label: "Ordenes: Liquidacion", href: "/home/ordenes/liquidacion" });
   }
   if (hasPerm(session, "ORDENES_MAPA_VIEW")) {
-    items.push({ key: "ORDENES_MAPA", label: "Órdenes: Mapa", href: "/home/ordenes/mapa" });
+    items.push({ key: "ORDENES_MAPA", label: "Ordenes: Mapa", href: "/home/ordenes/mapa" });
   }
   if (hasPerm(session, "ORDENES_GARANTIAS_VIEW") || hasPerm(session, "ORDENES_GARANTIAS_EDIT")) {
-    items.push({ key: "ORDENES_GARANTIAS", label: "Órdenes: Garantías", href: "/home/ordenes/garantias" });
+    items.push({ key: "ORDENES_GARANTIAS", label: "Ordenes: Garantias", href: "/home/ordenes/garantias" });
   }
   if (hasPerm(session, "INCONCERT_IMPORT")) {
     items.push({ key: "INCONCERT_IMPORT", label: "InConcert: Importar", href: "/home/inconcert/importar" });
@@ -149,17 +152,14 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     items.push({ key: "INCONCERT_GERENCIA", label: "InConcert: Gerencia", href: "/home/inconcert/gerencia" });
   }
 
-  // Equipos -> Importar (solo con permiso)
   if (hasPerm(session, "EQUIPOS_IMPORT")) {
     items.push({ key: "EQUIPOS_IMPORT", label: "Equipos: Importar", href: "/home/equipos/import" });
   }
 
-  // Materiales: si tiene vista o creación, apuntar a listado
   if (hasPerm(session, "MATERIALES_CREATE") || hasPerm(session, "MATERIALES_VIEW")) {
     items.push({ key: "MATERIALES", label: "Materiales", href: "/home/materiales" });
   }
 
-  // Transferencias (INSTALACIONES): si tiene algún permiso de despacho o devolución
   if (
     hasPerm(session, "EQUIPOS_DESPACHO") ||
     hasPerm(session, "MATERIALES_TRANSFER_SERVICIO") ||
@@ -173,7 +173,6 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     items.push({ key: "TR_INST_EQ", label: "Equipos (Inst)", href: "/home/transferencias/instalaciones/equipos" });
   }
 
-  // Ventas
   if (hasPerm(session, "VENTAS_VER") || hasPerm(session, "VENTAS_VER_ALL")) {
     items.push({ key: "VENTAS", label: "Ventas", href: "/home/ventas" });
   }
@@ -188,6 +187,3 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
 
   return items;
 }
-
-
-

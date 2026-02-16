@@ -19,11 +19,14 @@ import { writeBatch } from "firebase/firestore";
 
 import { getFirebaseApp } from "@/lib/firebase/client";
 
-const app = getFirebaseApp();
-const db = getFirestore(app);
-// Debug: confirmar projectId del Firestore client
-// eslint-disable-next-line no-console
-try { console.log("[notifications repo] db.app.projectId", (db.app.options as any)?.projectId); } catch {}
+let cachedDb: ReturnType<typeof getFirestore> | null = null;
+function getDb() {
+  if (typeof window === "undefined") return null;
+  if (cachedDb) return cachedDb;
+  const app = getFirebaseApp();
+  cachedDb = getFirestore(app);
+  return cachedDb;
+}
 
 export type NotificacionDoc = {
   id: string;
@@ -45,6 +48,11 @@ export function listenGlobalNotifications(
   onChange: (items: NotificacionDoc[]) => void,
   n = 20
 ) {
+  const db = getDb();
+  if (!db) {
+    onChange([]);
+    return () => {};
+  }
   const q = query(
     collection(db, "notificaciones"),
     where("scope", "==", "ALL"),
@@ -88,6 +96,8 @@ export function listenGlobalNotifications(
 }
 
 export async function markNotificationRead(uid: string, notifId: string) {
+  const db = getDb();
+  if (!db) return;
   const authUid = getAuth(getFirebaseApp()).currentUser?.uid || uid;
   const readId = `${authUid}_${notifId}`;
   const ref = doc(db, "notificaciones_reads", readId);
@@ -100,6 +110,8 @@ export async function markNotificationRead(uid: string, notifId: string) {
 }
 
 export async function markAllNotificationsRead(uid: string, notifIds: string[]) {
+  const db = getDb();
+  if (!db) return;
   const authUid = getAuth(getFirebaseApp()).currentUser?.uid || uid;
   const batch = writeBatch(db);
   try { console.log("[markAllNotificationsRead] start", { uid: authUid, count: notifIds.length }); } catch {}

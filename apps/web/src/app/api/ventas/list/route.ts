@@ -11,6 +11,8 @@ export async function GET(req: Request) {
     if (!session) return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
     if (session.access.estadoAcceso !== "HABILITADO") return NextResponse.json({ ok: false, error: "ACCESS_DISABLED" }, { status: 403 });
 
+    const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
+    const isCoord = roles.includes("COORDINADOR");
     const canViewAll = session.isAdmin || session.permissions.includes("VENTAS_VER_ALL");
     const canView = canViewAll || session.permissions.includes("VENTAS_VER");
     if (!canView) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
@@ -25,22 +27,61 @@ export async function GET(req: Request) {
 
     let q: FirebaseFirestore.Query = adminDb().collection("ventas");
 
-    if (!canViewAll) {
-      const isCoord = (session.access.roles || []).includes("COORDINADOR");
-      if (isCoord) {
-        q = q.where("coordinadorUid", "==", session.uid);
-      } else {
-        // Sin permiso global ni rol coordinador: no ver nada
-        return NextResponse.json({ ok: true, items: [] });
-      }
+    if (!canViewAll && !isCoord) {
+      return NextResponse.json({ ok: true, items: [] });
     }
 
-    if (year && month >= 1 && month <= 12) {
+    const hasYearMonth = year && month >= 1 && month <= 12;
+    const hasYearOnly = year && !month;
+
+    if (isCoord && !session.isAdmin) {
+      // Evitar indices compuestos: filtrar por fecha en memoria
+      const snap = await q.where("coordinadorUid", "==", session.uid).limit(500).get();
+      let docs = snap.docs;
+      if (hasYearMonth) {
+        const start = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0)).getTime();
+        const end = new Date(Date.UTC(year, month, 1, 0, 0, 0)).getTime();
+        docs = docs.filter((d) => {
+          const t = d.data()?.createdAt?.toDate?.()?.getTime?.() || 0;
+          return t >= start && t < end;
+        });
+      } else if (hasYearOnly) {
+        const start = new Date(Date.UTC(year, 0, 1, 0, 0, 0)).getTime();
+        const end = new Date(Date.UTC(year + 1, 0, 1, 0, 0, 0)).getTime();
+        docs = docs.filter((d) => {
+          const t = d.data()?.createdAt?.toDate?.()?.getTime?.() || 0;
+          return t >= start && t < end;
+        });
+      }
+      docs.sort((a, b) => {
+        const ca = a.data()?.createdAt?.toDate?.()?.getTime?.() || 0;
+        const cb = b.data()?.createdAt?.toDate?.()?.getTime?.() || 0;
+        if (ca !== cb) return cb - ca;
+        return String(b.id).localeCompare(String(a.id));
+      });
+      const items = docs.map((d) => {
+        const data = d.data() as any;
+        const createdAt = data?.createdAt?.toDate?.();
+        return {
+          id: d.id,
+          ...data,
+          createdAtStr: createdAt ? createdAt.toISOString() : "",
+          createdAtMs: createdAt ? createdAt.getTime() : 0,
+        };
+      });
+      return NextResponse.json({
+        ok: true,
+        items,
+        pageInfo: { hasMore: false, lastId: "", lastCreatedAtMs: 0 },
+      });
+    }
+
+    if (hasYearMonth) {
       const start = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
       const end = new Date(Date.UTC(year, month, 1, 0, 0, 0));
       q = q.where("createdAt", ">=", Timestamp.fromDate(start));
       q = q.where("createdAt", "<", Timestamp.fromDate(end));
-    } else if (year && !month) {
+    } else if (hasYearOnly) {
       const start = new Date(Date.UTC(year, 0, 1, 0, 0, 0));
       const end = new Date(Date.UTC(year + 1, 0, 1, 0, 0, 0));
       q = q.where("createdAt", ">=", Timestamp.fromDate(start));

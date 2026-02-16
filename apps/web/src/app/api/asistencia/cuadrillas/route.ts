@@ -20,11 +20,17 @@ async function getProgramForDate(ymd: string) {
   const snap = await db
     .collection("asistencia_programada")
     .where("startYmd", "<=", ymd)
-    .where("endYmd", ">=", ymd)
-    .limit(1)
+    .orderBy("startYmd", "desc")
+    .limit(5)
     .get();
   if (snap.empty) return null;
-  return snap.docs[0].data() as any;
+  const doc = snap.docs.find((d) => {
+    const data = d.data() as any;
+    const endYmd = String(data?.endYmd || "");
+    return endYmd && endYmd >= ymd;
+  });
+  if (!doc) return null;
+  return doc.data() as any;
 }
 
 export async function GET(req: Request) {

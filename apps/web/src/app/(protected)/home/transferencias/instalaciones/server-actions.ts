@@ -500,6 +500,103 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
               if (!ordQuerySnap.empty) ordRef = ordQuerySnap.docs[0].ref;
             }
 
+            // Corregir instalacion: devolver al stock de cuadrilla todos los SN instalados
+            // excepto el SN que se esta enviando a garantia.
+            const equiposInstalados = Array.isArray(inst?.equiposInstalados) ? inst.equiposInstalados : [];
+            const restoreSns = Array.from(
+              new Set(
+                equiposInstalados
+                  .map((x: any) => String(x?.sn || "").trim().toUpperCase())
+                  .filter((x: string) => !!x && x !== sn)
+              )
+            );
+
+            let targetCuadrillaId = input.cuadrillaId;
+            let targetCuadrillaNombre = c?.nombre || input.cuadrillaId;
+            if (ordRef) {
+              const ordSnap = await tx.get(ordRef);
+              if (ordSnap.exists) {
+                const ord = ordSnap.data() as any;
+                targetCuadrillaId = String(ord?.cuadrillaId || targetCuadrillaId).trim() || targetCuadrillaId;
+                targetCuadrillaNombre = String(ord?.cuadrillaNombre || targetCuadrillaNombre).trim() || targetCuadrillaNombre;
+              }
+            }
+            const restoreUb = normalizeUbicacion(targetCuadrillaNombre || targetCuadrillaId);
+            const restoreUbicacion = restoreUb.ubicacion;
+            const restoreEstado = restoreUb.estado;
+
+            const restoreRefs = restoreSns.map((rsn) => ({
+              rsn,
+              eqRef: db.collection("equipos").doc(rsn),
+              seriesRef: db
+                .collection("cuadrillas")
+                .doc(targetCuadrillaId)
+                .collection("equipos_series")
+                .doc(rsn),
+            }));
+            const restoreEqSnaps = await Promise.all(restoreRefs.map((r) => tx.get(r.eqRef)));
+            const restoreSeriesSnaps = await Promise.all(restoreRefs.map((r) => tx.get(r.seriesRef)));
+
+            for (let rIdx = 0; rIdx < restoreRefs.length; rIdx++) {
+              const { rsn, eqRef, seriesRef } = restoreRefs[rIdx];
+              const rEqSnap = restoreEqSnaps[rIdx];
+              const rSeriesSnap = restoreSeriesSnaps[rIdx];
+              if (!rEqSnap.exists) continue;
+
+              const rEq = rEqSnap.data() as any;
+              const rTipo = String(rEq?.equipo || "UNKNOWN").toUpperCase();
+
+              tx.update(eqRef, {
+                ubicacion: restoreUbicacion,
+                estado: restoreEstado,
+                audit: {
+                  ...(rEq?.audit || {}),
+                  updatedAt: FieldValue.serverTimestamp(),
+                  updatedBy: session.uid,
+                },
+              });
+
+              if (!rSeriesSnap.exists) {
+                tx.set(
+                  seriesRef,
+                  {
+                    SN: rsn,
+                    equipo: rTipo,
+                    descripcion: String(rEq?.descripcion || ""),
+                    ubicacion: restoreUbicacion,
+                    estado: restoreEstado,
+                    guia_despacho: "",
+                    updatedAt: FieldValue.serverTimestamp(),
+                  },
+                  { merge: true }
+                );
+              }
+
+              const rStockTipoRef = db
+                .collection("cuadrillas")
+                .doc(targetCuadrillaId)
+                .collection("equipos_stock")
+                .doc(rTipo);
+              tx.set(
+                rStockTipoRef,
+                {
+                  tipo: rTipo,
+                  cantidad: FieldValue.increment(1),
+                  updatedAt: FieldValue.serverTimestamp(),
+                },
+                { merge: true }
+              );
+            }
+
+            const fechaInstalacion = String(
+              inst?.fechaInstalacionYmd ||
+                inst?.fechaInstalacion ||
+                inst?.fechaOrdenYmd ||
+                ""
+            ).trim();
+            const clienteInst = String(inst?.cliente || "").trim();
+            const obsGarantia = `GARANTIA | Fecha: ${fechaInstalacion || "-"} | CodigoCliente: ${codigoCliente} | Cliente: ${clienteInst || "-"}`;
+
             tx.update(ref, {
               ubicacion: "GARANTIA",
               estado: "ALMACEN",
@@ -507,6 +604,7 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
               f_devolucionYmd: d.ymd,
               f_devolucionHm: d.hm,
               guia_devolucion: guia,
+              observacion: obsGarantia,
               audit: { ...(e.audit || {}), updatedAt: FieldValue.serverTimestamp(), updatedBy: session.uid },
             });
 
@@ -556,6 +654,8 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
           }
 
           const destinoUbicacion = mode === "AVERIA" ? "AVERIA" : "ALMACEN";
+          const obsNormal = String(e?.observacion || "");
+          const nextObservacion = mode === "AVERIA" ? "AVERIA" : obsNormal;
           tx.update(ref, {
             ubicacion: destinoUbicacion,
             estado: "ALMACEN",
@@ -563,6 +663,7 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
             f_devolucionYmd: d.ymd,
             f_devolucionHm: d.hm,
             guia_devolucion: guia,
+            observacion: nextObservacion,
             audit: { ...(e.audit || {}), updatedAt: FieldValue.serverTimestamp() },
           });
           const tipo = String(e.equipo || "UNKNOWN").toUpperCase();
@@ -622,7 +723,34 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
       }
     }
 
-    await db.collection("movimientos_inventario").doc(transferId).set({ area: "INSTALACIONES", tipo: "DEVOLUCION", guia, origen: { type: "CUADRILLA", id: input.cuadrillaId }, destino: { type: "ALMACEN", id: "ALMACEN" }, itemsEquipos, itemsMateriales, observacion: input.observacion || "", createdAt: FieldValue.serverTimestamp() });
+    const modeBySn = new Map(equiposToProcess.map((x) => [x.sn, x.mode] as const));
+    const averiaSns = itemsEquipos
+      .filter((x) => x.status === "OK" && modeBySn.get(x.sn) === "AVERIA")
+      .map((x) => x.sn);
+    const garantiaSns = itemsEquipos
+      .filter((x) => x.status === "OK" && modeBySn.get(x.sn) === "GARANTIA_CORRECCION")
+      .map((x) => x.sn);
+
+    const garantiaObs: string[] = [];
+    if (garantiaSns.length) {
+      const gRefs = garantiaSns.map((sn) => db.collection("equipos").doc(sn));
+      const gSnaps = await db.getAll(...gRefs);
+      for (const gs of gSnaps) {
+        if (!gs.exists) continue;
+        const gData = gs.data() as any;
+        const obs = String(gData?.observacion || "").trim();
+        if (obs) garantiaObs.push(obs);
+      }
+    }
+
+    const autoObsParts: string[] = [];
+    if (averiaSns.length) autoObsParts.push(`AVERIA: ${averiaSns.join(", ")}`);
+    if (garantiaObs.length) autoObsParts.push(...garantiaObs);
+    const finalObservacion = [String(input.observacion || "").trim(), ...autoObsParts]
+      .filter(Boolean)
+      .join(" | ");
+
+    await db.collection("movimientos_inventario").doc(transferId).set({ area: "INSTALACIONES", tipo: "DEVOLUCION", guia, origen: { type: "CUADRILLA", id: input.cuadrillaId }, destino: { type: "ALMACEN", id: "ALMACEN" }, itemsEquipos, itemsMateriales, observacion: finalObservacion, createdAt: FieldValue.serverTimestamp() });
 
     try {
       if (Object.keys(movedTypes).length) {
@@ -665,7 +793,7 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
     } catch {}
 
     const resumen = { equipos: { ok: itemsEquipos.filter(x=>x.status==='OK').length, fail: itemsEquipos.filter(x=>x.status==='ERROR').length }, materiales: { ok: itemsMateriales.filter(x=>x.status==='OK').length, fail: itemsMateriales.filter(x=>x.status==='ERROR').length }, warnings: [] as string[] };
-    return { ok: true, transferId, guia, resumen, itemsEquipos, itemsMateriales };
+    return { ok: true, transferId, guia, resumen, itemsEquipos, itemsMateriales, observacionFinal: finalObservacion };
   } catch (e: any) {
     const code = String(e?.message ?? "ERROR");
     if (e?.issues) {

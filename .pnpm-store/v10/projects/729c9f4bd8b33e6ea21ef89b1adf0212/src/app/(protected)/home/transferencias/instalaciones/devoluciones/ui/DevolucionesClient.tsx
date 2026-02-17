@@ -841,6 +841,7 @@ export default function DevolucionesClient() {
       toast.error("No hay guia para imprimir");
       return false;
     }
+    const observacionFinal = String((result as any)?.observacionFinal || observacion || "");
 
     const { payload } = buildPayload();
     const mats = (payload as any).materiales || [];
@@ -877,7 +878,7 @@ export default function DevolucionesClient() {
       coordinador: coordinador || "",
       tecnicos: tecnicos ? tecnicos.split(",").map((t) => t.trim()).filter(Boolean) : [],
       tipo: segmento,
-      observacion: observacion || "",
+      observacion: observacionFinal,
       equipos: equipos.map((e) => ({ SN: e.sn, equipo: e.tipo })),
       materiales: {
         automaticos,
@@ -965,6 +966,10 @@ export default function DevolucionesClient() {
       if (materialesDetalleList.length > 0) {
         partsMsg.push("*Materiales:*");
         partsMsg.push(materialesDetalleList.join("\n"));
+      }
+      if (observacionFinal) {
+        partsMsg.push("*Observacion:*");
+        partsMsg.push(observacionFinal);
       }
       const extraInfo = partsMsg.length ? partsMsg.join("\n") : "";
 

@@ -15,6 +15,20 @@ function shortName(name: string) {
 
 export const runtime = "nodejs";
 
+function parseSnList(v: any): string[] {
+  if (Array.isArray(v)) return v.map((x) => String(x || "").trim()).filter(Boolean);
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return [];
+    try {
+      const parsed = JSON.parse(s);
+      if (Array.isArray(parsed)) return parsed.map((x) => String(x || "").trim()).filter(Boolean);
+    } catch {}
+    return s.split(/[|,;]/).map((x) => x.trim()).filter(Boolean);
+  }
+  return [];
+}
+
 function todayLimaYm() {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Lima",
@@ -48,6 +62,10 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const ymd = String(searchParams.get("ymd") || "").trim();
     const ym = String(searchParams.get("ym") || (ymd ? "" : todayLimaYm()));
+    const limitParam = Number(searchParams.get("limit") || "");
+    const limit = Number.isFinite(limitParam) && limitParam > 0
+      ? Math.min(10000, Math.floor(limitParam))
+      : 10000;
 
     let q: FirebaseFirestore.Query = adminDb().collection("instalaciones");
 
@@ -60,7 +78,7 @@ export async function GET(req: Request) {
       q = q.where("fechaOrdenYmd", ">=", start).where("fechaOrdenYmd", "<=", end);
     }
 
-    const snap = await q.orderBy("fechaOrdenYmd", "desc").limit(2000).get();
+    const snap = await q.orderBy("fechaOrdenYmd", "desc").limit(limit).get();
 
     const toIso = (v: any) => {
       if (!v) return null;
@@ -85,8 +103,10 @@ export async function GET(req: Request) {
         equipos.filter((e: any) => String(e?.tipo || "").toUpperCase().includes(tipo));
 
       const snONT = (byTipo("ONT")[0]?.sn || data.snONT || "");
-      const snMESH = byTipo("MESH").map((e: any) => e.sn).filter(Boolean);
-      const snBOX = byTipo("BOX").map((e: any) => e.sn).filter(Boolean);
+      const meshFromEquipos = byTipo("MESH").map((e: any) => e.sn).filter(Boolean);
+      const boxFromEquipos = byTipo("BOX").map((e: any) => e.sn).filter(Boolean);
+      const snMESH = meshFromEquipos.length ? meshFromEquipos : parseSnList(data.snMESH);
+      const snBOX = boxFromEquipos.length ? boxFromEquipos : parseSnList(data.snBOX);
       const snFONO = (byTipo("FONO")[0]?.sn || data.snFONO || "");
 
       const fechaOrdenAt =
@@ -130,6 +150,10 @@ export async function GET(req: Request) {
         orden.coordinadorCuadrilla || orden.coordinador || orden.gestorCuadrilla || ""
       ).trim();
 
+      const planValue = Array.isArray(data.plan)
+        ? data.plan.join(" | ")
+        : (data.plan || orden.plan || orden.idenServi || "");
+
       return {
         id: d.id,
         ...data,
@@ -143,7 +167,7 @@ export async function GET(req: Request) {
         cuadrillaNombre: data.cuadrillaNombre || orden.cuadrillaNombre || "",
         tipoCuadrilla: data.tipoCuadrilla || orden.tipoCuadrilla || "",
         tipoOrden: orden.tipoOrden || orden.tipo || data.tipoOrden || "",
-        plan: data.plan || orden.plan || orden.idenServi || "",
+        plan: planValue,
         orderId: data.ordenId || orden.ordenId || orden.ordenDocId || "",
         fechaInstalacion: fechaInstalacionAt,
         fechaOrdenYmd:

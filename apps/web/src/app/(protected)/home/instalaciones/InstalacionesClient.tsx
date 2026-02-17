@@ -60,14 +60,15 @@ const formatearFecha = (fecha: Date | null) => (fecha ? dayjs(fecha).format("DD/
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-const resaltarPlanHTML = (planTexto: string) => {
-  if (!planTexto) return "-";
+const resaltarPlanHTML = (planTexto: unknown) => {
+  const base = String(planTexto ?? "");
+  if (!base.trim()) return "-";
   const palabras = [
     { texto: "INTERNETGAMER", color: "bg-green-300", tip: "Paquete especial para gamers" },
     { texto: "KIT WIFI PRO (EN VENTA)", color: "bg-blue-300", tip: "Incluye Kit Wifi Pro en venta" },
     { texto: "SERVICIO CABLEADO DE MESH", color: "bg-purple-300", tip: "Servicio adicional de cableado para MESH" },
   ];
-  let out = planTexto;
+  let out = base;
   palabras.forEach(({ texto, color, tip }) => {
     const rx = new RegExp(escapeRegExp(texto), "gi");
     const span = `<span class='px-1 ${color} font-bold rounded cursor-help' title='${tip}'>${texto}</span>`;
@@ -604,6 +605,8 @@ export default function InstalacionesClient() {
           <Select
             isMulti
             name="tipoCuadrilla"
+            instanceId="instalaciones-tipo-cuadrilla"
+            inputId="instalaciones-tipo-cuadrilla"
             options={opcionesTipoCuadrilla}
             className="text-sm"
             placeholder="Seleccionar..."
@@ -617,6 +620,8 @@ export default function InstalacionesClient() {
           <Select
             isMulti
             name="cuadrilla"
+            instanceId="instalaciones-cuadrilla"
+            inputId="instalaciones-cuadrilla"
             options={opcionesCuadrilla}
             className="text-sm"
             placeholder="Seleccionar..."

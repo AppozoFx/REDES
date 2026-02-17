@@ -122,7 +122,7 @@ export async function GET(req: Request) {
       .limit(400)
       .get();
 
-    const allRows: Row[] = snap.docs
+    const allRowsBase: Row[] = snap.docs
       .map((d) => {
         const x = d.data() as any;
         return {
@@ -161,6 +161,45 @@ export async function GET(req: Request) {
         return !hayGarantia;
       })
       .filter((r) => isFinalizada(r.estado));
+
+    // En migraciones historicas se liquida en `instalaciones` sin tocar `ordenes`.
+    // Cruzamos por codigo de cliente para reflejar estado liquidado/correccion en esta vista.
+    const codigos = Array.from(
+      new Set(
+        allRowsBase
+          .map((r) => String(r.codiSeguiClien || "").trim())
+          .filter(Boolean)
+      )
+    );
+    const instRefs = codigos.map((c) => adminDb().collection("instalaciones").doc(c));
+    const instSnaps = codigos.length ? await adminDb().getAll(...instRefs) : [];
+    const instMap = new Map(
+      instSnaps
+        .filter((s) => s.exists)
+        .map((s) => [s.id, (s.data() as any) || {}])
+    );
+
+    const allRows: Row[] = allRowsBase.map((r) => {
+      const key = String(r.codiSeguiClien || "").trim();
+      const inst = key ? instMap.get(key) : null;
+      if (!inst) return r;
+
+      const instCorr = !!inst?.correccionPendiente;
+      const instLiqEstado = String(inst?.liquidacion?.estado || "").toUpperCase();
+      const instLiqAt = !!inst?.liquidacion?.at;
+      const instLiquidado = (instLiqEstado === "LIQUIDADO" || instLiqAt) && !instCorr;
+
+      return {
+        ...r,
+        correccionPendiente: r.correccionPendiente || instCorr,
+        correccionBy: r.correccionBy || String(inst?.correccionBy || ""),
+        correccionYmd: r.correccionYmd || String(inst?.correccionYmd || ""),
+        rotuloNapCto:
+          r.rotuloNapCto ||
+          String(inst?.liquidacion?.rotuloNapCto || ""),
+        liquidado: r.liquidado || instLiquidado,
+      };
+    });
 
     const coordinatorKeys = Array.from(new Set(allRows.map((r) => String(r.coordinador || "").trim()).filter(Boolean)));
     const userRefs = coordinatorKeys.map((uid) => adminDb().collection("usuarios").doc(uid));

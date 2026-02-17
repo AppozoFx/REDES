@@ -17,6 +17,13 @@ export const BobinaResidencialDevolucionSchema = z.object({
   codigo: z.string().min(1), // esperado ya normalizado en UI (WIN-XXXX) o bruto si decides normalizar en server
 });
 
+export const EquipoDevolucionModeSchema = z.enum(["NORMAL", "AVERIA", "GARANTIA_CORRECCION"]);
+
+export const EquipoDevolucionInputSchema = z.object({
+  sn: z.string().min(1),
+  mode: EquipoDevolucionModeSchema.default("NORMAL"),
+});
+
 export const DespachoInstalacionesInputSchema = z.object({
   transferId: z.string().min(1).optional(),
   cuadrillaId: z.string().min(1),
@@ -33,7 +40,9 @@ export const DevolucionInstalacionesInputSchema = z.object({
   transferId: z.string().min(1).optional(),
   cuadrillaId: z.string().min(1),
   guia: z.string().min(1).optional(),
-  equipos: z.array(z.string().min(1)).default([]),
+  equipos: z
+    .array(z.union([z.string().min(1), EquipoDevolucionInputSchema]))
+    .default([]),
   materiales: z.array(MaterialLineaInputSchema).default([]),
   bobinasResidenciales: z.array(BobinaResidencialDevolucionSchema).optional(),
   observacion: z.string().optional(),
@@ -78,4 +87,3 @@ export const TransferFailSchema = z.object({
   error: z.object({ formErrors: z.array(z.string()) }),
 });
 export type TransferFail = z.infer<typeof TransferFailSchema>;
-

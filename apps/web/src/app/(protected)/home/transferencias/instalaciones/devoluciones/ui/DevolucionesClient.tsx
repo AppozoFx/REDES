@@ -46,6 +46,8 @@ const MATS_INST = [
 
 type Segmento = "RESIDENCIAL" | "CONDOMINIO";
 type Tipo = "REGULAR" | "ALTO_VALOR";
+type EquipoReturnMode = "NORMAL" | "AVERIA" | "GARANTIA_CORRECCION";
+type EquipoScanItem = { sn: string; tipo: string; mode: EquipoReturnMode };
 
 type CuadrillaListItem = {
   id: string;
@@ -60,6 +62,7 @@ type CuadrillaListItem = {
 type CuadrillaInfo = {
   nombre?: string;
   coordinadorUid?: string;
+  coordinador?: string;
   coordinadorNombre?: string;
   tecnicosUids?: string[];
   tecnicosNombres?: string[];
@@ -441,7 +444,7 @@ export default function DevolucionesClient() {
   // Paso 2 - Equipos (modo scanner + modo bulk)
   const [snInput, setSnInput] = useState("");
   const snInputRef = useRef<HTMLInputElement | null>(null);
-  const [equipos, setEquipos] = useState<Array<{ sn: string; tipo: string }>>([]);
+  const [equipos, setEquipos] = useState<EquipoScanItem[]>([]);
   const [snValidating, setSnValidating] = useState(false);
 
   // Paso 2 - Bobinas / Materiales
@@ -761,13 +764,21 @@ export default function DevolucionesClient() {
           const actualUb = normalizeCuadrillaName(data.ubicacion || "");
           if (expectedUb && actualUb === expectedUb) {
             const tipoEq = String(data.equipo || "OTROS").toUpperCase();
-            setEquipos((p) => [...p, { sn, tipo: tipoEq }]);
+            setEquipos((p) => [...p, { sn, tipo: tipoEq, mode: "NORMAL" }]);
             setSnInput("");
             toast.success("SN en cuadrilla");
             return;
           }
           toast.error(`Serie despachada en otra cuadrilla: ${data.ubicacion || "N/A"}`);
           setSnInput("");
+          return;
+        }
+        const ubicacionActual = String(data.ubicacion || "").toUpperCase();
+        if (data.status === "NO_ALMACEN" && ubicacionActual === "INSTALADOS") {
+          const tipoEq = String(data.equipo || "OTROS").toUpperCase();
+          setEquipos((p) => [...p, { sn, tipo: tipoEq, mode: "GARANTIA_CORRECCION" }]);
+          setSnInput("");
+          toast.message("SN instalado: se enviara a GARANTIA y dejara cliente en correccion");
           return;
         }
         toast.error(`Serie no esta en cuadrilla. Ubicacion: ${data.ubicacion || "N/A"}`);
@@ -782,6 +793,14 @@ export default function DevolucionesClient() {
     });
 
   const handleRemoveSN = (sn: string) => setEquipos((p) => p.filter((x) => x.sn !== sn));
+  const handleToggleAveria = (sn: string, checked: boolean) =>
+    setEquipos((prev) =>
+      prev.map((x) => {
+        if (x.sn !== sn) return x;
+        if (x.mode === "GARANTIA_CORRECCION") return x;
+        return { ...x, mode: checked ? "AVERIA" : "NORMAL" };
+      })
+    );
 
   const handleAddBobina = () =>
     guard(() => {
@@ -1010,7 +1029,7 @@ export default function DevolucionesClient() {
       const codes = bobinaCodes;
       const payload = {
         cuadrillaId,
-        equipos: equipos.map((e) => e.sn),
+        equipos: equipos.map((e) => ({ sn: e.sn, mode: e.mode })),
         materiales,
         bobinasResidenciales: codes.map((codigo) => ({ codigo })),
         observacion,
@@ -1021,7 +1040,12 @@ export default function DevolucionesClient() {
       const m = Math.max(0, numOr0(bobinaCondominioMetros || "0"));
       if (m > 0) materiales.push({ materialId: "BOBINA", metros: m });
 
-      const payload = { cuadrillaId, equipos: equipos.map((e) => e.sn), materiales, observacion };
+      const payload = {
+        cuadrillaId,
+        equipos: equipos.map((e) => ({ sn: e.sn, mode: e.mode })),
+        materiales,
+        observacion,
+      };
       return { payload, extra: { metros: m } };
     }
   }
@@ -1354,6 +1378,7 @@ export default function DevolucionesClient() {
                     <tr>
                       <th className="text-left px-3 py-2">SN</th>
                       <th className="text-left px-3 py-2">Equipo</th>
+                      <th className="text-left px-3 py-2">Modo</th>
                       <th className="text-right px-3 py-2">Accion</th>
                     </tr>
                   </thead>
@@ -1362,6 +1387,20 @@ export default function DevolucionesClient() {
                       <tr key={e.sn} className="border-t">
                         <td className="px-3 py-2 font-mono">{e.sn}</td>
                         <td className="px-3 py-2">{e.tipo || "OTROS"}</td>
+                        <td className="px-3 py-2">
+                          {e.mode === "GARANTIA_CORRECCION" ? (
+                            <span className="text-amber-700 font-medium">GARANTIA + CORRECCION</span>
+                          ) : (
+                            <label className="inline-flex items-center gap-2 text-xs">
+                              <input
+                                type="checkbox"
+                                checked={e.mode === "AVERIA"}
+                                onChange={(ev) => handleToggleAveria(e.sn, ev.target.checked)}
+                              />
+                              Marcar averia
+                            </label>
+                          )}
+                        </td>
                         <td className="px-3 py-2 text-right">
                           <button className="text-red-600 hover:underline" onClick={() => handleRemoveSN(e.sn)}>
                             Eliminar
@@ -1570,9 +1609,9 @@ export default function DevolucionesClient() {
               </div>
               <div className="mt-2">
                 <div className="font-medium">Equipos</div>
-                {(lastPayload?.equipos || []).map((sn: string) => (
-                  <div key={sn} className="text-xs">
-                    {sn}
+                {(lastPayload?.equipos || []).map((eq: any) => (
+                  <div key={String(eq?.sn || "")} className="text-xs">
+                    {String(eq?.sn || "")} {eq?.mode ? `(${eq.mode})` : ""}
                   </div>
                 ))}
               </div>
@@ -1669,7 +1708,7 @@ export default function DevolucionesClient() {
                       <ul className="list-disc pl-5 mt-1">
                         {equipos.map((e) => (
                           <li key={e.sn} className="font-mono">
-                            {e.sn}
+                            {e.sn} {e.mode !== "NORMAL" ? `(${e.mode})` : ""}
                           </li>
                         ))}
                       </ul>

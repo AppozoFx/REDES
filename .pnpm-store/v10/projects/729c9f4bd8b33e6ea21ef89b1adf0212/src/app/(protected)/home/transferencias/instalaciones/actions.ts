@@ -122,7 +122,11 @@ export async function despacharInstalacionesAction(arg1: any, arg2?: any): Promi
     const segmento: "RESIDENCIAL" | "CONDOMINIO" = (cuad.segmento || "RESIDENCIAL").toUpperCase();
 
     // Handle equipos in chunks
-    const eqSet = uniqueStrings(input.equipos || []);
+    const eqSet = uniqueStrings(
+      (input.equipos || []).map((x: any) =>
+        typeof x === "string" ? String(x || "") : String(x?.sn || "")
+      )
+    );
     const itemsEquipos: { sn: string; status: "OK" | "ERROR"; reason?: string }[] = [];
     const movedTypes: Record<string, number> = {};
     let countONT = 0;
@@ -329,7 +333,11 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
     if ((cuad.area || "") !== "INSTALACIONES") throw new Error("INVALID_CUADRILLA");
     const segmento: "RESIDENCIAL" | "CONDOMINIO" = (cuad.segmento || "RESIDENCIAL").toUpperCase();
 
-    const eqSet = uniqueStrings(input.equipos || []);
+    const eqSet = uniqueStrings(
+      (input.equipos || []).map((x: any) =>
+        typeof x === "string" ? String(x || "") : String(x?.sn || "")
+      )
+    );
     const itemsEquipos: { sn: string; status: "OK" | "ERROR"; reason?: string }[] = [];
     const movedTypes: Record<string, number> = {};
     const chunkSize = 20;

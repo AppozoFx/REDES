@@ -27,11 +27,16 @@ export async function GET(req: Request) {
     if (area) q = q.where("areas", "array-contains", area);
     q = q.where("estado", "==", "ACTIVO");
 
-    const snap = await q.select("unidadTipo", "nombre").limit(500).get();
+    const snap = await q.select("unidadTipo", "nombre", "fotoUrl", "imagenUrl", "imageUrl").limit(500).get();
     const items = snap.docs.map((d) => ({
       id: d.id,
       unidadTipo: (d.data() as any)?.unidadTipo ?? null,
       nombre: (d.data() as any)?.nombre ?? "",
+      fotoUrl:
+        (d.data() as any)?.fotoUrl ??
+        (d.data() as any)?.imagenUrl ??
+        (d.data() as any)?.imageUrl ??
+        "",
     }));
 
     return NextResponse.json({ ok: true, items });

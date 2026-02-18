@@ -168,9 +168,18 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
   ) {
     items.push({ key: "TR_INST_DESP", label: "Despacho (Inst)", href: "/home/transferencias/instalaciones/despacho" });
     items.push({ key: "TR_INST_DEV", label: "Devoluciones (Inst)", href: "/home/transferencias/instalaciones/devoluciones" });
+    items.push({ key: "TR_INST_REP", label: "Reposicion (Inst)", href: "/home/transferencias/instalaciones/reposicion" });
+    items.push({ key: "TR_INST_TEC_MAT", label: "Materiales Tecnicos (Inst)", href: "/home/transferencias/instalaciones/tecnicos-materiales" });
   }
   if (hasPerm(session, "EQUIPOS_VIEW") || hasPerm(session, "EQUIPOS_EDIT")) {
     items.push({ key: "TR_INST_EQ", label: "Equipos (Inst)", href: "/home/transferencias/instalaciones/equipos" });
+  }
+  if (
+    hasArea(session, "INSTALACIONES") ||
+    hasPerm(session, "EQUIPOS_VIEW") ||
+    hasPerm(session, "EQUIPOS_EDIT")
+  ) {
+    items.push({ key: "TR_INST_STOCK_EQ", label: "Stock Equipos (Inst)", href: "/home/transferencias/instalaciones/stock-equipos" });
   }
 
   if (hasPerm(session, "VENTAS_VER") || hasPerm(session, "VENTAS_VER_ALL")) {

@@ -3,12 +3,14 @@ import type { ServerSession } from "@/core/auth/session";
 const ROLE_HOME: Record<string, string> = {
   TI: "/home/ti",
   RRHH: "/home/rrhh",
+  GESTOR: "/home/gestor",
   TECNICO: "/home/tecnico",
 };
 
 const ROLE_PRIORITY: string[] = [
   "TI",
   "RRHH",
+  "GESTOR",
   "TECNICO",
 ];
 

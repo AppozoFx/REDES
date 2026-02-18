@@ -76,6 +76,9 @@ export async function POST(req: Request) {
     if (!rows.length) return NextResponse.json({ ok: false, error: "ROWS_REQUIRED" }, { status: 400 });
 
     const scope = resolveScope(roles);
+    if (scope !== "all") {
+      return NextResponse.json({ ok: false, error: "READ_ONLY_ROLE" }, { status: 403 });
+    }
     const db = adminDb();
     const cqSnap = await db.collection("cuadrillas").where("area", "==", "INSTALACIONES").limit(2500).get();
     let cuadrillas = cqSnap.docs.map((d) => {

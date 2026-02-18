@@ -181,6 +181,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
   ) {
     items.push({ key: "TR_INST_STOCK_EQ", label: "Stock Equipos (Inst)", href: "/home/transferencias/instalaciones/stock-equipos" });
     items.push({ key: "TR_INST_PREDESP", label: "Predespacho (Inst)", href: "/home/transferencias/instalaciones/predespacho" });
+    items.push({ key: "TR_INST_AUD", label: "Auditoria (Inst)", href: "/home/transferencias/instalaciones/auditoria" });
   }
 
   if (hasPerm(session, "VENTAS_VER") || hasPerm(session, "VENTAS_VER_ALL")) {

@@ -27,7 +27,8 @@ function shortName(full: string) {
 function toDate(anchor: string) {
   const raw = String(anchor || "").trim();
   if (!raw) return new Date();
-  const d = new Date(`${raw}T00:00:00`);
+  // Fecha estable en zona Lima para evitar desfases por timezone del servidor.
+  const d = new Date(`${raw}T12:00:00-05:00`);
   return Number.isNaN(d.getTime()) ? new Date() : d;
 }
 
@@ -35,6 +36,35 @@ function addDays(d: Date, n: number) {
   const x = new Date(d.getTime());
   x.setDate(x.getDate() + n);
   return x;
+}
+
+async function cleanupOldPredespacho(db: FirebaseFirestore.Firestore) {
+  const cutoff = addDays(new Date(), -56);
+  const cutoffYmd = toYmd(cutoff);
+
+  const runDeleteByField = async (field: "endYmd" | "curYmd") => {
+    const snap = await db
+      .collection("instalaciones_predespacho")
+      .where(field, "<=", cutoffYmd)
+      .limit(400)
+      .get();
+    if (snap.empty) return 0;
+    const batch = db.batch();
+    let n = 0;
+    for (const d of snap.docs) {
+      batch.delete(d.ref);
+      n += 1;
+    }
+    await batch.commit();
+    return n;
+  };
+
+  try {
+    await runDeleteByField("endYmd");
+    await runDeleteByField("curYmd");
+  } catch {
+    // no bloquear dashboard por limpieza
+  }
 }
 
 function rollingAnchors(anchorYmd: string) {
@@ -161,6 +191,7 @@ export async function GET(req: Request) {
     const period = rollingAnchors(anchor);
 
     const db = adminDb();
+    await cleanupOldPredespacho(db);
     const preconIds = ["PRECON_50", "PRECON_100", "PRECON_150", "PRECON_200"];
     const [cqSnap, usSnap, eqSnap, instSnap, savedSnap, preconDocs] = await Promise.all([
       db.collection("cuadrillas").where("area", "==", "INSTALACIONES").limit(2500).get(),

@@ -77,6 +77,7 @@ export default function PredespachoClient() {
   const [coordOpen, setCoordOpen] = useState(false);
   const [coordQuery, setCoordQuery] = useState("");
   const [cuadOpen, setCuadOpen] = useState(false);
+  const readOnly = scope !== "all";
 
   async function loadData(nextAnchor = anchor) {
     setLoading(true);
@@ -133,7 +134,7 @@ export default function PredespachoClient() {
   useEffect(() => {
     loadData(anchor);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [anchor]);
 
   const baseRows = useMemo(() => {
     const txt = textoCuadrilla.trim().toLowerCase();
@@ -176,6 +177,10 @@ export default function PredespachoClient() {
     if (verOmitidas) return rowsByEstado;
     return rowsByEstado.filter((r) => !omitidas[r.id]);
   }, [rowsByEstado, verOmitidas, omitidas]);
+  const totalRows = baseRows.length;
+  const guardadasCount = baseRows.filter((r) => !!savedInfo[r.id]?.updatedAt).length;
+  const pendientesCount = Math.max(0, totalRows - guardadasCount);
+  const visiblesCount = uiRows.length;
 
   const sugerido = useMemo(() => {
     const out: Record<string, Counts> = {};
@@ -501,6 +506,25 @@ export default function PredespachoClient() {
       </section>
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="rounded-xl border bg-white p-4">
+          <div className="text-xs text-slate-500">Cuadrillas en alcance</div>
+          <div className="text-2xl font-semibold">{totalRows}</div>
+        </div>
+        <div className="rounded-xl border bg-white p-4">
+          <div className="text-xs text-slate-500">Guardadas</div>
+          <div className="text-2xl font-semibold text-emerald-700">{guardadasCount}</div>
+        </div>
+        <div className="rounded-xl border bg-white p-4">
+          <div className="text-xs text-slate-500">Pendientes</div>
+          <div className="text-2xl font-semibold text-amber-700">{pendientesCount}</div>
+        </div>
+        <div className="rounded-xl border bg-white p-4">
+          <div className="text-xs text-slate-500">Mostrando en tabla</div>
+          <div className="text-2xl font-semibold">{visiblesCount}</div>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {EQUIPOS.map((k) => (
           <div key={`alm-${k}`} className="rounded-xl border bg-white p-4">
             <div className="text-xs uppercase text-slate-500">{k}</div>
@@ -537,7 +561,7 @@ export default function PredespachoClient() {
           {EQUIPOS.map((k) => (
             <div key={`obj-${k}`}>
               <label className="mb-1 block text-xs text-slate-600">{k}</label>
-              <input type="number" min={0} value={objetivo[k]} onChange={(e) => setObjetivo((p) => ({ ...p, [k]: n(e.target.value) }))} className="w-full rounded border px-3 py-2 text-right text-sm" />
+              <input type="number" min={0} value={objetivo[k]} disabled={readOnly} onChange={(e) => setObjetivo((p) => ({ ...p, [k]: n(e.target.value) }))} className="w-full rounded border px-3 py-2 text-right text-sm" />
             </div>
           ))}
         </div>
@@ -549,9 +573,11 @@ export default function PredespachoClient() {
           <div className="flex gap-2">
             <button type="button" onClick={exportExcel} className="rounded border px-3 py-2 text-sm hover:bg-slate-50">Exportar Excel</button>
             <button type="button" onClick={exportPdf} className="rounded border px-3 py-2 text-sm hover:bg-slate-50">Exportar PDF</button>
-            <button type="button" onClick={savePredespacho} className="rounded bg-[#30518c] px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-50" disabled={saving || loading || !uiRows.length}>
-              {saving ? "Guardando..." : "Guardar filas visibles"}
-            </button>
+            {!readOnly && (
+              <button type="button" onClick={savePredespacho} className="rounded bg-[#30518c] px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-50" disabled={saving || loading || !uiRows.length}>
+                {saving ? "Guardando..." : "Guardar filas visibles"}
+              </button>
+            )}
           </div>
         </div>
         <div className="overflow-auto">
@@ -591,10 +617,32 @@ export default function PredespachoClient() {
                     <td className="p-2">{c.coordinadorNombre || "-"}</td>
                     <td className="p-2 font-medium">{c.nombre || c.id}</td>
                     <td className="p-2">
-                      {EQUIPOS.map((k) => `${k}:${cons[k]} (P:${prom[k]})`).join(" | ")}
+                      <div className="flex flex-wrap gap-1">
+                        {EQUIPOS.map((k) => (
+                          <span key={`${c.id}-cons-${k}`} className="rounded bg-slate-100 px-2 py-0.5 text-xs">
+                            {k}: {cons[k]} | P:{prom[k]}
+                          </span>
+                        ))}
+                      </div>
                     </td>
-                    <td className="p-2">{EQUIPOS.map((k) => `${k}:${stock[k]}`).join(" | ")}</td>
-                    <td className="p-2">{EQUIPOS.map((k) => `${k}:${sug[k]}`).join(" | ")}</td>
+                    <td className="p-2">
+                      <div className="flex flex-wrap gap-1">
+                        {EQUIPOS.map((k) => (
+                          <span key={`${c.id}-stk-${k}`} className="rounded bg-slate-100 px-2 py-0.5 text-xs">
+                            {k}: {stock[k]}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="p-2">
+                      <div className="flex flex-wrap gap-1">
+                        {EQUIPOS.map((k) => (
+                          <span key={`${c.id}-sug-${k}`} className="rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                            {k}: {sug[k]}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
                     <td className="p-2">
                       <div className="grid grid-cols-4 gap-1">
                         {EQUIPOS.map((k) => (
@@ -604,13 +652,22 @@ export default function PredespachoClient() {
                             min={0}
                             value={man[k] ?? ""}
                             placeholder={String(sug[k])}
+                            disabled={readOnly}
                             onChange={(e) => setManual((p) => ({ ...p, [c.id]: { ...(p[c.id] || {}), [k]: e.target.value === "" ? undefined : n(e.target.value) } }))}
                             className="w-14 rounded border px-1 py-1 text-right text-xs"
                           />
                         ))}
                       </div>
                     </td>
-                    <td className="p-2">{EQUIPOS.map((k) => `${k}:${final[k]}`).join(" | ")}</td>
+                    <td className="p-2">
+                      <div className="flex flex-wrap gap-1">
+                        {EQUIPOS.map((k) => (
+                          <span key={`${c.id}-fin-${k}`} className="rounded bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+                            {k}: {final[k]}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
                     <td className="p-2">
                       <div className="grid grid-cols-2 gap-1">
                         {PRECONS.map((p) => (
@@ -620,17 +677,18 @@ export default function PredespachoClient() {
                             min={0}
                             value={preconAsignado[c.id]?.[p] ?? ""}
                             placeholder={p.replace("PRECON_", "")}
+                            disabled={readOnly}
                             onChange={(e) => setPreconAsignado((prev) => ({ ...prev, [c.id]: { ...(prev[c.id] || {}), [p]: e.target.value === "" ? undefined : n(e.target.value) } }))}
                             className="w-16 rounded border px-1 py-1 text-right text-xs"
                           />
                         ))}
                       </div>
                     </td>
-                    <td className="p-2"><input type="checkbox" checked={!!omitidas[c.id]} onChange={(e) => setOmitidas((p) => ({ ...p, [c.id]: e.target.checked }))} /></td>
+                    <td className="p-2"><input type="checkbox" checked={!!omitidas[c.id]} disabled={readOnly} onChange={(e) => setOmitidas((p) => ({ ...p, [c.id]: e.target.checked }))} /></td>
                     <td className="p-2">
-                      <input type="number" min={0} value={bobinaResi[c.id] ?? 0} onChange={(e) => setBobinaResi((p) => ({ ...p, [c.id]: n(e.target.value) }))} className="w-16 rounded border px-2 py-1 text-right text-xs" />
+                      <input type="number" min={0} value={bobinaResi[c.id] ?? 0} disabled={readOnly} onChange={(e) => setBobinaResi((p) => ({ ...p, [c.id]: n(e.target.value) }))} className="w-16 rounded border px-2 py-1 text-right text-xs" />
                     </td>
-                    <td className="p-2"><input type="checkbox" checked={!!rolloCondo[c.id]} onChange={(e) => setRolloCondo((p) => ({ ...p, [c.id]: e.target.checked }))} /></td>
+                    <td className="p-2"><input type="checkbox" checked={!!rolloCondo[c.id]} disabled={readOnly} onChange={(e) => setRolloCondo((p) => ({ ...p, [c.id]: e.target.checked }))} /></td>
                     <td className="p-2 text-xs text-slate-600">
                       {savedInfo[c.id]?.updatedAt
                         ? `${savedInfo[c.id]?.updatedByName || "-"} | ${String(savedInfo[c.id]?.updatedAt).slice(0, 16).replace("T", " ")}`

@@ -25,6 +25,7 @@ type CuadrillaRow = {
     enCamino: number;
     finalizada: number;
     otros: number;
+    detallePorEstado: Record<string, number>;
   };
   llamadas: {
     total: number;
@@ -65,6 +66,8 @@ export function GestorHomeClient() {
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState(false);
   const [savingRouteById, setSavingRouteById] = useState<Record<string, boolean>>({});
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [cuadrillaQuery, setCuadrillaQuery] = useState("");
 
   const cargar = async () => {
     setLoading(true);
@@ -143,6 +146,58 @@ export function GestorHomeClient() {
     }
   };
 
+  const ponerTodasEnCampo = async () => {
+    if (!data) return;
+    const target = data.cuadrillas.filter((c) => c.estadoRuta !== "EN_CAMPO");
+    if (!target.length) {
+      toast.success("Todas tus cuadrillas ya estan en campo");
+      return;
+    }
+
+    setBulkUpdating(true);
+    try {
+      const updates = await Promise.all(
+        target.map(async (c) => {
+          const res = await fetch("/api/gestor/cuadrillas/estado", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cuadrillaId: c.cuadrillaId, estadoRuta: "EN_CAMPO" }),
+          });
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok || !body?.ok) throw new Error(String(body?.error || "ERROR"));
+          return c.cuadrillaId;
+        })
+      );
+
+      const changed = new Set(updates);
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          cuadrillas: prev.cuadrillas.map((c) =>
+            changed.has(c.cuadrillaId) ? { ...c, estadoRuta: "EN_CAMPO" } : c
+          ),
+        };
+      });
+      toast.success("Cuadrillas actualizadas a EN CAMPO");
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo actualizar todas las cuadrillas");
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
+  const cuadrillasVisibles = useMemo(() => {
+    const list = data?.cuadrillas || [];
+    const q = cuadrillaQuery.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((c) => {
+      const nombre = String(c.cuadrillaNombre || "").toLowerCase();
+      const id = String(c.cuadrillaId || "").toLowerCase();
+      return nombre.includes(q) || id.includes(q);
+    });
+  }, [data, cuadrillaQuery]);
+
   const resumenGlobal = useMemo(() => {
     const base = {
       totalOrdenes: 0,
@@ -150,21 +205,51 @@ export function GestorHomeClient() {
       enCamino: 0,
       finalizada: 0,
       otros: 0,
+      detallePorEstado: {} as Record<string, number>,
       llamadasTotal: 0,
       llamadasRealizadas: 0,
     };
-    if (!data) return base;
-    for (const c of data.cuadrillas) {
+    if (!cuadrillasVisibles.length) return base;
+    for (const c of cuadrillasVisibles) {
       base.totalOrdenes += c.ordenes.total;
       base.agendada += c.ordenes.agendada;
       base.enCamino += c.ordenes.enCamino;
       base.finalizada += c.ordenes.finalizada;
       base.otros += c.ordenes.otros;
+      for (const [estado, cantidad] of Object.entries(c.ordenes.detallePorEstado || {})) {
+        base.detallePorEstado[estado] = (base.detallePorEstado[estado] || 0) + Number(cantidad || 0);
+      }
       base.llamadasTotal += c.llamadas.total;
       base.llamadasRealizadas += c.llamadas.realizadas;
     }
     return base;
-  }, [data]);
+  }, [cuadrillasVisibles]);
+
+  const resumenCuadrillas = useMemo(() => {
+    const base = { total: 0, operativa: 0, enCampo: 0, rutaCerrada: 0 };
+    if (!cuadrillasVisibles.length) return base;
+    base.total = cuadrillasVisibles.length;
+    for (const c of cuadrillasVisibles) {
+      if (c.estadoRuta === "OPERATIVA") base.operativa += 1;
+      else if (c.estadoRuta === "EN_CAMPO") base.enCampo += 1;
+      else if (c.estadoRuta === "RUTA_CERRADA") base.rutaCerrada += 1;
+    }
+    return base;
+  }, [cuadrillasVisibles]);
+
+  const pendientesLlamada = Math.max(0, resumenGlobal.llamadasTotal - resumenGlobal.llamadasRealizadas);
+  const estadosOrdenesDetalle = Object.entries(resumenGlobal.detallePorEstado)
+    .sort((a, b) => b[1] - a[1])
+    .map(([estado, cantidad]) => `${estado} ${cantidad}`);
+  const importLine = data?.ultimaImportacion
+    ? `Ordenes actualizadas: ${fmtDateTime(data.ultimaImportacion.at)}, por ${data.ultimaImportacion.byNombre || data.ultimaImportacion.byUid}`
+    : "Ordenes: sin registro reciente de actualizacion";
+
+  const routeBadgeClass = (estado: CuadrillaRow["estadoRuta"]) => {
+    if (estado === "OPERATIVA") return "border-sky-200 bg-sky-50 text-sky-700";
+    if (estado === "EN_CAMPO") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return "border-rose-200 bg-rose-50 text-rose-700";
+  };
 
   if (loading && !data) {
     return <div className="rounded-lg border p-4 text-sm text-slate-500">Cargando inicio...</div>;
@@ -239,44 +324,103 @@ export function GestorHomeClient() {
 
       <section className="rounded-xl border bg-white p-4">
         <h2 className="text-lg font-semibold">Resumen operativo</h2>
-        <div className="mt-3 grid gap-3 md:grid-cols-6">
-          <div className="rounded border p-2 text-sm">Total: <b>{resumenGlobal.totalOrdenes}</b></div>
-          <div className="rounded border p-2 text-sm">Agendada: <b>{resumenGlobal.agendada}</b></div>
-          <div className="rounded border p-2 text-sm">En camino: <b>{resumenGlobal.enCamino}</b></div>
-          <div className="rounded border p-2 text-sm">Finalizada: <b>{resumenGlobal.finalizada}</b></div>
-          <div className="rounded border p-2 text-sm">Otros: <b>{resumenGlobal.otros}</b></div>
-          <div className="rounded border p-2 text-sm">
-            Llamadas: <b>{resumenGlobal.llamadasRealizadas}/{resumenGlobal.llamadasTotal}</b>
+        <div className="mt-3 space-y-2">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+            <div className="font-semibold text-slate-700">Ordenes</div>
+            <div className="mt-1 text-slate-700">
+              Total <b>{resumenGlobal.totalOrdenes}</b>
+              {estadosOrdenesDetalle.length ? ` | ${estadosOrdenesDetalle.join(" | ")}` : " | SIN_ORDENES 0"}
+            </div>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm">
+              <div className="font-semibold text-indigo-700">Cuadrillas</div>
+              <div className="mt-1 text-indigo-700">
+                Total <b>{resumenCuadrillas.total}</b> | Operativa <b>{resumenCuadrillas.operativa}</b> | En campo <b>{resumenCuadrillas.enCampo}</b> | Ruta cerrada <b>{resumenCuadrillas.rutaCerrada}</b>
+              </div>
+            </div>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
+              <div className="font-semibold text-amber-700">Llamadas</div>
+              <div className="mt-1 text-amber-700">
+                Realizadas <b>{resumenGlobal.llamadasRealizadas}</b> de <b>{resumenGlobal.llamadasTotal}</b> | Pendientes <b>{pendientesLlamada}</b>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       <section className="rounded-xl border bg-white p-4">
-        <h2 className="text-lg font-semibold">Mis cuadrillas</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-end gap-2">
+            <div>
+              <h2 className="text-lg font-semibold">Mis cuadrillas</h2>
+              <p className="text-xs text-slate-500">{importLine}</p>
+            </div>
+            <input
+              value={cuadrillaQuery}
+              onChange={(e) => setCuadrillaQuery(e.target.value)}
+              placeholder="Filtrar cuadrilla..."
+              className="h-9 min-w-[220px] rounded border px-3 text-sm"
+            />
+          </div>
+          <button
+            onClick={ponerTodasEnCampo}
+            disabled={bulkUpdating || !data?.cuadrillas.length}
+            className="rounded bg-emerald-700 px-3 py-2 text-sm text-white disabled:opacity-50"
+          >
+            {bulkUpdating ? "Actualizando..." : "Poner todas en campo"}
+          </button>
+        </div>
+
         <div className="mt-3 overflow-x-auto">
-          <table className="min-w-full text-sm">
+          <table className="min-w-full border-collapse text-sm">
             <thead className="bg-slate-100 text-slate-700">
               <tr>
-                <th className="p-2 text-left">Cuadrilla</th>
-                <th className="p-2 text-left">Órdenes</th>
-                <th className="p-2 text-left">Llamadas</th>
-                <th className="p-2 text-left">Estado ruta</th>
+                <th className="border p-2 text-left">Cuadrilla</th>
+                <th className="border p-2 text-left">Ordenes</th>
+                <th className="border p-2 text-left">Llamadas</th>
+                <th className="border p-2 text-left">Estado ruta</th>
               </tr>
             </thead>
             <tbody>
-              {(data?.cuadrillas || []).map((c) => (
-                <tr key={c.cuadrillaId} className="border-t">
-                  <td className="p-2">
+              {cuadrillasVisibles.map((c) => (
+                <tr key={c.cuadrillaId} className={`border ${c.estadoRuta === "RUTA_CERRADA" ? "bg-rose-50/40" : ""}`}>
+                  <td className="border p-2">
                     <div className="font-medium">{c.cuadrillaNombre}</div>
                     <div className="text-xs text-slate-500">{c.cuadrillaId}</div>
                   </td>
-                  <td className="p-2">
+                  <td className="border p-2">
                     <div>Total: {c.ordenes.total}</div>
                     <div className="text-xs text-slate-500">
-                      Agendada {c.ordenes.agendada} | En camino {c.ordenes.enCamino} | Finalizada {c.ordenes.finalizada}
+                      <span className={c.ordenes.agendada > 0 ? "font-semibold text-slate-800" : ""}>
+                        Agendada{" "}
+                        <span
+                          className={
+                            c.ordenes.agendada > 0
+                              ? "rounded bg-amber-100 px-1 py-0.5 font-bold text-amber-800"
+                              : ""
+                          }
+                        >
+                          {c.ordenes.agendada}
+                        </span>
+                      </span>{" "}
+                      |{" "}
+                      <span className={c.ordenes.enCamino > 0 ? "font-semibold text-emerald-700" : ""}>
+                        Iniciada{" "}
+                        <span
+                          className={
+                            c.ordenes.enCamino > 0
+                              ? "rounded bg-emerald-100 px-1 py-0.5 font-bold text-emerald-800"
+                              : ""
+                          }
+                        >
+                          {c.ordenes.enCamino}
+                        </span>
+                      </span>{" "}
+                      | Finalizada {c.ordenes.finalizada}
                     </div>
                   </td>
-                  <td className="p-2">
+                  <td className="border p-2">
                     <div>
                       {c.llamadas.realizadas}/{c.llamadas.total}
                     </div>
@@ -284,8 +428,11 @@ export function GestorHomeClient() {
                       {c.llamadas.completas ? "Llamadas completas" : "Pendientes de llamada"}
                     </div>
                   </td>
-                  <td className="p-2">
+                  <td className="border p-2">
                     <div className="flex items-center gap-2">
+                      <span className={`rounded border px-2 py-1 text-xs font-semibold ${routeBadgeClass(c.estadoRuta)}`}>
+                        {c.estadoRuta}
+                      </span>
                       <select
                         value={c.estadoRuta}
                         onChange={(e) =>
@@ -295,7 +442,7 @@ export function GestorHomeClient() {
                           )
                         }
                         disabled={!!savingRouteById[c.cuadrillaId]}
-                        className="rounded border px-2 py-1"
+                        className="rounded border px-2 py-1 text-xs"
                       >
                         <option value="OPERATIVA">OPERATIVA</option>
                         <option value="EN_CAMPO">EN CAMPO</option>
@@ -305,10 +452,12 @@ export function GestorHomeClient() {
                   </td>
                 </tr>
               ))}
-              {(data?.cuadrillas || []).length === 0 && (
+              {cuadrillasVisibles.length === 0 && (
                 <tr>
-                  <td className="p-4 text-center text-slate-500" colSpan={4}>
-                    No tienes cuadrillas asignadas.
+                  <td className="border p-4 text-center text-slate-500" colSpan={4}>
+                    {data?.cuadrillas?.length
+                      ? "No hay cuadrillas que coincidan con el filtro."
+                      : "No tienes cuadrillas asignadas."}
                   </td>
                 </tr>
               )}
@@ -317,23 +466,8 @@ export function GestorHomeClient() {
         </div>
       </section>
 
-      <section className="rounded-xl border bg-white p-4">
-        <h2 className="text-lg font-semibold">Última importación de órdenes</h2>
-        {!data?.ultimaImportacion && (
-          <p className="mt-2 text-sm text-slate-500">No hay registros recientes de importación.</p>
-        )}
-        {data?.ultimaImportacion && (
-          <div className="mt-2 space-y-1 text-sm">
-            <div>
-              Órdenes actualizadas: <b>{fmtDateTime(data.ultimaImportacion.at)}</b>
-            </div>
-            <div>
-              Por: <b>{data.ultimaImportacion.byNombre || data.ultimaImportacion.byUid}</b>
-            </div>
-            <div className="text-slate-600">{data.ultimaImportacion.message}</div>
-          </div>
-        )}
-      </section>
     </div>
   );
 }
+
+

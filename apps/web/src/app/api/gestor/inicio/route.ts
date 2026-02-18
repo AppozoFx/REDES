@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getServerSession } from "@/core/auth/session";
 import { adminDb } from "@/lib/firebase/admin";
+import { getAsignacionData, resolveGestorVisible } from "@/lib/gestorAsignacion";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +29,7 @@ function tsToIso(v: any): string | null {
 function normalizeOrderState(raw: string): "AGENDADA" | "EN_CAMINO" | "FINALIZADA" | "OTROS" {
   const s = String(raw || "").toUpperCase();
   if (s.includes("FINAL")) return "FINALIZADA";
+  if (s.includes("INIC")) return "EN_CAMINO";
   if (s.includes("CAMINO")) return "EN_CAMINO";
   if (s.includes("AGEN")) return "AGENDADA";
   return "OTROS";
@@ -46,6 +48,9 @@ export async function GET() {
     const db = adminDb();
     const ymd = todayLimaYmd();
     const uid = session.uid;
+    const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
+    const isGestor = roles.includes("GESTOR");
+    const isPriv = session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
     const jornadaId = `${uid}_${ymd}`;
     const jornadaRef = db.collection("gestor_jornadas").doc(jornadaId);
     const presenciaRef = db.collection("gestor_presencia").doc(uid);
@@ -82,17 +87,48 @@ export async function GET() {
       );
     });
 
-    const [jornadaSnap, cuadrillasSnap, ordenesSnap, notifsSnap] = await Promise.all([
+    let visibleIdsSet: Set<string> | null = null;
+    if (isGestor && !isPriv) {
+      const asignacionData = await getAsignacionData(ymd);
+      const visible = resolveGestorVisible(uid, asignacionData);
+      if (!visible.all) {
+        const ids = (visible.ids || []).map((x) => String(x || "").trim()).filter(Boolean);
+        if (ids.length) {
+          visibleIdsSet = new Set(ids);
+        } else {
+          // Fallback para entornos con asignacion aun no configurada.
+          const ownSnap = await db.collection("cuadrillas").where("gestorUid", "==", uid).get();
+          visibleIdsSet = new Set(ownSnap.docs.map((d) => d.id));
+        }
+      }
+    }
+
+    const cuadrillasPromise = visibleIdsSet
+      ? (async () => {
+          const refs = Array.from(visibleIdsSet || []).map((id) => db.collection("cuadrillas").doc(id));
+          if (!refs.length) return [] as any[];
+          const snaps = await db.getAll(...refs);
+          return snaps.filter((s) => s.exists).map((s) => ({ id: s.id, data: s.data() as any }));
+        })()
+      : db
+          .collection("cuadrillas")
+          .where("estado", "==", "HABILITADO")
+          .get()
+          .then((snap) => snap.docs.map((d) => ({ id: d.id, data: d.data() as any })));
+
+    const [jornadaSnap, cuadrillasRows, ordenesSnap, notifsSnap] = await Promise.all([
       jornadaRef.get(),
-      db.collection("cuadrillas").where("gestorUid", "==", uid).get(),
-      db.collection("ordenes").where("gestorCuadrilla", "==", uid).limit(3000).get(),
+      cuadrillasPromise,
+      db.collection("ordenes").where("fSoliYmd", "==", ymd).limit(5000).get(),
       db.collection("notificaciones").orderBy("createdAt", "desc").limit(40).get(),
     ]);
 
-    const cuadrillas = cuadrillasSnap.docs.map((d) => ({
-      id: d.id,
-      nombre: String((d.data() as any)?.nombre || d.id),
-    }));
+    const cuadrillas = cuadrillasRows
+      .map((d) => ({
+        id: d.id,
+        nombre: String((d.data as any)?.nombre || d.id),
+      }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
     const cuadrillaIds = cuadrillas.map((c) => c.id);
 
     const stateRefs = cuadrillaIds.map((id) =>
@@ -111,7 +147,16 @@ export async function GET() {
 
     const statsByCuadrilla = new Map<
       string,
-      { total: number; agendada: number; enCamino: number; finalizada: number; otros: number; llamadasTotal: number; llamadasRealizadas: number }
+      {
+        total: number;
+        agendada: number;
+        enCamino: number;
+        finalizada: number;
+        otros: number;
+        detallePorEstado: Record<string, number>;
+        llamadasTotal: number;
+        llamadasRealizadas: number;
+      }
     >();
     for (const c of cuadrillas) {
       statsByCuadrilla.set(c.id, {
@@ -120,6 +165,7 @@ export async function GET() {
         enCamino: 0,
         finalizada: 0,
         otros: 0,
+        detallePorEstado: {},
         llamadasTotal: 0,
         llamadasRealizadas: 0,
       });
@@ -131,10 +177,14 @@ export async function GET() {
       if (orderYmd !== ymd) continue;
       const cuadrillaId = String(x?.cuadrillaId || "").trim();
       if (!cuadrillaId || !statsByCuadrilla.has(cuadrillaId)) continue;
+      if (visibleIdsSet && !visibleIdsSet.has(cuadrillaId)) continue;
 
       const st = statsByCuadrilla.get(cuadrillaId)!;
       st.total += 1;
       const bucket = normalizeOrderState(String(x?.estado || ""));
+      const rawEstado = String(x?.estado || "").trim();
+      const estadoKey = rawEstado ? rawEstado.toUpperCase() : "SIN_ESTADO";
+      st.detallePorEstado[estadoKey] = (st.detallePorEstado[estadoKey] || 0) + 1;
       if (bucket === "AGENDADA") st.agendada += 1;
       else if (bucket === "EN_CAMINO") st.enCamino += 1;
       else if (bucket === "FINALIZADA") st.finalizada += 1;
@@ -191,6 +241,7 @@ export async function GET() {
             enCamino: st.enCamino,
             finalizada: st.finalizada,
             otros: st.otros,
+            detallePorEstado: st.detallePorEstado,
           },
           llamadas: {
             total: st.llamadasTotal,

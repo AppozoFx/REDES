@@ -2,159 +2,49 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import type { ServerSession } from "@/core/auth/session";
-import { buildHomeNav } from "@/core/rbac/buildHomeNav";
+import type { AdminNavItem } from "@/core/rbac/menu";
 
-type GroupKey =
-  | "INSTALACIONES"
-  | "ORDENES"
-  | "INCONCERT"
-  | "GESTION"
-  | "ADMINISTRACION"
-  | "ALMACEN"
-  | "OTROS";
+type GroupKey = "GENERAL" | "ADMIN" | "AREAS";
 
-const GROUP_ORDER: GroupKey[] = [
-  "INSTALACIONES",
-  "ORDENES",
-  "INCONCERT",
-  "GESTION",
-  "ADMINISTRACION",
-  "ALMACEN",
-  "OTROS",
-];
-
+const GROUP_ORDER: GroupKey[] = ["GENERAL", "ADMIN", "AREAS"];
 const SIDEBAR_SPRING = { type: "spring", stiffness: 260, damping: 28, mass: 0.8 } as const;
 const FADE_SLIDE = { duration: 0.22, ease: [0.22, 1, 0.36, 1] as const };
 
-function shortName(full: string, fallback: string) {
-  const parts = String(full || "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (!parts.length) return fallback;
-  const first = parts[0] || "";
-  const firstLast = parts[1] || "";
-  return `${first} ${firstLast}`.trim() || fallback;
+function getGroup(it: AdminNavItem): GroupKey {
+  if (it.href === "/admin") return "GENERAL";
+  if (it.adminOnly) return "ADMIN";
+  return "AREAS";
 }
 
-function getGroup(href: string): GroupKey {
-  if (
-    href === "/home/instalaciones" ||
-    href === "/home/instalaciones/materiales" ||
-    href === "/home/instalaciones/detalle"
-  ) {
-    return "INSTALACIONES";
-  }
-  if (href.startsWith("/home/ordenes/")) return "ORDENES";
-  if (href.startsWith("/home/inconcert/")) return "INCONCERT";
-  if (
-    href === "/home/instalaciones/asistencia" ||
-    href === "/home/instalaciones/asistencia-programada" ||
-    href === "/home/instalaciones/asignacion-gestores" ||
-    href === "/home/instalaciones/asistencia/resumen" ||
-    href === "/home/cuadrillas/gestion" ||
-    href === "/home/tecnicos/gestion" ||
-    href === "/home/zonas"
-  ) {
-    return "GESTION";
-  }
-  if (href === "/home/usuarios" || href === "/home/cuadrillas")
-    return "ADMINISTRACION";
-  if (
-    href === "/home/instalaciones/actas" ||
-    href === "/home/equipos/import" ||
-    href === "/home/materiales" ||
-    href === "/home/transferencias/instalaciones/despacho" ||
-    href === "/home/transferencias/instalaciones/devoluciones" ||
-    href === "/home/transferencias/instalaciones/reposicion" ||
-    href === "/home/transferencias/instalaciones/tecnicos-materiales" ||
-    href === "/home/transferencias/instalaciones/equipos" ||
-    href === "/home/transferencias/instalaciones/stock-equipos" ||
-    href === "/home/transferencias/instalaciones/predespacho" ||
-    href === "/home/transferencias/instalaciones/auditoria" ||
-    href === "/home/ventas" ||
-    href === "/home/ventas/instalaciones/despacho"
-  ) {
-    return "ALMACEN";
-  }
-  return "OTROS";
+function groupLabel(group: GroupKey) {
+  if (group === "GENERAL") return "General";
+  if (group === "ADMIN") return "Administracion";
+  return "Areas";
 }
 
 function groupBadge(group: GroupKey) {
-  if (group === "INSTALACIONES") return "IN";
-  if (group === "ORDENES") return "OR";
-  if (group === "INCONCERT") return "IC";
-  if (group === "GESTION") return "GE";
-  if (group === "ADMINISTRACION") return "AD";
-  if (group === "ALMACEN") return "AL";
-  return "OT";
+  if (group === "GENERAL") return "GN";
+  if (group === "ADMIN") return "AD";
+  return "AR";
 }
 
 function isPathActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export default function HomeSidebar({ session }: { session: ServerSession }) {
+export default function AdminSidebarClient({
+  items,
+  areas,
+}: {
+  items: AdminNavItem[];
+  areas: string[];
+}) {
   const pathname = usePathname();
-  const itemsRaw = buildHomeNav(session);
-  const [openGroup, setOpenGroup] = useState<GroupKey>("INSTALACIONES");
   const [collapsed, setCollapsed] = useState(false);
-  const [nombreCorto, setNombreCorto] = useState<string>("");
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const res = await fetch("/api/auth/me", { cache: "no-store" });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok || !body?.ok) return;
-        if (mounted) {
-          setNombreCorto(shortName(String(body?.nombre || ""), session.uid));
-        }
-      } catch {
-        // noop
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [session.uid]);
-
-  const hasInstArea = (session.access.areas || []).includes("INSTALACIONES");
-
-  const items = useMemo(() => {
-    return itemsRaw.filter((it) => {
-      if (it.href === "/home/perfil") return false;
-      if (
-        hasInstArea &&
-        (it.href === "/home/averias" || it.href === "/home/ventas/averias/despacho")
-      ) {
-        return false;
-      }
-      return true;
-    });
-  }, [itemsRaw, hasInstArea]);
-
-  const fixedTop = useMemo(() => {
-    return items.filter((it) => it.href === "/home" || it.href === "/home/comunicados");
-  }, [items]);
-
-  const grouped = useMemo(() => {
-    const out = new Map<GroupKey, typeof items>();
-    for (const g of GROUP_ORDER) out.set(g, []);
-    for (const it of items) {
-      if (it.href === "/home" || it.href === "/home/comunicados") continue;
-      const g = getGroup(it.href);
-      out.set(g, [...(out.get(g) || []), it]);
-    }
-    return out;
-  }, [items]);
-
-  const identity = nombreCorto || session.uid;
+  const [openGroup, setOpenGroup] = useState<GroupKey>("GENERAL");
   const activeLabel = useMemo(() => {
     const exact = items.find((it) => pathname === it.href);
     if (exact) return exact.label;
@@ -163,6 +53,16 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
       .find((it) => pathname.startsWith(`${it.href}/`) || pathname.startsWith(it.href));
     return byPrefix?.label || "Inicio";
   }, [items, pathname]);
+
+  const grouped = useMemo(() => {
+    const out = new Map<GroupKey, AdminNavItem[]>();
+    for (const g of GROUP_ORDER) out.set(g, []);
+    for (const it of items) {
+      const g = getGroup(it);
+      out.set(g, [...(out.get(g) || []), it]);
+    }
+    return out;
+  }, [items]);
 
   return (
     <motion.aside
@@ -194,10 +94,7 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
                 <span className="inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl bg-white shadow-[0_6px_18px_rgba(48,81,140,.2)] ring-1 ring-[var(--line)]">
                   <Image src="/img/logo.png" alt="Logo REDES" width={26} height={26} className="h-6 w-6 object-contain" />
                 </span>
-                <div>
-                  <div className="text-sm font-semibold text-[var(--brand-ink)]">Home</div>
-                  <div className="text-[11px] text-slate-500">{identity}</div>
-                </div>
+                <span className="text-sm font-semibold text-[var(--brand-ink)]">Admin</span>
               </motion.div>
             )}
           </AnimatePresence>
@@ -241,50 +138,6 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
           </div>
         )}
 
-        <nav className="mb-2 space-y-1">
-          {fixedTop.map((it) => {
-            const active = pathname === it.href;
-            return (
-              <div key={it.key} className="group relative">
-                <Link
-                  href={it.href}
-                  className={`relative flex items-center rounded-xl px-2 py-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45 ${
-                    active
-                      ? "bg-[#dbe7ff] font-bold text-[#1f3154] ring-1 ring-[#9db8ea] shadow-[inset_0_0_0_1px_rgba(48,81,140,.08)]"
-                      : "text-[var(--muted-ink)] hover:bg-white/80 hover:text-[#30518c]"
-                  }`}
-                >
-                  {active && (
-                    <span className="absolute -left-[9px] h-7 w-2 rounded-full bg-[#30518c] shadow-[0_0_14px_rgba(48,81,140,.65)]" />
-                  )}
-                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--line)] bg-white text-sm font-semibold">
-                    {it.label.slice(0, 2).toUpperCase()}
-                  </span>
-                  <AnimatePresence initial={false}>
-                    {!collapsed && (
-                      <motion.span
-                        initial={{ opacity: 0, x: -8 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -8 }}
-                        transition={FADE_SLIDE}
-                        className="ml-2 truncate"
-                      >
-                        {it.label}
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
-                </Link>
-
-                {collapsed && (
-                  <div className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-20 -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-900 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition group-hover:opacity-100">
-                    {it.label}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </nav>
-
         <nav className="space-y-2 overflow-x-hidden overflow-y-auto">
           {GROUP_ORDER.map((group) => {
             const list = grouped.get(group) || [];
@@ -303,7 +156,7 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
                         setOpenGroup(group);
                         return;
                       }
-                      setOpenGroup((p) => (p === group ? "INSTALACIONES" : group));
+                      setOpenGroup((p) => (p === group ? "GENERAL" : group));
                     }}
                     className={`flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45 ${
                       activeInside
@@ -314,7 +167,6 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
                     <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--line)] bg-white text-sm font-semibold">
                       {groupBadge(group)}
                     </span>
-
                     <AnimatePresence initial={false}>
                       {!collapsed && (
                         <motion.span
@@ -324,11 +176,10 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
                           transition={FADE_SLIDE}
                           className="flex-1 truncate"
                         >
-                          {group}
+                          {groupLabel(group)}
                         </motion.span>
                       )}
                     </AnimatePresence>
-
                     <AnimatePresence initial={false}>
                       {!collapsed && (
                         <motion.span
@@ -346,7 +197,7 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
 
                   {collapsed && (
                     <div className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-20 -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-900 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition group-hover:opacity-100">
-                      {group}
+                      {groupLabel(group)}
                     </div>
                   )}
                 </div>
@@ -366,7 +217,7 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
                           const active = pathname === it.href;
                           return (
                             <Link
-                              key={it.key}
+                              key={it.href}
                               href={it.href}
                               className={`relative mt-1 flex items-center rounded-xl px-2 py-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45 ${
                                 active
@@ -399,7 +250,7 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
               transition={FADE_SLIDE}
               className="mt-3 rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-[11px] text-slate-500"
             >
-              Areas: {(session.access.areas || []).join(", ")}
+              Areas: {areas.join(", ") || "(none)"}
             </motion.div>
           )}
         </AnimatePresence>

@@ -3,12 +3,15 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --heading-ink: #1e293b;
+  --body-ink: #334155;
+  --muted-ink: #64748b;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-jakarta-sans);
   --font-mono: var(--font-geist-mono);
 }
 
@@ -22,5 +25,42 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), "Segoe UI", sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+@layer base {
+  h1 {
+    font-size: clamp(1.5rem, 1.1rem + 1.4vw, 2.2rem);
+    line-height: 1.2;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    color: var(--heading-ink);
+  }
+
+  h2 {
+    font-size: clamp(1.25rem, 1rem + 0.9vw, 1.7rem);
+    line-height: 1.25;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    color: var(--heading-ink);
+  }
+
+  h3 {
+    font-size: clamp(1.08rem, 0.95rem + 0.45vw, 1.25rem);
+    line-height: 1.3;
+    font-weight: 620;
+    color: var(--heading-ink);
+  }
+
+  p {
+    color: var(--body-ink);
+    line-height: 1.55;
+  }
+
+  small,
+  label {
+    color: var(--muted-ink);
+    letter-spacing: 0.01em;
+  }
 }

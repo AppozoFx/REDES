@@ -24,10 +24,5 @@ export default async function Page() {
     session.permissions.includes("ORDENES_LLAMADAS_VIEW");
   if (!canView) redirect("/admin");
 
-  return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Ordenes - Gestion de llamadas</h1>
-      <LlamadasClient initialYmd={todayLimaYmd()} initialCanEdit={canEdit} />
-    </div>
-  );
+  return <LlamadasClient initialYmd={todayLimaYmd()} initialCanEdit={canEdit} />;
 }

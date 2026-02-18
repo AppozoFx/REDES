@@ -251,16 +251,16 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
   const clusterKey = `${fecha}|${fCuadrilla}|${fEstado}`;
 
   return (
-    <div className="p-4 overflow-hidden flex flex-col gap-3 min-h-0">
-      <header className="flex items-center justify-between gap-4">
+    <div className="flex min-h-0 w-full flex-col gap-4 p-3 md:p-4">
+      <header className="sticky top-0 z-20 flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white/90 px-3 py-2 backdrop-blur dark:border-slate-700 dark:bg-slate-900/90">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold">Mapa de Órdenes</h1>
-          <p className="text-xs text-muted-foreground">{fecha} | {filtered.length} resultados</p>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">Ordenes · Mapa</h1>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{fecha} · {filtered.length} resultados</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="border px-3 py-2 rounded" />
-          <input type="text" placeholder="Buscar cuadrilla..." value={fCuadrilla} onChange={(e) => setFCuadrilla(e.target.value)} className="border px-3 py-2 rounded" />
-          <select value={fEstado} onChange={(e) => setFEstado(e.target.value)} className="border px-3 py-2 rounded">
+          <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900" />
+          <input type="text" placeholder="Buscar cuadrilla..." value={fCuadrilla} onChange={(e) => setFCuadrilla(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900" />
+          <select value={fEstado} onChange={(e) => setFEstado(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900">
             <option value="">Todos los estados</option>
             <option value="Finalizada">Finalizada</option>
             <option value="Cancelada">Cancelada</option>
@@ -269,7 +269,7 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
             <option value="Agendada">Agendada</option>
           </select>
           <button
-            className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded"
+            className="rounded-xl bg-[#30518c] px-4 py-2 text-white"
             onClick={() => {
               setFCuadrilla("");
               setFEstado("");
@@ -282,14 +282,14 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
         </div>
       </header>
 
-      <div className="rounded-lg border p-3 bg-slate-50/60">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
           <div>
             <label className="block text-xs mb-1">Punto A (Orden)</label>
             <select
               value={ordenAId}
               onChange={(e) => setOrdenAId(e.target.value)}
-              className="w-full border px-3 py-2 rounded text-sm"
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
             >
               <option value="">Seleccionar A</option>
               {routeCandidates.map((r) => (
@@ -304,7 +304,7 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
             <select
               value={ordenBId}
               onChange={(e) => setOrdenBId(e.target.value)}
-              className="w-full border px-3 py-2 rounded text-sm"
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
             >
               <option value="">Seleccionar B</option>
               {routeCandidates.map((r) => (
@@ -319,7 +319,7 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
               type="button"
               onClick={trazarRuta}
               disabled={routing}
-              className="w-full bg-slate-900 text-white px-4 py-2 rounded disabled:opacity-60"
+              className="w-full rounded-xl bg-[#30518c] px-4 py-2 text-white disabled:opacity-60"
             >
               {routing ? "Trazando..." : "Trazar ruta"}
             </button>
@@ -351,7 +351,7 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
         ) : null}
       </div>
 
-      <div className="flex flex-wrap items-center gap-4 text-sm">
+      <div className="flex flex-wrap items-center gap-4 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900">
         {["Finalizada", "Cancelada", "En camino", "Iniciada", "Agendada"].map((estado) => (
           <div key={estado} className="flex items-center gap-2">
             <span className="inline-block w-3.5 h-3.5 rounded-full ring-2 ring-white" style={{ backgroundColor: colorByEstado[estado] }} />
@@ -361,9 +361,9 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
       </div>
 
       {error ? <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
-      {loading ? <div className="text-sm text-muted-foreground">Cargando órdenes...</div> : null}
+      {loading ? <div className="rounded border border-slate-200 bg-white p-3 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">Cargando ordenes...</div> : null}
 
-      <div ref={outerRef} className="relative w-full border rounded overflow-hidden min-h-0" style={{ height: mapHeight }}>
+      <div ref={outerRef} className="relative min-h-0 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900" style={{ height: mapHeight }}>
         <div className="absolute right-3 top-3 z-[1000] flex items-center gap-2 bg-white/90 backdrop-blur px-2 py-1 rounded border text-[12px]">
           <span>Mapa:</span>
           <select value={base} onChange={(e) => setBase(e.target.value)} className="bg-transparent outline-none">

@@ -15,11 +15,5 @@ function todayLimaYmd() {
 export default async function Page() {
   await requirePermission("ORDENES_LIQUIDAR");
 
-  return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Ordenes - Liquidacion</h1>
-      <LiquidacionClient initialYmd={todayLimaYmd()} />
-    </div>
-  );
+  return <LiquidacionClient initialYmd={todayLimaYmd()} />;
 }
-

@@ -19,6 +19,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
   const isGestor = roles.includes("GESTOR");
   const isCoord = roles.includes("COORDINADOR");
   const isPriv = roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
+  const hasInstArea = hasArea(session, "INSTALACIONES");
 
   if (isGestor && !session.isAdmin && !isPriv) {
     const items: NavItem[] = [
@@ -42,7 +43,6 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
       items.push({ key: "ORDENES_GARANTIAS", label: "Ordenes: Garantias", href: "/home/ordenes/garantias" });
     }
 
-    items.push({ key: "PERFIL", label: "Mi perfil", href: "/home/perfil" });
     return items;
   }
 
@@ -114,7 +114,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     });
   }
 
-  if (hasArea(session, "AVERIAS")) {
+  if (hasArea(session, "AVERIAS") && !hasInstArea) {
     items.push({ key: "AVERIAS", label: "Averias", href: "/home/averias" });
   }
 
@@ -190,11 +190,9 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
   if (hasPerm(session, "VENTAS_DESPACHO_INST")) {
     items.push({ key: "VENTAS_INST", label: "Ventas: Despacho (Inst)", href: "/home/ventas/instalaciones/despacho" });
   }
-  if (hasPerm(session, "VENTAS_DESPACHO_AVER")) {
+  if (hasPerm(session, "VENTAS_DESPACHO_AVER") && !hasInstArea) {
     items.push({ key: "VENTAS_AVER", label: "Ventas: Despacho (AVERIAS)", href: "/home/ventas/averias/despacho" });
   }
-
-  items.push({ key: "PERFIL", label: "Mi perfil", href: "/home/perfil" });
 
   return items;
 }

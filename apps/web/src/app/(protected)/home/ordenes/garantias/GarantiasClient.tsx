@@ -226,36 +226,43 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-lg border p-3">
-        <h1 className="text-xl font-semibold text-center">Ordenes - Garantias</h1>
-        <div className="mt-2 text-center text-sm">
+    <div className="w-full space-y-4 p-3 md:p-4">
+      <header className="sticky top-0 z-20 rounded-xl border border-slate-200 bg-white/90 px-3 py-2 backdrop-blur dark:border-slate-700 dark:bg-slate-900/90">
+        <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">Ordenes · Garantias</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Controla casos de garantia, diagnostico, solucion e imputacion por orden.
+        </p>
+      </header>
+
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+      <div className="border-b border-slate-200 p-4 dark:border-slate-700">
+        <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">
           Total del mes (garantias): <b>{sorted.length}</b>
         </div>
-        <div className="mt-1 text-center text-sm">
+        <div className="mt-1 text-sm text-slate-600 dark:text-slate-300">
           % Garantias (sobre finalizadas sin garantia):{" "}
           <b>{porcentajeGarantias.toLocaleString(undefined, { maximumFractionDigits: 1 })}%</b>{" "}
-          <span className="text-xs text-muted-foreground">
+          <span className="text-xs text-slate-500 dark:text-slate-400">
             ({sorted.length} / {finalizadasSinGarantia || 0})
           </span>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-end justify-center gap-2">
-          <input type="month" value={ym} onChange={(e) => setYm(e.target.value)} className="px-3 py-2 border rounded" />
-          <input type="date" value={filtroFecha} onChange={(e) => setFiltroFecha(e.target.value)} className="px-3 py-2 border rounded" />
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <input type="month" value={ym} onChange={(e) => setYm(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900" />
+          <input type="date" value={filtroFecha} onChange={(e) => setFiltroFecha(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900" />
           <input
             value={filtroCliente}
             onChange={(e) => setFiltroCliente(e.target.value)}
             placeholder="Buscar cliente o codigo"
-            className="px-3 py-2 border rounded w-56"
+            className="w-56 rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900"
           />
           <input
             value={filtroCuadrilla}
             onChange={(e) => setFiltroCuadrilla(e.target.value)}
             placeholder="Buscar cuadrilla"
-            className="px-3 py-2 border rounded w-48"
+            className="w-48 rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900"
           />
-          <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className="px-3 py-2 border rounded">
+          <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900">
             <option value="">Todos los estados</option>
             <option value="Agendada">Agendada</option>
             <option value="En camino">En camino</option>
@@ -266,7 +273,7 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
             <option value="Regestion">Regestion</option>
             <option value="Regestión">Regestion (tilde)</option>
           </select>
-          <select value={filtroCoord} onChange={(e) => setFiltroCoord(e.target.value)} className="px-3 py-2 border rounded">
+          <select value={filtroCoord} onChange={(e) => setFiltroCoord(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900">
             <option value="">Todos los coordinadores</option>
             {coords.map((c) => (
               <option key={c.uid} value={c.uid}>{c.nombre}</option>
@@ -274,7 +281,7 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
           </select>
           <button
             type="button"
-            className="rounded bg-slate-800 text-white px-3 py-2 text-sm"
+            className="rounded-xl bg-[#30518c] px-3 py-2 text-sm text-white"
             onClick={() => {
               setFiltroFecha("");
               setFiltroCliente("");
@@ -291,12 +298,12 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
         </div>
       </div>
 
-      {error ? <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
-      {loading ? <div className="text-center text-sm text-muted-foreground">Cargando garantias...</div> : null}
+      {error ? <div className="m-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
+      {loading ? <div className="m-4 rounded border border-slate-200 bg-white p-3 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">Cargando garantias...</div> : null}
 
-      <div className="overflow-auto rounded-lg border">
+      <div className="m-4 overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
         <table className="min-w-[1900px] w-full text-xs md:text-sm border-collapse">
-          <thead className="bg-slate-800 text-white sticky top-0">
+          <thead className="sticky top-0 bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100">
             <tr>
               <th className="p-2"><button onClick={() => toggleSort("fechaGarantiaYmd")}>F. Garantia / Cliente / Codigo / F. Instalacion</button></th>
               <th className="p-2"><button onClick={() => toggleSort("plan")}>Plan</button></th>
@@ -316,10 +323,10 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
             </tr>
           </thead>
           <tbody>
-            {pageData.map((r) => {
+            {pageData.map((r, idx) => {
               const editing = editId === r.ordenId;
               return (
-                <tr key={r.id} className="border-b">
+                <tr key={r.id} className={`border-b border-slate-200 dark:border-slate-700 ${idx % 2 === 0 ? "bg-white dark:bg-slate-900" : "bg-slate-50/60 dark:bg-slate-800/60"}`}>
                   <td className="p-2 max-w-[380px] leading-5">
                     <div><b>F. Garantia:</b> {r.fechaGarantiaYmd || "-"}</div>
                     <div><b>Cliente:</b> {r.cliente || "-"}</div>
@@ -341,28 +348,28 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
                   <td className="p-2">{r.estado || "-"}</td>
                   <td className="p-2">
                     {editing ? (
-                      <input className="border rounded px-2 py-1 w-full" value={editForm.motivoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, motivoGarantia: e.target.value }))} />
+                      <input className="w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.motivoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, motivoGarantia: e.target.value }))} />
                     ) : (
                       r.motivoGarantia || "-"
                     )}
                   </td>
                   <td className="p-2">
                     {editing ? (
-                      <input className="border rounded px-2 py-1 w-full" value={editForm.diagnosticoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, diagnosticoGarantia: e.target.value }))} />
+                      <input className="w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.diagnosticoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, diagnosticoGarantia: e.target.value }))} />
                     ) : (
                       r.diagnosticoGarantia || "-"
                     )}
                   </td>
                   <td className="p-2">
                     {editing ? (
-                      <input className="border rounded px-2 py-1 w-full" value={editForm.solucionGarantia} onChange={(e) => setEditForm((f) => ({ ...f, solucionGarantia: e.target.value }))} />
+                      <input className="w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.solucionGarantia} onChange={(e) => setEditForm((f) => ({ ...f, solucionGarantia: e.target.value }))} />
                     ) : (
                       r.solucionGarantia || "-"
                     )}
                   </td>
                   <td className="p-2">
                     {editing ? (
-                      <select className="border rounded px-2 py-1 w-full" value={editForm.responsableGarantia} onChange={(e) => setEditForm((f) => ({ ...f, responsableGarantia: e.target.value }))}>
+                      <select className="w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.responsableGarantia} onChange={(e) => setEditForm((f) => ({ ...f, responsableGarantia: e.target.value }))}>
                         <option value="">--</option>
                         {OPC_RESPONSABLE.map((x) => <option key={x} value={x}>{x}</option>)}
                       </select>
@@ -372,7 +379,7 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
                   </td>
                   <td className="p-2">
                     {editing ? (
-                      <select className="border rounded px-2 py-1 w-full" value={editForm.casoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, casoGarantia: e.target.value }))}>
+                      <select className="w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.casoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, casoGarantia: e.target.value }))}>
                         <option value="">--</option>
                         {OPC_CASO.map((x) => <option key={x} value={x}>{x}</option>)}
                       </select>
@@ -382,7 +389,7 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
                   </td>
                   <td className="p-2">
                     {editing ? (
-                      <select className="border rounded px-2 py-1 w-full" value={editForm.imputadoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, imputadoGarantia: e.target.value }))}>
+                      <select className="w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.imputadoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, imputadoGarantia: e.target.value }))}>
                         <option value="">--</option>
                         {OPC_IMPUTADO.map((x) => <option key={x} value={x}>{x}</option>)}
                       </select>
@@ -393,12 +400,12 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
                   <td className="p-2">
                     {editing && canEdit ? (
                       <div className="flex gap-2">
-                        <button disabled={saving} className="bg-emerald-600 text-white px-2 py-1 rounded" onClick={() => saveEdit(r.ordenId)}>Guardar</button>
-                        <button className="bg-slate-500 text-white px-2 py-1 rounded" onClick={() => setEditId("")}>Cancelar</button>
+                        <button disabled={saving} className="rounded bg-emerald-600 px-2 py-1 text-white" onClick={() => saveEdit(r.ordenId)}>Guardar</button>
+                        <button className="rounded bg-slate-500 px-2 py-1 text-white" onClick={() => setEditId("")}>Cancelar</button>
                       </div>
                     ) : canEdit ? (
                       <button
-                        className="bg-blue-600 text-white px-2 py-1 rounded"
+                        className="rounded bg-[#30518c] px-2 py-1 text-white"
                         onClick={() => {
                           setEditId(r.ordenId);
                           setEditForm({
@@ -414,7 +421,7 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
                         Editar
                       </button>
                     ) : (
-                      <span className="text-xs rounded bg-slate-100 px-2 py-1">Solo lectura</span>
+                      <span className="rounded bg-slate-100 px-2 py-1 text-xs dark:bg-slate-700 dark:text-slate-100">Solo lectura</span>
                     )}
                   </td>
                 </tr>
@@ -422,7 +429,7 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
             })}
             {!loading && pageData.length === 0 ? (
               <tr>
-                <td colSpan={15} className="text-center py-6 text-muted-foreground">No hay garantias para los filtros seleccionados</td>
+                <td colSpan={15} className="py-6 text-center text-slate-500 dark:text-slate-300">No hay garantias para los filtros seleccionados</td>
               </tr>
             ) : null}
           </tbody>
@@ -430,12 +437,13 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
       </div>
 
       {!loading && sorted.length > 0 ? (
-        <div className="flex items-center justify-center gap-3">
-          <button className="px-3 py-1 rounded border disabled:opacity-50" disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Anterior</button>
-          <span className="text-sm">Pagina <b>{page}</b> de <b>{totalPages}</b></span>
-          <button className="px-3 py-1 rounded border disabled:opacity-50" disabled={page === totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>Siguiente</button>
+        <div className="m-4 flex items-center justify-center gap-3">
+          <button className="rounded-lg border border-slate-300 px-3 py-1 disabled:opacity-50 dark:border-slate-600" disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Anterior</button>
+          <span className="text-sm text-slate-600 dark:text-slate-300">Pagina <b>{page}</b> de <b>{totalPages}</b></span>
+          <button className="rounded-lg border border-slate-300 px-3 py-1 disabled:opacity-50 dark:border-slate-600" disabled={page === totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>Siguiente</button>
         </div>
       ) : null}
+      </section>
     </div>
   );
 }

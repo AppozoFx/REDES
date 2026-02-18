@@ -54,6 +54,7 @@ export async function GET() {
     const jornadaId = `${uid}_${ymd}`;
     const jornadaRef = db.collection("gestor_jornadas").doc(jornadaId);
     const presenciaRef = db.collection("gestor_presencia").doc(uid);
+    const userPresenceRef = db.collection("usuarios_presencia").doc(uid);
 
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(jornadaRef);
@@ -81,6 +82,20 @@ export async function GET() {
           online: true,
           lastSeenAt: FieldValue.serverTimestamp(),
           source: "WEB",
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      tx.set(
+        userPresenceRef,
+        {
+          uid,
+          online: true,
+          source: "WEB",
+          roles: session.access.roles || [],
+          areas: session.access.areas || [],
+          estadoAcceso: session.access.estadoAcceso || "HABILITADO",
+          lastSeenAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }

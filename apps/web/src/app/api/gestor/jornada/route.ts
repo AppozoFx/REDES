@@ -43,6 +43,7 @@ export async function POST(req: Request) {
     const ymd = todayLimaYmd();
     const jornadaRef = db.collection("gestor_jornadas").doc(`${uid}_${ymd}`);
     const presenciaRef = db.collection("gestor_presencia").doc(uid);
+    const userPresenceRef = db.collection("usuarios_presencia").doc(uid);
 
     let errorCode = "";
     await db.runTransaction(async (tx) => {
@@ -74,6 +75,20 @@ export async function POST(req: Request) {
             uid,
             online: true,
             source: "WEB",
+            lastSeenAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        tx.set(
+          userPresenceRef,
+          {
+            uid,
+            online: true,
+            source: "WEB",
+            roles: session.access.roles || [],
+            areas: session.access.areas || [],
+            estadoAcceso: session.access.estadoAcceso || "HABILITADO",
             lastSeenAt: FieldValue.serverTimestamp(),
             updatedAt: FieldValue.serverTimestamp(),
           },
@@ -178,6 +193,17 @@ export async function POST(req: Request) {
           },
           { merge: true }
         );
+        tx.set(
+          userPresenceRef,
+          {
+            uid,
+            online: false,
+            source: "WEB",
+            lastSeenAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
       } else {
         tx.set(
           presenciaRef,
@@ -185,6 +211,20 @@ export async function POST(req: Request) {
             uid,
             online: true,
             source: "WEB",
+            lastSeenAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        tx.set(
+          userPresenceRef,
+          {
+            uid,
+            online: true,
+            source: "WEB",
+            roles: session.access.roles || [],
+            areas: session.access.areas || [],
+            estadoAcceso: session.access.estadoAcceso || "HABILITADO",
             lastSeenAt: FieldValue.serverTimestamp(),
             updatedAt: FieldValue.serverTimestamp(),
           },

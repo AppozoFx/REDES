@@ -2,6 +2,8 @@ import { requireAuth } from "@/core/auth/guards";
 import HomeSidebar from "@/ui/home/Sidebar";
 import HomeTopbar from "@/ui/home/Topbar";
 import { NotificationsRealtime } from "@/ui/common/NotificationsRealtime";
+import TabSessionGuard from "@/ui/common/TabSessionGuard";
+import UserPresenceHeartbeat from "@/ui/common/UserPresenceHeartbeat";
 
 export default async function HomeLayout({
   children,
@@ -14,7 +16,9 @@ export default async function HomeLayout({
     <div className="flex h-dvh overflow-hidden bg-gradient-to-br from-slate-50 via-white to-slate-100/80">
       <HomeSidebar session={session} />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/70 px-3 py-2 backdrop-blur">
+        <TabSessionGuard />
+        <UserPresenceHeartbeat />
+        <div className="sticky top-0 z-[140] border-b border-slate-200/70 bg-white/70 px-3 py-2 backdrop-blur">
           <HomeTopbar session={session} />
         </div>
 

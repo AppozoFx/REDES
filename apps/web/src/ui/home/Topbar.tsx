@@ -74,7 +74,7 @@ export default function HomeTopbar({ session }: { session: ServerSession }) {
       <div className="flex items-center gap-3">
         <NotificationsBell uid={session.uid} />
 
-        <div ref={menuRef} className="relative">
+        <div ref={menuRef} className="relative z-[160]">
           <button
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
@@ -87,7 +87,7 @@ export default function HomeTopbar({ session }: { session: ServerSession }) {
           </button>
 
           <div
-            className={`absolute right-0 z-30 mt-2 w-44 origin-top-right rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl transition-all duration-180 ease-out ${
+            className={`absolute right-0 z-[200] mt-2 w-44 origin-top-right rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl transition-all duration-180 ease-out ${
               menuOpen
                 ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
                 : "pointer-events-none -translate-y-1 scale-95 opacity-0"
@@ -120,6 +120,7 @@ export default function HomeTopbar({ session }: { session: ServerSession }) {
               className="block w-full rounded-lg px-3 py-2 text-left text-sm text-rose-700 hover:bg-rose-50"
               onClick={async () => {
                 setMenuOpen(false);
+                await fetch("/api/auth/presencia", { method: "DELETE" });
                 await fetch("/api/auth/session", { method: "DELETE" });
                 window.location.href = "/login";
               }}

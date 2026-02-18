@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { signInWithEmailAndPassword, setPersistence, browserLocalPersistence } from "firebase/auth";
+import { signInWithEmailAndPassword, setPersistence, browserSessionPersistence } from "firebase/auth";
 import { AnimatePresence, motion } from "framer-motion";
 import { getFirebaseAuth } from "../../lib/firebase/client";
 
@@ -36,7 +36,7 @@ export default function LoginPage() {
       console.log("[login] calling getFirebaseAuth, typeof:", typeof getFirebaseAuth);
       const auth = getFirebaseAuth();
       // Garantiza que currentUser persista tras refresh
-      await setPersistence(auth, browserLocalPersistence);
+      await setPersistence(auth, browserSessionPersistence);
       const cred = await signInWithEmailAndPassword(auth, email, password);
 
      const idToken = await cred.user.getIdToken(true);
@@ -61,6 +61,9 @@ if (!res.ok) throw new Error(`session (${res.status}): ${text}`);
 
 
 
+      try {
+        localStorage.setItem("redes_last_login_at", String(Date.now()));
+      } catch {}
       setSuccess(true);
       setTimeout(() => router.push("/admin"), 700);
     } catch (err: any) {

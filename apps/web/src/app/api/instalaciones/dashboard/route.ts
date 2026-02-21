@@ -25,9 +25,24 @@ type DetailItem = {
   coordinadorUid: string;
   coordinadorNombre: string;
   regionOrden: string;
+  distritoOrden: string;
+  lat: number | null;
+  lng: number | null;
   liquidado: boolean;
   correccionPendiente: boolean;
   liquidacionAt: string | null;
+};
+
+type Kpi = {
+  total: number;
+  finalizadas: number;
+  agendadas: number;
+  iniciadas: number;
+  pendientes: number;
+  efectividadPct: number;
+  liquidadas: number;
+  pendientesLiquidar: number;
+  correccionPendiente: number;
 };
 
 function norm(v: any) {
@@ -122,6 +137,50 @@ function isGarantia(raw: string) {
   return String(raw || "").toUpperCase().includes("GARANTIA");
 }
 
+function parseCoord(v: any): number | null {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  if (Math.abs(n) > 180) return null;
+  return n;
+}
+
+function parseGeoRaw(raw: any): { lat: number | null; lng: number | null } {
+  const s = String(raw || "").trim();
+  if (!s.includes(",")) return { lat: null, lng: null };
+  const [a, b] = s.split(",").map((x) => parseCoord(x));
+  return { lat: a, lng: b };
+}
+
+function diffDaysExclusive(fromYmd: string, toYmdExclusive: string) {
+  const from = dateFromYmd(fromYmd).getTime();
+  const to = dateFromYmd(toYmdExclusive).getTime();
+  return Math.max(1, Math.round((to - from) / 86400000));
+}
+
+function computeKpi(rows: DetailItem[]): Kpi {
+  const total = rows.length;
+  const finalizadas = rows.filter((x) => normalizeOrderState(x.estado) === "FINALIZADA").length;
+  const agendadas = rows.filter((x) => normalizeOrderState(x.estado) === "AGENDADA").length;
+  const iniciadas = rows.filter((x) => normalizeOrderState(x.estado) === "INICIADA").length;
+  const pendientes = agendadas + iniciadas;
+  const finalizadasRows = rows.filter((x) => normalizeOrderState(x.estado) === "FINALIZADA");
+  const liquidadas = finalizadasRows.filter((x) => x.liquidado).length;
+  const pendientesLiquidar = finalizadasRows.filter((x) => !x.liquidado).length;
+  const correccionPendiente = rows.filter((x) => x.correccionPendiente).length;
+  const efectividadPct = total > 0 ? Number(((finalizadas / total) * 100).toFixed(2)) : 0;
+  return {
+    total,
+    finalizadas,
+    agendadas,
+    iniciadas,
+    pendientes,
+    efectividadPct,
+    liquidadas,
+    pendientesLiquidar,
+    correccionPendiente,
+  };
+}
+
 async function fetchAllOrdenesByRange(fromYmd: string, toYmdExclusive: string) {
   const db = adminDb();
   const out: any[] = [];
@@ -171,6 +230,7 @@ export async function GET(req: Request) {
 
     const fCuadrilla = String(searchParams.get("cuadrilla") || searchParams.get("cuadrillaId") || "").trim();
     const fRegionOrden = String(searchParams.get("regionOrden") || "").trim();
+    const fDistritoOrden = String(searchParams.get("distritoOrden") || "").trim();
     const fGestorUid = String(searchParams.get("gestorUid") || "").trim();
     const fCoordinadorUid = String(searchParams.get("coordinadorUid") || "").trim();
     const fEstado = String(searchParams.get("estado") || "").trim().toUpperCase();
@@ -191,10 +251,30 @@ export async function GET(req: Request) {
     }
     const toYmdInclusive = addDays(toYmdExclusive, -1);
     const periodLabel = `${fromYmd} - ${toYmdInclusive}`;
+    let prevFromYmd = addDays(fromYmd, -1);
+    let prevToYmdExclusive = fromYmd;
+    if (mode === "week") {
+      prevFromYmd = addDays(fromYmd, -7);
+      prevToYmdExclusive = fromYmd;
+    } else if (mode === "month") {
+      const [cy, cm] = fromYmd.split("-").map((x) => Number(x));
+      const prevDate = new Date(Date.UTC(cy, cm - 2, 1, 0, 0, 0, 0));
+      const py = prevDate.getUTCFullYear();
+      const pm = String(prevDate.getUTCMonth() + 1).padStart(2, "0");
+      const prevYm = `${py}-${pm}`;
+      prevFromYmd = monthStart(prevYm);
+      prevToYmdExclusive = monthEndExclusive(prevYm);
+    } else if (mode === "range") {
+      const len = diffDaysExclusive(fromYmd, toYmdExclusive);
+      prevToYmdExclusive = fromYmd;
+      prevFromYmd = addDays(fromYmd, -len);
+    }
+    const prevToYmdInclusive = addDays(prevToYmdExclusive, -1);
+    const periodPrevLabel = `${prevFromYmd} - ${prevToYmdInclusive}`;
 
     const orderDocs = await fetchAllOrdenesByRange(fromYmd, toYmdExclusive);
-
-    const base = orderDocs.map((d) => {
+    const prevOrderDocs = await fetchAllOrdenesByRange(prevFromYmd, prevToYmdExclusive);
+    const toBase = (docs: any[]) => docs.map((d) => {
       const x = d.data() as any;
       const codigo = String(x?.codiSeguiClien || "").trim();
       const tipoMix = `${x?.tipo || ""} ${x?.tipoTraba || ""} ${x?.idenServi || ""} ${x?.estado || ""}`;
@@ -208,16 +288,22 @@ export async function GET(req: Request) {
         cuadrillaId: String(x?.cuadrillaId || "").trim(),
         cuadrillaNombre: String(x?.cuadrillaNombre || "").trim(),
         regionOrden: String(x?.region || x?.regionNombre || "").trim(),
+        distritoOrden: String(x?.zonaDistrito || x?.distrito || "").trim(),
         estado: String(x?.estado || "").trim().toUpperCase(),
         tipoOrden: String(x?.tipoOrden || x?.tipo || "").trim().toUpperCase(),
         tipoTraba: String(x?.tipoTraba || "").trim(),
         gestorUid: String(x?.gestorCuadrilla || "").trim(),
         coordinadorUid: String(x?.coordinadorCuadrilla || x?.coordinador || "").trim(),
+        lat: parseCoord(x?.lat),
+        lng: parseCoord(x?.lng),
+        georeferenciaRaw: String(x?.georeferenciaRaw || "").trim(),
         isGarantia: isGarantia(tipoMix),
       };
     });
+    const base = toBase(orderDocs);
+    const basePrev = toBase(prevOrderDocs);
 
-    const codigos = Array.from(new Set(base.map((x) => x.codiSeguiClien).filter(Boolean)));
+    const codigos = Array.from(new Set([...base, ...basePrev].map((x) => x.codiSeguiClien).filter(Boolean)));
     const instMap = new Map<string, any>();
     for (let i = 0; i < codigos.length; i += 400) {
       const chunk = codigos.slice(i, i + 400);
@@ -229,7 +315,7 @@ export async function GET(req: Request) {
     }
 
     const uidSet = new Set<string>();
-    base.forEach((x) => {
+    [...base, ...basePrev].forEach((x) => {
       if (x.gestorUid) uidSet.add(x.gestorUid);
       if (x.coordinadorUid) uidSet.add(x.coordinadorUid);
     });
@@ -246,7 +332,8 @@ export async function GET(req: Request) {
       });
     }
 
-    const enriched: DetailItem[] = base
+    const toEnriched = (rows: any[]): DetailItem[] =>
+      rows
       .filter((x) => !x.isGarantia)
       .map((x) => {
         const inst = x.codiSeguiClien ? instMap.get(x.codiSeguiClien) : null;
@@ -254,6 +341,9 @@ export async function GET(req: Request) {
         const liqAt = toIso(inst?.liquidacion?.at);
         const correccionPendiente = !!(inst?.correccionPendiente || inst?.corregido);
         const liquidado = (liqEstado === "LIQUIDADO" || !!liqAt) && !correccionPendiente;
+        const geoRaw = parseGeoRaw((x as any).georeferenciaRaw);
+        const lat = parseCoord((x as any).lat) ?? geoRaw.lat;
+        const lng = parseCoord((x as any).lng) ?? geoRaw.lng;
         return {
           id: x.id,
           ymd: x.ymd,
@@ -271,36 +361,36 @@ export async function GET(req: Request) {
           coordinadorUid: x.coordinadorUid,
           coordinadorNombre: x.coordinadorUid ? uidName.get(x.coordinadorUid) || x.coordinadorUid : "",
           regionOrden: x.regionOrden,
+          distritoOrden: x.distritoOrden,
+          lat,
+          lng,
           liquidado,
           correccionPendiente,
           liquidacionAt: liqAt,
         };
       });
+    const enriched: DetailItem[] = toEnriched(base);
+    const enrichedPrev: DetailItem[] = toEnriched(basePrev);
 
-    const filtered = enriched.filter((x) => {
+    const matchesFilters = (x: DetailItem, includeDistrito: boolean) => {
       if (fCuadrilla) {
         const cuadrillaFull = `${x.cuadrillaNombre || ""} ${x.cuadrillaId || ""}`;
         if (!norm(cuadrillaFull).includes(norm(fCuadrilla))) return false;
       }
       if (fRegionOrden && norm(x.regionOrden) !== norm(fRegionOrden)) return false;
+      if (includeDistrito && fDistritoOrden && norm(x.distritoOrden) !== norm(fDistritoOrden)) return false;
       if (fGestorUid && x.gestorUid !== fGestorUid) return false;
       if (fCoordinadorUid && x.coordinadorUid !== fCoordinadorUid) return false;
       if (fEstado && x.estado !== fEstado) return false;
       if (fTipoOrden && x.tipoOrden !== fTipoOrden) return false;
       if (soloNoLiquidadas && x.liquidado) return false;
       return true;
-    });
-
-    const total = filtered.length;
-    const finalizadas = filtered.filter((x) => normalizeOrderState(x.estado) === "FINALIZADA").length;
-    const agendadas = filtered.filter((x) => normalizeOrderState(x.estado) === "AGENDADA").length;
-    const iniciadas = filtered.filter((x) => normalizeOrderState(x.estado) === "INICIADA").length;
-    const pendientes = agendadas + iniciadas;
-    const finalizadasRows = filtered.filter((x) => normalizeOrderState(x.estado) === "FINALIZADA");
-    const liquidadas = finalizadasRows.filter((x) => x.liquidado).length;
-    const pendientesLiquidar = finalizadasRows.filter((x) => !x.liquidado).length;
-    const correccionPendiente = filtered.filter((x) => x.correccionPendiente).length;
-    const efectividadPct = total > 0 ? Number(((finalizadas / total) * 100).toFixed(2)) : 0;
+    };
+    const filteredMeta = enriched.filter((x) => matchesFilters(x, false));
+    const filtered = enriched.filter((x) => matchesFilters(x, true));
+    const filteredPrev = enrichedPrev.filter((x) => matchesFilters(x, true));
+    const kpi = computeKpi(filtered);
+    const kpiPrev = computeKpi(filteredPrev);
 
     const byDayMap = new Map<string, { total: number; finalizadas: number; liquidadas: number }>();
     filtered.forEach((x) => {
@@ -352,10 +442,40 @@ export async function GET(req: Request) {
     const byTipoOrden = Array.from(byTipoMap.entries())
       .map(([tipoOrden, totalVal]) => ({ tipoOrden, total: totalVal }))
       .sort((a, b) => b.total - a.total);
+    const byRegionDistritoMap = new Map<string, { regionOrden: string; distritoOrden: string; totalFinalizadas: number; label: string }>();
+    filtered.forEach((x) => {
+      if (normalizeOrderState(x.estado) !== "FINALIZADA") return;
+      const region = String(x.regionOrden || "").trim();
+      const distrito = String(x.distritoOrden || "").trim();
+      const key = `${region}::${distrito}`;
+      const label = distrito ? `${region || "SIN REGION"} / ${distrito}` : region || "SIN REGION";
+      const cur = byRegionDistritoMap.get(key) || {
+        regionOrden: region,
+        distritoOrden: distrito,
+        totalFinalizadas: 0,
+        label,
+      };
+      cur.totalFinalizadas += 1;
+      byRegionDistritoMap.set(key, cur);
+    });
+    const byRegionDistritoFinalizadas = Array.from(byRegionDistritoMap.values()).sort((a, b) => b.totalFinalizadas - a.totalFinalizadas);
+    const finalizadasMap = filtered
+      .filter((x) => normalizeOrderState(x.estado) === "FINALIZADA" && Number.isFinite(x.lat) && Number.isFinite(x.lng))
+      .slice(0, 1200)
+      .map((x) => ({
+        id: x.id,
+        lat: Number(x.lat),
+        lng: Number(x.lng),
+        cliente: x.cliente || x.codiSeguiClien || x.ordenId,
+        cuadrilla: x.cuadrillaNombre || x.cuadrillaId || "-",
+        regionOrden: x.regionOrden || "",
+        distritoOrden: x.distritoOrden || "",
+        ymd: x.ymd,
+      }));
 
     const gestoresMeta = Array.from(
       new Map(
-        filtered
+        filteredMeta
           .filter((x) => x.gestorUid)
           .map((x) => [x.gestorUid, { uid: x.gestorUid, nombre: x.gestorNombre || x.gestorUid }])
       ).values()
@@ -363,7 +483,7 @@ export async function GET(req: Request) {
 
     const coordinadoresMeta = Array.from(
       new Map(
-        filtered
+        filteredMeta
           .filter((x) => x.coordinadorUid)
           .map((x) => [x.coordinadorUid, { uid: x.coordinadorUid, nombre: x.coordinadorNombre || x.coordinadorUid }])
       ).values()
@@ -371,15 +491,18 @@ export async function GET(req: Request) {
 
     const cuadrillasMeta = Array.from(
       new Map(
-        filtered
+        filteredMeta
           .filter((x) => x.cuadrillaId || x.cuadrillaNombre)
           .map((x) => [x.cuadrillaId || x.cuadrillaNombre, { id: x.cuadrillaId || x.cuadrillaNombre, nombre: x.cuadrillaNombre || x.cuadrillaId }])
       ).values()
     ).sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
 
-    const tiposOrdenMeta = Array.from(new Set(filtered.map((x) => x.tipoOrden).filter(Boolean))).sort();
-    const estadosMeta = Array.from(new Set(filtered.map((x) => x.estado).filter(Boolean))).sort();
-    const regionesOrdenesMeta = Array.from(new Set(filtered.map((x) => x.regionOrden).filter(Boolean))).sort((a, b) =>
+    const tiposOrdenMeta = Array.from(new Set(filteredMeta.map((x) => x.tipoOrden).filter(Boolean))).sort();
+    const estadosMeta = Array.from(new Set(filteredMeta.map((x) => x.estado).filter(Boolean))).sort();
+    const regionesOrdenesMeta = Array.from(new Set(filteredMeta.map((x) => x.regionOrden).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b, "es", { sensitivity: "base" })
+    );
+    const distritosOrdenesMeta = Array.from(new Set(filteredMeta.map((x) => x.distritoOrden).filter(Boolean))).sort((a, b) =>
       a.localeCompare(b, "es", { sensitivity: "base" })
     );
 
@@ -401,25 +524,28 @@ export async function GET(req: Request) {
         mode,
       },
       kpi: {
-        total,
-        finalizadas,
-        agendadas,
-        iniciadas,
-        pendientes,
-        efectividadPct,
-        liquidadas,
-        pendientesLiquidar,
-        correccionPendiente,
+        ...kpi,
+      },
+      kpiPrev: {
+        ...kpiPrev,
+      },
+      periodPrev: {
+        fromYmd: prevFromYmd,
+        toYmd: prevToYmdInclusive,
+        label: periodPrevLabel,
       },
       series: {
         byDay,
         byCuadrillaEstado,
         topCuadrillasFinalizadas,
         byTipoOrden,
+        byRegionDistritoFinalizadas,
+        finalizadasMap,
       },
       filtersMeta: {
         cuadrillas: cuadrillasMeta,
         regionesOrdenes: regionesOrdenesMeta,
+        distritosOrdenes: distritosOrdenesMeta,
         gestores: gestoresMeta,
         coordinadores: coordinadoresMeta,
         tiposOrden: tiposOrdenMeta,

@@ -42,9 +42,15 @@ export async function GET() {
     if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const db = adminDb();
+    const isPrivileged =
+      session.isAdmin ||
+      roles.includes("GERENCIA") ||
+      roles.includes("ALMACEN") ||
+      roles.includes("RRHH");
     const isCoord = roles.includes("COORDINADOR");
     const isTecnico = roles.includes("TECNICO");
-    const viewerScope: "all" | "coordinador" | "tecnico" = isCoord ? "coordinador" : isTecnico ? "tecnico" : "all";
+    const viewerScope: "all" | "coordinador" | "tecnico" =
+      isPrivileged ? "all" : isCoord ? "coordinador" : isTecnico ? "tecnico" : "all";
 
     const [cqSnap, usSnap, eqSnap] = await Promise.all([
       db.collection("cuadrillas").limit(2500).get(),

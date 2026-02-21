@@ -1,14 +1,6 @@
 import { NextResponse } from "next/server";
-import { adminAuth } from "@/lib/firebase/admin";
-import { adminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { cookies } from "next/headers";
-
-// Debug import shape en entorno server
-try {
-  // eslint-disable-next-line no-console
-  console.log("[session/api] typeof adminAuth", typeof adminAuth);
-} catch {}
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -29,6 +21,7 @@ function shortName(nombres: string, apellidos: string, fallback: string) {
 
 export async function POST(req: Request) {
   try {
+    const { adminAuth, adminDb } = await import("@/lib/firebase/admin");
     const { idToken } = (await req.json()) as { idToken?: string };
     if (!idToken) {
       return NextResponse.json({ ok: false, error: "Missing idToken" }, { status: 400 });
@@ -44,7 +37,9 @@ export async function POST(req: Request) {
     const decoded = await auth.verifyIdToken(idToken, true);
     const uid = decoded?.uid || "";
 
-    const expiresIn = 8 * 60 * 60 * 1000; // 8 horas
+    // Maximo permitido por Firebase para session cookies: 14 dias.
+    // El cierre al cerrar todas las pestanas lo controla TabSessionGuard.
+    const expiresIn = 14 * 24 * 60 * 60 * 1000;
     const sessionCookie = await auth.createSessionCookie(idToken, { expiresIn });
 
     const res = NextResponse.json({ ok: true });
@@ -118,15 +113,27 @@ export async function POST(req: Request) {
 
     return res;
   } catch (e: any) {
+    const message = String(e?.message || e || "ERROR");
+    const code = String((e as any)?.code || "");
+    const status =
+      code.includes("auth/") ||
+      message.toUpperCase().includes("TOKEN")
+        ? 401
+        : 500;
+    try {
+      // eslint-disable-next-line no-console
+      console.error("[session/api] POST error", { code, message, stack: e?.stack });
+    } catch {}
     return NextResponse.json(
-      { ok: false, error: "Invalid token/session", message: e?.message ?? String(e) },
-      { status: 401 }
+      { ok: false, error: "SESSION_CREATE_FAILED", code, message },
+      { status }
     );
   }
 }
 
 export async function DELETE() {
   try {
+    const { adminAuth, adminDb } = await import("@/lib/firebase/admin");
     const cookieStore = await cookies();
     const raw = cookieStore.get(COOKIE_NAME)?.value;
     if (raw) {

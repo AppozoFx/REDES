@@ -1,5 +1,4 @@
-﻿"use client";
-
+"use client";
 import React, { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import { useActionState } from "react";
 import { toast } from "sonner";
@@ -61,6 +60,7 @@ type CuadrillaInfo = {
   nombre?: string;
   coordinadorUid?: string;
   coordinadorNombre?: string;
+  coordinador?: string;
   tecnicosUids?: string[];
   tecnicosNombres?: string[];
   tipo?: string;
@@ -933,7 +933,7 @@ export default function DespachoClient() {
       if (und > 0) materiales.push({ materialId: id, und });
       else if (m > 0) materiales.push({ materialId: id, metros: m });
     }
-    // TARUGOS_P siempre acompaña a ANCLAJE_P (1:1), interno
+    // TARUGOS_P siempre acompaï¿½a a ANCLAJE_P (1:1), interno
     const anclajeUnd = Math.max(0, Math.trunc(numOr0(matUnd.ANCLAJE_P || "0")));
     if (anclajeUnd > 0) materiales.push({ materialId: "TARUGOS_P", und: anclajeUnd });
 
@@ -1651,5 +1651,8 @@ export default function DespachoClient() {
     </div>
   );
 }
+
+
+
 
 

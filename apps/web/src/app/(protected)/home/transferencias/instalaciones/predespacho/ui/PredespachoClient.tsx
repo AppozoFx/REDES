@@ -11,6 +11,7 @@ type Counts = Record<Eq, number>;
 type PreconCounts = Record<PreconId, number>;
 type Scope = "all" | "coordinador" | "tecnico";
 type EstadoFiltro = "todas" | "guardadas" | "pendientes" | "lote";
+type ModeloFiltro = "all" | "huawei" | "zte";
 
 type Cuadrilla = {
   id: string;
@@ -54,6 +55,7 @@ export default function PredespachoClient() {
   const [batchIds, setBatchIds] = useState<string[]>([]);
   const [selectedBatch, setSelectedBatch] = useState("");
   const [estadoFiltro, setEstadoFiltro] = useState<EstadoFiltro>("todas");
+  const [modeloFiltro, setModeloFiltro] = useState<ModeloFiltro>("all");
 
   const [stockAlmacen, setStockAlmacen] = useState<Counts>(emptyCounts());
   const [stockPrecon, setStockPrecon] = useState<PreconCounts>(emptyPrecon());
@@ -79,10 +81,13 @@ export default function PredespachoClient() {
   const [cuadOpen, setCuadOpen] = useState(false);
   const readOnly = scope !== "all";
 
-  async function loadData(nextAnchor = anchor) {
+  async function loadData(nextAnchor = anchor, nextModelo = modeloFiltro) {
     setLoading(true);
     try {
-      const res = await fetch(`/api/instalaciones/predespacho/dashboard?anchor=${encodeURIComponent(nextAnchor)}`, { cache: "no-store" });
+      const params = new URLSearchParams();
+      params.set("anchor", nextAnchor);
+      params.set("modelo", nextModelo);
+      const res = await fetch(`/api/instalaciones/predespacho/dashboard?${params.toString()}`, { cache: "no-store" });
       const body = await res.json().catch(() => ({}));
       if (!res.ok || !body?.ok) throw new Error(String(body?.error || "ERROR"));
 
@@ -132,9 +137,9 @@ export default function PredespachoClient() {
   }
 
   useEffect(() => {
-    loadData(anchor);
+    loadData(anchor, modeloFiltro);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anchor]);
+  }, [anchor, modeloFiltro]);
 
   const baseRows = useMemo(() => {
     const txt = textoCuadrilla.trim().toLowerCase();
@@ -483,6 +488,14 @@ export default function PredespachoClient() {
             </select>
           </div>
           <div className="lg:col-span-1">
+            <label className="mb-1 block text-xs text-slate-600">Modelo (ONT/MESH)</label>
+            <select value={modeloFiltro} onChange={(e) => setModeloFiltro(e.target.value as ModeloFiltro)} className="w-full rounded border px-3 py-2 text-sm">
+              <option value="all">Todos</option>
+              <option value="huawei">Huawei</option>
+              <option value="zte">ZTE</option>
+            </select>
+          </div>
+          <div className="lg:col-span-1">
             <label className="mb-1 block text-xs text-slate-600">Lote</label>
             <select value={selectedBatch} onChange={(e) => setSelectedBatch(e.target.value)} className="w-full rounded border px-3 py-2 text-sm" disabled={estadoFiltro !== "lote"}>
               <option value="">Seleccionar</option>
@@ -498,6 +511,7 @@ export default function PredespachoClient() {
         <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-600">
           <span>Periodo consumo: {periodLabel}</span>
           <span>Scope: {scope}</span>
+          <span>Modelo ONT/MESH: {modeloFiltro === "all" ? "Todos" : modeloFiltro === "huawei" ? "Huawei" : "ZTE"}</span>
           <label className="inline-flex items-center gap-2">
             <input type="checkbox" checked={verOmitidas} onChange={(e) => setVerOmitidas(e.target.checked)} />
             Ver omitidas

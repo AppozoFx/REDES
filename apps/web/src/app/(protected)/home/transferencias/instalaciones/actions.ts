@@ -42,11 +42,19 @@ async function getMaterialDoc(materialId: string): Promise<any | null> {
 
 async function updateStockTx(
   tx: FirebaseFirestore.Transaction,
-  opts: { from: { type: "ALMACEN" | "CUADRILLA"; id: string }; to: { type: "ALMACEN" | "CUADRILLA"; id: string }; material: any; und?: number; metros?: number }
+  opts: {
+    from: { type: "ALMACEN" | "CUADRILLA"; id: string };
+    to: { type: "ALMACEN" | "CUADRILLA"; id: string };
+    material?: any;
+    materialId?: string;
+    unidadTipo?: string;
+    und?: number;
+    metros?: number;
+  }
 ) {
   const db = adminDb();
-  const materialId = opts.material.id || opts.material.materialId || opts.materialId;
-  const unidadTipo = opts.material.unidadTipo;
+  const materialId = opts.material?.id || opts.material?.materialId || opts.materialId;
+  const unidadTipo = opts.material?.unidadTipo || opts.unidadTipo;
   const deltaUnd = Math.floor(opts.und || 0);
   const deltaCm = metersToCm(opts.metros || 0);
 
@@ -470,5 +478,7 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
     return { ok: false, error: { formErrors: [code] } };
   }
 }
+
+
 
 

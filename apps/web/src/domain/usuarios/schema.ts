@@ -60,12 +60,11 @@ export const UserCreateSchema = z.object({
 });
 
 /**
- * Crear usuario (NO ADMIN): restringe roles a catálogo permitido sin ADMIN.
- * Devuelve errores en path roles[i] cuando corresponda.
+ * Crear usuario (NO ADMIN):
+ * acepta roles dinámicos del catálogo y el bloqueo de ADMIN se aplica en la server action.
  */
 export const UserCreateNonAdminSchema = UserCreateSchema.extend({
-  roles: z.array(z.enum(["COORDINADOR", "GESTOR", "SUPERVISOR", "TECNICO"]))
-    .default([]),
+  roles: z.array(z.string().min(2)).default([]),
 });
 
 /**

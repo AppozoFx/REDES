@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { getServerSession } from "@/core/auth/session";
+import { resolveTramoBase } from "@/domain/ordenes/tramo";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,7 @@ type Row = {
   cuadrillaNombre: string;
   fechaFinVisiYmd: string;
   fechaFinVisiHm: string;
+  fSoliHm: string;
   tipo: string;
   tipoTraba: string;
   estado: string;
@@ -52,18 +54,10 @@ function cuadrillaNumber(cuadrillaId: string, cuadrillaNombre: string) {
   return m ? Number(m[1]) : Number.MAX_SAFE_INTEGER;
 }
 
-function tramoFromHm(hm: string) {
-  const hour = Number(String(hm || "").split(":")[0]);
-  if (!Number.isFinite(hour)) return 99;
-  if (hour < 10) return 8;
-  if (hour < 14) return 12;
-  return 16;
-}
-
-function tramoPriority(tramo: number) {
-  if (tramo === 8) return 0;
-  if (tramo === 12) return 1;
-  if (tramo === 16) return 2;
+function tramoPriority(tramoBase: string) {
+  if (tramoBase === "08:00") return 0;
+  if (tramoBase === "12:00") return 1;
+  if (tramoBase === "16:00") return 2;
   return 3;
 }
 
@@ -77,8 +71,8 @@ function sortRows(rows: Row[]) {
     const nB = cuadrillaNumber(b.cuadrillaId, b.cuadrillaNombre);
     if (nA !== nB) return nA - nB;
 
-    const tA = tramoPriority(tramoFromHm(a.fechaFinVisiHm));
-    const tB = tramoPriority(tramoFromHm(b.fechaFinVisiHm));
+    const tA = tramoPriority(resolveTramoBase(a.fSoliHm, a.fechaFinVisiHm));
+    const tB = tramoPriority(resolveTramoBase(b.fSoliHm, b.fechaFinVisiHm));
     if (tA !== tB) return tA - tB;
 
     const hmCmp = String(a.fechaFinVisiHm || "").localeCompare(String(b.fechaFinVisiHm || ""));
@@ -138,7 +132,8 @@ export async function GET(req: Request) {
           cuadrillaId: String(x.cuadrillaId || ""),
           cuadrillaNombre: String(x.cuadrillaNombre || ""),
           fechaFinVisiYmd: String(x.fechaFinVisiYmd || ""),
-          fechaFinVisiHm: String(x.fechaFinVisiHm || ""),
+          fechaFinVisiHm: String(x.fechaFinVisiHm || x.fSoliHm || ""),
+          fSoliHm: String(x.fSoliHm || ""),
           tipo: String(x.tipo || ""),
           tipoTraba: String(x.tipoTraba || ""),
           estado: String(x.estado || ""),

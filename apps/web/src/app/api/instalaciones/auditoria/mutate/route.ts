@@ -105,10 +105,10 @@ export async function POST(req: Request) {
     }
 
     if (action === "marcar_masivo") {
-      const sns = Array.from(
-        new Set(
+      const sns: string[] = Array.from(
+        new Set<string>(
           (Array.isArray(body?.sns) ? body.sns : [])
-            .map((s: any) => asStr(s).toUpperCase())
+            .map((s: unknown) => asStr(s).toUpperCase())
             .filter(Boolean)
         )
       );
@@ -220,4 +220,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }
 }
+
+
 

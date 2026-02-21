@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "check:conflicts": "rg -n \"^(<<<<<<< .+|=======|>>>>>>> .+)$\" src || exit 0",
+    "predeploy": "pnpm run check:conflicts && pnpm run lint && pnpm run typecheck",
+    "predeploy:full": "pnpm run predeploy && pnpm --filter web build"
   },
   "dependencies": {
     "@babel/runtime": "^7.28.6",
@@ -26,6 +30,7 @@
     "react-leaflet": "^5.0.0",
     "react-leaflet-markercluster": "^5.0.0-rc.0",
     "react-select": "^5.9.0",
+    "recharts": "^3.7.0",
     "sonner": "^2.0.7",
     "xlsx": "^0.18.5",
     "zod": "^4.3.6"

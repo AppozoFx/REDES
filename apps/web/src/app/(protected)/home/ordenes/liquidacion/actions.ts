@@ -67,6 +67,8 @@ type CorregirResult =
       error: { formErrors: string[] };
     };
 
+type LiquidarDetails = Extract<LiquidarResult, { ok: true }>["details"];
+
 function uniqStrings(values: string[]): string[] {
   return Array.from(new Set(values.map((v) => String(v || "").trim()).filter(Boolean)));
 }
@@ -85,6 +87,32 @@ function formatYmdToDmy(ymd: string): string {
   const [y, m, d] = parts;
   if (!y || !m || !d) return ymd || "";
   return `${d}/${m}/${y}`;
+}
+
+function datePartsFromOrderYmdHm(
+  ymd: string,
+  hm: string | undefined,
+  fallback: { at: any; ymd: string | null; hm: string | null }
+) {
+  const y = String(ymd || "").trim();
+  const h = String(hm || "").trim();
+  const mYmd = y.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const mHm = h.match(/^(\d{1,2}):(\d{2})$/);
+  if (!mYmd) {
+    return fallback;
+  }
+  const hh = mHm ? String(mHm[1]).padStart(2, "0") : "12";
+  const mm = mHm ? String(mHm[2]).padStart(2, "0") : "00";
+  const dt = new Date(`${mYmd[1]}-${mYmd[2]}-${mYmd[3]}T${hh}:${mm}:00-05:00`);
+  if (Number.isNaN(dt.getTime())) {
+    return fallback;
+  }
+  const parts = toDatePartsLima(dt);
+  return {
+    at: parts.at,
+    ymd: parts.ymd || y,
+    hm: parts.hm || (mHm ? `${hh}:${mm}` : fallback.hm),
+  };
 }
 
 const KIT_BASE_POR_INSTALACION: Record<string, number> = {
@@ -143,7 +171,7 @@ export async function liquidarOrdenAction(_: any, formData: FormData): Promise<L
     const cuadrillaId = String(orden?.cuadrillaId || "").trim();
     if (!cuadrillaId) return { ok: false, error: { formErrors: ["ORDEN_SIN_CUADRILLA"] } };
 
-    let details: LiquidarResult["details"] | null = null;
+    let details: any = null;
     await db.runTransaction(async (tx) => {
       const ordSnap = await tx.get(ordenRef);
       if (!ordSnap.exists) throw new Error("ORDEN_NOT_FOUND");
@@ -156,6 +184,9 @@ export async function liquidarOrdenAction(_: any, formData: FormData): Promise<L
 
       const cliente = String(ord?.cliente || "").trim();
       const codigoCliente = String(ord?.codiSeguiClien || "").trim();
+      const ordenFechaYmd = String(ord?.fechaFinVisiYmd || ord?.fSoliYmd || d.ymd || "");
+      const ordenFechaHm = String(ord?.fechaFinVisiHm || ord?.fSoliHm || d.hm || "");
+      const fechaInstalacion = datePartsFromOrderYmdHm(ordenFechaYmd, ordenFechaHm, d);
       if (!codigoCliente) throw new Error("CODIGO_CLIENTE_REQUIRED");
       const cuadrillaRef = db.collection("cuadrillas").doc(cuadrillaId);
       const cuadrillaSnap = await tx.get(cuadrillaRef);
@@ -217,9 +248,9 @@ export async function liquidarOrdenAction(_: any, formData: FormData): Promise<L
           ubicacion: "INSTALADOS",
           cliente,
           codigoCliente,
-          f_instaladoAt: d.at,
-          f_instaladoYmd: d.ymd,
-          f_instaladoHm: d.hm,
+          f_instaladoAt: fechaInstalacion.at,
+          f_instaladoYmd: fechaInstalacion.ymd,
+          f_instaladoHm: fechaInstalacion.hm,
           audit: {
             ...(eq?.audit || {}),
             updatedAt: FieldValue.serverTimestamp(),
@@ -282,7 +313,6 @@ export async function liquidarOrdenAction(_: any, formData: FormData): Promise<L
       const equiposByTipo = Object.fromEntries(
         Array.from(movedTypes.entries()).map(([tipo, count]) => [tipo, count])
       );
-      const ordenFechaYmd = String(ord?.fechaFinVisiYmd || ord?.fSoliYmd || d.ymd || "");
       const firstOnt = equiposInstalados.find((e) => String(e.tipo || "").toUpperCase() === "ONT");
       const planGamer = String(parsed.data.planGamer || "").trim();
       const kitWifiPro = String(parsed.data.kitWifiPro || "").trim();
@@ -300,9 +330,9 @@ export async function liquidarOrdenAction(_: any, formData: FormData): Promise<L
           cuadrillaId,
           cuadrillaNombre: String(ord?.cuadrillaNombre || c?.nombre || cuadrillaId),
           tipoCuadrilla: String(c?.segmento || c?.categoria || c?.r_c || ""),
-          fechaInstalacionAt: d.at,
-          fechaInstalacionYmd: d.ymd,
-          fechaInstalacionHm: d.hm,
+          fechaInstalacionAt: fechaInstalacion.at,
+          fechaInstalacionYmd: fechaInstalacion.ymd,
+          fechaInstalacionHm: fechaInstalacion.hm,
           fechaOrdenYmd: ordenFechaYmd,
           estado: String(ord?.estado || ""),
           tipo: String(ord?.tipo || ord?.tipoTraba || ""),
@@ -646,7 +676,7 @@ export async function corregirOrdenAction(_: any, formData: FormData): Promise<C
         await addGlobalNotification({
           title: "Orden corregida",
           message: `✅ Cliente: ${cliente || codiSeguiClien || "cliente"} • Pedido: ${codiSeguiClien || ordenId} • Cuadrilla: ${cuadrillaNombre || "-"} • Corregido por: ${corregidoPor} • Fecha: ${fechaOrden || "-"}`,
-          type: "warning",
+          type: "warn",
           scope: "ALL",
           createdBy: session.uid,
           entityType: "ORDENES",
@@ -663,3 +693,5 @@ export async function corregirOrdenAction(_: any, formData: FormData): Promise<C
     return { ok: false, error: { formErrors: [msg] } };
   }
 }
+
+

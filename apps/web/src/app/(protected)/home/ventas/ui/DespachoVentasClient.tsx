@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import { toast } from "sonner";
 import { crearVentaAction } from "../server-actions";
@@ -837,3 +836,5 @@ export default function DespachoVentasClient({
     </div>
   );
 }
+
+

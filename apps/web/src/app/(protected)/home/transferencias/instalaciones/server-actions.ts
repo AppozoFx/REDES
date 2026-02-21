@@ -503,8 +503,8 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
             // Corregir instalacion: devolver al stock de cuadrilla todos los SN instalados
             // excepto el SN que se esta enviando a garantia.
             const equiposInstalados = Array.isArray(inst?.equiposInstalados) ? inst.equiposInstalados : [];
-            const restoreSns = Array.from(
-              new Set(
+            const restoreSns: string[] = Array.from(
+              new Set<string>(
                 equiposInstalados
                   .map((x: any) => String(x?.sn || "").trim().toUpperCase())
                   .filter((x: string) => !!x && x !== sn)
@@ -793,7 +793,7 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
     } catch {}
 
     const resumen = { equipos: { ok: itemsEquipos.filter(x=>x.status==='OK').length, fail: itemsEquipos.filter(x=>x.status==='ERROR').length }, materiales: { ok: itemsMateriales.filter(x=>x.status==='OK').length, fail: itemsMateriales.filter(x=>x.status==='ERROR').length }, warnings: [] as string[] };
-    return { ok: true, transferId, guia, resumen, itemsEquipos, itemsMateriales, observacionFinal: finalObservacion };
+    return { ok: true, transferId, guia, resumen, itemsEquipos, itemsMateriales };
   } catch (e: any) {
     const code = String(e?.message ?? "ERROR");
     if (e?.issues) {
@@ -803,3 +803,5 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
     return { ok: false, error: { formErrors: [code] } };
   }
 }
+
+

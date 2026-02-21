@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { FieldPath, FieldValue } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase/admin";
 import { getServerSession } from "@/core/auth/session";
 
@@ -41,18 +41,16 @@ export async function POST(req: Request) {
     const payload: any = {
       updatedAt: FieldValue.serverTimestamp(),
     };
-    if (data.tipoOrden !== undefined) {
-      payload[new FieldPath("orden", "tipoOrden")] = data.tipoOrden;
-    }
+    if (data.tipoOrden !== undefined) payload["orden.tipoOrden"] = data.tipoOrden;
     if (data.coordinadorCuadrilla !== undefined) {
-      payload[new FieldPath("orden", "coordinadorCuadrilla")] = String(data.coordinadorCuadrilla || "");
+      payload["orden.coordinadorCuadrilla"] = String(data.coordinadorCuadrilla || "");
     }
-    if (data.observacion !== undefined) {
-      payload[new FieldPath("liquidacion", "observacion")] = String(data.observacion || "");
-    }
+    if (data.observacion !== undefined) payload["liquidacion.observacion"] = String(data.observacion || "");
     await instRef.update(payload);
     return NextResponse.json({ ok: true, id: data.id });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }
 }
+
+

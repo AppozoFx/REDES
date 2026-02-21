@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
@@ -741,3 +740,5 @@ export default function TecnicosMaterialesClient() {
     </div>
   );
 }
+
+

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { getServerSession } from "@/core/auth/session";
 import { getAsignacionData, resolveGestorVisible, todayLimaYmd } from "@/lib/gestorAsignacion";
+import { resolveTramoNombre } from "@/domain/ordenes/tramo";
 
 export const runtime = "nodejs";
 
@@ -52,14 +53,6 @@ function shortName(name: string) {
   const first = parts[0];
   const last = parts.length > 1 ? parts[parts.length - 1] : "";
   return last ? `${first} ${last}` : first;
-}
-
-function tramoLabel(hm: string) {
-  const v = String(hm || "").slice(0, 5);
-  if (v === "08:00") return "Primer Tramo";
-  if (v === "12:00") return "Segundo Tramo";
-  if (v === "16:00") return "Tercer Tramo";
-  return v || "-";
 }
 
 function isGarantia(x: any) {
@@ -130,7 +123,7 @@ export async function GET(req: Request) {
       direccion: String(x.direccion || x.direccion1 || ""),
       cuadrilla: String(x.cuadrillaNombre || x.cuadrillaId || ""),
       tipoServicio: String(x.tipoTraba || x.tipoOrden || ""),
-      tramo: tramoLabel(String(x.fSoliHm || "")),
+      tramo: resolveTramoNombre(String(x.fSoliHm || ""), String(x.fechaFinVisiHm || "")),
       estado: String(x.estado || ""),
       horaInicio: String(x.horaInicio || ""),
       horaFin: String(x.horaFin || ""),

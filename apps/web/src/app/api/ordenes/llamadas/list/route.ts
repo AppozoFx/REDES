@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { getServerSession } from "@/core/auth/session";
 import { getAsignacionData, resolveGestorVisible } from "@/lib/gestorAsignacion";
+import { resolveTramoBase, tramoNombreFromBase } from "@/domain/ordenes/tramo";
 
 export const runtime = "nodejs";
 const PERM_VIEW = "ORDENES_LLAMADAS_VIEW";
@@ -54,22 +55,6 @@ function shortName(name: string) {
   return last ? `${first} ${last}` : first;
 }
 
-function tramoNombreFromHm(hm: string) {
-  const h = Number(String(hm || "").split(":")[0]);
-  if (!Number.isFinite(h)) return "Tramo no definido";
-  if (h < 10) return "Primer Tramo";
-  if (h < 14) return "Segundo Tramo";
-  return "Tercer Tramo";
-}
-
-function tramoBaseFromHm(hm: string) {
-  const h = Number(String(hm || "").split(":")[0]);
-  if (!Number.isFinite(h)) return "";
-  if (h < 10) return "08:00";
-  if (h < 14) return "12:00";
-  return "16:00";
-}
-
 export async function GET(req: Request) {
   try {
     const session = await getServerSession();
@@ -117,7 +102,7 @@ export async function GET(req: Request) {
         tipoServicio: String(x.tipoTraba || x.tipoOrden || ""),
         estado: String(x.estado || ""),
         fechaFinVisiYmd: String(x.fSoliYmd || ""),
-        fechaFinVisiHm: String(x.fSoliHm || ""),
+        fechaFinVisiHm: String(x.fSoliHm || x.fechaFinVisiHm || ""),
         horaInicioLlamada: String(x.horaInicioLlamada || ""),
         horaFinLlamada: String(x.horaFinLlamada || ""),
         estadoLlamada: String(x.estadoLlamada || ""),
@@ -149,12 +134,13 @@ export async function GET(req: Request) {
 
     let items: Row[] = rawRows.map((r: any) => {
       const { _tipo, _tipoTraba, _idenServi, _estado, ...clean } = r;
+      const tramoBase = resolveTramoBase(r.fechaFinVisiHm);
       return {
         ...clean,
         gestorNombre: userMap.get(r.gestorUid) || r.gestorUid || "-",
         coordinadorNombre: userMap.get(r.coordinadorUid) || r.coordinadorUid || "-",
-        tramoBase: tramoBaseFromHm(r.fechaFinVisiHm),
-        tramoNombre: tramoNombreFromHm(r.fechaFinVisiHm),
+        tramoBase,
+        tramoNombre: tramoNombreFromBase(tramoBase),
       };
     });
 

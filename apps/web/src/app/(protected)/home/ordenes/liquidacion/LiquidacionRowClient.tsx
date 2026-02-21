@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { corregirOrdenAction, liquidarOrdenAction } from "./actions";
+import { resolveTramoNombre } from "@/domain/ordenes/tramo";
 
 type OrdenLite = {
   id: string;
@@ -15,6 +16,7 @@ type OrdenLite = {
   cuadrillaNombre: string;
   fechaFinVisiYmd: string;
   fechaFinVisiHm: string;
+  fSoliHm?: string;
   tipo: string;
   estado: string;
   idenServi: string;
@@ -27,14 +29,6 @@ type OrdenLite = {
   correccionYmd?: string;
   rotuloNapCto?: string;
 };
-
-function tramoFromHm(hm: string) {
-  const hour = Number(String(hm || "").split(":")[0]);
-  if (!Number.isFinite(hour)) return "Tramo no definido";
-  if (hour < 10) return "Primer Tramo";
-  if (hour < 14) return "Segundo Tramo";
-  return "Tercer Tramo";
-}
 
 const norm = (s: string) => String(s || "").trim().toUpperCase();
 
@@ -51,6 +45,20 @@ function ensureArraySize(arr: string[], n: number) {
   const out = [...arr];
   while (out.length < n) out.push("");
   return out.slice(0, n);
+}
+
+function splitByPipeLines(text: string) {
+  return String(text || "")
+    .split("|")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function ymdToDmy(ymd: string) {
+  const s = String(ymd || "").trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return s || "-";
+  return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
 type StockByTipo = {
@@ -76,7 +84,7 @@ export function LiquidacionRowClient({
   const [corrState, corrAction, corrPending] = useActionState(corregirOrdenAction as any, null as any);
   const [corrMotivo, setCorrMotivo] = useState("");
   const corrFormRef = useRef<HTMLFormElement | null>(null);
-  const tramo = tramoFromHm(orden.fechaFinVisiHm);
+  const tramo = resolveTramoNombre(orden.fSoliHm || "", orden.fechaFinVisiHm);
   const tips = useMemo(() => detectTipificaciones(orden.idenServi || ""), [orden.idenServi]);
   const [snONT, setSnONT] = useState("");
   const [proidONT, setProidONT] = useState("");
@@ -94,6 +102,8 @@ export function LiquidacionRowClient({
   const [fonoExtraEnabled, setFonoExtraEnabled] = useState(false);
   const [stock, setStock] = useState<StockByTipo>(emptyStock());
   const [stockLoading, setStockLoading] = useState(false);
+  const [cardFocus, setCardFocus] = useState(false);
+  const [prefilledOnce, setPrefilledOnce] = useState(false);
 
   const expected = useMemo(() => {
     const mesh = Number(orden.cantMESHwin || 0);
@@ -141,7 +151,7 @@ export function LiquidacionRowClient({
     (expected.fono > 0 ? !!norm(snFONO) : !fonoExtraEnabled || !!norm(snFONO));
 
   const cat6 = planGamerChecked ? 1 : 0;
-  const puntosUTP = (cableadoMeshChecked ? Math.max(0, Math.floor(cat5e || 0)) : 0) + cat6;
+  const puntosUTP = (cableadoMeshChecked ? Math.max(1, Math.min(4, Math.floor(cat5e || 1))) : 0) + cat6;
 
   const ontSet = useMemo(() => new Set(stock.ONT.map((o) => norm(o.sn))), [stock.ONT]);
   const meshSet = useMemo(() => new Set(stock.MESH.map((v) => norm(v))), [stock.MESH]);
@@ -214,13 +224,14 @@ export function LiquidacionRowClient({
   }, [open, orden.cuadrillaId]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || prefilledOnce) return;
     setPlanGamerChecked(!!tips.gamer);
     setKitWifiProChecked(!!tips.kitWifiPro);
     setCableadoMeshChecked(!!tips.cableadoMesh);
-    setCat5e(0);
+    setCat5e(tips.cableadoMesh ? 1 : 0);
     if (orden.rotuloNapCto) setRotuloNapCto(orden.rotuloNapCto);
-  }, [open, tips.gamer, tips.kitWifiPro, tips.cableadoMesh]);
+    setPrefilledOnce(true);
+  }, [open, prefilledOnce, tips.gamer, tips.kitWifiPro, tips.cableadoMesh, orden.rotuloNapCto]);
 
   useEffect(() => {
     if (!meshExtraEnabled) setSnMESH((prev) => prev.slice(0, meshBaseSlots));
@@ -252,7 +263,7 @@ export function LiquidacionRowClient({
     }
     if (handledOkRef.current) return;
     handledOkRef.current = true;
-    if (open) setOpen(false);
+    if (open) closeModal();
     onLiquidated?.();
 
     const d = state?.details;
@@ -288,36 +299,102 @@ export function LiquidacionRowClient({
     onLiquidated?.();
   }, [corrState?.ok]);
 
+  const closeModal = () => {
+    setOpen(false);
+    setCardFocus(true);
+    window.setTimeout(() => setCardFocus(false), 1600);
+  };
+
   function updateAt(arr: string[], idx: number, value: string) {
     const next = [...arr];
     next[idx] = value;
     return next;
   }
 
+  const codigoTxt = useMemo(() => orden.codiSeguiClien || orden.ordenId || "-", [orden.codiSeguiClien, orden.ordenId]);
+  const clienteTxt = useMemo(() => orden.cliente || "-", [orden.cliente]);
+
+  const planLines = useMemo(() => {
+    const base = orden.plan || orden.idenServi || "-";
+    const lines = splitByPipeLines(base);
+    return lines.length ? lines : ["-"];
+  }, [orden.plan, orden.idenServi]);
+
+  const tramoCopyText = useMemo(() => {
+    const fecha = ymdToDmy(orden.fechaFinVisiYmd || "");
+    const codigo = orden.codiSeguiClien || orden.ordenId || "-";
+    const cliente = orden.cliente || "-";
+    const cuadrilla = orden.cuadrillaNombre || orden.cuadrillaId || "-";
+    return [`*${fecha}*`, codigo, `*${cliente}*`, `Cuadrilla *${cuadrilla}*`, `*${tramo}*`].join("\n");
+  }, [orden.fechaFinVisiYmd, orden.codiSeguiClien, orden.ordenId, orden.cliente, orden.cuadrillaNombre, orden.cuadrillaId, tramo]);
+
   return (
-    <div className="rounded-xl border p-4 space-y-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <div className="font-semibold">{orden.codiSeguiClien || orden.ordenId}</div>
-          <div className="text-sm text-muted-foreground">
-            Cliente: {orden.cliente || "-"} | Codigo: {orden.codiSeguiClien || "-"}
+    <div className={`rounded-xl border p-4 space-y-3 transition-all ${cardFocus ? "ring-2 ring-blue-500 border-blue-400 bg-blue-50/40" : ""}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1 min-w-0 flex-1">
+          <button
+            type="button"
+            className="text-left rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 py-1 text-lg font-extrabold tracking-wide text-slate-900 hover:bg-slate-100"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(codigoTxt);
+                toast.success("Codigo copiado");
+              } catch {
+                toast.error("No se pudo copiar codigo");
+              }
+            }}
+            title="Copiar codigo"
+          >
+            {orden.codiSeguiClien || orden.ordenId}
+          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="text-left text-sm rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 py-1 hover:bg-slate-100"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(clienteTxt);
+                  toast.success("Cliente copiado");
+                } catch {
+                  toast.error("No se pudo copiar cliente");
+                }
+              }}
+              title="Copiar cliente"
+            >
+              <span className="text-muted-foreground">{clienteTxt}</span>
+            </button>
           </div>
-          <div className="text-sm text-muted-foreground">
+          <div className="text-sm text-muted-foreground break-words">
             Direccion: {orden.direccion || "-"}
           </div>
           <div className="text-sm text-muted-foreground">
             Plan: {orden.plan || orden.idenServi || "-"}
           </div>
-          <div className="text-sm text-muted-foreground">
-            Cuadrilla: {orden.cuadrillaNombre || orden.cuadrillaId} | Fecha: {orden.fechaFinVisiYmd || "-"} {orden.fechaFinVisiHm || ""}
+          <div className="inline-flex items-center gap-2 rounded-md border border-blue-300 bg-blue-50 px-2 py-1 text-sm text-blue-900">
+            <span className="font-medium">Cuadrilla</span>
+            <span className="font-semibold">{orden.cuadrillaNombre || orden.cuadrillaId}</span>
+            <span className="text-blue-700">|</span>
+            <span>{ymdToDmy(orden.fechaFinVisiYmd || "")}</span>
           </div>
           <div className="text-xs text-muted-foreground">
             Estado: {orden.estado || "-"} | Tipo: {orden.tipo || "-"}
           </div>
           <div>
-            <span className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs">
+            <button
+              type="button"
+              className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs hover:bg-slate-50"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(tramoCopyText);
+                  toast.success("Resumen de tramo copiado");
+                } catch {
+                  toast.error("No se pudo copiar");
+                }
+              }}
+              title="Copiar resumen de tramo"
+            >
               {tramo}
-            </span>
+            </button>
           </div>
           <div className="flex flex-wrap gap-1">
             {tips.cableadoMesh ? <span className="inline-flex items-center rounded-md border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700">SERVICIO CABLEADO DE MESH</span> : null}
@@ -325,10 +402,11 @@ export function LiquidacionRowClient({
             {tips.kitWifiPro ? <span className="inline-flex items-center rounded-md border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">KIT WIFI PRO (EN VENTA)</span> : null}
           </div>
         </div>
+        <div className="shrink-0 flex flex-col items-end gap-2">
         <button
           type="button"
-          className="rounded border px-3 py-1.5 text-sm disabled:opacity-50"
-          onClick={() => setOpen((v) => !v)}
+          className="rounded-lg border bg-black px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-50"
+          onClick={() => (open ? closeModal() : setOpen(true))}
           disabled={!!orden.liquidado && !orden.correccionPendiente}
         >
           {open ? "Cerrar" : orden.correccionPendiente ? "Liquidar (correccion)" : "Liquidar"}
@@ -341,7 +419,7 @@ export function LiquidacionRowClient({
             </form>
             <button
               type="button"
-              className="rounded border px-3 py-1.5 text-sm border-amber-400 text-amber-700"
+              className="rounded-lg border px-3 py-1.5 text-sm border-amber-400 text-amber-700"
               disabled={corrPending}
               onClick={() => {
                 const motivo = window.prompt("Motivo de correccion (opcional):", corrMotivo || "");
@@ -354,6 +432,7 @@ export function LiquidacionRowClient({
             </button>
           </>
         ) : null}
+        </div>
       </div>
       {orden.correccionPendiente || orden.correccionYmd ? (
         <div className="rounded border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2 text-xs">
@@ -365,11 +444,11 @@ export function LiquidacionRowClient({
 
       {open ? (
         <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/45" onClick={() => setOpen(false)} />
+          <div className="absolute inset-0 bg-black/45" onClick={closeModal} />
           <div className="absolute inset-x-0 top-4 bottom-4 mx-auto w-[96vw] max-w-4xl overflow-y-auto rounded-xl bg-white p-4 shadow-2xl">
             <div className="mb-3 flex items-center justify-between">
               <div className="font-semibold text-base">Liquidar orden {orden.codiSeguiClien || orden.ordenId}</div>
-              <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => setOpen(false)}>
+              <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={closeModal}>
                 Cerrar
               </button>
             </div>
@@ -380,7 +459,11 @@ export function LiquidacionRowClient({
           <input type="hidden" name="planGamer" value={planGamerChecked ? "GAMER" : ""} />
           <input type="hidden" name="kitWifiPro" value={kitWifiProChecked ? "KIT WIFI PRO (AL CONTADO)" : ""} />
           <input type="hidden" name="servicioCableadoMesh" value={cableadoMeshChecked ? "SERVICIO CABLEADO DE MESH" : ""} />
-          <input type="hidden" name="cat5e" value={String(cableadoMeshChecked ? Math.max(0, Math.floor(cat5e || 0)) : 0)} />
+          <input
+            type="hidden"
+            name="cat5e"
+            value={String(cableadoMeshChecked ? Math.max(1, Math.min(4, Math.floor(cat5e || 1))) : 0)}
+          />
           <input type="hidden" name="cat6" value={String(cat6)} />
           <input type="hidden" name="puntosUTP" value={String(puntosUTP)} />
           <input type="hidden" name="observacion" value={observacion} />
@@ -390,19 +473,49 @@ export function LiquidacionRowClient({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
               <div>
                 <span className="text-muted-foreground">Fecha:</span>{" "}
-                <span>{orden.fechaFinVisiYmd || "-"} {orden.fechaFinVisiHm || ""}</span>
+                <span>{ymdToDmy(orden.fechaFinVisiYmd || "")}</span>
               </div>
               <div>
                 <span className="text-muted-foreground">Cuadrilla:</span>{" "}
-                <span>{orden.cuadrillaNombre || orden.cuadrillaId || "-"}</span>
+                <span className="inline-flex rounded bg-blue-100 px-2 py-0.5 font-semibold text-blue-900">
+                  {orden.cuadrillaNombre || orden.cuadrillaId || "-"}
+                </span>
               </div>
               <div>
-                <span className="text-muted-foreground">Codigo cliente:</span>{" "}
-                <span>{orden.codiSeguiClien || orden.ordenId || "-"}</span>
+                <span className="text-muted-foreground">Código Cliente:</span>{" "}
+                <button
+                  type="button"
+                  className="rounded border border-dashed border-slate-300 bg-white px-2 py-0.5 text-xs font-medium hover:bg-slate-50"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(codigoTxt);
+                      toast.success("Codigo copiado");
+                    } catch {
+                      toast.error("No se pudo copiar codigo");
+                    }
+                  }}
+                  title="Copiar codigo cliente"
+                >
+                  {orden.codiSeguiClien || orden.ordenId || "-"}
+                </button>
               </div>
               <div>
                 <span className="text-muted-foreground">Cliente:</span>{" "}
-                <span>{orden.cliente || "-"}</span>
+                <button
+                  type="button"
+                  className="rounded border border-dashed border-slate-300 bg-white px-2 py-0.5 text-xs hover:bg-slate-50"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(clienteTxt);
+                      toast.success("Cliente copiado");
+                    } catch {
+                      toast.error("No se pudo copiar cliente");
+                    }
+                  }}
+                  title="Copiar cliente"
+                >
+                  {orden.cliente || "-"}
+                </button>
               </div>
               <div className="md:col-span-2">
                 <span className="text-muted-foreground">Direccion:</span>{" "}
@@ -414,7 +527,7 @@ export function LiquidacionRowClient({
               </div>
               <div>
                 <span className="text-muted-foreground">Plan:</span>{" "}
-                <span>{orden.plan || orden.idenServi || "-"}</span>
+                <span className="block whitespace-pre-line">{planLines.join("\n")}</span>
               </div>
             </div>
           </div>
@@ -425,67 +538,6 @@ export function LiquidacionRowClient({
 
           <div className="text-xs text-muted-foreground">
             Tipificaciones: Gamer={tips.gamer ? "Si" : "No"} | Kit Wifi Pro={tips.kitWifiPro ? "Si" : "No"} | Cableado Mesh={tips.cableadoMesh ? "Si" : "No"}
-          </div>
-
-          <div className="rounded border p-3 space-y-3">
-            <div className="text-sm font-medium">Servicios detectados / confirmados</div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <label className="inline-flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={planGamerChecked}
-                  onChange={(e) => setPlanGamerChecked(e.target.checked)}
-                />
-                Plan Gamer
-              </label>
-              <label className="inline-flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={cableadoMeshChecked}
-                  onChange={(e) => setCableadoMeshChecked(e.target.checked)}
-                />
-                SERVICIO CABLEADO DE MESH
-              </label>
-              <label className="inline-flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={kitWifiProChecked}
-                  onChange={(e) => setKitWifiProChecked(e.target.checked)}
-                />
-                KIT WIFI PRO (AL CONTADO)
-              </label>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">CAT 5e</label>
-                <input
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={cableadoMeshChecked ? cat5e : 0}
-                  onChange={(e) => setCat5e(Math.max(0, Math.floor(Number(e.target.value || 0))))}
-                  disabled={!cableadoMeshChecked}
-                  className={`w-full rounded border px-3 py-2 text-sm ${!cableadoMeshChecked ? "bg-gray-100 text-gray-500" : ""}`}
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">CAT 6</label>
-                <input
-                  value={String(cat6)}
-                  readOnly
-                  className="w-full rounded border px-3 py-2 text-sm bg-gray-100 text-gray-700"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Puntos UTP</label>
-                <input
-                  value={String(puntosUTP)}
-                  readOnly
-                  className="w-full rounded border px-3 py-2 text-sm bg-gray-100 text-gray-700"
-                />
-              </div>
-            </div>
           </div>
 
           {observacionRequerida ? (
@@ -727,6 +779,77 @@ export function LiquidacionRowClient({
             <label className="text-sm font-medium">Materiales (consumo automatico por instalacion)</label>
             <div className="text-xs text-slate-700">
               ACTA:1, CINTILLO_30:4, CINTILLO_BANDERA:1, CONECTOR:1, ACOPLADOR:1, PACHCORD:1, ROSETA:1
+            </div>
+          </div>
+
+          <div className="rounded border p-3 space-y-3">
+            <div className="text-sm font-medium">Servicios detectados / confirmados</div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={planGamerChecked}
+                  onChange={(e) => setPlanGamerChecked(e.target.checked)}
+                />
+                Plan Gamer
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={cableadoMeshChecked}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setCableadoMeshChecked(checked);
+                    if (checked && (!Number.isFinite(cat5e) || cat5e < 1)) setCat5e(1);
+                    if (!checked) setCat5e(0);
+                  }}
+                />
+                SERVICIO CABLEADO DE MESH
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={kitWifiProChecked}
+                  onChange={(e) => setKitWifiProChecked(e.target.checked)}
+                />
+                KIT WIFI PRO (AL CONTADO)
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">CAT 5e</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={4}
+                  step={1}
+                  value={cableadoMeshChecked ? (cat5e < 1 ? 1 : cat5e) : 0}
+                  onChange={(e) => {
+                    const raw = Math.floor(Number(e.target.value || 1));
+                    const safe = Math.max(1, Math.min(4, Number.isFinite(raw) ? raw : 1));
+                    setCat5e(safe);
+                  }}
+                  disabled={!cableadoMeshChecked}
+                  className={`w-full rounded border px-3 py-2 text-sm ${!cableadoMeshChecked ? "bg-gray-100 text-gray-500" : ""}`}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">CAT 6</label>
+                <input
+                  value={String(cat6)}
+                  readOnly
+                  className="w-full rounded border px-3 py-2 text-sm bg-gray-100 text-gray-700"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Puntos UTP</label>
+                <input
+                  value={String(puntosUTP)}
+                  readOnly
+                  className="w-full rounded border px-3 py-2 text-sm bg-gray-100 text-gray-700"
+                />
+              </div>
             </div>
           </div>
 

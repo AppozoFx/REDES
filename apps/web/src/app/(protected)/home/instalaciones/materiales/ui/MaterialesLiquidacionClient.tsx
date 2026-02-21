@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
@@ -41,6 +40,10 @@ type Row = {
   acta?: string;
   coordinador?: string;
   materialesConsumidos?: Array<{ materialId: string; und?: number; metros?: number }>;
+  snONT?: string;
+  snMESH?: string[];
+  snBOX?: string[];
+  snFONO?: string;
   materialesLiquidacion?: {
     acta?: string;
     precon?: string;
@@ -73,6 +76,8 @@ export default function MaterialesLiquidacionClient() {
     dia: "",
     busqueda: "",
     coordinador: "",
+    cuadrilla: "",
+    estado: "",
   });
   const [forms, setForms] = useState<Record<string, FormState>>({});
 
@@ -100,16 +105,25 @@ export default function MaterialesLiquidacionClient() {
   const list = useMemo(() => {
     const q = String(filtros.busqueda || "").toLowerCase().trim();
     const coord = String(filtros.coordinador || "").toLowerCase().trim();
+    const cuadrilla = String(filtros.cuadrilla || "").toLowerCase().trim();
+    const estado = String(filtros.estado || "").toLowerCase().trim();
     return items.filter((x) => {
       const hay = `${x.codigoCliente || ""} ${x.cliente || ""} ${x.cuadrillaNombre || ""}`.toLowerCase();
       const okQ = q ? hay.includes(q) : true;
       const okCoord = coord ? String(x.coordinador || "").toLowerCase().includes(coord) : true;
-      return okQ && okCoord;
+      const okCuadrilla = cuadrilla ? String(x.cuadrillaNombre || "").toLowerCase() === cuadrilla : true;
+      const liquidado = isLiquidado(x);
+      const okEstado = estado ? (estado === "liquidado" ? liquidado : !liquidado) : true;
+      return okQ && okCoord && okCuadrilla && okEstado;
     });
-  }, [items, filtros.busqueda, filtros.coordinador]);
+  }, [items, filtros.busqueda, filtros.coordinador, filtros.cuadrilla, filtros.estado]);
 
   const coordinadores = useMemo(() => {
     return Array.from(new Set(items.map((x) => String(x.coordinador || "").trim()).filter(Boolean))).sort();
+  }, [items]);
+
+  const cuadrillas = useMemo(() => {
+    return Array.from(new Set(items.map((x) => String(x.cuadrillaNombre || "").trim()).filter(Boolean))).sort();
   }, [items]);
 
   const setField = (id: string, key: keyof FormState, value: string) => {
@@ -167,12 +181,12 @@ export default function MaterialesLiquidacionClient() {
     }
   };
 
-  const isLiquidado = (row: Row) => {
+  function isLiquidado(row: Row) {
     const liq = row.materialesLiquidacion || {};
     const acta = String(liq.acta || "").trim();
     if (acta) return true;
     return false;
-  };
+  }
 
   const getExisting = (row: Row) => {
     const liq = row.materialesLiquidacion || {};
@@ -324,7 +338,7 @@ export default function MaterialesLiquidacionClient() {
   return (
     <div className="space-y-3">
       <div className="flex items-end justify-between gap-3 flex-wrap">
-        <div className="grid gap-3 md:grid-cols-4 flex-1 min-w-[520px]">
+        <div className="grid gap-3 md:grid-cols-6 flex-1 min-w-[520px]">
         <div className="flex flex-col">
           <label className="text-sm font-medium text-gray-700">Mes</label>
           <input
@@ -370,6 +384,35 @@ export default function MaterialesLiquidacionClient() {
                 {c}
               </option>
             ))}
+          </select>
+        </div>
+        <div className="flex flex-col">
+          <label className="text-sm font-medium text-gray-700">Cuadrilla</label>
+          <select
+            name="cuadrilla"
+            value={filtros.cuadrilla}
+            onChange={(e) => setFiltros((p) => ({ ...p, cuadrilla: e.target.value }))}
+            className="border px-2 py-1 rounded text-sm"
+          >
+            <option value="">Todas</option>
+            {cuadrillas.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col">
+          <label className="text-sm font-medium text-gray-700">Estado</label>
+          <select
+            name="estado"
+            value={filtros.estado}
+            onChange={(e) => setFiltros((p) => ({ ...p, estado: e.target.value }))}
+            className="border px-2 py-1 rounded text-sm"
+          >
+            <option value="">Todos</option>
+            <option value="liquidado">Liquidado</option>
+            <option value="pendiente">Pendiente</option>
           </select>
         </div>
         </div>
@@ -452,7 +495,7 @@ export default function MaterialesLiquidacionClient() {
                     <td className="border p-2">
                       {Array.isArray(row.snMESH) && row.snMESH.filter(Boolean).length > 0 ? (
                         <div className="flex flex-wrap gap-1 justify-center">
-                          {row.snMESH.filter(Boolean).map((sn, i) => (
+                          {row.snMESH.filter(Boolean).map((sn: string, i: number) => (
                             <span key={i} className="px-1.5 py-0.5 rounded-full text-xs bg-green-100 text-green-800 border">
                               {sn}
                             </span>
@@ -465,7 +508,7 @@ export default function MaterialesLiquidacionClient() {
                     <td className="border p-2">
                       {Array.isArray(row.snBOX) && row.snBOX.filter(Boolean).length > 0 ? (
                         <div className="flex flex-wrap gap-1 justify-center">
-                          {row.snBOX.filter(Boolean).map((sn, i) => (
+                          {row.snBOX.filter(Boolean).map((sn: string, i: number) => (
                             <span key={i} className="px-1.5 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-800 border">
                               {sn}
                             </span>
@@ -622,3 +665,5 @@ export default function MaterialesLiquidacionClient() {
     </div>
   );
 }
+
+

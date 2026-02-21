@@ -1,8 +1,8 @@
 "use client";
-
-import React, { useEffect, useMemo, useState, useTransition } from "react";
+import React, { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
+  getCuadrillaPreconStockAction,
   marcarAuditoriaAction,
   moverEquipoManualAction,
   quitarAuditoriaAction,
@@ -39,6 +39,18 @@ type ListResponse = {
   cuadrillas?: CuadrillaRow[];
 };
 
+const ONT_MATERIAL_KIT: Record<string, number> = {
+  ACOPLADOR: 1,
+  CINTILLO_30: 4,
+  ACTA: 1,
+  CINTILLO_BANDERA: 1,
+  CONECTOR: 1,
+  PACHCORD: 1,
+  ROSETA: 1,
+};
+
+const PRECON_OPTIONS = ["PRECON_50", "PRECON_100", "PRECON_150", "PRECON_200"] as const;
+
 function normalizeList(base: string[]) {
   return Array.from(new Set(base.map((v) => String(v || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
 }
@@ -62,6 +74,21 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
   const [nextUbicacion, setNextUbicacion] = useState<string>("");
   const [editCaso, setEditCaso] = useState<string>("");
   const [editObs, setEditObs] = useState<string>("");
+  const [ontModalOpen, setOntModalOpen] = useState(false);
+  const [ontModalRow, setOntModalRow] = useState<EquipoRow | null>(null);
+  const [ontModalFromCuadrillaId, setOntModalFromCuadrillaId] = useState("");
+  const [ontModalToCuadrillaId, setOntModalToCuadrillaId] = useState("");
+  const [ontModalFromUb, setOntModalFromUb] = useState("");
+  const [ontModalToUb, setOntModalToUb] = useState("");
+  const [ontModalLoading, setOntModalLoading] = useState(false);
+  const [ontModalWithPrecon, setOntModalWithPrecon] = useState(false);
+  const [ontModalPreconId, setOntModalPreconId] = useState<string>("");
+  const [ontModalPreconStock, setOntModalPreconStock] = useState<Record<string, number>>({
+    PRECON_50: 0,
+    PRECON_100: 0,
+    PRECON_150: 0,
+    PRECON_200: 0,
+  });
 
   const [snQuery, setSnQuery] = useState("");
   const [snFilter, setSnFilter] = useState("");
@@ -76,6 +103,13 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
   const [descOptions, setDescOptions] = useState<string[]>([]);
   const [estadoOpen, setEstadoOpen] = useState(false);
   const [descOpen, setDescOpen] = useState(false);
+  const [scannerMode, setScannerMode] = useState(false);
+  const snInputRef = useRef<HTMLInputElement | null>(null);
+  const scanStatsRef = useRef<{ startedAt: number; lastAt: number; keyCount: number }>({
+    startedAt: 0,
+    lastAt: 0,
+    keyCount: 0,
+  });
 
   useEffect(() => {
     if (!estadoOpen && !descOpen) return;
@@ -91,6 +125,31 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
   }, [estadoOpen, descOpen]);
 
   const [isPending, startTransition] = useTransition();
+
+  const resetScanStats = () => {
+    scanStatsRef.current = { startedAt: 0, lastAt: 0, keyCount: 0 };
+  };
+
+  const trackScanKey = () => {
+    const now = Date.now();
+    const st = scanStatsRef.current;
+    if (!st.lastAt || now - st.lastAt > 180) {
+      st.startedAt = now;
+      st.keyCount = 0;
+    }
+    if (!st.startedAt) st.startedAt = now;
+    st.keyCount += 1;
+    st.lastAt = now;
+  };
+
+  const isLikelyScannerInput = () => {
+    const now = Date.now();
+    const st = scanStatsRef.current;
+    if (!st.keyCount || !st.startedAt) return false;
+    const elapsed = now - st.startedAt;
+    const avgMs = elapsed / Math.max(1, st.keyCount);
+    return st.keyCount >= 6 && elapsed <= 1500 && avgMs <= 70;
+  };
 
   const exportFilename = (suffix: string, includeFilters = true) => {
     const d = new Date();
@@ -112,6 +171,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
     "F. Despacho": formatYmdToDmy(e.f_despachoYmd) || "",
     Tecnicos: Array.isArray(e.tecnicos) ? e.tecnicos.join(", ") : e.tecnicos || "",
     "F. Instalacion": formatYmdToDmy(e.f_instaladoYmd) || "",
+    Codigo: e.codigoCliente || "",
     Cliente: e.cliente || "",
     "F. Ingreso": formatYmdToDmy(e.f_ingresoYmd) || "",
     Estado: e.estado || "",
@@ -143,7 +203,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
       return;
     }
     const toastId = toast(
-      (t) => (
+      () => (
         <div>
           <div className="text-sm font-medium">Se exporta LISTA {equipos.length} series.</div>
           <div className="mt-2 flex justify-end gap-2">
@@ -180,7 +240,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
       return;
     }
     const toastId = toast(
-      (t) => (
+      () => (
         <div>
           <div className="text-sm font-medium">Se exporta PRI-TEC {equipos.length} series.</div>
           <div className="mt-2 flex justify-end gap-2">
@@ -231,7 +291,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
       return;
     }
     const toastId = toast(
-      (t) => (
+      () => (
         <div>
           <div className="text-sm font-medium">Se exporta TEC-LIQ {equipos.length} series.</div>
           <div className="mt-2 flex justify-end gap-2">
@@ -405,7 +465,19 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
     setEditObs("");
   };
 
-  const saveMove = (row: EquipoRow) => {
+  const closeOntModal = () => {
+    setOntModalOpen(false);
+    setOntModalRow(null);
+    setOntModalFromCuadrillaId("");
+    setOntModalToCuadrillaId("");
+    setOntModalFromUb("");
+    setOntModalToUb("");
+    setOntModalWithPrecon(false);
+    setOntModalPreconId("");
+    setOntModalLoading(false);
+  };
+
+  const executeMove = (row: EquipoRow, opts?: { preconMaterialId?: string }) => {
     const sn = String(row.SN || row.id || "").trim().toUpperCase();
     if (!sn) return;
     const toUb = String(nextUbicacion || "").trim();
@@ -427,8 +499,10 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
           toCuadrillaId,
           caso: editCaso,
           observacion: editObs,
+          preconMaterialId: opts?.preconMaterialId || "",
         });
         if (!r?.ok) throw new Error("MOVE_FAIL");
+        closeOntModal();
         cancelEdit();
         setEquipos([]);
         setCursor(null);
@@ -438,6 +512,59 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
         toast.error(String(e?.message || "No se pudo mover el equipo"));
       }
     });
+  };
+
+  const openOntMoveModal = async (row: EquipoRow, args: { fromCuadrillaId: string; toCuadrillaId: string; fromUb: string; toUb: string }) => {
+    setOntModalRow(row);
+    setOntModalFromCuadrillaId(args.fromCuadrillaId);
+    setOntModalToCuadrillaId(args.toCuadrillaId);
+    setOntModalFromUb(args.fromUb);
+    setOntModalToUb(args.toUb);
+    setOntModalOpen(true);
+    setOntModalWithPrecon(false);
+    setOntModalPreconId("");
+    setOntModalLoading(true);
+    try {
+      const res = await getCuadrillaPreconStockAction({ cuadrillaId: args.fromCuadrillaId });
+      if (res?.ok && res.stock) {
+        setOntModalPreconStock({
+          PRECON_50: Number(res.stock.PRECON_50 || 0),
+          PRECON_100: Number(res.stock.PRECON_100 || 0),
+          PRECON_150: Number(res.stock.PRECON_150 || 0),
+          PRECON_200: Number(res.stock.PRECON_200 || 0),
+        });
+      }
+    } catch {
+      toast.error("No se pudo cargar stock PRECON de la cuadrilla origen");
+    } finally {
+      setOntModalLoading(false);
+    }
+  };
+
+  const saveMove = (row: EquipoRow) => {
+    const toUb = String(nextUbicacion || "").trim();
+    if (!toUb) {
+      toast.error("Selecciona ubicacion");
+      return;
+    }
+    const fromUb = String(row.ubicacion || "").trim().toUpperCase();
+    const toUbKey = toUb.toUpperCase();
+    const fromCuadrillaId = cuadrillaByNombre.get(fromUb) || undefined;
+    const toCuadrillaId = cuadrillaByNombre.get(toUbKey) || undefined;
+    const isCrossCuadrillaMove = !!fromCuadrillaId && !!toCuadrillaId && fromCuadrillaId !== toCuadrillaId;
+    const isOnt = String(row.equipo || "").trim().toUpperCase() === "ONT";
+
+    if (isOnt && isCrossCuadrillaMove) {
+      openOntMoveModal(row, {
+        fromCuadrillaId: fromCuadrillaId as string,
+        toCuadrillaId: toCuadrillaId as string,
+        fromUb,
+        toUb: toUbKey,
+      });
+      return;
+    }
+
+    executeMove(row);
   };
 
   const marcarAuditoria = (row: EquipoRow) => {
@@ -495,19 +622,55 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
     setSelectedDescs(new Set());
   };
 
+  const ontPreconDisponibles = useMemo(
+    () =>
+      PRECON_OPTIONS.map((id) => ({
+        id,
+        stock: Number(ontModalPreconStock[id] || 0),
+      })),
+    [ontModalPreconStock]
+  );
+
+  const confirmarMovimientoOnt = () => {
+    if (!ontModalRow) return;
+    if (ontModalWithPrecon && !ontModalPreconId) {
+      toast.error("Selecciona un PRECON para mover junto al equipo ONT");
+      return;
+    }
+    if (ontModalWithPrecon && Number(ontModalPreconStock[ontModalPreconId] || 0) < 1) {
+      toast.error("No hay stock suficiente del PRECON seleccionado en la cuadrilla origen");
+      return;
+    }
+    executeMove(ontModalRow, { preconMaterialId: ontModalWithPrecon ? ontModalPreconId : "" });
+  };
+
   return (
-    <div className="space-y-3">
-      <div className="rounded border px-3 py-2 text-sm">
-        <span className="font-medium">Resumen:</span>{" "}
-        <span className="text-muted-foreground">
-          {resumenByEquipo.parts.join(" - ") || "-"}
-        </span>
+    <div className="space-y-4">
+      <div className="rounded-xl border bg-gradient-to-r from-slate-50 to-white px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Control de Equipos</div>
+            <div className="text-lg font-semibold text-slate-900">Traslados entre cuadrillas (Instalaciones)</div>
+          </div>
+          <div className="rounded-lg border bg-white px-3 py-2 text-sm">
+            <div className="font-medium">Resumen</div>
+            <div className="text-muted-foreground">{resumenByEquipo.parts.join(" - ") || "-"}</div>
+          </div>
+        </div>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="rounded-xl border bg-white p-3">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Filtros</div>
+        <div className="flex flex-wrap gap-2">
         <input
+          ref={snInputRef}
           value={snQuery}
           onChange={(e) => setSnQuery(e.target.value.toUpperCase())}
           onKeyDown={(e) => {
+            if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+              trackScanKey();
+            } else if (e.key === "Backspace" || e.key === "Delete" || e.key === "Escape") {
+              resetScanStats();
+            }
             if (e.key === "Enter") {
               e.preventDefault();
               setEquipos([]);
@@ -517,14 +680,30 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
                 const isTail = exact.length === 6;
                 setExactSearch(!isTail);
                 fetchList(true, !isTail, exact);
+                if (scannerMode || isLikelyScannerInput()) {
+                  // Si fue pistoleo, dejar seleccionado para que el siguiente scan reemplace el anterior.
+                  setTimeout(() => {
+                    snInputRef.current?.focus();
+                    snInputRef.current?.select();
+                  }, 0);
+                }
               }
+              resetScanStats();
             }
           }}
-          className="w-full max-w-xs rounded border px-3 py-2 text-sm font-mono"
+          className="w-full max-w-xs rounded-lg border px-3 py-2 text-sm font-mono"
           placeholder="Buscar SN (prefijo; Enter = exacto)"
         />
+        <label className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs">
+          <input
+            type="checkbox"
+            checked={scannerMode}
+            onChange={(e) => setScannerMode(e.target.checked)}
+          />
+          Modo escaner
+        </label>
 
-        <div className="rounded border px-2 py-2 text-xs" data-dd="estado">
+        <div className="rounded-lg border px-2 py-2 text-xs" data-dd="estado">
           <div className="font-medium mb-1">Estado</div>
           <div className="relative">
             <button
@@ -535,7 +714,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
               {filtroEstados.size > 0 ? `Seleccionados: ${filtroEstados.size}` : "Seleccionar estados"}
             </button>
             {estadoOpen && (
-              <div className="absolute z-20 mt-1 w-48 rounded border bg-white p-2 shadow">
+              <div className="absolute z-20 mt-1 w-48 rounded-lg border bg-white p-2 shadow">
                 {estadosDisponibles.map((estado) => (
                   <label key={estado} className="flex items-center gap-2 py-1 text-xs">
                     <input
@@ -568,7 +747,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
         <select
           value={filtroUbicacion}
           onChange={(e) => setFiltroUbicacion(e.target.value)}
-          className="rounded border px-3 py-2 text-sm"
+          className="rounded-lg border px-3 py-2 text-sm"
         >
           <option value="">Ubicacion</option>
           {ubicacionesBase.map((u) => (
@@ -581,7 +760,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
         <select
           value={filtroEquipo}
           onChange={(e) => setFiltroEquipo(e.target.value)}
-          className="rounded border px-3 py-2 text-sm"
+          className="rounded-lg border px-3 py-2 text-sm"
         >
           <option value="">Equipo</option>
           {equiposDisponibles.map((eq) => (
@@ -594,7 +773,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
         <select
           value={filtroPriTec}
           onChange={(e) => setFiltroPriTec(e.target.value)}
-          className="rounded border px-3 py-2 text-sm"
+          className="rounded-lg border px-3 py-2 text-sm"
         >
           <option value="">PRI-TEC</option>
           <option value="SI">SI</option>
@@ -604,7 +783,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
         <select
           value={filtroTecLiq}
           onChange={(e) => setFiltroTecLiq(e.target.value)}
-          className="rounded border px-3 py-2 text-sm"
+          className="rounded-lg border px-3 py-2 text-sm"
         >
           <option value="">TEC-LIQ</option>
           <option value="SI">SI</option>
@@ -614,7 +793,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
         <select
           value={filtroInv}
           onChange={(e) => setFiltroInv(e.target.value)}
-          className="rounded border px-3 py-2 text-sm"
+          className="rounded-lg border px-3 py-2 text-sm"
         >
           <option value="">INV</option>
           <option value="SI">SI</option>
@@ -624,37 +803,38 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
         <button
           type="button"
           onClick={clearFilters}
-          className="rounded border px-3 py-2 text-sm hover:bg-muted"
+          className="rounded-lg border px-3 py-2 text-sm hover:bg-muted"
         >
           Limpiar filtros
         </button>
+      </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
           onClick={exportarEquipos}
-          className="rounded bg-blue-600 px-3 py-2 text-sm text-white"
+          className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white shadow-sm"
         >
           Exportar Equipos
         </button>
         <button
           type="button"
           onClick={exportarPriTec}
-          className="rounded bg-purple-600 px-3 py-2 text-sm text-white"
+          className="rounded-lg bg-purple-600 px-3 py-2 text-sm text-white shadow-sm"
         >
           Exportar PRI-TEC
         </button>
         <button
           type="button"
           onClick={exportarTecLiq}
-          className="rounded bg-green-600 px-3 py-2 text-sm text-white"
+          className="rounded-lg bg-green-600 px-3 py-2 text-sm text-white shadow-sm"
         >
           Exportar TEC-LIQ
         </button>
       </div>
 
-        <div className="rounded border p-3" data-dd="desc">
+      <div className="rounded-xl border p-3" data-dd="desc">
         <div className="text-sm font-medium">Descripcion</div>
         <div className="mt-2 flex gap-2">
           <div className="relative">
@@ -709,6 +889,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
               <th className="p-2">F. Despacho</th>
               <th className="p-2">Tecnicos</th>
               <th className="p-2">F. Instalacion</th>
+              <th className="p-2">Codigo</th>
               <th className="p-2">Cliente</th>
               <th className="p-2">F. Ingreso</th>
               <th className="p-2">Estado</th>
@@ -733,6 +914,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
                     {Array.isArray(e.tecnicos) ? e.tecnicos.join(", ") : e.tecnicos || "-"}
                   </td>
                   <td className="p-2">{formatYmdToDmy(e.f_instaladoYmd) || "-"}</td>
+                  <td className="p-2">{e.codigoCliente || "-"}</td>
                   <td className="p-2">{e.cliente || "-"}</td>
                   <td className="p-2">{formatYmdToDmy(e.f_ingresoYmd) || "-"}</td>
                   <td className="p-2">{e.estado || "-"}</td>
@@ -843,7 +1025,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
             })}
             {equipos.length === 0 && !loading && (
               <tr>
-                <td colSpan={9} className="p-4 text-center text-muted-foreground">
+                <td colSpan={16} className="p-4 text-center text-muted-foreground">
                   Sin resultados
                 </td>
               </tr>
@@ -865,6 +1047,98 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
           </button>
         </div>
       </div>
+
+      {ontModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-2xl rounded-xl border bg-white p-4 shadow-2xl">
+            <div className="mb-3 border-b pb-2">
+              <div className="text-base font-semibold">Movimiento ONT con materiales</div>
+              <div className="text-sm text-muted-foreground">
+                Se movera el equipo ONT junto con su kit base de materiales entre cuadrillas.
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg border bg-slate-50 p-3 text-sm">
+                <div><span className="font-medium">SN:</span> <span className="font-mono">{ontModalRow?.SN || ontModalRow?.id || "-"}</span></div>
+                <div><span className="font-medium">Origen:</span> {ontModalFromUb || "-"}</div>
+                <div><span className="font-medium">Destino:</span> {ontModalToUb || "-"}</div>
+                <div><span className="font-medium">Cuadrilla origen:</span> {ontModalFromCuadrillaId || "-"}</div>
+                <div><span className="font-medium">Cuadrilla destino:</span> {ontModalToCuadrillaId || "-"}</div>
+              </div>
+
+              <div className="rounded-lg border p-3 text-sm">
+                <div className="mb-1 font-medium">Kit ONT a mover</div>
+                <div className="space-y-1 text-muted-foreground">
+                  {Object.entries(ONT_MATERIAL_KIT).map(([id, qty]) => (
+                    <div key={id} className="flex items-center justify-between">
+                      <span>{id}</span>
+                      <span className="font-medium">{qty} UND</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-lg border p-3">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={ontModalWithPrecon}
+                  onChange={(e) => {
+                    setOntModalWithPrecon(e.target.checked);
+                    if (!e.target.checked) setOntModalPreconId("");
+                  }}
+                />
+                Mover tambien PRECON (1 UND)
+              </label>
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                {ontPreconDisponibles.map((it) => (
+                  <label
+                    key={it.id}
+                    className={`flex cursor-pointer items-center justify-between rounded border px-3 py-2 text-sm ${
+                      ontModalWithPrecon && ontModalPreconId === it.id ? "border-blue-600 bg-blue-50" : "border-slate-200"
+                    } ${it.stock <= 0 ? "opacity-50" : ""}`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="precon"
+                        disabled={!ontModalWithPrecon || it.stock <= 0}
+                        checked={ontModalWithPrecon && ontModalPreconId === it.id}
+                        onChange={() => setOntModalPreconId(it.id)}
+                      />
+                      <span>{it.id}</span>
+                    </span>
+                    <span className="font-medium">{ontModalLoading ? "..." : `${it.stock} UND`}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border px-3 py-2 text-sm"
+                onClick={closeOntModal}
+                disabled={isPending}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-60"
+                onClick={confirmarMovimientoOnt}
+                disabled={isPending || ontModalLoading}
+              >
+                Confirmar movimiento
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+

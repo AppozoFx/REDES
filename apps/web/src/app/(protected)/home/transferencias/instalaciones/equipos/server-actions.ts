@@ -5,6 +5,9 @@ import { adminDb } from "@/lib/firebase/admin";
 import { requireServerPermission } from "@/core/auth/require";
 import { normalizeUbicacion } from "@/domain/equipos/repo";
 import { addGlobalNotification } from "@/domain/notificaciones/service";
+import { KIT_BASE_POR_ONT } from "@/domain/transferencias/instalaciones/service";
+
+const PRECON_IDS = ["PRECON_50", "PRECON_100", "PRECON_150", "PRECON_200"] as const;
 
 async function getUsuarioDisplayName(uid: string) {
   const snap = await adminDb().collection("usuarios").doc(uid).get();
@@ -42,6 +45,7 @@ export async function moverEquipoManualAction(input: {
   toUbicacion: string;
   fromCuadrillaId?: string;
   toCuadrillaId?: string;
+  preconMaterialId?: string;
   caso?: string;
   observacion?: string;
   pri_tec?: string;
@@ -71,6 +75,43 @@ export async function moverEquipoManualAction(input: {
     nextEstado = nextNorm.isCuadrilla ? "CAMPO" : nextNorm.ubicacion === "ALMACEN" ? "ALMACEN" : nextNorm.estado;
     tipoEq = String(e.equipo || "UNKNOWN").toUpperCase();
     descripcion = String(e.descripcion || "");
+
+    const fromCuadrillaId = String(input.fromCuadrillaId || "").trim();
+    const toCuadrillaId = String(input.toCuadrillaId || "").trim();
+    const preconMaterialId = String(input.preconMaterialId || "").trim().toUpperCase();
+    const isCuadrillaMove = prevUb !== nextUb && !!fromCuadrillaId && !!toCuadrillaId && fromCuadrillaId !== toCuadrillaId;
+    const shouldMoveOntKit = isCuadrillaMove && tipoEq === "ONT";
+    const materialMoves = new Map<string, number>();
+
+    if (shouldMoveOntKit) {
+      for (const [materialId, qty] of Object.entries(KIT_BASE_POR_ONT)) {
+        materialMoves.set(materialId, Number(qty || 0));
+      }
+      if (preconMaterialId) {
+        if (!PRECON_IDS.includes(preconMaterialId as any)) {
+          throw new Error("PRECON_INVALIDO");
+        }
+        materialMoves.set(preconMaterialId, (materialMoves.get(preconMaterialId) || 0) + 1);
+      }
+
+      const fromRefs: FirebaseFirestore.DocumentReference[] = [];
+      const fromMeta: Array<{ materialId: string; qty: number }> = [];
+      for (const [materialId, qty] of materialMoves.entries()) {
+        if (!qty) continue;
+        fromRefs.push(db.collection("cuadrillas").doc(fromCuadrillaId).collection("stock").doc(materialId));
+        fromMeta.push({ materialId, qty });
+      }
+
+      if (fromRefs.length) {
+        const fromSnaps = await tx.getAll(...fromRefs);
+        fromSnaps.forEach((s, idx) => {
+          const { materialId, qty } = fromMeta[idx];
+          const fromData = (s.data() || {}) as any;
+          const fromUnd = Number(fromData.stockUnd || 0);
+          if (fromUnd < qty) throw new Error(`STOCK_CUADRILLA_INSUFICIENTE:${materialId}`);
+        });
+      }
+    }
 
     const cambios: any = {
       audit: { ...(e.audit || {}), updatedAt: FieldValue.serverTimestamp() },
@@ -112,6 +153,34 @@ export async function moverEquipoManualAction(input: {
         { merge: true }
       );
     }
+
+    if (shouldMoveOntKit) {
+      for (const [materialId, qty] of materialMoves.entries()) {
+        if (!qty) continue;
+        const fromRef = db.collection("cuadrillas").doc(fromCuadrillaId).collection("stock").doc(materialId);
+        const toRef = db.collection("cuadrillas").doc(toCuadrillaId).collection("stock").doc(materialId);
+        tx.set(
+          fromRef,
+          {
+            materialId,
+            unidadTipo: "UND",
+            stockUnd: FieldValue.increment(-qty),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        tx.set(
+          toRef,
+          {
+            materialId,
+            unidadTipo: "UND",
+            stockUnd: FieldValue.increment(qty),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+    }
   });
 
   try {
@@ -133,6 +202,24 @@ export async function moverEquipoManualAction(input: {
   } catch {}
 
   return { ok: true, sn, ubicacion: nextUb, estado: nextEstado };
+}
+
+export async function getCuadrillaPreconStockAction(input: { cuadrillaId: string }) {
+  await requireServerPermission("EQUIPOS_EDIT");
+  const cuadrillaId = String(input.cuadrillaId || "").trim();
+  if (!cuadrillaId) throw new Error("CUADRILLA_REQUIRED");
+  const db = adminDb();
+  const stock: Record<string, number> = {
+    PRECON_50: 0,
+    PRECON_100: 0,
+    PRECON_150: 0,
+    PRECON_200: 0,
+  };
+  for (const id of PRECON_IDS) {
+    const snap = await db.collection("cuadrillas").doc(cuadrillaId).collection("stock").doc(id).get();
+    stock[id] = Number((snap.data() as any)?.stockUnd || 0);
+  }
+  return { ok: true, stock };
 }
 
 export async function marcarAuditoriaAction(input: { sn: string }) {

@@ -23,7 +23,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const estado = String(searchParams.get("estado") || "HABILITADO").trim().toUpperCase();
 
-    let q = adminDb().collection("zonas");
+    let q: FirebaseFirestore.Query = adminDb().collection("zonas");
     if (estado) q = q.where("estado", "==", estado);
 
     const snap = await q.limit(500).get();
@@ -44,3 +44,5 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }
 }
+
+

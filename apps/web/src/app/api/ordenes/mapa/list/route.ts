@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { adminDb } from "@/lib/firebase/admin";
 import { getServerSession } from "@/core/auth/session";
+import { resolveTramoBase } from "@/domain/ordenes/tramo";
 
 export const runtime = "nodejs";
 
@@ -65,7 +66,7 @@ export async function GET(req: Request) {
           plan: String(x.idenServi || ""),
           direccion: String(x.direccion || x.direccion1 || ""),
           estado: String(x.estado || ""),
-          tramo: String(x.fSoliHm || x.fechaFinVisiHm || ""),
+          tramo: resolveTramoBase(String(x.fSoliHm || ""), String(x.fechaFinVisiHm || "")),
           horaEnCamino: String(x.horaEnCamino || ""),
           horaInicio: String(x.fechaIniVisiHm || x.horaInicio || ""),
           horaFin: String(x.fechaFinVisiHm || x.horaFin || ""),

@@ -57,7 +57,47 @@ export async function POST(req: Request) {
     if (!instSnap.exists) return NextResponse.json({ ok: false, error: "INSTALACION_NOT_FOUND" }, { status: 404 });
 
     const inst = instSnap.data() as any;
-    const cuadrillaId = String(inst?.cuadrillaId || inst?.orden?.cuadrillaId || "").trim();
+    const normalizeKey = (v: unknown) =>
+      String(v || "")
+        .trim()
+        .toUpperCase();
+    const cuadrillaRawCandidates = [
+      inst?.cuadrillaId,
+      inst?.orden?.cuadrillaId,
+      inst?.cuadrilla,
+      inst?.orden?.cuadrilla,
+      inst?.cuadrillaNombre,
+      inst?.orden?.cuadrillaNombre,
+      inst?.orden?.cuadrillaRaw,
+      inst?.numeroCuadrilla,
+      inst?.orden?.numeroCuadrilla,
+    ];
+    let cuadrillaId = String(cuadrillaRawCandidates.find((x) => String(x || "").trim()) || "").trim();
+    if (cuadrillaId) {
+      const directSnap = await db.collection("cuadrillas").doc(cuadrillaId).get();
+      if (!directSnap.exists) {
+        cuadrillaId = "";
+      }
+    }
+    if (!cuadrillaId) {
+      const keyMap = new Map<string, string>();
+      const cuadrillasSnap = await db.collection("cuadrillas").limit(3000).get();
+      for (const d of cuadrillasSnap.docs) {
+        const c = d.data() as any;
+        const keys = [d.id, c?.nombre, c?.numeroCuadrilla];
+        for (const k of keys) {
+          const nk = normalizeKey(k);
+          if (nk && !keyMap.has(nk)) keyMap.set(nk, d.id);
+        }
+      }
+      for (const raw of cuadrillaRawCandidates) {
+        const id = keyMap.get(normalizeKey(raw));
+        if (id) {
+          cuadrillaId = id;
+          break;
+        }
+      }
+    }
     if (!cuadrillaId) return NextResponse.json({ ok: false, error: "CUADRILLA_NOT_FOUND" }, { status: 400 });
 
     const tipoOrden = String(inst?.tipoOrden || inst?.orden?.tipoOrden || inst?.tipo || "").trim().toUpperCase();

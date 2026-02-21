@@ -39,22 +39,22 @@ function pruneTabs(map: TabsMap, now: number) {
   return next;
 }
 
-function getTabId() {
+function getTabInfo() {
   try {
     const existing = sessionStorage.getItem("redes_tab_id");
-    if (existing) return existing;
+    if (existing) return { tabId: existing, hadTabId: true };
     const id = `tab_${Math.random().toString(36).slice(2)}_${safeNow()}`;
     sessionStorage.setItem("redes_tab_id", id);
-    return id;
+    return { tabId: id, hadTabId: false };
   } catch {
-    return `tab_fallback_${safeNow()}`;
+    return { tabId: `tab_fallback_${safeNow()}`, hadTabId: false };
   }
 }
 
 export default function TabSessionGuard() {
   useEffect(() => {
     const now = safeNow();
-    const tabId = getTabId();
+    const { tabId, hadTabId } = getTabInfo();
 
     const current = pruneTabs(readTabs(), now);
     const hasActiveTabs = Object.keys(current).length > 0;
@@ -65,7 +65,9 @@ export default function TabSessionGuard() {
     } catch {}
     const justLoggedIn = now - lastLogin <= LOGIN_GRACE_MS;
 
-    if (!hasActiveTabs && !justLoggedIn) {
+    // Si ya existe tabId en sessionStorage, es la misma pestana (recarga o navegacion entre /home y /admin).
+    // En ese caso no se debe cerrar sesion.
+    if (!hasActiveTabs && !justLoggedIn && !hadTabId) {
       (async () => {
         try {
           await fetch("/api/auth/presencia", { method: "DELETE" });

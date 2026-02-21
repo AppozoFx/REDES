@@ -281,33 +281,45 @@ export default function ImportClient() {
               onClick={() => {
                 (async () => {
                   if (!file || !parseResult?.ok) return;
-                  const nuevos = (parseResult as any).data.nuevos as { SN: string }[];
-                  const total = nuevos.length;
-                  setSaving(true);
-                  setSaved(0);
-                  const chunkSize = 100;
-                  let localSaved = 0;
-                  for (let i = 0; i < total; i += chunkSize) {
-                    const part = nuevos.slice(i, i + chunkSize).map((x) => x.SN);
-                    const fd = new FormData();
-                    fd.set("file", file);
-                    fd.set("sns", JSON.stringify(part));
-                    const res = await saveEquiposChunkAction(fd);
-                    if ((res as any)?.ok) {
-                      const inc = (res as any).saved || 0;
-                      localSaved += inc;
-                      setSaved((s) => s + inc);
-                    } else {
-                      const msg = (res as any)?.error?.formErrors?.join(", ") || "Error al guardar";
-                      toast.error(msg);
-                      break;
+                  try {
+                    const nuevos = (parseResult as any).data.nuevos as { SN: string }[];
+                    const total = nuevos.length;
+                    setSaving(true);
+                    setSaved(0);
+                    const chunkSize = 100;
+                    let localSaved = 0;
+                    for (let i = 0; i < total; i += chunkSize) {
+                      const part = nuevos.slice(i, i + chunkSize).map((x) => x.SN);
+                      const fd = new FormData();
+                      fd.set("file", file);
+                      fd.set("sns", JSON.stringify(part));
+                      const res = await saveEquiposChunkAction(fd);
+                      if ((res as any)?.ok) {
+                        const inc = (res as any).saved || 0;
+                        localSaved += inc;
+                        setSaved((s) => s + inc);
+                      } else {
+                        const msg = (res as any)?.error?.formErrors?.join(", ") || "Error al guardar";
+                        toast.error(msg);
+                        return;
+                      }
                     }
+                    await notifyEquiposImportAction({ totalGuardados: localSaved, duplicados: (parseResult as any).data.duplicadosBD.length });
+                    toast.success("Importación de equipos completada", {
+                      description: `Nuevos: ${localSaved}/${total}`,
+                    });
+                  } catch (e: any) {
+                    console.error("IMPORT_EQUIPOS_SAVE_FAILED", e);
+                    const msg = String(e?.message ?? "");
+                    const maybeBodyLimit = msg.toLowerCase().includes("body") || msg.toLowerCase().includes("payload");
+                    toast.error(
+                      maybeBodyLimit
+                        ? "Archivo demasiado grande para procesar. Intenta con menos filas o aumenta bodySizeLimit."
+                        : "Error inesperado al guardar equipos"
+                    );
+                  } finally {
+                    setSaving(false);
                   }
-                  await notifyEquiposImportAction({ totalGuardados: localSaved, duplicados: (parseResult as any).data.duplicadosBD.length });
-                  toast.success("Importación de equipos completada", {
-                    description: `Nuevos: ${localSaved}/${total}`,
-                  });
-                  setSaving(false);
                 })();
               }}
             >
@@ -387,3 +399,4 @@ export default function ImportClient() {
     </div>
   );
 }
+

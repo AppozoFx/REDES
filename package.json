@@ -8,6 +8,11 @@
     "dev:emulators": "firebase emulators:start --config ./firebase/firebase.json --project redes-5bb81 --import=./firebase/.emulator-data --export-on-exit=./firebase/.emulator-data",
     "build:functions": "pnpm --dir firebase/functions run build",
     "smoke:api": "node scripts/smoke-api.mjs",
+    "migrate:equipos:dry": "node scripts/import-equipos-once.js --file \"data equipos/Plantilla ingreso equipos.xlsx\" --dry-run",
+    "migrate:equipos:dry:local": "node scripts/import-equipos-once.js --file \"data equipos/Plantilla ingreso equipos.xlsx\" --dry-run --no-db-check",
+    "migrate:equipos:run": "node scripts/import-equipos-once.js --file \"data equipos/Plantilla ingreso equipos.xlsx\" --execute",
+    "migrate:instalaciones:2025:dry": "node scripts/migrar-instalaciones-historico.js --from 2025-01-01 --to 2026-01-01 --dry-run --updated-by DaPWNKqHP6M8Y1N0F6VyXD4itHi1",
+    "migrate:instalaciones:2025:run": "node scripts/migrar-instalaciones-historico.js --from 2025-01-01 --to 2026-01-01 --execute --updated-by DaPWNKqHP6M8Y1N0F6VyXD4itHi1",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

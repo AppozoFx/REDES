@@ -222,11 +222,18 @@ async function main() {
       );
     }
 
-    // kit por ONT (idempotente via marcador)
+    // kit por ONT (idempotente por delta via marcador)
     if (c.onts > 0 || ensureKitStock) {
       const markRef = db.collection("migraciones").doc("ont_kit_v1").collection("cuadrillas").doc(cuadrillaId);
       const markSnap = forceKit ? null : await markRef.get();
-      const shouldApplyAll = (forceKit || !markSnap?.exists) && c.onts > 0;
+      let prevAppliedOnts = 0;
+      if (markSnap?.exists) {
+        const raw = markSnap.data()?.ontCount;
+        // Compatibilidad: si existe marcador antiguo sin ontCount, asumimos que ya se aplico al conteo actual.
+        const parsed = Number(raw);
+        prevAppliedOnts = Number.isFinite(parsed) ? parsed : c.onts;
+      }
+      const ontDelta = forceKit ? c.onts : Math.max(0, c.onts - prevAppliedOnts);
 
       const matIds = Object.keys(KIT_BASE_POR_ONT);
       const stockRefs = matIds.map((matId) =>
@@ -254,18 +261,22 @@ async function main() {
           }
         }
 
-        if (shouldApplyAll) {
+        if (ontDelta > 0) {
           if (unidadTipo === "UND") {
-            writerStock.set(matRef, { ...base, stockUnd: FieldValue.increment(perOnt * c.onts) }, { merge: true });
+            writerStock.set(matRef, { ...base, stockUnd: FieldValue.increment(perOnt * ontDelta) }, { merge: true });
           } else {
             // fallback: no deberia pasar en este kit
-            writerStock.set(matRef, { ...base, stockCm: FieldValue.increment(perOnt * c.onts) }, { merge: true });
+            writerStock.set(matRef, { ...base, stockCm: FieldValue.increment(perOnt * ontDelta) }, { merge: true });
           }
         }
       }
 
-      if (shouldApplyAll) {
-        writerStock.set(markRef, { appliedAt: FieldValue.serverTimestamp(), ontCount: c.onts }, { merge: true });
+      if (ontDelta > 0 || forceKit || !markSnap?.exists) {
+        writerStock.set(
+          markRef,
+          { appliedAt: FieldValue.serverTimestamp(), ontCount: forceKit ? c.onts : Math.max(prevAppliedOnts, c.onts) },
+          { merge: true }
+        );
       }
     }
   }

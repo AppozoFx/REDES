@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
@@ -498,7 +497,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
           >
             Limpiar filtros
           </button>
-          <button type="button" onClick={cargar} className="rounded border px-3 py-2 text-sm hover:bg-slate-50" disabled={loading}>
+          <button type="button" onClick={() => void cargar()} className="rounded border px-3 py-2 text-sm hover:bg-slate-50" disabled={loading}>
             Actualizar
           </button>
           <button type="button" onClick={exportManifest} className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700">
@@ -702,4 +701,6 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
     </div>
   );
 }
+
+
 

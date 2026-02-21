@@ -166,7 +166,7 @@ export function NotificationsBell({ uid }: { uid: string }) {
                         )}
                       </div>
                       <div className="text-xs text-gray-700 dark:text-white/80">{n.message}</div>
-                      {(n.entityType === "DESPACHO" || n.entityType === "DEVOLUCION" || n.entityType === "VENTA") && n.entityId && (
+                      {(n.entityType === "DESPACHO" || n.entityType === "DEVOLUCION" || n.entityType === "VENTA" || n.entityType === "ACTAS_RECEPCION") && n.entityId && (
                         <div className="mt-2">
                           <button
                             type="button"
@@ -176,6 +176,7 @@ export function NotificationsBell({ uid }: { uid: string }) {
                                 const tipo =
                                   n.entityType === "DEVOLUCION" ? "devolucion" :
                                   n.entityType === "VENTA" ? "ventas" :
+                                  n.entityType === "ACTAS_RECEPCION" ? "actas" :
                                   "despacho";
                                 const res = await fetch(
                                   `/api/transferencias/instalaciones/guia/url?guiaId=${encodeURIComponent(

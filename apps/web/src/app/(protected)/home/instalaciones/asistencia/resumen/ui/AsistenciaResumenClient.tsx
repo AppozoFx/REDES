@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import toast from "react-hot-toast";
@@ -7,9 +6,54 @@ import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { useAccess } from "@/lib/useAccess";
 
-const cls = (...x) => x.filter(Boolean).join(" ");
+type EstadoAsistencia =
+  | "asistencia"
+  | "falta"
+  | "suspendida"
+  | "descanso"
+  | "descanso medico"
+  | "vacaciones"
+  | "recuperacion"
+  | "asistencia compensada";
 
-const estadoToColor = (estado) => {
+type CuadrillaRow = {
+  id?: string;
+  fecha: string;
+  cuadrillaId: string;
+  cuadrillaNombre?: string;
+  zonaId?: string;
+  zonaNombre?: string;
+  estadoAsistencia?: string;
+  observacion?: string;
+  gestorUid?: string;
+  gestorNombre?: string;
+  coordinadorUid?: string;
+  coordinadorNombre?: string;
+};
+
+type TecnicoRow = {
+  id?: string;
+  fecha: string;
+  tecnicoId: string;
+  tecnicoNombre?: string;
+  cuadrillaId?: string;
+  cuadrillaNombre?: string;
+  zonaId?: string;
+  zonaNombre?: string;
+  estadoAsistencia?: string;
+  gestorUid?: string;
+  gestorNombre?: string;
+  coordinadorUid?: string;
+  coordinadorNombre?: string;
+};
+
+type EditPatch = { estadoAsistencia?: string; observacion?: string };
+type EditMap = Record<string, EditPatch>;
+type ResumenApi = { ok?: boolean; error?: string; cuadrillas?: CuadrillaRow[]; tecnicos?: TecnicoRow[] };
+
+const cls = (...x: Array<string | false | null | undefined>) => x.filter(Boolean).join(" ");
+
+const estadoToColor = (estado: string) => {
   switch (String(estado || "").toLowerCase()) {
     case "asistencia":
       return "bg-green-50 text-green-700 ring-green-200";
@@ -32,8 +76,8 @@ const estadoToColor = (estado) => {
   }
 };
 
-const EstadoPill = ({ estado }) => (
-  <span className={cls("inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset", estadoToColor(estado))}>
+const EstadoPill = ({ estado }: { estado?: string }) => (
+  <span className={cls("inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset", estadoToColor(estado || ""))}>
     {estado || "-"}
   </span>
 );
@@ -58,18 +102,18 @@ export default function AsistenciaResumenClient() {
   const [filtroTecnico, setFiltroTecnico] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
 
-  const [cuadrillas, setCuadrillas] = useState([]);
-  const [tecnicos, setTecnicos] = useState([]);
-  const [editando, setEditando] = useState({});
+  const [cuadrillas, setCuadrillas] = useState<CuadrillaRow[]>([]);
+  const [tecnicos, setTecnicos] = useState<TecnicoRow[]>([]);
+  const [editando, setEditando] = useState<EditMap>({});
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const normRole = (s) =>
+  const normRole = (s: string) =>
     String(s || "")
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .toUpperCase();
-  const roles = (accessRoles || []).map((r) => normRole(String(r)));
+  const roles = (accessRoles || []).map((r: string) => normRole(String(r)));
   const puedeEditar = isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
 
   const fetchResumen = async () => {
@@ -80,12 +124,13 @@ export default function AsistenciaResumenClient() {
       qs.set("desde", desde);
       qs.set("hasta", hasta);
       const res = await fetch(`/api/asistencia/resumen?${qs.toString()}`, { cache: "no-store" });
-      const json = await res.json();
+      const json: ResumenApi = await res.json();
       if (!json?.ok) throw new Error(json?.error || "ERROR");
       setCuadrillas(json.cuadrillas || []);
       setTecnicos(json.tecnicos || []);
-    } catch (e) {
-      setError(e?.message || "No se pudo cargar");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "No se pudo cargar";
+      setError(msg);
       setCuadrillas([]);
       setTecnicos([]);
     } finally {
@@ -99,21 +144,21 @@ export default function AsistenciaResumenClient() {
   }, [desde, hasta]);
 
   const gestoresUnicos = useMemo(() => {
-    const set = new Set();
+    const set = new Set<string>();
     cuadrillas.forEach((c) => {
       const v = c.gestorNombre || c.gestorUid || "";
       if (v) set.add(v);
     });
-    return Array.from(set).sort();
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [cuadrillas]);
 
   const coordinadoresUnicos = useMemo(() => {
-    const set = new Set();
+    const set = new Set<string>();
     cuadrillas.forEach((c) => {
       const v = c.coordinadorNombre || c.coordinadorUid || "";
       if (v) set.add(v);
     });
-    return Array.from(set).sort();
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [cuadrillas]);
 
   const cuadrillasFiltradas = useMemo(() => {
@@ -142,7 +187,7 @@ export default function AsistenciaResumenClient() {
   }, [tecnicos, filtroEstado, filtroTecnico]);
 
   const resumen = useMemo(() => {
-    const contar = (arr, valor) =>
+    const contar = (arr: Array<CuadrillaRow | TecnicoRow>, valor: EstadoAsistencia) =>
       arr.reduce((acc, x) => acc + (String(x.estadoAsistencia || "").toLowerCase() === valor ? 1 : 0), 0);
     const cTotal = cuadrillasFiltradas.length;
     const tTotal = tecnicosFiltrados.length;
@@ -181,11 +226,11 @@ export default function AsistenciaResumenClient() {
     saveAs(new Blob([out], { type: "application/octet-stream" }), `asistencia_${desde}_a_${hasta}.xlsx`);
   };
 
-  const handleEditChange = (id, field, value) => {
+  const handleEditChange = (id: string, field: keyof EditPatch, value: string) => {
     setEditando((prev) => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
   };
 
-  const cancelarEdicion = (id) => {
+  const cancelarEdicion = (id: string) => {
     setEditando((prev) => {
       const cp = { ...prev };
       delete cp[id];
@@ -193,7 +238,7 @@ export default function AsistenciaResumenClient() {
     });
   };
 
-  const guardarCambios = async (c) => {
+  const guardarCambios = async (c: CuadrillaRow) => {
     const id = c.id || `${c.fecha}_${c.cuadrillaId}`;
     const patch = editando[id];
     if (!patch) return;
@@ -217,7 +262,7 @@ export default function AsistenciaResumenClient() {
     cancelarEdicion(id);
   };
 
-  const guardarCambiosTecnico = async (t) => {
+  const guardarCambiosTecnico = async (t: TecnicoRow) => {
     const id = t.id || `${t.fecha}_${t.tecnicoId}`;
     const patch = editando[id];
     if (!patch) return;
@@ -452,3 +497,5 @@ export default function AsistenciaResumenClient() {
     </div>
   );
 }
+
+

@@ -3,7 +3,6 @@ import { z } from "zod";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase/admin";
 import { getServerSession } from "@/core/auth/session";
-import { addGlobalNotification } from "@/domain/notificaciones/service";
 
 export const runtime = "nodejs";
 
@@ -41,20 +40,10 @@ export async function POST(req: Request) {
       { merge: true }
     );
 
-    await addGlobalNotification({
-      title: "Recepción de Actas",
-      message: `Comprobante disponible: ${pdfUrl}`,
-      type: "info",
-      scope: "ALL",
-      createdBy: session.uid,
-      entityType: "ACTAS_RECEPCION",
-      entityId: guiaId,
-      action: "UPDATE",
-      estado: "ACTIVO",
-    });
-
     return NextResponse.json({ ok: true, guiaId });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }
 }
+
+

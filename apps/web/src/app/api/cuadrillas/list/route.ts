@@ -41,7 +41,7 @@ export async function GET(req: Request) {
 
     const includeAll = String(searchParams.get("includeAll") || "").toLowerCase() === "true";
 
-    let q = adminDb().collection("cuadrillas");
+    let q: FirebaseFirestore.Query = adminDb().collection("cuadrillas");
     if (!includeAll) {
       q = q.where("estado", "==", "HABILITADO");
     }
@@ -127,3 +127,5 @@ export async function GET(req: Request) {
     );
   }
 }
+
+

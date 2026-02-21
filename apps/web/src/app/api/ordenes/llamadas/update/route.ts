@@ -6,6 +6,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import { getServerSession } from "@/core/auth/session";
 import { addGlobalNotification } from "@/domain/notificaciones/service";
 import { toDatePartsLima } from "@/domain/equipos/repo";
+import { resolveTramoNombre } from "@/domain/ordenes/tramo";
 
 export const runtime = "nodejs";
 const PERM_EDIT = "ORDENES_LLAMADAS_EDIT";
@@ -21,14 +22,6 @@ const BodySchema = z.object({
 
 function jsonErr(code: string, status = 400) {
   return NextResponse.json({ ok: false, error: code }, { status });
-}
-
-function tramoNombreFromHm(hm: string) {
-  const h = Number(String(hm || "").split(":")[0]);
-  if (!Number.isFinite(h)) return "Tramo no definido";
-  if (h < 10) return "Primer Tramo";
-  if (h < 14) return "Segundo Tramo";
-  return "Tercer Tramo";
 }
 
 export async function POST(req: Request) {
@@ -78,7 +71,7 @@ export async function POST(req: Request) {
       const codigo = String(x?.codiSeguiClien || "").trim();
       const estadoInstalacion = String(x?.estado || "").trim() || "-";
       const telefono = String(data.telefono || x?.telefono || "").trim() || "-";
-      const tramo = tramoNombreFromHm(String(x?.fechaFinVisiHm || ""));
+      const tramo = resolveTramoNombre(String(x?.fSoliHm || ""), String(x?.fechaFinVisiHm || ""));
       const cuadrilla = String(x?.cuadrillaNombre || x?.cuadrillaId || "").trim() || "-";
       const obs = String(data.observacionLlamada || "").trim() || "-";
       await addGlobalNotification({

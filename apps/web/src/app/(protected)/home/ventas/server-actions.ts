@@ -506,15 +506,17 @@ export async function anularVentaAction(raw: any) {
     await addGlobalNotification({
       title: "Venta anulada",
       message: msg,
-      type: "warning",
+      type: "warn",
       scope: "ALL",
       createdBy: session.uid,
       entityType: "VENTA",
       entityId: input.ventaId,
-      action: "ANULACION",
+      action: "UPDATE",
       estado: "ACTIVO",
     });
   } catch {}
 
   return { ok: true } as const;
 }
+
+

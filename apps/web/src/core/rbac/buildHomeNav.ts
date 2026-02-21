@@ -59,6 +59,13 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
 
     if (!coordOnly) {
       items.push({ key: "INSTALACIONES", label: "Instalaciones", href: "/home/instalaciones" });
+      if (session.isAdmin || roles.includes("GERENCIA") || hasPerm(session, "ORDENES_LIQUIDAR")) {
+        items.push({
+          key: "INSTALACIONES_DASHBOARD",
+          label: "Instalaciones: Dashboard",
+          href: "/home/instalaciones/dashboard",
+        });
+      }
       items.push({
         key: "INSTALACIONES_MAT",
         label: "Instalaciones: Materiales",

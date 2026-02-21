@@ -74,7 +74,10 @@ export async function GET(req: Request) {
         q = q.where("estado", "==", estados[0]);
       } else if (estados.length > 1) {
         q = q.where("estado", "in", estados.slice(0, 10));
-      } else {
+      } else if (!ubicacion) {
+        // Filtro por defecto solo cuando no se especifica ubicacion.
+        // Si el usuario filtra por ubicacion (ej. INSTALADOS), no limitar por estado
+        // para evitar ocultar resultados validos.
         q = q.where("estado", "in", ["ALMACEN", "CAMPO"]);
       }
     }

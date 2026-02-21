@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import Select from "react-select";
 import jsPDF from "jspdf";
@@ -138,7 +137,7 @@ async function generarPDFTermico80mm(args: {
   return pdf;
 }
 
-async function obtenerCelulares(uids: string[]) {
+async function obtenerCelulares(uids: string[]): Promise<string[]> {
   const list = Array.from(new Set(uids.filter(Boolean)));
   if (!list.length) return [];
   const qs = list.join(",");
@@ -355,7 +354,8 @@ export default function RecepcionActasClient() {
         lines.push(`Fecha/Hora: ${fechaStr}`);
         lines.push("Comprobante:");
         lines.push(uploadFinalData.url);
-        enviarWhatsApp(celulares[0], lines.join("\n"), preWin);
+      const primerCelular = String(celulares[0] || "");
+      if (primerCelular) enviarWhatsApp(primerCelular, lines.join("\n"), preWin);
       } else if (preWin && !preWin.closed) {
         preWin.close();
       }
@@ -370,10 +370,16 @@ export default function RecepcionActasClient() {
         iframe.contentWindow?.print();
         setTimeout(() => iframe.contentWindow?.print(), 1200);
       };
-      iframe.onafterprint = () => {
+      if (iframe.contentWindow) {
+        iframe.contentWindow.onafterprint = () => {
+          document.body.removeChild(iframe);
+          URL.revokeObjectURL(url);
+        };
+      }
+      setTimeout(() => {
         document.body.removeChild(iframe);
         URL.revokeObjectURL(url);
-      };
+      }, 15000);
 
       toast.success(`Guía ${data.guiaId} registrada`, { id: toastId });
       setActas([]);
@@ -502,3 +508,5 @@ export default function RecepcionActasClient() {
     </div>
   );
 }
+
+

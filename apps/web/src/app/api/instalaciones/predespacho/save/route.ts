@@ -38,7 +38,13 @@ function rollingAnchors(anchorYmd: string) {
   };
 }
 
-function resolveScope(roles: string[]): Scope {
+function resolveScope(roles: string[], isAdmin: boolean): Scope {
+  const isPrivileged =
+    isAdmin ||
+    roles.includes("GERENCIA") ||
+    roles.includes("ALMACEN") ||
+    roles.includes("RRHH");
+  if (isPrivileged) return "all";
   if (roles.includes("COORDINADOR")) return "coordinador";
   if (roles.includes("TECNICO")) return "tecnico";
   return "all";
@@ -75,7 +81,7 @@ export async function POST(req: Request) {
     const rows = Array.isArray(body?.rows) ? body.rows : [];
     if (!rows.length) return NextResponse.json({ ok: false, error: "ROWS_REQUIRED" }, { status: 400 });
 
-    const scope = resolveScope(roles);
+    const scope = resolveScope(roles, session.isAdmin);
     if (scope !== "all") {
       return NextResponse.json({ ok: false, error: "READ_ONLY_ROLE" }, { status: 403 });
     }
@@ -93,12 +99,6 @@ export async function POST(req: Request) {
         ])),
       };
     });
-
-    if (scope === "coordinador") {
-      cuadrillas = cuadrillas.filter((c) => c.coordinadorUid === session.uid);
-    } else if (scope === "tecnico") {
-      cuadrillas = cuadrillas.filter((c) => c.tecnicosUids.includes(session.uid));
-    }
 
     const allowed = new Set(cuadrillas.map((c) => c.id));
     const uid = session.uid;
@@ -144,3 +144,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }
 }
+
+

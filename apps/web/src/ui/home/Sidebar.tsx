@@ -44,6 +44,7 @@ function shortName(full: string, fallback: string) {
 function getGroup(href: string): GroupKey {
   if (
     href === "/home/instalaciones" ||
+    href === "/home/instalaciones/dashboard" ||
     href === "/home/instalaciones/materiales" ||
     href === "/home/instalaciones/detalle"
   ) {

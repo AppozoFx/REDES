@@ -5,7 +5,34 @@ import { getServerSession } from "@/core/auth/session";
 export const runtime = "nodejs";
 
 type Scope = "all" | "coordinador" | "tecnico";
+type ModelFilter = "ALL" | "HUAWEI" | "ZTE";
 const EQUIPOS = ["ONT", "MESH", "FONO", "BOX"] as const;
+const HUAWEI_DESC_HINTS = [
+  "HUAWEI",
+  "HG",
+  "EG814",
+  "EG824",
+  "KIT HUAWEI",
+];
+const HUAWEI_DESC_EXACT = new Set([
+  "SMART",
+  "SMART WIFI 6 K562E -10",
+]);
+const ZTE_DESC_HINTS = [
+  "ZTE",
+  "ZXHN",
+  "F670",
+  "F680",
+  "F660",
+  "H196A",
+  "KIT ZTE",
+];
+const ZTE_DESC_EXACT = new Set([
+  "MESH ZXHN H3601P V18",
+  "MESH ZXHN H3601P V28",
+  "MESH ZXHN H3601P V9",
+  "ONT ZXHN WIFI 6 F6600P V9.0(1FXS)",
+]);
 
 function toYmd(d: Date) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -152,6 +179,69 @@ function keyName(v: any) {
   return asStr(v).toUpperCase();
 }
 
+function normalizeText(v: any) {
+  return String(v || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .trim();
+}
+
+function parseModelFilter(v: string): ModelFilter {
+  const up = normalizeText(v);
+  if (up === "HUAWEI") return "HUAWEI";
+  if (up === "ZTE") return "ZTE";
+  return "ALL";
+}
+
+function modelFromDescripcion(descRaw: any): ModelFilter | null {
+  const desc = normalizeText(descRaw);
+  if (!desc) return null;
+  if (HUAWEI_DESC_EXACT.has(desc)) return "HUAWEI";
+  if (ZTE_DESC_EXACT.has(desc)) return "ZTE";
+  if (HUAWEI_DESC_HINTS.some((h) => desc.includes(h))) return "HUAWEI";
+  if (ZTE_DESC_HINTS.some((h) => desc.includes(h))) return "ZTE";
+  return null;
+}
+
+function modelFromEquipoDoc(eq: any): ModelFilter | null {
+  const fields = [
+    eq?.descripcion,
+    eq?.modelo,
+    eq?.marca,
+    eq?.fabricante,
+    eq?.nombre,
+    eq?.tipoModelo,
+  ];
+  for (const f of fields) {
+    const m = modelFromDescripcion(f);
+    if (m) return m;
+  }
+  return null;
+}
+
+function parseSnList(v: any): string[] {
+  if (Array.isArray(v)) return v.map((x) => String(x || "").trim()).filter(Boolean);
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return [];
+    try {
+      const parsed = JSON.parse(s);
+      if (Array.isArray(parsed)) return parsed.map((x) => String(x || "").trim()).filter(Boolean);
+    } catch {}
+    return s.split(/[|,;]/).map((x) => x.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function toSnListFromEquiposInstalados(x: any, tipo: "ONT" | "MESH") {
+  const arr = Array.isArray(x?.equiposInstalados) ? x.equiposInstalados : [];
+  return arr
+    .filter((e: any) => normalizeText(e?.tipo) === tipo)
+    .map((e: any) => String(e?.sn || "").trim())
+    .filter(Boolean);
+}
+
 function isExcludedUbicacion(v: any) {
   const s = String(v || "")
     .normalize("NFD")
@@ -160,7 +250,13 @@ function isExcludedUbicacion(v: any) {
   return ["robo", "robado", "perdida", "averia", "garantia"].some((w) => s.includes(w));
 }
 
-function resolveScope(roles: string[]): Scope {
+function resolveScope(roles: string[], isAdmin: boolean): Scope {
+  const isPrivileged =
+    isAdmin ||
+    roles.includes("GERENCIA") ||
+    roles.includes("ALMACEN") ||
+    roles.includes("RRHH");
+  if (isPrivileged) return "all";
   if (roles.includes("COORDINADOR")) return "coordinador";
   if (roles.includes("TECNICO")) return "tecnico";
   return "all";
@@ -185,9 +281,10 @@ export async function GET(req: Request) {
       session.permissions.includes("EQUIPOS_VIEW");
     if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
-    const scope = resolveScope(roles);
+    const scope = resolveScope(roles, session.isAdmin);
     const { searchParams } = new URL(req.url);
     const anchor = String(searchParams.get("anchor") || "").trim() || toYmd(new Date());
+    const modelFilter = parseModelFilter(String(searchParams.get("modelo") || ""));
     const period = rollingAnchors(anchor);
 
     const db = adminDb();
@@ -196,7 +293,12 @@ export async function GET(req: Request) {
     const [cqSnap, usSnap, eqSnap, instSnap, savedSnap, preconDocs] = await Promise.all([
       db.collection("cuadrillas").where("area", "==", "INSTALACIONES").limit(2500).get(),
       db.collection("usuarios").select("nombres", "nombre", "apellidos", "uid").limit(4000).get(),
-      db.collection("equipos").where("estado", "in", ["ALMACEN", "CAMPO"]).select("equipo", "estado", "ubicacion").limit(20000).get(),
+      db
+        .collection("equipos")
+        .where("estado", "in", ["ALMACEN", "CAMPO"])
+        .select("equipo", "estado", "ubicacion", "descripcion", "modelo", "marca", "fabricante", "nombre", "tipoModelo")
+        .limit(20000)
+        .get(),
       db.collection("instalaciones")
         .where("fechaOrdenYmd", ">=", period.startYmd)
         .where("fechaOrdenYmd", "<=", period.endYmd)
@@ -263,6 +365,10 @@ export async function GET(req: Request) {
       const estado = asStr(x?.estado).toUpperCase();
       const eq = asStr(x?.equipo).toUpperCase() as keyof ReturnType<typeof emptyCounts>;
       if (!EQUIPOS.includes(eq)) continue;
+      if ((eq === "ONT" || eq === "MESH") && modelFilter !== "ALL") {
+        const model = modelFromEquipoDoc(x);
+        if (model !== modelFilter) continue;
+      }
       if (estado === "ALMACEN") {
         if (!isExcludedUbicacion(x?.ubicacion)) stockAlmacen[eq] += 1;
       } else if (estado === "CAMPO") {
@@ -277,6 +383,41 @@ export async function GET(req: Request) {
     const consumoTotal = emptyCounts();
     const consumoPromedioTotal = emptyCounts();
     for (const c of cuadrillas) consumoPorCuadrilla[c.id] = emptyCounts();
+
+    const snToModel = new Map<string, ModelFilter>();
+    if (modelFilter !== "ALL") {
+      const snKeys = new Set<string>();
+      for (const d of instSnap.docs) {
+        const x = d.data() as any;
+        const liq = x?.liquidacion || {};
+        const isLiquid =
+          String(liq?.estado || "").toUpperCase() === "LIQUIDADO" ||
+          !!liq?.at ||
+          !!x?.liquidadoAt;
+        if (!isLiquid) continue;
+        const snONT = String(x?.snONT || "").trim();
+        if (snONT) snKeys.add(snONT);
+        for (const sn of parseSnList(x?.snMESH)) snKeys.add(sn);
+        for (const sn of toSnListFromEquiposInstalados(x, "ONT")) snKeys.add(sn);
+        for (const sn of toSnListFromEquiposInstalados(x, "MESH")) snKeys.add(sn);
+      }
+      const sns = Array.from(snKeys);
+      const chunkSize = 300;
+      for (let i = 0; i < sns.length; i += chunkSize) {
+        const part = sns.slice(i, i + chunkSize);
+        const refs = part.map((sn) => db.collection("equipos").doc(sn));
+        const snaps = await db.getAll(...refs);
+        for (const s of snaps) {
+          if (!s.exists) continue;
+          const data = s.data() as any;
+          const model = modelFromEquipoDoc(data);
+          if (!model) continue;
+          snToModel.set(s.id, model);
+          const snField = asStr(data?.SN);
+          if (snField) snToModel.set(snField, model);
+        }
+      }
+    }
 
     for (const d of instSnap.docs) {
       const x = d.data() as any;
@@ -297,9 +438,25 @@ export async function GET(req: Request) {
       const cuId = byKey.get(keyName(cuRaw));
       if (!cuId) continue;
 
+      let ont = countONT(x);
+      let mesh = countMESH(x);
+      if (modelFilter !== "ALL") {
+        const ontSns = [
+          String(x?.snONT || "").trim(),
+          ...toSnListFromEquiposInstalados(x, "ONT"),
+        ].filter(Boolean);
+        ont = ontSns.some((sn) => snToModel.get(sn) === modelFilter) ? 1 : 0;
+
+        const meshSns = [
+          ...parseSnList(x?.snMESH),
+          ...toSnListFromEquiposInstalados(x, "MESH"),
+        ].filter(Boolean);
+        mesh = meshSns.filter((sn) => snToModel.get(sn) === modelFilter).length;
+      }
+
       const c = {
-        ONT: countONT(x),
-        MESH: countMESH(x),
+        ONT: ont,
+        MESH: mesh,
         FONO: countFONO(x),
         BOX: countBOX(x),
       };
@@ -380,6 +537,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       ok: true,
+      modelFilter,
       scope,
       period,
       cuadrillas,

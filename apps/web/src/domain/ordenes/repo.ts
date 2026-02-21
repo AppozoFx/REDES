@@ -8,6 +8,8 @@ export function ordenesCol() {
   return adminDb().collection(ORDENES_COL);
 }
 
+const cuadrillaMetaCache = new Map<string, Partial<OrdenDoc>>();
+
 function omitUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
   const out: Record<string, any> = {};
   for (const [k, v] of Object.entries(obj)) {
@@ -28,22 +30,23 @@ function parseLatLng(raw: string | undefined | null): { lat?: number; lng?: numb
 }
 
 function toLimaStrings(d: Date): { ymd: string; hm: string } {
-  // ymd
-  const ymd = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Lima",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(d);
-  // hm 24h
-  const hm = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "America/Lima",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  })
-    .format(d)
-    .replace(":", ":");
+  // Excel date-time values are interpreted in UTC-like wall time; keep that wall time
+  // to avoid shifting the intended tramo by timezone conversions.
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth() + 1;
+  const day = d.getUTCDate();
+  let hh = d.getUTCHours();
+  let mm = d.getUTCMinutes();
+  const ss = d.getUTCSeconds();
+  if (ss >= 30) {
+    mm += 1;
+    if (mm >= 60) {
+      mm = 0;
+      hh = (hh + 1) % 24;
+    }
+  }
+  const ymd = `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const hm = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
   return { ymd, hm };
 }
 
@@ -68,10 +71,12 @@ export async function enrichCuadrilla(metaRaw: string | undefined) {
   const tipo = /MOTOWIN/i.test(raw) ? "MOTO" : "RESIDENCIAL";
   const codigo = `K${numero}`;
   const id = `${codigo}_${tipo}`;
+  const cached = cuadrillaMetaCache.get(id);
+  if (cached) return cached;
 
   const snap = await adminDb().collection("cuadrillas").doc(id).get();
   if (!snap.exists) {
-    return {
+    const miss = {
       cuadrillaRaw: raw,
       tipoCuadrilla: tipo,
       cuadrillaId: id, // guardar ID calculado aun si no existe doc
@@ -80,9 +85,11 @@ export async function enrichCuadrilla(metaRaw: string | undefined) {
       gestorCuadrilla: undefined,
       coordinadorCuadrilla: undefined,
     } as Partial<OrdenDoc>;
+    cuadrillaMetaCache.set(id, miss);
+    return miss;
   }
   const c = snap.data() as any;
-  return {
+  const found = {
     cuadrillaRaw: raw,
     tipoCuadrilla: tipo,
     cuadrillaId: snap.id,
@@ -91,6 +98,8 @@ export async function enrichCuadrilla(metaRaw: string | undefined) {
     gestorCuadrilla: c?.gestorUid || undefined,
     coordinadorCuadrilla: c?.coordinadorUid || undefined,
   } as Partial<OrdenDoc>;
+  cuadrillaMetaCache.set(id, found);
+  return found;
 }
 
 function deriveOpcionalesFromIdenServi(textRaw: string | undefined) {

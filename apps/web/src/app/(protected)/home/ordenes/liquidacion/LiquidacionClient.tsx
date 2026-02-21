@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useMemo, useState } from "react";
 import { LiquidacionRowClient } from "./LiquidacionRowClient";
 
@@ -21,6 +20,7 @@ type Row = {
   cantMESHwin: string;
   cantFONOwin: string;
   cantBOXwin: string;
+  liquidado?: boolean;
 };
 
 function todayLimaYmd() {
@@ -102,50 +102,54 @@ export function LiquidacionClient({ initialYmd }: { initialYmd?: string }) {
 
   return (
     <div className="w-full space-y-4 p-3 md:p-4">
-      <header className="sticky top-0 z-20 rounded-xl border border-slate-200 bg-white/90 px-3 py-2 backdrop-blur dark:border-slate-700 dark:bg-slate-900/90">
-        <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">Ordenes · Liquidacion</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Gestiona ordenes finalizadas, revisa pendientes y ejecuta liquidaciones por cuadrilla.
-        </p>
-      </header>
+      <div className="sticky top-0 z-30 space-y-3">
+        <header className="rounded-xl border border-slate-200 bg-white/90 px-3 py-2 backdrop-blur dark:border-slate-700 dark:bg-slate-900/90">
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">Ordenes - Liquidacion</h1>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Gestiona ordenes finalizadas, revisa pendientes y ejecuta liquidaciones por cuadrilla.
+          </p>
+        </header>
+
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+          <div className="border-b border-slate-200 p-4 dark:border-slate-700">
+            <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
+              <div>
+                <label className="mb-1 block text-sm">Fecha (Lima)</label>
+                <input type="date" value={ymd} onChange={(e) => setYmd(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
+              </div>
+              <div className="min-w-60">
+                <label className="mb-1 block text-sm">Buscar</label>
+                <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Orden, cliente, codigo, cuadrilla" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
+              </div>
+              <div className="min-w-60">
+                <label className="mb-1 block text-sm">Coordinador</label>
+                <select value={coordinador} onChange={(e) => setCoordinador(e.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
+                  <option value="">Todos</option>
+                  {coordinadores.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                <input type="checkbox" checked={showLiquidadas} onChange={(e) => setShowLiquidadas(e.target.checked)} />
+                Mostrar liquidadas
+              </label>
+            </div>
+          </div>
+
+          <div className="p-4">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Metric title="Finalizadas" value={kpi.finalizadas} tone="slate" />
+              <Metric title="Liquidadas" value={kpi.liquidadas} tone="emerald" />
+              <Metric title="Pendientes" value={kpi.pendientes} tone="amber" />
+            </div>
+          </div>
+        </section>
+      </div>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
-        <div className="border-b border-slate-200 p-4 dark:border-slate-700">
-          <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
-            <div>
-              <label className="mb-1 block text-sm">Fecha (Lima)</label>
-              <input type="date" value={ymd} onChange={(e) => setYmd(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
-            </div>
-            <div className="min-w-60">
-              <label className="mb-1 block text-sm">Buscar</label>
-              <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Orden, cliente, codigo, cuadrilla" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
-            </div>
-            <div className="min-w-60">
-              <label className="mb-1 block text-sm">Coordinador</label>
-              <select value={coordinador} onChange={(e) => setCoordinador(e.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
-                <option value="">Todos</option>
-                {coordinadores.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-              <input type="checkbox" checked={showLiquidadas} onChange={(e) => setShowLiquidadas(e.target.checked)} />
-              Mostrar liquidadas
-            </label>
-          </div>
-        </div>
-
-        <div className="border-b border-slate-200 p-4 dark:border-slate-700">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Metric title="Finalizadas" value={kpi.finalizadas} tone="slate" />
-            <Metric title="Liquidadas" value={kpi.liquidadas} tone="emerald" />
-            <Metric title="Pendientes" value={kpi.pendientes} tone="amber" />
-          </div>
-        </div>
-
         {error ? <div className="m-4 rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800">{error}</div> : null}
 
         {!loading && !error && filtered.length === 0 ? (

@@ -1,23 +1,21 @@
-﻿"use client";
-
-import { useEffect, useMemo, useRef, useState } from "react";
+"use client";
+import { ComponentType, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import L from "leaflet";
 
 import "leaflet/dist/leaflet.css";
 import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 
-const MapContainer = dynamic(() => import("react-leaflet").then((m) => ({ default: m.MapContainer })), { ssr: false });
-const TileLayer = dynamic(() => import("react-leaflet").then((m) => ({ default: m.TileLayer })), { ssr: false });
-const Marker = dynamic(() => import("react-leaflet").then((m) => ({ default: m.Marker })), { ssr: false });
-const Popup = dynamic(() => import("react-leaflet").then((m) => ({ default: m.Popup })), { ssr: false });
-const Tooltip = dynamic(() => import("react-leaflet").then((m) => ({ default: m.Tooltip })), { ssr: false });
-const Polyline = dynamic(() => import("react-leaflet").then((m) => ({ default: m.Polyline })), { ssr: false });
+const MapContainer = dynamic(() => import("react-leaflet").then((m) => ({ default: m.MapContainer })), { ssr: false }) as ComponentType<any>;
+const TileLayer = dynamic(() => import("react-leaflet").then((m) => ({ default: m.TileLayer })), { ssr: false }) as ComponentType<any>;
+const Marker = dynamic(() => import("react-leaflet").then((m) => ({ default: m.Marker })), { ssr: false }) as ComponentType<any>;
+const Popup = dynamic(() => import("react-leaflet").then((m) => ({ default: m.Popup })), { ssr: false }) as ComponentType<any>;
+const Tooltip = dynamic(() => import("react-leaflet").then((m) => ({ default: m.Tooltip })), { ssr: false }) as ComponentType<any>;
+const Polyline = dynamic(() => import("react-leaflet").then((m) => ({ default: m.Polyline })), { ssr: false }) as ComponentType<any>;
 const MarkerClusterGroup = dynamic(
   () => import("react-leaflet-markercluster").then((m: any) => ({ default: m.default || m })),
   { ssr: false }
-);
+) as ComponentType<any>;
 
 type Row = {
   id: string;
@@ -46,8 +44,8 @@ const colorByEstado: Record<string, string> = {
   default: "#34495e",
 };
 
-const circleIcon = (color: string) =>
-  new L.DivIcon({
+const circleIcon = (leaflet: any, color: string) =>
+  new leaflet.DivIcon({
     html: `<div style="background:${color};width:18px;height:18px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 3px rgba(0,0,0,.4)"></div>`,
     className: "",
     iconSize: [18, 18],
@@ -55,11 +53,11 @@ const circleIcon = (color: string) =>
     popupAnchor: [0, -9],
   });
 
-const clusterIcon = (cluster: any) => {
+const clusterIcon = (leaflet: any, cluster: any) => {
   const count = cluster.getChildCount();
   const size = count < 10 ? 26 : count < 50 ? 34 : count < 200 ? 42 : 50;
   const bg = count < 10 ? "#1d4ed8" : count < 50 ? "#7c3aed" : count < 200 ? "#dc2626" : "#111827";
-  return L.divIcon({
+  return leaflet.divIcon({
     html: `<div style="background:${bg};color:#fff;width:${size}px;height:${size}px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 16px rgba(0,0,0,.25);font-weight:700">${count}</div>`,
     className: "cluster-marker",
     iconSize: [size, size],
@@ -104,6 +102,7 @@ function tramoLabel(v: string) {
 
 export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
   const [isClient, setIsClient] = useState(false);
+  const [leaflet, setLeaflet] = useState<any | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -128,6 +127,19 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
   };
 
   useEffect(() => setIsClient(true), []);
+
+  useEffect(() => {
+    let mounted = true;
+    import("leaflet")
+      .then((m: any) => {
+        if (!mounted) return;
+        setLeaflet(m?.default || m);
+      })
+      .catch(() => setLeaflet(null));
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -197,12 +209,11 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
 
   useEffect(() => {
     if (!mapRef.current) return;
-    const bounds = new L.LatLngBounds([]);
-    filtered.forEach((r) => {
-      if (Number.isFinite(r.lat) && Number.isFinite(r.lng)) bounds.extend([r.lat, r.lng]);
-    });
-    if (bounds.isValid()) {
-      setTimeout(() => mapRef.current.fitBounds(bounds, { padding: [60, 60] }), 120);
+    const points = filtered
+      .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng))
+      .map((r) => [r.lat, r.lng] as [number, number]);
+    if (points.length) {
+      setTimeout(() => mapRef.current.fitBounds(points, { padding: [60, 60] }), 120);
     }
   }, [filtered]);
 
@@ -220,7 +231,7 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
       return;
     }
     if (!Number.isFinite(puntoA.lat) || !Number.isFinite(puntoA.lng) || !Number.isFinite(puntoB.lat) || !Number.isFinite(puntoB.lng)) {
-      setRouteError("Uno de los puntos no tiene coordenadas válidas.");
+      setRouteError("Uno de los puntos no tiene coordenadas validas.");
       return;
     }
 
@@ -238,8 +249,7 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
       setRouteDistanceKm(Number(route.distance || 0) / 1000);
 
       if (coords.length && mapRef.current) {
-        const b = new L.LatLngBounds(coords as any);
-        mapRef.current.fitBounds(b, { padding: [60, 60] });
+        mapRef.current.fitBounds(coords, { padding: [60, 60] });
       }
     } catch {
       setRouteError("No se pudo calcular la ruta. Usa el fallback de Google Maps/Waze.");
@@ -254,8 +264,8 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
     <div className="flex min-h-0 w-full flex-col gap-4 p-3 md:p-4">
       <header className="sticky top-0 z-20 flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white/90 px-3 py-2 backdrop-blur dark:border-slate-700 dark:bg-slate-900/90">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">Ordenes · Mapa</h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{fecha} · {filtered.length} resultados</p>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">Ordenes - Mapa</h1>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{fecha} - {filtered.length} resultados</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900" />
@@ -384,7 +394,7 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
               spiderfyOnMaxZoom
               spiderLegPolylineOptions={{ weight: 3, color: "#2563eb", opacity: 0.85 }}
               spiderfyDistanceMultiplier={1.6}
-              iconCreateFunction={clusterIcon}
+              iconCreateFunction={leaflet ? (cluster: any) => clusterIcon(leaflet, cluster) : undefined}
             >
               {routeCoords.length > 1 ? (
                 <Polyline positions={routeCoords} pathOptions={{ color: "#0ea5e9", weight: 5, opacity: 0.9 }} />
@@ -392,7 +402,7 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
               {filtered.map((r) => {
                 const color = colorByEstado[r.estado] || colorByEstado.default;
                 return (
-                  <Marker key={r.id} position={[r.lat, r.lng]} icon={circleIcon(color)}>
+                  <Marker key={r.id} position={[r.lat, r.lng]} icon={leaflet ? circleIcon(leaflet, color) : undefined}>
                     <Tooltip permanent direction="top" offset={[0, -14]} opacity={1}>
                       {(r.cuadrillaNombre || "").toUpperCase()}
                     </Tooltip>
@@ -410,7 +420,7 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
                           <div className="space-y-1">
                             <div><b>Cliente:</b></div>
                             <div className="font-medium break-words">{r.cliente || "-"}</div>
-                            <div><b>Código:</b> {r.codigoCliente || "-"}</div>
+                            <div><b>Codigo:</b> {r.codigoCliente || "-"}</div>
                             <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                               <div><b>Tramo:</b> {tramoLabel(r.tramo)}</div>
                               <div><b>En camino:</b> {r.horaEnCamino || "-"}</div>
@@ -425,7 +435,7 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
                             ) : null}
                             {r.direccion ? (
                               <div className="pt-1">
-                                <div><b>Dirección:</b></div>
+                                <div><b>Direccion:</b></div>
                                 <div className="font-medium break-words whitespace-pre-wrap">{r.direccion}</div>
                               </div>
                             ) : null}

@@ -1,9 +1,8 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useRef, useState, startTransition } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { importOrdenesAction } from "./actions";
 
 type Resumen = { nuevos: number; actualizados: number; duplicadosSinCambios: number };
 
@@ -19,8 +18,10 @@ export default function ImportClient() {
   const [archivoPesoMB, setArchivoPesoMB] = useState(0);
   const [lastResumen, setLastResumen] = useState<Resumen | null>(null);
   const [lastFecha, setLastFecha] = useState<string>("");
-  const [result, action, pending] = useActionState(importOrdenesAction as any, null as any);
+  const [pending, setPending] = useState(false);
+  const [result, setResult] = useState<any>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const resetTimerRef = useRef<number | null>(null);
 
   const pageSize = 50;
   const totalRegistros = rows.length;
@@ -52,9 +53,16 @@ export default function ImportClient() {
   }, [pending]);
 
   useEffect(() => {
+    return () => {
+      if (resetTimerRef.current != null) window.clearTimeout(resetTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!result) return;
-    if ((result as any).ok) {
-      const resumen = (result as any).resumen as Resumen;
+    const safe: any = result ?? {};
+    if (safe.ok && safe.resumen) {
+      const resumen = safe.resumen as Resumen;
       setLastResumen(resumen);
       setLastFecha(new Date().toLocaleString("es-PE"));
       setProgress(100);
@@ -63,7 +71,7 @@ export default function ImportClient() {
         description: `Nuevos: ${resumen.nuevos}, actualizados: ${resumen.actualizados}, sin cambios: ${resumen.duplicadosSinCambios}`,
       });
 
-      window.setTimeout(() => {
+      resetTimerRef.current = window.setTimeout(() => {
         setEnviando(false);
         setProgress(0);
         setRows([]);
@@ -75,7 +83,7 @@ export default function ImportClient() {
     } else {
       setEnviando(false);
       setProgress(0);
-      const msg = (result as any)?.error?.formErrors?.join(", ") || "Error al importar";
+      const msg = safe?.error?.formErrors?.join(", ") || "Error al importar";
       toast.error(msg);
     }
   }, [result]);
@@ -129,15 +137,30 @@ export default function ImportClient() {
     setConfirmOpen(true);
   }
 
-  function ejecutarImportacion() {
+  async function ejecutarImportacion() {
     if (!file || pending) return;
     setConfirmOpen(false);
     toast("Importacion iniciada", { description: `Procesando ${totalRegistros} registros` });
     const fd = new FormData();
     fd.set("file", file);
-    startTransition(() => {
-      (action as any)(fd);
-    });
+    setPending(true);
+    try {
+      const res = await fetch("/api/ordenes/import", {
+        method: "POST",
+        body: fd,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = String(data?.error || `HTTP_${res.status}`);
+        setResult({ ok: false, error: { formErrors: [msg] } });
+      } else {
+        setResult(data);
+      }
+    } catch (e: any) {
+      setResult({ ok: false, error: { formErrors: [String(e?.message || "NETWORK_ERROR")] } });
+    } finally {
+      setPending(false);
+    }
   }
 
   return (

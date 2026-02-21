@@ -32,11 +32,35 @@ function resolveFormData(a: any, b?: any): FormData {
   throw new Error("INVALID_FORMDATA");
 }
 
-export async function importOrdenesAction(arg1: any, arg2?: any): Promise<ImportResult> {
-  const session = await requireServerPermission(PERM);
-  const formData = resolveFormData(arg1, arg2);
+type OrdenImportInput = {
+  ordenId: string;
+  tipoOrden?: string;
+  tipoTraba?: string;
+  fSoli?: Date | null;
+  cliente?: string;
+  tipo?: string;
+  tipoClienId?: string;
+  cuadrilla?: string;
+  estado?: string;
+  direccion?: string;
+  direccion1?: string;
+  idenServi?: string;
+  region?: string;
+  zonaDistrito?: string;
+  codiSeguiClien?: string;
+  numeroDocumento?: string;
+  telefono?: string;
+  fechaFinVisi?: Date | null;
+  fechaIniVisi?: Date | null;
+  motivoCancelacion?: string;
+  georeferencia?: string;
+};
 
+export async function importOrdenesAction(arg1: any, arg2?: any): Promise<ImportResult> {
   try {
+    const session = await requireServerPermission(PERM);
+    const formData = resolveFormData(arg1, arg2);
+
     const file = formData.get("file");
     if (!file || typeof file === "string") {
       return { ok: false, error: { formErrors: ["FILE_REQUIRED"] } };
@@ -51,6 +75,7 @@ export async function importOrdenesAction(arg1: any, arg2?: any): Promise<Import
     let nuevos = 0,
       actualizados = 0,
       duplicadosSinCambios = 0;
+    const payloads: OrdenImportInput[] = [];
 
     for (const row of rows) {
       if (!row || row.length < 1) continue;
@@ -78,36 +103,57 @@ export async function importOrdenesAction(arg1: any, arg2?: any): Promise<Import
       const motivoCancelacion = String(row[19] ?? "").trim() || undefined;
       const georeferencia = String(row[20] ?? "").trim() || undefined;
 
-      const res = await upsertOrden(
-        {
-          ordenId,
-          tipoOrden,
-          tipoTraba,
-          fSoli,
-          cliente,
-          tipo,
-          tipoClienId,
-          cuadrilla,
-          estado,
-          direccion,
-          direccion1,
-          idenServi,
-          region,
-          zonaDistrito,
-          codiSeguiClien,
-          numeroDocumento,
-          telefono,
-          fechaFinVisi,
-          fechaIniVisi,
-          motivoCancelacion,
-          georeferencia,
-        },
-        session.uid
-      );
+      payloads.push({
+        ordenId,
+        tipoOrden,
+        tipoTraba,
+        fSoli,
+        cliente,
+        tipo,
+        tipoClienId,
+        cuadrilla,
+        estado,
+        direccion,
+        direccion1,
+        idenServi,
+        region,
+        zonaDistrito,
+        codiSeguiClien,
+        numeroDocumento,
+        telefono,
+        fechaFinVisi,
+        fechaIniVisi,
+        motivoCancelacion,
+        georeferencia,
+      });
+    }
 
-      if (res === "CREATED") nuevos++;
-      else if (res === "UPDATED") actualizados++;
-      else duplicadosSinCambios++;
+    let cursor = 0;
+    let workerError: any = null;
+    const concurrency = Math.min(16, Math.max(1, payloads.length));
+
+    async function worker() {
+      while (true) {
+        if (workerError) return;
+        const idx = cursor++;
+        if (idx >= payloads.length) return;
+        try {
+          const res = await upsertOrden(payloads[idx], session.uid);
+          if (res === "CREATED") nuevos++;
+          else if (res === "UPDATED") actualizados++;
+          else duplicadosSinCambios++;
+        } catch (err) {
+          workerError = err;
+          return;
+        }
+      }
+    }
+
+    if (payloads.length > 0) {
+      await Promise.all(Array.from({ length: concurrency }, () => worker()));
+    }
+    if (workerError) {
+      throw workerError;
     }
 
     const resumen = { nuevos, actualizados, duplicadosSinCambios };
@@ -133,6 +179,6 @@ export async function importOrdenesAction(arg1: any, arg2?: any): Promise<Import
     if (code === "UNAUTHENTICATED" || code === "ACCESS_DISABLED" || code === "FORBIDDEN") {
       return { ok: false, error: { formErrors: [code] } };
     }
-    return { ok: false, error: { formErrors: [code] } };
+    return { ok: false, error: { formErrors: [code || "ERROR"] } };
   }
 }

@@ -4,3 +4,5 @@ setGlobalOptions({ maxInstances: 10 });
 
 export { bootstrapAdmin } from "./bootstrapAdmin";
 export { usersCreate } from "./usersCreate";
+export { telegramWebhook } from "./telegram/webhook";
+export { telegramPendientesReminder } from "./telegram/webhook";

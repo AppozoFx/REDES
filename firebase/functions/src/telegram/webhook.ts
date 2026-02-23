@@ -21,6 +21,7 @@ const TELEGRAM_ALLOWED_USER_IDS = defineString("TELEGRAM_ALLOWED_USER_IDS", {
 });
 
 const UPDATES_COLLECTION = "telegram_updates";
+const PRELIQ_COLLECTION = "telegram_preliquidaciones";
 const ORDENES_COLLECTION = "ordenes";
 
 type TelegramChat = { id?: number | string };
@@ -119,6 +120,26 @@ function cleanValue(value: unknown): string {
   return String(value || "").replace(/`/g, "'").trim();
 }
 
+function cleanSeriesList(values: unknown, maxItems = 4): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of Array.isArray(values) ? values : []) {
+    const v = cleanValue(item);
+    if (!v) continue;
+    const key = v.toUpperCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(v);
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
+function preliqDocId(pedido: string, ymd: string): string {
+  const cleanPedido = cleanValue(pedido).replace(/[\/\\\s]+/g, "_");
+  return `${cleanPedido}_${ymd}`;
+}
+
 function todayLimaYmd(): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Lima",
@@ -166,6 +187,14 @@ function parseFlexibleDateToYmd(rawInput: string): string | null {
 function normalizeYmdOrToday(v?: string): string {
   const parsed = parseFlexibleDateToYmd(String(v || ""));
   return parsed || todayLimaYmd();
+}
+
+function resolveOperacionYmdFromOrden(orden: Record<string, unknown>): string {
+  const byFechaFin = parseFlexibleDateToYmd(cleanValue(orden.fechaFinVisiYmd || ""));
+  if (byFechaFin) return byFechaFin;
+  const bySoli = parseFlexibleDateToYmd(cleanValue(orden.fSoliYmd || ""));
+  if (bySoli) return bySoli;
+  return todayLimaYmd();
 }
 
 function buildOrdenResumen(orden: Record<string, unknown>): OrdenResumen {
@@ -653,6 +682,49 @@ async function registerAudit(params: {
   }
 }
 
+async function upsertPreliquidacion(params: {
+  chatId: string;
+  fromId: string;
+  pedido: string;
+  ymd: string;
+  orderDocId: string;
+  orderMeta: OrdenResumen;
+  parsed: ReturnType<typeof parseTelegramTemplate>;
+}) {
+  const parsed = params.parsed;
+  if (!parsed) return;
+
+  const docId = preliqDocId(params.pedido, params.ymd);
+  const ref = db.collection(PRELIQ_COLLECTION).doc(docId);
+  await ref.set(
+    {
+      pedido: params.pedido,
+      ymd: params.ymd,
+      chatId: params.chatId,
+      fromId: params.fromId || null,
+      orderDocId: params.orderDocId,
+      cuadrillaId: params.orderMeta.cuadrillaId || null,
+      cuadrillaNombre: params.orderMeta.cuadrillaNombre || null,
+      cliente: params.orderMeta.cliente || null,
+      fecha: params.orderMeta.fecha || null,
+      tramo: params.orderMeta.tramo || null,
+      preliquidacion: {
+        snOnt: cleanValue(parsed.snOnt || "") || null,
+        snMeshes: cleanSeriesList(parsed.meshes, 4),
+        snBoxes: cleanSeriesList(parsed.boxes, 4),
+        snFono: cleanValue(parsed.snFono || "") || null,
+        rotuloNapCto: cleanValue(parsed.ctoNap || "") || null,
+        puerto: cleanValue(parsed.puerto || "") || null,
+        potenciaCtoNapDbm: cleanValue(parsed.potenciaCtoNapDbm || "") || null,
+      },
+      source: "TELEGRAM",
+      updatedAt: FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
 async function handleCallback(update: TelegramUpdate, token: string) {
   const callback = update.callback_query;
   if (!callback) return;
@@ -958,7 +1030,8 @@ export const telegramWebhook = onRequest(
     }
 
     const orderMeta = buildOrdenResumen(orderResult.data);
-    const already = await wasPedidoAlreadyReportedToday(chatId, parsed.pedido, ymd);
+    const operacionYmd = resolveOperacionYmdFromOrden(orderResult.data);
+    const already = await wasPedidoAlreadyReportedToday(chatId, parsed.pedido, operacionYmd);
     if (already) {
       await sendTelegramMessage({
         token,
@@ -969,13 +1042,13 @@ export const telegramWebhook = onRequest(
         chatId,
         token,
         orderMeta.cuadrillaNombre || orderMeta.cuadrillaId,
-        ymd
+        operacionYmd
       );
       await updateRef.set(
         {
           pedido: parsed.pedido,
           status: "ALREADY_LIQUIDATED",
-          ymd,
+          ymd: operacionYmd,
           orderDocId: orderResult.id,
           cuadrillaId: orderMeta.cuadrillaId || null,
           cuadrillaNombre: orderMeta.cuadrillaNombre || null,
@@ -1015,7 +1088,7 @@ export const telegramWebhook = onRequest(
           pedido: parsed.pedido,
           orderDocId: orderResult.id,
           status: "FOUND",
-          ymd,
+          ymd: operacionYmd,
           cuadrillaId: orderMeta.cuadrillaId || null,
           cuadrillaNombre: orderMeta.cuadrillaNombre || null,
           cliente: orderMeta.cliente || null,
@@ -1028,16 +1101,35 @@ export const telegramWebhook = onRequest(
             potenciaCtoNapDbm: parsed.potenciaCtoNapDbm || null,
             snOnt: parsed.snOnt || null,
             meshes: parsed.meshes,
+            boxes: parsed.boxes,
+            snFono: parsed.snFono || null,
           },
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }
       );
+      try {
+        await upsertPreliquidacion({
+          chatId,
+          fromId,
+          pedido: parsed.pedido,
+          ymd: operacionYmd,
+          orderDocId: orderResult.id,
+          orderMeta,
+          parsed,
+        });
+      } catch (error) {
+        logger.error("telegram preliquidacion upsert error", {
+          error: String((error as Error)?.message || error),
+          pedido: parsed.pedido,
+          ymd: operacionYmd,
+        });
+      }
       await sendCuadrillaStatus(
         chatId,
         token,
         orderMeta.cuadrillaNombre || orderMeta.cuadrillaId,
-        ymd
+        operacionYmd
       );
       result = "FOUND";
     } catch (error) {
@@ -1053,7 +1145,7 @@ export const telegramWebhook = onRequest(
         {
           pedido: parsed.pedido,
           status: result,
-          ymd,
+          ymd: operacionYmd,
           parsedFields: {
             pedido: parsed.pedido,
             ctoNap: parsed.ctoNap || null,
@@ -1061,6 +1153,8 @@ export const telegramWebhook = onRequest(
             potenciaCtoNapDbm: parsed.potenciaCtoNapDbm || null,
             snOnt: parsed.snOnt || null,
             meshes: parsed.meshes,
+            boxes: parsed.boxes,
+            snFono: parsed.snFono || null,
           },
           updatedAt: FieldValue.serverTimestamp(),
         },

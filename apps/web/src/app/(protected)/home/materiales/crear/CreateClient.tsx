@@ -1,11 +1,10 @@
-"use client";
+﻿"use client";
 
 import React from "react";
 import { useEffect, useMemo, useRef, useState, useActionState, startTransition } from "react";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import { createMaterialAction } from "./actions";
-
-type CreateResult = Awaited<ReturnType<typeof createMaterialAction>>;
 
 function stripDiacritics(input: string): string {
   return input.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ñ/gi, (m) => (m === "ñ" ? "n" : "N"));
@@ -19,6 +18,7 @@ function toId(nombre: string): string {
 }
 
 export default function CreateMaterialClient() {
+  const router = useRouter();
   const [nombre, setNombre] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [unidadTipo, setUnidadTipo] = useState<"UND" | "METROS">("UND");
@@ -27,7 +27,6 @@ export default function CreateMaterialClient() {
 
   const [metrosPorUnd, setMetrosPorUnd] = useState<string>("");
   const [precioPorMetro, setPrecioPorMetro] = useState<string>("");
-  // Opción B: mínimo expresado como UND + metros sueltos (solo UI)
   const [minUndUi, setMinUndUi] = useState<string>("");
   const [minMetrosSueltosUi, setMinMetrosSueltosUi] = useState<string>("");
 
@@ -37,31 +36,44 @@ export default function CreateMaterialClient() {
   const matId = useMemo(() => toId(nombre), [nombre]);
 
   const [result, action, pending] = useActionState(createMaterialAction as any, null as any);
+  const shouldReturnRef = useRef(false);
+  const [volverAlGuardar, setVolverAlGuardar] = useState(true);
+
+  const resetForm = () => {
+    setNombre("");
+    setDescripcion("");
+    setVendible(false);
+    setPrecioUnd("");
+    setPrecioPorMetro("");
+    setMinStockUnd("");
+    setMinUndUi("");
+    setMinMetrosSueltosUi("");
+    setMetrosPorUnd("");
+    setAreas([]);
+    setUnidadTipo("UND");
+  };
 
   useEffect(() => {
     if (!result) return;
     if ((result as any).ok) {
       toast.success("Material creado", { description: `ID: ${(result as any).id}` });
-      // reset parcial
-      setNombre("");
-      setDescripcion("");
-      setVendible(false);
-      setPrecioUnd("");
-      setPrecioPorMetro("");
-      setMinStockUnd("");
-      setMinUndUi("");
-      setMinMetrosSueltosUi("");
-      setMetrosPorUnd("");
-      setAreas([]);
-      setUnidadTipo("UND");
+      if (shouldReturnRef.current) {
+        shouldReturnRef.current = false;
+        router.push("/home/materiales");
+      } else {
+        resetForm();
+      }
     } else {
       const msg = (result as any)?.error?.formErrors?.join(", ") || "Error al crear";
       toast.error(msg);
+      shouldReturnRef.current = false;
     }
-  }, [result]);
+  }, [result, router]);
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    shouldReturnRef.current = volverAlGuardar;
+
     const fd = new FormData();
     fd.set("nombre", nombre);
     fd.set("descripcion", descripcion);
@@ -75,7 +87,6 @@ export default function CreateMaterialClient() {
       const toNum = (v: string) => Number(String(v ?? "").replace(",", "."));
       if (metrosPorUnd) fd.set("metrosPorUnd", String(toNum(metrosPorUnd)));
       if (precioPorMetro) fd.set("precioPorMetro", String(toNum(precioPorMetro)));
-      // Opción B: calcular minStockMetros = UND * metrosPorUnd + metros sueltos
       const und = Math.max(0, Math.floor(Number(minUndUi || "0")));
       const mpo = toNum(metrosPorUnd || "0");
       const sueltos = Math.max(0, toNum(minMetrosSueltosUi || "0"));
@@ -85,149 +96,159 @@ export default function CreateMaterialClient() {
     startTransition(() => (action as any)(fd));
   }
 
+  const fieldClass =
+    "mt-1 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
+
   return (
-    <div className="space-y-6">
-      <div>
-        <div className="text-xl font-semibold">Crear Material</div>
-        <div className="text-sm text-muted-foreground">Define el material con una sola unidad canónica (UND o METROS)</div>
-      </div>
+    <div className="space-y-4">
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h1 className="text-xl font-semibold text-slate-900">Crear material</h1>
+        <p className="mt-1 text-sm text-slate-500">Completa datos basicos, unidad y reglas de stock/precio.</p>
+      </section>
 
       <form onSubmit={onSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium">Nombre</label>
-          <input value={nombre} onChange={(e) => setNombre(e.target.value.toUpperCase())} className="mt-1 w-full rounded border px-2 py-1" />
-          <div className="mt-1 text-xs text-muted-foreground">ID generado: <span className="font-mono">{matId || "(vacío)"}</span></div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium">Descripción (opcional)</label>
-          <textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} className="mt-1 w-full rounded border px-2 py-1" rows={3} />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium">Áreas</label>
-          <div className="mt-1 flex gap-4 text-sm">
-            {[
-              { key: "INSTALACIONES", label: "INSTALACIONES" },
-              { key: "AVERIAS", label: "AVERIAS" },
-            ].map((a) => (
-              <label key={a.key} className="inline-flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={areas.includes(a.key)}
-                  onChange={(e) => {
-                    setAreas((prev) => (e.target.checked ? Array.from(new Set([...prev, a.key])) : prev.filter((x) => x !== a.key)));
-                  }}
-                />
-                {a.label}
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium">Unidad de medida</label>
-          <div className="mt-1 flex gap-4 text-sm">
-            {["UND", "METROS"].map((u) => (
-              <label key={u} className="inline-flex items-center gap-2">
-                <input type="radio" name="unidad" checked={unidadTipo === u} onChange={() => setUnidadTipo(u as any)} />
-                {u}
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {unidadTipo === "METROS" && (
-          <div className="space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium">1 UND = (metros)</label>
-                <input value={metrosPorUnd} onChange={(e) => setMetrosPorUnd(e.target.value)} className="mt-1 w-full rounded border px-2 py-1" inputMode="decimal" />
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="mb-3 text-sm font-semibold text-slate-900">Datos generales</h2>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              <label className="block text-sm font-medium text-slate-700">Nombre</label>
+              <input value={nombre} onChange={(e) => setNombre(e.target.value.toUpperCase())} className={fieldClass} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700">ID generado</label>
+              <div className="mt-1 flex h-10 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 font-mono text-xs text-slate-700">
+                {matId || "(vacio)"}
               </div>
+            </div>
+            <div className="lg:col-span-3">
+              <label className="block text-sm font-medium text-slate-700">Descripcion (opcional)</label>
+              <textarea
+                value={descripcion}
+                onChange={(e) => setDescripcion(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                rows={3}
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="mb-3 text-sm font-semibold text-slate-900">Clasificacion</h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">Areas</label>
+              <div className="flex flex-wrap gap-3 text-sm">
+                {[{ key: "INSTALACIONES", label: "INSTALACIONES" }, { key: "AVERIAS", label: "AVERIAS" }].map((a) => (
+                  <label key={a.key} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={areas.includes(a.key)}
+                      onChange={(e) => {
+                        setAreas((prev) => (e.target.checked ? Array.from(new Set([...prev, a.key])) : prev.filter((x) => x !== a.key)));
+                      }}
+                    />
+                    {a.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">Unidad de medida</label>
+              <div className="flex gap-3 text-sm">
+                {["UND", "METROS"].map((u) => (
+                  <label key={u} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
+                    <input type="radio" name="unidad" checked={unidadTipo === u} onChange={() => setUnidadTipo(u as any)} />
+                    {u}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-900">Stock y precios</h2>
+            <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+              <input type="checkbox" checked={vendible} onChange={(e) => setVendible(e.target.checked)} />
+              Material vendible
+            </label>
+          </div>
+
+          {unidadTipo === "METROS" && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">1 UND = (metros)</label>
+                  <input value={metrosPorUnd} onChange={(e) => setMetrosPorUnd(e.target.value)} className={fieldClass} inputMode="decimal" />
+                </div>
+                {vendible && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700">Precio por metro</label>
+                    <input value={precioPorMetro} onChange={(e) => setPrecioPorMetro(e.target.value)} className={fieldClass} inputMode="decimal" />
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Minimo (UND)</label>
+                  <input
+                    value={minUndUi}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      const n = Math.max(0, Math.floor(Number(String(v).replace(",", ".") || "0")));
+                      setMinUndUi(String(Number.isFinite(n) ? n : 0));
+                    }}
+                    className={fieldClass}
+                    inputMode="numeric"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Metros sueltos</label>
+                  <input value={minMetrosSueltosUi} onChange={(e) => setMinMetrosSueltosUi(e.target.value)} className={fieldClass} inputMode="decimal" />
+                </div>
+              </div>
+              <PreviewMinimo metrosPorUnd={metrosPorUnd} und={minUndUi} sueltos={minMetrosSueltosUi} />
+            </div>
+          )}
+
+          {unidadTipo === "UND" && (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {vendible && (
                 <div>
-                  <label className="block text-sm font-medium">Precio por metro (moneda)</label>
-                  <input value={precioPorMetro} onChange={(e) => setPrecioPorMetro(e.target.value)} className="mt-1 w-full rounded border px-2 py-1" inputMode="decimal" />
+                  <label className="block text-sm font-medium text-slate-700">Precio por UND</label>
+                  <input value={precioUnd} onChange={(e) => setPrecioUnd(e.target.value)} className={fieldClass} inputMode="decimal" />
                 </div>
               )}
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium">Mínimo (UND)</label>
-                <input
-                  value={minUndUi}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    // Solo enteros para UND
-                    const n = Math.max(0, Math.floor(Number(String(v).replace(",", ".") || "0")));
-                    setMinUndUi(String(Number.isFinite(n) ? n : 0));
-                  }}
-                  className="mt-1 w-full rounded border px-2 py-1"
-                  inputMode="numeric"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium">Metros sueltos</label>
-                <input
-                  value={minMetrosSueltosUi}
-                  onChange={(e) => setMinMetrosSueltosUi(e.target.value)}
-                  className="mt-1 w-full rounded border px-2 py-1"
-                  inputMode="decimal"
-                />
+                <label className="block text-sm font-medium text-slate-700">Minimo (UND)</label>
+                <input value={minStockUnd} onChange={(e) => setMinStockUnd(e.target.value)} className={fieldClass} inputMode="numeric" />
               </div>
             </div>
+          )}
+        </section>
 
-            <PreviewMinimo metrosPorUnd={metrosPorUnd} und={minUndUi} sueltos={minMetrosSueltosUi} />
+        <div className="sticky bottom-3 z-10 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="submit" disabled={pending} className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50">
+              {pending ? "Guardando..." : "Guardar"}
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => router.push("/home/materiales")}
+              className="h-10 rounded-lg border border-slate-300 px-4 text-sm transition hover:bg-slate-100 disabled:opacity-50"
+            >
+              Volver al listado
+            </button>
+            <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+              <input type="checkbox" checked={volverAlGuardar} onChange={(e) => setVolverAlGuardar(e.target.checked)} />
+              Volver al guardar
+            </label>
+            <button type="button" disabled={pending} className="text-sm text-slate-500 underline-offset-2 hover:underline disabled:opacity-50" onClick={resetForm}>
+              Limpiar campos
+            </button>
           </div>
-        )}
-
-        {unidadTipo === "UND" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {vendible && (
-              <div>
-                <label className="block text-sm font-medium">Precio por UND (moneda)</label>
-                <input value={precioUnd} onChange={(e) => setPrecioUnd(e.target.value)} className="mt-1 w-full rounded border px-2 py-1" inputMode="decimal" />
-              </div>
-            )}
-            <div>
-              <label className="block text-sm font-medium">Mínimo (UND)</label>
-              <input value={minStockUnd} onChange={(e) => setMinStockUnd(e.target.value)} className="mt-1 w-full rounded border px-2 py-1" inputMode="numeric" />
-            </div>
-          </div>
-        )}
-
-        <div>
-          <label className="inline-flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={vendible} onChange={(e) => setVendible(e.target.checked)} />
-            Material vendible (aplica precios)
-          </label>
-        </div>
-
-        <div className="pt-2 flex gap-2">
-          <button type="submit" disabled={pending} className="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700 disabled:opacity-50">
-            {pending ? "Guardando..." : "Guardar"}
-          </button>
-          <button
-            type="button"
-            disabled={pending}
-            className="rounded border px-3 py-2 hover:bg-muted"
-            onClick={() => {
-              setNombre("");
-              setDescripcion("");
-              setVendible(false);
-              setPrecioUnd("");
-              setPrecioPorMetro("");
-              setMinStockUnd("");
-              setMinUndUi("");
-              setMinMetrosSueltosUi("");
-              setMetrosPorUnd("");
-              setAreas([]);
-              setUnidadTipo("UND");
-            }}
-          >
-            Limpiar
-          </button>
         </div>
       </form>
     </div>
@@ -241,5 +262,5 @@ function PreviewMinimo({ metrosPorUnd, und, sueltos }: { metrosPorUnd: string; u
   const su = Math.max(0, toNum(sueltos || "0"));
   const total = undN * (Number.isFinite(mpo) ? mpo : 0) + (Number.isFinite(su) ? su : 0);
   if (!mpo || total <= 0) return null;
-  return <div className="text-xs text-muted-foreground">Se guardará como {total} metros</div>;
+  return <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">Se guardara como {total} metros</div>;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType } from "react";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
@@ -275,6 +275,9 @@ export default function DashboardInstalacionesClient() {
   const [to, setTo] = useState(todayLimaYmd());
 
   const [fCuadrilla, setFCuadrilla] = useState("");
+  const [debouncedFCuadrilla, setDebouncedFCuadrilla] = useState("");
+  const [fBusqueda, setFBusqueda] = useState("");
+  const [debouncedFBusqueda, setDebouncedFBusqueda] = useState("");
   const [fRegionOrden, setFRegionOrden] = useState("");
   const [fDistritoOrden, setFDistritoOrden] = useState("");
   const [gestorUid, setGestorUid] = useState("");
@@ -289,6 +292,13 @@ export default function DashboardInstalacionesClient() {
   const [error, setError] = useState("");
   const [data, setData] = useState<Resp | null>(null);
   const [showDetail, setShowDetail] = useState(false);
+  const fetchSeqRef = useRef(0);
+  const fetchAbortRef = useRef<AbortController | null>(null);
+  const panelClass = "overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900";
+  const inputClass = "rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900";
+  const compactInputClass = "rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900";
+  const primaryButtonClass = "rounded-xl bg-[#30518c] px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-95 disabled:opacity-50";
+  const secondaryButtonClass = "rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800";
   const cuadrillasCategories = useMemo(() => {
     const acc = new Map<
       string,
@@ -449,22 +459,19 @@ export default function DashboardInstalacionesClient() {
     }
     return m;
   }, [chartCuadrillas.data]);
-  const opcionesCuadrilla = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          (data?.filtersMeta.cuadrillas || [])
-            .map((c) => String(c.nombre || "").trim())
-            .filter(Boolean)
-        )
-      ).sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" })),
-    [data]
-  );
-  const opcionesCuadrillaFiltradas = useMemo(() => {
-    const q = norm(fCuadrilla);
-    if (!q) return opcionesCuadrilla;
-    return opcionesCuadrilla.filter((name) => norm(name).includes(q));
-  }, [opcionesCuadrilla, fCuadrilla]);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedFCuadrilla(fCuadrilla.trim());
+    }, 450);
+    return () => clearTimeout(t);
+  }, [fCuadrilla]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedFBusqueda(fBusqueda.trim());
+    }, 450);
+    return () => clearTimeout(t);
+  }, [fBusqueda]);
 
   useEffect(() => {
     if (process.env.NODE_ENV !== "development") return;
@@ -483,7 +490,13 @@ export default function DashboardInstalacionesClient() {
     }
   }, [chartCuadrillas]);
 
-  const fetchData = async () => {
+  const fetchData = async (overrideCuadrilla?: string) => {
+    const requestId = fetchSeqRef.current + 1;
+    fetchSeqRef.current = requestId;
+    fetchAbortRef.current?.abort();
+    const abortController = new AbortController();
+    fetchAbortRef.current = abortController;
+
     setLoading(true);
     setError("");
     try {
@@ -495,7 +508,10 @@ export default function DashboardInstalacionesClient() {
       qs.set("to", to);
       qs.set("page", String(page));
       qs.set("pageSize", String(pageSize));
-      if (fCuadrilla) qs.set("cuadrilla", fCuadrilla);
+      const searchFilter = debouncedFBusqueda.trim();
+      if (searchFilter) qs.set("q", searchFilter);
+      const cuadrillaFilter = (overrideCuadrilla ?? debouncedFCuadrilla).trim();
+      if (cuadrillaFilter) qs.set("cuadrilla", cuadrillaFilter);
       if (fRegionOrden) qs.set("regionOrden", fRegionOrden);
       if (fDistritoOrden) qs.set("distritoOrden", fDistritoOrden);
       if (gestorUid) qs.set("gestorUid", gestorUid);
@@ -503,21 +519,33 @@ export default function DashboardInstalacionesClient() {
       if (tipoOrden) qs.set("tipoOrden", tipoOrden);
       if (soloNoLiquidadas) qs.set("soloNoLiquidadas", "1");
 
-      const res = await fetch(`/api/instalaciones/dashboard?${qs.toString()}`, { cache: "no-store" });
+      const res = await fetch(`/api/instalaciones/dashboard?${qs.toString()}`, {
+        cache: "no-store",
+        signal: abortController.signal,
+      });
       const body = await res.json();
+      if (requestId !== fetchSeqRef.current) return;
       if (!res.ok || !body?.ok) throw new Error(String(body?.error || "ERROR"));
       setData(body as Resp);
     } catch (e: any) {
+      if (e?.name === "AbortError") return;
+      if (requestId !== fetchSeqRef.current) return;
       setData(null);
       setError(String(e?.message || "ERROR"));
     } finally {
-      setLoading(false);
+      if (requestId === fetchSeqRef.current) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchData();
-  }, [mode, ymd, ym, from, to, fCuadrilla, fRegionOrden, fDistritoOrden, gestorUid, coordinadorUid, tipoOrden, soloNoLiquidadas, page, pageSize]);
+  }, [mode, ymd, ym, from, to, debouncedFBusqueda, debouncedFCuadrilla, fRegionOrden, fDistritoOrden, gestorUid, coordinadorUid, tipoOrden, soloNoLiquidadas, page, pageSize]);
+
+  useEffect(() => {
+    return () => {
+      fetchAbortRef.current?.abort();
+    };
+  }, []);
 
   const totalPages = useMemo(() => {
     const total = data?.detail.total || 0;
@@ -556,17 +584,17 @@ export default function DashboardInstalacionesClient() {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-xl border bg-white p-4">
+      <section className="sticky top-0 z-20 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur dark:border-slate-700 dark:bg-slate-900/90">
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="mb-1 block text-xs text-slate-500">Periodo</label>
+            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-300">Periodo</label>
             <select
               value={mode}
               onChange={(e) => {
                 setMode(e.target.value as Mode);
                 setPage(1);
               }}
-              className="rounded border px-3 py-2 text-sm"
+              className={compactInputClass}
             >
               <option value="day">Dia</option>
               <option value="week">Semana</option>
@@ -576,61 +604,69 @@ export default function DashboardInstalacionesClient() {
           </div>
           {mode === "day" || mode === "week" ? (
             <div>
-              <label className="mb-1 block text-xs text-slate-500">Fecha base</label>
-              <input type="date" value={ymd} onChange={(e) => setYmd(e.target.value)} className="rounded border px-3 py-2 text-sm" />
+              <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-300">Fecha base</label>
+              <input type="date" value={ymd} onChange={(e) => setYmd(e.target.value)} className={compactInputClass} />
             </div>
           ) : null}
           {mode === "month" ? (
             <div>
-              <label className="mb-1 block text-xs text-slate-500">Mes</label>
-              <input type="month" value={ym} onChange={(e) => setYm(e.target.value)} className="rounded border px-3 py-2 text-sm" />
+              <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-300">Mes</label>
+              <input type="month" value={ym} onChange={(e) => setYm(e.target.value)} className={compactInputClass} />
             </div>
           ) : null}
           {mode === "range" ? (
             <>
               <div>
-                <label className="mb-1 block text-xs text-slate-500">Desde</label>
-                <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="rounded border px-3 py-2 text-sm" />
+                <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-300">Desde</label>
+                <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={compactInputClass} />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-slate-500">Hasta</label>
-                <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="rounded border px-3 py-2 text-sm" />
+                <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-300">Hasta</label>
+                <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={compactInputClass} />
               </div>
             </>
           ) : null}
 
           <div className="ml-auto flex items-center gap-2">
-            <button onClick={fetchData} className="rounded border px-3 py-2 text-sm">
+            <button onClick={() => fetchData(fCuadrilla)} className={secondaryButtonClass}>
               Actualizar
             </button>
-            <button onClick={exportCurrentPage} disabled={!data?.detail.items?.length} className="rounded bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-50">
+            <button onClick={exportCurrentPage} disabled={!data?.detail.items?.length} className={primaryButtonClass}>
               Exportar pagina
             </button>
           </div>
         </div>
 
-        <div className="mt-3 grid gap-3 md:grid-cols-3 xl:grid-cols-7">
+        <div className="mt-3 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-3 xl:grid-cols-8 dark:border-slate-700 dark:bg-slate-800/50">
           <div>
-            <label className="mb-1 block text-xs text-slate-500">Cuadrilla</label>
+            <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Buscar orden</label>
             <input
-              list="d-cuadrillas-dashboard-inst"
+              type="text"
+              value={fBusqueda}
+              onChange={(e) => {
+                setFBusqueda(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Orden, codigo o cliente"
+              className={`w-full ${inputClass}`}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Cuadrilla</label>
+            <input
               value={fCuadrilla}
               onChange={(e) => {
                 setFCuadrilla(e.target.value);
                 setPage(1);
               }}
               placeholder="Escribe para filtrar"
-              className="w-full rounded border px-2 py-2 text-sm"
+              autoComplete="off"
+              className={`w-full ${inputClass}`}
             />
-            <datalist id="d-cuadrillas-dashboard-inst">
-              {opcionesCuadrillaFiltradas.slice(0, 60).map((q) => (
-                <option key={q} value={q} />
-              ))}
-            </datalist>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-500">Region (Ordenes)</label>
-            <select value={fRegionOrden} onChange={(e) => { setFRegionOrden(e.target.value); setPage(1); }} className="w-full rounded border px-2 py-2 text-sm">
+            <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Region (Ordenes)</label>
+            <select value={fRegionOrden} onChange={(e) => { setFRegionOrden(e.target.value); setPage(1); }} className={`w-full ${inputClass}`}>
               <option value="">Todas</option>
               {(data?.filtersMeta.regionesOrdenes || []).map((r) => (
                 <option key={r} value={r}>{r}</option>
@@ -638,8 +674,8 @@ export default function DashboardInstalacionesClient() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-500">Distrito (Ordenes)</label>
-            <select value={fDistritoOrden} onChange={(e) => { setFDistritoOrden(e.target.value); setPage(1); }} className="w-full rounded border px-2 py-2 text-sm">
+            <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Distrito (Ordenes)</label>
+            <select value={fDistritoOrden} onChange={(e) => { setFDistritoOrden(e.target.value); setPage(1); }} className={`w-full ${inputClass}`}>
               <option value="">Todos</option>
               {(data?.filtersMeta.distritosOrdenes || []).map((d) => (
                 <option key={d} value={d}>{d}</option>
@@ -647,8 +683,8 @@ export default function DashboardInstalacionesClient() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-500">Gestor</label>
-            <select value={gestorUid} onChange={(e) => { setGestorUid(e.target.value); setPage(1); }} className="w-full rounded border px-2 py-2 text-sm">
+            <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Gestor</label>
+            <select value={gestorUid} onChange={(e) => { setGestorUid(e.target.value); setPage(1); }} className={`w-full ${inputClass}`}>
               <option value="">Todos</option>
               {(data?.filtersMeta.gestores || []).map((g) => (
                 <option key={g.uid} value={g.uid}>{g.nombre}</option>
@@ -656,8 +692,8 @@ export default function DashboardInstalacionesClient() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-500">Coordinador</label>
-            <select value={coordinadorUid} onChange={(e) => { setCoordinadorUid(e.target.value); setPage(1); }} className="w-full rounded border px-2 py-2 text-sm">
+            <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Coordinador</label>
+            <select value={coordinadorUid} onChange={(e) => { setCoordinadorUid(e.target.value); setPage(1); }} className={`w-full ${inputClass}`}>
               <option value="">Todos</option>
               {(data?.filtersMeta.coordinadores || []).map((c) => (
                 <option key={c.uid} value={c.uid}>{c.nombre}</option>
@@ -665,25 +701,26 @@ export default function DashboardInstalacionesClient() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-500">CONDOMINIO / RESIDENCIAL</label>
-            <select value={tipoOrden} onChange={(e) => { setTipoOrden(e.target.value); setPage(1); }} className="w-full rounded border px-2 py-2 text-sm">
+            <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">CONDOMINIO / RESIDENCIAL</label>
+            <select value={tipoOrden} onChange={(e) => { setTipoOrden(e.target.value); setPage(1); }} className={`w-full ${inputClass}`}>
               <option value="">Todos</option>
               {(data?.filtersMeta.tiposOrden || []).map((t) => (
                 <option key={t} value={t}>{t}</option>
               ))}
             </select>
           </div>
-          <label className="inline-flex items-center gap-2 self-end rounded border px-3 py-2 text-sm">
+          <label className="inline-flex items-center gap-2 self-end rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200">
             <input type="checkbox" checked={soloNoLiquidadas} onChange={(e) => { setSoloNoLiquidadas(e.target.checked); setPage(1); }} />
             Solo no liquidadas
           </label>
         </div>
       </section>
 
-      {loading ? <div className="rounded-xl border bg-white p-4 text-sm text-slate-500">Cargando dashboard...</div> : null}
-      {error ? <div className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700">{error}</div> : null}
+      {loading && !data ? <div className="rounded border border-slate-200 bg-white p-3 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">Cargando dashboard...</div> : null}
+      {loading && data ? <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">Actualizando datos...</div> : null}
+      {error ? <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
 
-      {!loading && !error && data ? (
+      {!error && data ? (
         <>
           <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
             <StatCard title="Finalizadas" value={data.kpi.finalizadas} tone="emerald" delta={kpiDelta.finalizadas} hint={data.periodPrev?.label ? `Vs ${data.periodPrev.label}` : undefined} />
@@ -718,7 +755,8 @@ export default function DashboardInstalacionesClient() {
           </section>
 
           <section>
-            <div className="rounded-xl border bg-white p-4">
+            <div className={panelClass}>
+              <div className="p-4">
               <h2 className="text-sm font-semibold">Finalizadas y Canceladas por Cuadrilla (sin garantia)</h2>
               <div className="mt-3 h-[360px]">
                 <ResponsiveContainer width="100%" height={360}>
@@ -755,12 +793,14 @@ export default function DashboardInstalacionesClient() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
+              </div>
             </div>
           </section>
 
           <section className="grid gap-4 xl:grid-cols-2">
             {mode === "month" ? (
-              <div className="rounded-xl border bg-white p-4">
+              <div className={panelClass}>
+                <div className="p-4">
                 <h2 className="text-sm font-semibold">Finalizadas por dia (Total)</h2>
                 <div className="mt-3 h-72">
                   <ResponsiveContainer width="100%" height={280}>
@@ -784,17 +824,21 @@ export default function DashboardInstalacionesClient() {
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
+                </div>
               </div>
             ) : (
-              <div className="rounded-xl border bg-white p-4">
+              <div className={panelClass}>
+                <div className="p-4">
                 <h2 className="text-sm font-semibold">Finalizadas por dia</h2>
-                <div className="rounded border border-dashed p-4 text-xs text-slate-500">
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-300">
                   Este grafico se habilita cuando el periodo esta en modo Mes.
+                </div>
                 </div>
               </div>
             )}
 
-            <div className="rounded-xl border bg-white p-4">
+            <div className={panelClass}>
+              <div className="p-4">
               <h2 className="text-sm font-semibold">Finalizadas por Region/Distrito (Ordenes)</h2>
               <div className="mt-3 h-72">
                 <ResponsiveContainer width="100%" height={280}>
@@ -829,11 +873,13 @@ export default function DashboardInstalacionesClient() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
+              </div>
             </div>
 
-            <div className="rounded-xl border bg-white p-4">
+            <div className={panelClass}>
+              <div className="p-4">
               <h2 className="text-sm font-semibold">Mapa de Finalizadas</h2>
-              <div className="mt-3 h-72 overflow-hidden rounded-lg border">
+              <div className="mt-3 h-72 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
                 {finalizadasMapPoints.length ? (
                   <MapContainer center={finalizadasMapCenter} zoom={11} scrollWheelZoom className="h-full w-full">
                     <TileLayer
@@ -860,9 +906,11 @@ export default function DashboardInstalacionesClient() {
                   </div>
                 )}
               </div>
+              </div>
             </div>
 
-            <div className="rounded-xl border bg-white p-4">
+            <div className={panelClass}>
+              <div className="p-4">
               <h2 className="text-sm font-semibold">Distribucion por tipo de orden</h2>
               <div className="mt-3 h-72">
                 <ResponsiveContainer width="100%" height="100%">
@@ -883,16 +931,18 @@ export default function DashboardInstalacionesClient() {
                   </PieChart>
                 </ResponsiveContainer>
               </div>
+              </div>
             </div>
           </section>
 
-          <section className="rounded-xl border bg-white p-4">
+          <section className={panelClass}>
+            <div className="p-4">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold">Detalle operativo</h2>
               <button
                 type="button"
                 onClick={() => setShowDetail((v) => !v)}
-                className="rounded border px-3 py-1.5 text-xs"
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 {showDetail ? "Ocultar detalle" : "Ver detalle"}
               </button>
@@ -900,30 +950,30 @@ export default function DashboardInstalacionesClient() {
             {showDetail ? (
               <>
                 <div className="mb-3 flex items-center justify-between text-xs">
-                  <span>Total: {data.detail.total}</span>
-                  <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }} className="rounded border px-2 py-1">
+                  <span className="text-slate-600 dark:text-slate-300">Total: {data.detail.total}</span>
+                  <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }} className="rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900">
                     {[25, 50, 100, 200].map((n) => <option key={n} value={n}>{n}/pag</option>)}
                   </select>
                 </div>
-                <div className="overflow-auto rounded border">
-                  <table className="min-w-full text-xs">
-                    <thead className="sticky top-0 bg-slate-100">
+                <div className="overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
+                  <table className="min-w-[1200px] w-full text-xs">
+                    <thead className="sticky top-0 z-10 bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100">
                       <tr>
-                        <th className="px-2 py-2 text-left">Fecha</th>
-                        <th className="px-2 py-2 text-left">Orden</th>
-                        <th className="px-2 py-2 text-left">Codigo</th>
-                        <th className="px-2 py-2 text-left">Cliente</th>
-                        <th className="px-2 py-2 text-left">Cuadrilla</th>
-                        <th className="px-2 py-2 text-left">Estado</th>
-                        <th className="px-2 py-2 text-left">Tipo</th>
-                        <th className="px-2 py-2 text-left">Gestor</th>
-                        <th className="px-2 py-2 text-left">Coordinador</th>
-                        <th className="px-2 py-2 text-left">Liquidado</th>
+                        <th className="whitespace-nowrap border-b border-slate-200 px-2 py-2 text-left dark:border-slate-700">Fecha</th>
+                        <th className="whitespace-nowrap border-b border-slate-200 px-2 py-2 text-left dark:border-slate-700">Orden</th>
+                        <th className="whitespace-nowrap border-b border-slate-200 px-2 py-2 text-left dark:border-slate-700">Codigo</th>
+                        <th className="whitespace-nowrap border-b border-slate-200 px-2 py-2 text-left dark:border-slate-700">Cliente</th>
+                        <th className="whitespace-nowrap border-b border-slate-200 px-2 py-2 text-left dark:border-slate-700">Cuadrilla</th>
+                        <th className="whitespace-nowrap border-b border-slate-200 px-2 py-2 text-left dark:border-slate-700">Estado</th>
+                        <th className="whitespace-nowrap border-b border-slate-200 px-2 py-2 text-left dark:border-slate-700">Tipo</th>
+                        <th className="whitespace-nowrap border-b border-slate-200 px-2 py-2 text-left dark:border-slate-700">Gestor</th>
+                        <th className="whitespace-nowrap border-b border-slate-200 px-2 py-2 text-left dark:border-slate-700">Coordinador</th>
+                        <th className="whitespace-nowrap border-b border-slate-200 px-2 py-2 text-left dark:border-slate-700">Liquidado</th>
                       </tr>
                     </thead>
                     <tbody>
                       {data.detail.items.map((x) => (
-                        <tr key={x.id} className="border-t">
+                        <tr key={x.id} className="odd:bg-white even:bg-slate-50/60 dark:odd:bg-slate-900 dark:even:bg-slate-800/60">
                           <td className="px-2 py-1.5">{x.ymd} {x.hm || ""}</td>
                           <td className="px-2 py-1.5">{x.ordenId}</td>
                           <td className="px-2 py-1.5">{x.codiSeguiClien}</td>
@@ -938,25 +988,26 @@ export default function DashboardInstalacionesClient() {
                       ))}
                       {!data.detail.items.length ? (
                         <tr>
-                          <td colSpan={10} className="px-2 py-8 text-center text-slate-500">No hay resultados.</td>
+                          <td colSpan={10} className="px-2 py-8 text-center text-slate-500 dark:text-slate-300">No hay resultados.</td>
                         </tr>
                       ) : null}
                     </tbody>
                   </table>
                 </div>
                 <div className="mt-3 flex items-center justify-between text-xs">
-                  <span>Pagina {page} de {totalPages}</span>
+                  <span className="text-slate-600 dark:text-slate-300">Pagina {page} de {totalPages}</span>
                   <div className="flex items-center gap-2">
-                    <button disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="rounded border px-2 py-1 disabled:opacity-40">Anterior</button>
-                    <button disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} className="rounded border px-2 py-1 disabled:opacity-40">Siguiente</button>
+                    <button disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="rounded-lg border border-slate-300 px-3 py-1 text-sm disabled:opacity-40 dark:border-slate-600">Anterior</button>
+                    <button disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} className="rounded-lg border border-slate-300 px-3 py-1 text-sm disabled:opacity-40 dark:border-slate-600">Siguiente</button>
                   </div>
                 </div>
               </>
             ) : (
-              <div className="rounded border border-dashed p-4 text-xs text-slate-500">
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-300">
                 El detalle operativo esta oculto. Haz clic en "Ver detalle" para mostrar la tabla.
               </div>
             )}
+            </div>
           </section>
         </>
       ) : null}

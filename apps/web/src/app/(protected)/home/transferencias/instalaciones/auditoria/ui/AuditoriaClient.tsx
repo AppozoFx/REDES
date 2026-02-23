@@ -21,6 +21,8 @@ type EquipoRow = {
   tecnicos?: string[] | string;
   observacion?: string;
   f_despacho?: any;
+  f_despachoAt?: any;
+  f_despachoYmd?: any;
   auditoria?: Auditoria;
   detalleInstalacion?: any;
 };
@@ -56,6 +58,10 @@ function fmtDateTime(v: any) {
   const d = tsToDate(v);
   if (!d) return "";
   return d.toLocaleString("es-PE");
+}
+
+function getFechaDespacho(e: EquipoRow) {
+  return e?.f_despacho ?? e?.f_despachoAt ?? e?.f_despachoYmd ?? null;
 }
 
 function addHyperlinksToColumn(ws: XLSX.WorkSheet, headerText: string) {
@@ -98,6 +104,11 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
 
   const [fileName, setFileName] = useState("");
   const [snExcel, setSnExcel] = useState<string[]>([]);
+  const [snAnalisis, setSnAnalisis] = useState<{
+    total: number;
+    encontrados: number;
+    noEncontrados: string[];
+  } | null>(null);
   const [subiendoId, setSubiendoId] = useState("");
 
   const [fotoModal, setFotoModal] = useState<{ open: boolean; url: string; sn: string }>({
@@ -105,6 +116,12 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
     url: "",
     sn: "",
   });
+
+  const fieldClass =
+    "h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
+  const btnSoftClass = "rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-100 disabled:opacity-50";
+  const btnPrimaryClass = "rounded-lg bg-blue-600 px-3 py-2 text-sm text-white transition hover:bg-blue-700 disabled:opacity-50";
+  const btnSuccessClass = "rounded-lg bg-emerald-700 px-3 py-2 text-sm text-white transition hover:bg-emerald-800 disabled:opacity-50";
 
   async function cargar(nextMode = modo) {
     setLoading(true);
@@ -176,6 +193,8 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
     });
   }, [baseParaListas, busqueda, filtroEstadoGeneral, filtroUbicacion]);
 
+  const hasFiltros = filtroEstadoAud !== "todos" || filtroEstadoGeneral !== "todos" || filtroUbicacion !== "todas" || !!busqueda.trim();
+
   async function onFile(file: File) {
     try {
       const data = await file.arrayBuffer();
@@ -197,10 +216,39 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
       }
       setFileName(file.name);
       setSnExcel(sns);
+      setSnAnalisis(null);
       toast.success(`Leidos ${sns.length} SN`);
     } catch {
       toast.error("No se pudo leer el Excel");
     }
+  }
+
+  function analizarSN() {
+    if (!snExcel.length) {
+      toast.error("Primero carga un Excel");
+      return;
+    }
+    setSaving(true);
+    fetch("/api/instalaciones/auditoria/mutate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "analizar_sns", sns: snExcel }),
+    })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok || !body?.ok) throw new Error(String(body?.error || "ERROR"));
+        const total = Number(body?.total || snExcel.length);
+        const encontrados = Number(body?.encontrados || 0);
+        const noEncontrados = Array.isArray(body?.noEncontrados) ? body.noEncontrados.map((x: any) => asStr(x)).filter(Boolean) : [];
+        setSnAnalisis({ total, encontrados, noEncontrados });
+        toast.success(`Analisis listo: ${encontrados} encontrados, ${noEncontrados.length} no encontrados`);
+      })
+      .catch((e: any) => {
+        toast.error(e?.message || "No se pudo analizar SN");
+      })
+      .finally(() => {
+        setSaving(false);
+      });
   }
 
   async function guardarObservaciones() {
@@ -236,6 +284,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
   async function marcarMasivo() {
     if (!canEdit) return;
     if (!snExcel.length) return toast.error("Primero carga un Excel");
+    if (!snAnalisis) return toast.error("Primero analiza los SN cargados");
     setSaving(true);
     try {
       const res = await fetch("/api/instalaciones/auditoria/mutate", {
@@ -250,6 +299,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
       }
       setSnExcel([]);
       setFileName("");
+      setSnAnalisis(null);
       await cargar();
       toast.success(`Marcado masivo completado (${body.saved || 0})`);
     } catch (e: any) {
@@ -346,7 +396,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
       const data = equiposFiltrados.map((e) => [
         asStr(e.SN || e.id),
         asStr(e.equipo),
-        fmtDate(e.f_despacho),
+        fmtDate(getFechaDespacho(e)),
         Array.isArray(e.tecnicos) ? e.tecnicos.join(", ") : asStr(e.tecnicos),
         asStr(e.ubicacion),
         asStr(e.estado),
@@ -386,6 +436,33 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
     XLSX.utils.book_append_sheet(wb, ws, "AUDITORIA_INSTALADOS");
     XLSX.writeFile(wb, `AUDITORIA-INSTALADOS-${new Date().toISOString().slice(0, 10)}.xlsx`);
     toast.success("Exportado (instalados)");
+  }
+
+  function descargarPlantillaSN() {
+    const header = ["SN"];
+    const ejemplos = [["FHTT12345678"], ["FHTT87654321"]];
+    const ws = XLSX.utils.aoa_to_sheet([header, ...ejemplos]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "PLANTILLA_SN");
+    XLSX.writeFile(wb, "PLANTILLA-AUDITORIA-SN.xlsx");
+    toast.success("Plantilla descargada");
+  }
+
+  function exportNoEncontrados() {
+    if (!snAnalisis?.noEncontrados?.length) {
+      toast.error("No hay SN no encontrados para exportar");
+      return;
+    }
+    const data = snAnalisis.noEncontrados.map((sn, idx) => ({
+      N: idx + 1,
+      SN: sn,
+      Estado: "NO_ENCONTRADO",
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "NO_ENCONTRADOS");
+    XLSX.writeFile(wb, `AUDITORIA-SN-NO-ENCONTRADOS-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success("Exportado no encontrados");
   }
 
   return (
@@ -449,7 +526,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
         <div className="grid gap-3 md:grid-cols-4">
           <div>
             <label className="mb-1 block text-xs text-slate-500">Estado auditoria</label>
-            <select className="w-full rounded border px-2 py-2 text-sm" value={filtroEstadoAud} onChange={(e) => setFiltroEstadoAud(e.target.value)}>
+            <select className={fieldClass} value={filtroEstadoAud} onChange={(e) => setFiltroEstadoAud(e.target.value)}>
               <option value="todos">Todos</option>
               <option value="pendiente">Pendiente</option>
               <option value="sustentada">Sustentada</option>
@@ -457,7 +534,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
           </div>
           <div>
             <label className="mb-1 block text-xs text-slate-500">Estado general</label>
-            <select className="w-full rounded border px-2 py-2 text-sm" value={filtroEstadoGeneral} onChange={(e) => setFiltroEstadoGeneral(e.target.value)}>
+            <select className={fieldClass} value={filtroEstadoGeneral} onChange={(e) => setFiltroEstadoGeneral(e.target.value)}>
               <option value="todos">Todos</option>
               {estadosGenerales.map((s) => (
                 <option key={s} value={s}>{s}</option>
@@ -466,7 +543,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
           </div>
           <div>
             <label className="mb-1 block text-xs text-slate-500">Ubicacion</label>
-            <select className="w-full rounded border px-2 py-2 text-sm" value={filtroUbicacion} onChange={(e) => setFiltroUbicacion(e.target.value)}>
+            <select className={fieldClass} value={filtroUbicacion} onChange={(e) => setFiltroUbicacion(e.target.value)}>
               <option value="todas">Todas</option>
               {ubicacionesDisponibles.map((u) => (
                 <option key={u} value={u}>{u}</option>
@@ -476,7 +553,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
           <div>
             <label className="mb-1 block text-xs text-slate-500">Buscar</label>
             <input
-              className="w-full rounded border px-2 py-2 text-sm"
+              className={fieldClass}
               placeholder="SN, equipo, ubicacion o cliente"
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
@@ -484,42 +561,52 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
           </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="rounded border px-3 py-2 text-sm hover:bg-slate-50"
-            onClick={() => {
-              setFiltroEstadoAud("todos");
-              setFiltroEstadoGeneral("todos");
-              setFiltroUbicacion("todas");
-              setBusqueda("");
-            }}
-          >
-            Limpiar filtros
-          </button>
-          <button type="button" onClick={() => void cargar()} className="rounded border px-3 py-2 text-sm hover:bg-slate-50" disabled={loading}>
-            Actualizar
-          </button>
-          <button type="button" onClick={exportManifest} className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700">
-            Exportar Excel
-          </button>
-          {canEdit && (
-            <>
-              <button type="button" onClick={guardarObservaciones} className="rounded bg-emerald-700 px-3 py-2 text-sm text-white hover:bg-emerald-800" disabled={saving}>
-                Guardar cambios
-              </button>
-              <button type="button" onClick={nuevaAuditoria} className="rounded bg-slate-800 px-3 py-2 text-sm text-white hover:bg-slate-900" disabled={saving}>
-                Nueva auditoria
-              </button>
-            </>
-          )}
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="text-xs text-slate-500">
+            Mostrando {equiposFiltrados.length} de {baseParaListas.length} equipos
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={btnSoftClass}
+              onClick={() => {
+                setFiltroEstadoAud("todos");
+                setFiltroEstadoGeneral("todos");
+                setFiltroUbicacion("todas");
+                setBusqueda("");
+              }}
+              disabled={!hasFiltros}
+            >
+              Limpiar filtros
+            </button>
+            <button type="button" onClick={() => void cargar()} className={btnSoftClass} disabled={loading}>
+              Actualizar
+            </button>
+            <button type="button" onClick={exportManifest} className={btnPrimaryClass}>
+              Exportar Excel
+            </button>
+          </div>
         </div>
 
         {canEdit && (
-          <div className="mt-4 rounded-xl border p-3">
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
+            <button type="button" onClick={guardarObservaciones} className={btnSuccessClass} disabled={saving}>
+              Guardar cambios
+            </button>
+            <button type="button" onClick={nuevaAuditoria} className="rounded-lg bg-slate-800 px-3 py-2 text-sm text-white hover:bg-slate-900 disabled:opacity-50" disabled={saving}>
+              Nueva auditoria
+            </button>
+          </div>
+        )}
+
+        {canEdit && (
+          <div className="mt-4 rounded-xl border border-dashed border-slate-300 p-3">
             <div className="mb-2 text-sm font-semibold">Carga masiva por SN</div>
             <div className="flex flex-wrap items-center gap-2">
-              <label className="cursor-pointer rounded bg-emerald-600 px-3 py-2 text-sm text-white hover:bg-emerald-700">
+              <button type="button" onClick={descargarPlantillaSN} className={btnSoftClass}>
+                Descargar plantilla
+              </button>
+              <label className="cursor-pointer rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white transition hover:bg-emerald-700">
                 Cargar Excel (SN)
                 <input
                   type="file"
@@ -533,14 +620,40 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
               </label>
               <button
                 type="button"
-                onClick={marcarMasivo}
+                onClick={analizarSN}
                 disabled={!snExcel.length || saving}
-                className="rounded bg-fuchsia-600 px-3 py-2 text-sm text-white hover:bg-fuchsia-700 disabled:opacity-50"
+                className={btnSoftClass}
+              >
+                Analizar SN
+              </button>
+              <button
+                type="button"
+                onClick={marcarMasivo}
+                disabled={!snExcel.length || saving || !snAnalisis}
+                className="rounded-lg bg-fuchsia-600 px-3 py-2 text-sm text-white transition hover:bg-fuchsia-700 disabled:opacity-50"
               >
                 Marcar SN {snExcel.length ? `(${snExcel.length})` : ""}
               </button>
               {fileName && <div className="text-xs text-slate-500">Archivo: {fileName}</div>}
             </div>
+            {snAnalisis && (
+              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700">
+                <div>Total: {snAnalisis.total} | Encontrados: {snAnalisis.encontrados} | No encontrados: {snAnalisis.noEncontrados.length}</div>
+                {!!snAnalisis.noEncontrados.length && (
+                  <div className="mt-2 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-medium text-amber-700">Detalle completo de SN no encontrados</div>
+                      <button type="button" onClick={exportNoEncontrados} className={btnSoftClass}>
+                        Descargar no encontrados
+                      </button>
+                    </div>
+                    <div className="max-h-40 overflow-auto rounded border border-amber-200 bg-amber-50 p-2 text-amber-800">
+                      {snAnalisis.noEncontrados.join(", ")}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -574,7 +687,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
                     <tr key={r.id} className="border-t hover:bg-slate-50/70">
                       <td className="p-2 font-mono text-xs">{asStr(r.SN || r.id)}</td>
                       <td className="p-2">{asStr(r.equipo) || "-"}</td>
-                      <td className="p-2">{modo === "instalados" ? fmtDate(liq.fechaInstalacion) : fmtDate(r.f_despacho)}</td>
+                      <td className="p-2">{modo === "instalados" ? fmtDate(liq.fechaInstalacion) : fmtDate(getFechaDespacho(r))}</td>
                       <td className="p-2">
                         {modo === "instalados"
                           ? asStr(liq.cliente || r.cliente) || "-"

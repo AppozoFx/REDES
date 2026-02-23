@@ -139,20 +139,19 @@ function deriveOpcionalesFromIdenServi(textRaw: string | undefined) {
   // cantFONOwin
   out.cantFONOwin = /FONO\s+WIN\s+100/i.test(text) ? "1" : "0";
 
-  // cantBOXwin = comodato + adicionales
-  let comodato = 0;
-  let adicionales = 0;
-  const mComodato = text.match(/(\d+)\s+WIN\s+BOX\s*\(EN\s+COMODATO\)/i);
-  if (mComodato) {
-    const n = Number(mComodato[1]);
-    if (isFinite(n) && n > 0) comodato = n;
+  // cantBOXwin = suma de todos los fragmentos "N WIN BOX"
+  // Ejemplos soportados:
+  // - "1 WIN BOX"
+  // - "2 WIN BOX"
+  // - "1 WIN BOX (EN COMODATO)"
+  // - "+ 1 WIN BOX"
+  // - "1 WIN BOX + 1 WIN BOX"
+  let totalBox = 0;
+  const boxMatches = text.matchAll(/(?:\+\s*)?(\d+)\s+WIN\s+BOX(?:\s*\(EN\s+COMODATO\))?/gi);
+  for (const match of boxMatches) {
+    const n = Number(match[1]);
+    if (isFinite(n) && n > 0) totalBox += n;
   }
-  const mAdic = text.match(/\+\s*(\d+)\s+WIN\s+BOX/i);
-  if (mAdic) {
-    const n = Number(mAdic[1]);
-    if (isFinite(n) && n > 0) adicionales = n;
-  }
-  const totalBox = comodato + adicionales;
   out.cantBOXwin = String(totalBox);
 
   return out as Partial<OrdenDoc>;

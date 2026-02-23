@@ -96,7 +96,7 @@ export default function LiquidacionDetalleClient() {
     const cuad = filtros.cuadrilla.toLowerCase().trim();
     const coord = filtros.coordinadorCuadrilla.toLowerCase().trim();
     return items.filter((x) => {
-      const hay = `${x.codigoCliente || ""} ${x.cliente || ""}`.toLowerCase();
+      const hay = `${x.codigoCliente || ""} ${x.cliente || ""} ${x.cuadrillaNombre || ""} ${x.id || ""}`.toLowerCase();
       const okQ = q ? hay.includes(q) : true;
       const okCuad = cuad ? String(x.cuadrillaNombre || "").toLowerCase().includes(cuad) : true;
       const okCoord = coord ? String(x.coordinadorUid || "").toLowerCase().includes(coord) : true;
@@ -161,7 +161,7 @@ export default function LiquidacionDetalleClient() {
               name="mes"
               value={filtros.mes}
               onChange={(e) => setFiltros((p) => ({ ...p, mes: e.target.value }))}
-              className="border px-2 py-1 rounded text-sm"
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
             />
           </div>
           <div className="flex flex-col">
@@ -171,7 +171,7 @@ export default function LiquidacionDetalleClient() {
               name="dia"
               value={filtros.dia}
               onChange={(e) => setFiltros((p) => ({ ...p, dia: e.target.value }))}
-              className="border px-2 py-1 rounded text-sm"
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
             />
           </div>
           <div className="flex flex-col">
@@ -182,7 +182,8 @@ export default function LiquidacionDetalleClient() {
               value={filtros.cuadrilla}
               onChange={(e) => setFiltros((p) => ({ ...p, cuadrilla: e.target.value }))}
               placeholder="Buscar cuadrilla"
-              className="border px-2 py-1 rounded text-sm"
+              autoComplete="off"
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
             />
           </div>
           <div className="flex flex-col">
@@ -209,8 +210,8 @@ export default function LiquidacionDetalleClient() {
               name="busqueda"
               value={filtros.busqueda}
               onChange={(e) => setFiltros((p) => ({ ...p, busqueda: e.target.value }))}
-              placeholder="Buscar..."
-              className="border px-2 py-1 rounded text-sm"
+              placeholder="Orden, codigo o cliente"
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
             />
           </div>
         </div>

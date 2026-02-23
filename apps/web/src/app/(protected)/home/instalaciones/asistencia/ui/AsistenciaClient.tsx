@@ -297,7 +297,7 @@ export default function AsistenciaClient() {
               type="date"
               value={fecha}
               onChange={(e) => setFecha(e.target.value)}
-              className="border rounded px-3 py-2"
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
             />
           </div>
         </div>
@@ -309,11 +309,11 @@ export default function AsistenciaClient() {
               placeholder="Buscar cuadrilla..."
               value={filtroNombre}
               onChange={(e) => setFiltroNombre(e.target.value)}
-              className="border rounded px-3 py-2 text-sm"
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
             />
             <button
               onClick={() => cargar(gestorUid)}
-              className="px-3 py-2 rounded bg-slate-800 text-white text-sm"
+              className="rounded-xl bg-[#30518c] px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-95"
             >
               Recargar
             </button>

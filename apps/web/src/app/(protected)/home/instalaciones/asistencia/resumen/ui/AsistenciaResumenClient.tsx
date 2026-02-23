@@ -319,16 +319,16 @@ export default function AsistenciaResumenClient() {
               </div>
 
               <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-3">
-                <select value={filtroGestor} onChange={(e) => setFiltroGestor(e.target.value)} className="px-3 py-2 border rounded-md">
+                <select value={filtroGestor} onChange={(e) => setFiltroGestor(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
                   <option value="">Todos los Gestores</option>
                   {gestoresUnicos.map((g) => (<option key={g} value={g}>{g}</option>))}
                 </select>
-                <select value={filtroCoordinador} onChange={(e) => setFiltroCoordinador(e.target.value)} className="px-3 py-2 border rounded-md">
+                <select value={filtroCoordinador} onChange={(e) => setFiltroCoordinador(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
                   <option value="">Todos los Coordinadores</option>
                   {coordinadoresUnicos.map((c) => (<option key={c} value={c}>{c}</option>))}
                 </select>
-                <input type="text" placeholder="Buscar cuadrilla / zona / gestor..." value={filtroCuadrilla} onChange={(e) => setFiltroCuadrilla(e.target.value)} className="px-3 py-2 border rounded-md" />
-                <input type="text" placeholder="Buscar tecnico..." value={filtroTecnico} onChange={(e) => setFiltroTecnico(e.target.value)} className="px-3 py-2 border rounded-md" />
+                <input type="text" placeholder="Buscar cuadrilla / zona / gestor..." value={filtroCuadrilla} onChange={(e) => setFiltroCuadrilla(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
+                <input type="text" placeholder="Buscar tecnico..." value={filtroTecnico} onChange={(e) => setFiltroTecnico(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
               </div>
 
               <div className="flex items-center gap-2">

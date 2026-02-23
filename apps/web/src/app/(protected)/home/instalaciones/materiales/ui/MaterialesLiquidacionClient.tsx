@@ -111,7 +111,7 @@ export default function MaterialesLiquidacionClient() {
       const hay = `${x.codigoCliente || ""} ${x.cliente || ""} ${x.cuadrillaNombre || ""}`.toLowerCase();
       const okQ = q ? hay.includes(q) : true;
       const okCoord = coord ? String(x.coordinador || "").toLowerCase().includes(coord) : true;
-      const okCuadrilla = cuadrilla ? String(x.cuadrillaNombre || "").toLowerCase() === cuadrilla : true;
+      const okCuadrilla = cuadrilla ? String(x.cuadrillaNombre || "").toLowerCase().includes(cuadrilla) : true;
       const liquidado = isLiquidado(x);
       const okEstado = estado ? (estado === "liquidado" ? liquidado : !liquidado) : true;
       return okQ && okCoord && okCuadrilla && okEstado;
@@ -122,9 +122,6 @@ export default function MaterialesLiquidacionClient() {
     return Array.from(new Set(items.map((x) => String(x.coordinador || "").trim()).filter(Boolean))).sort();
   }, [items]);
 
-  const cuadrillas = useMemo(() => {
-    return Array.from(new Set(items.map((x) => String(x.cuadrillaNombre || "").trim()).filter(Boolean))).sort();
-  }, [items]);
 
   const setField = (id: string, key: keyof FormState, value: string) => {
     setForms((prev) => ({
@@ -293,6 +290,8 @@ export default function MaterialesLiquidacionClient() {
 
   const [sortKey, setSortKey] = useState<"estado" | "fecha">("fecha");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const fieldClass = "rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900";
+  const smallFieldClass = "border border-slate-300 rounded px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900";
 
   const sorted = useMemo(() => {
     const dir = sortDir === "asc" ? 1 : -1;
@@ -319,6 +318,13 @@ export default function MaterialesLiquidacionClient() {
     }
   };
 
+  const resumen = useMemo(() => {
+    const total = sorted.length;
+    const liquidadas = sorted.filter((x) => isLiquidado(x)).length;
+    const pendientes = total - liquidadas;
+    return { total, liquidadas, pendientes };
+  }, [sorted]);
+
   const exportXlsx = () => {
     const headers = ["Estado", "Fecha", "Cuadrilla", "CodigoCliente", "Cliente", "ACTA"];
     const rows = sorted.map((r) => {
@@ -336,9 +342,12 @@ export default function MaterialesLiquidacionClient() {
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-end justify-between gap-3 flex-wrap">
-        <div className="grid gap-3 md:grid-cols-6 flex-1 min-w-[520px]">
+    <div className="w-full space-y-4 p-3 md:p-4">
+      <div className="sticky top-0 z-20 space-y-3">
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+          <div className="border-b border-slate-200 p-4 dark:border-slate-700">
+            <div className="flex items-end justify-between gap-3 flex-wrap rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
+              <div className="grid gap-3 md:grid-cols-6 flex-1 min-w-[520px]">
         <div className="flex flex-col">
           <label className="text-sm font-medium text-gray-700">Mes</label>
           <input
@@ -346,7 +355,7 @@ export default function MaterialesLiquidacionClient() {
             name="mes"
             value={filtros.mes}
             onChange={(e) => setFiltros((p) => ({ ...p, mes: e.target.value }))}
-            className="border px-2 py-1 rounded text-sm"
+            className={fieldClass}
           />
         </div>
         <div className="flex flex-col">
@@ -356,7 +365,7 @@ export default function MaterialesLiquidacionClient() {
             name="dia"
             value={filtros.dia}
             onChange={(e) => setFiltros((p) => ({ ...p, dia: e.target.value }))}
-            className="border px-2 py-1 rounded text-sm"
+            className={fieldClass}
           />
         </div>
         <div className="flex flex-col">
@@ -367,7 +376,7 @@ export default function MaterialesLiquidacionClient() {
             value={filtros.busqueda}
             onChange={(e) => setFiltros((p) => ({ ...p, busqueda: e.target.value }))}
             placeholder="Buscar..."
-            className="border px-2 py-1 rounded text-sm"
+            className={fieldClass}
           />
         </div>
         <div className="flex flex-col">
@@ -376,7 +385,7 @@ export default function MaterialesLiquidacionClient() {
             name="coordinador"
             value={filtros.coordinador}
             onChange={(e) => setFiltros((p) => ({ ...p, coordinador: e.target.value }))}
-            className="border px-2 py-1 rounded text-sm"
+            className={fieldClass}
           >
             <option value="">Todos</option>
             {coordinadores.map((c) => (
@@ -388,19 +397,15 @@ export default function MaterialesLiquidacionClient() {
         </div>
         <div className="flex flex-col">
           <label className="text-sm font-medium text-gray-700">Cuadrilla</label>
-          <select
+          <input
+            type="text"
             name="cuadrilla"
             value={filtros.cuadrilla}
             onChange={(e) => setFiltros((p) => ({ ...p, cuadrilla: e.target.value }))}
-            className="border px-2 py-1 rounded text-sm"
-          >
-            <option value="">Todas</option>
-            {cuadrillas.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+            placeholder="Buscar cuadrilla"
+            autoComplete="off"
+            className={fieldClass}
+          />
         </div>
         <div className="flex flex-col">
           <label className="text-sm font-medium text-gray-700">Estado</label>
@@ -408,48 +413,68 @@ export default function MaterialesLiquidacionClient() {
             name="estado"
             value={filtros.estado}
             onChange={(e) => setFiltros((p) => ({ ...p, estado: e.target.value }))}
-            className="border px-2 py-1 rounded text-sm"
+            className={fieldClass}
           >
             <option value="">Todos</option>
             <option value="liquidado">Liquidado</option>
             <option value="pendiente">Pendiente</option>
           </select>
         </div>
-        </div>
-        <button
-          onClick={exportXlsx}
-          className="px-3 py-2 rounded text-sm bg-emerald-600 hover:bg-emerald-700 text-white"
-        >
-          Exportar XLSX
-        </button>
+              </div>
+              <button
+                onClick={exportXlsx}
+                className="rounded-xl bg-[#30518c] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-95"
+              >
+                Exportar XLSX
+              </button>
+            </div>
+          </div>
+          <div className="p-4">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200">
+                <p className="text-xs">Total registros</p>
+                <p className="text-xl font-semibold">{resumen.total}</p>
+              </div>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-700">
+                <p className="text-xs">Liquidados</p>
+                <p className="text-xl font-semibold">{resumen.liquidadas}</p>
+              </div>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700">
+                <p className="text-xs">Pendientes</p>
+                <p className="text-xl font-semibold">{resumen.pendientes}</p>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
 
-      <div className="overflow-x-auto border rounded-lg">
-        <table className="min-w-full text-sm">
-          <thead className="bg-gray-100">
-            <tr className="text-center text-gray-700 font-semibold">
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+        <div className="overflow-x-auto">
+        <table className="min-w-[1450px] w-full text-sm">
+          <thead className="sticky top-0 z-10 bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100">
+            <tr className="text-center font-semibold">
               <th
-                className="p-2 border w-28 cursor-pointer select-none"
+                className="p-2 border-b border-slate-200 w-28 cursor-pointer select-none dark:border-slate-700"
                 onClick={() => toggleSort("estado")}
                 title="Ordenar por estado"
               >
-                Estado {sortKey === "estado" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                Estado {sortKey === "estado" ? (sortDir === "asc" ? "^" : "v") : "<>"}
               </th>
               <th
-                className="p-2 border w-28 cursor-pointer select-none"
+                className="p-2 border-b border-slate-200 w-28 cursor-pointer select-none dark:border-slate-700"
                 onClick={() => toggleSort("fecha")}
                 title="Ordenar por fecha"
               >
-                Fecha {sortKey === "fecha" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                Fecha {sortKey === "fecha" ? (sortDir === "asc" ? "^" : "v") : "<>"}
               </th>
-              <th className="p-2 border w-44">Cuadrilla</th>
-              <th className="p-2 border w-28">Codigo</th>
-              <th className="p-2 border w-56">Cliente</th>
-              <th className="p-2 border w-32">SN ONT</th>
-              <th className="p-2 border w-56">SN MESH</th>
-              <th className="p-2 border w-56">SN BOX</th>
-              <th className="p-2 border w-40">SN FONO</th>
-              <th className="p-2 border min-w-[560px]">Liquidacion</th>
+              <th className="p-2 border-b border-slate-200 w-44 dark:border-slate-700">Cuadrilla</th>
+              <th className="p-2 border-b border-slate-200 w-28 dark:border-slate-700">Codigo</th>
+              <th className="p-2 border-b border-slate-200 w-56 dark:border-slate-700">Cliente</th>
+              <th className="p-2 border-b border-slate-200 w-32 dark:border-slate-700">SN ONT</th>
+              <th className="p-2 border-b border-slate-200 w-56 dark:border-slate-700">SN MESH</th>
+              <th className="p-2 border-b border-slate-200 w-56 dark:border-slate-700">SN BOX</th>
+              <th className="p-2 border-b border-slate-200 w-40 dark:border-slate-700">SN FONO</th>
+              <th className="p-2 border-b border-slate-200 min-w-[560px] dark:border-slate-700">Liquidacion</th>
             </tr>
           </thead>
           <tbody>
@@ -466,7 +491,7 @@ export default function MaterialesLiquidacionClient() {
                 </td>
               </tr>
             ) : (
-              sorted.map((row) => {
+              sorted.map((row, idx) => {
                 const f = forms[row.id] || {};
                 const existing = getExisting(row);
                 const residencial = esResidencial(row);
@@ -481,18 +506,18 @@ export default function MaterialesLiquidacionClient() {
                 const preconDisabled = parseFloatSafe(f.bobinaMetros ?? existing.bobinaMetros ?? 0) > 0;
 
                 return (
-                  <tr key={row.id} className="hover:bg-gray-50 align-top">
-                    <td className="border p-2 text-center">
+                  <tr key={row.id} className={`align-top hover:bg-slate-50/80 dark:hover:bg-slate-800/60 ${idx % 2 ? "bg-slate-50/50 dark:bg-slate-800/40" : "bg-white dark:bg-slate-900"}`}>
+                    <td className="border-b border-slate-100 p-2 text-center dark:border-slate-800">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs border ${liquidado ? "bg-green-100 text-green-800 border-green-300" : "bg-amber-100 text-amber-800 border-amber-300"}`}>
                         {liquidado ? "Liquidado" : "Pendiente"}
                       </span>
                     </td>
-                    <td className="border p-2 text-center">{formatearFecha(row.fechaInstalacion)}</td>
-                    <td className="border p-2 text-center">{row.cuadrillaNombre || "-"}</td>
-                    <td className="border p-2 text-center">{row.codigoCliente || "-"}</td>
-                    <td className="border p-2">{row.cliente || "-"}</td>
-                    <td className="border p-2 text-center">{row.snONT || "-"}</td>
-                    <td className="border p-2">
+                    <td className="border-b border-slate-100 p-2 text-center dark:border-slate-800">{formatearFecha(row.fechaInstalacion)}</td>
+                    <td className="border-b border-slate-100 p-2 text-center dark:border-slate-800">{row.cuadrillaNombre || "-"}</td>
+                    <td className="border-b border-slate-100 p-2 text-center dark:border-slate-800">{row.codigoCliente || "-"}</td>
+                    <td className="border-b border-slate-100 p-2 dark:border-slate-800">{row.cliente || "-"}</td>
+                    <td className="border-b border-slate-100 p-2 text-center dark:border-slate-800">{row.snONT || "-"}</td>
+                    <td className="border-b border-slate-100 p-2 dark:border-slate-800">
                       {Array.isArray(row.snMESH) && row.snMESH.filter(Boolean).length > 0 ? (
                         <div className="flex flex-wrap gap-1 justify-center">
                           {row.snMESH.filter(Boolean).map((sn: string, i: number) => (
@@ -505,7 +530,7 @@ export default function MaterialesLiquidacionClient() {
                         "-"
                       )}
                     </td>
-                    <td className="border p-2">
+                    <td className="border-b border-slate-100 p-2 dark:border-slate-800">
                       {Array.isArray(row.snBOX) && row.snBOX.filter(Boolean).length > 0 ? (
                         <div className="flex flex-wrap gap-1 justify-center">
                           {row.snBOX.filter(Boolean).map((sn: string, i: number) => (
@@ -518,8 +543,8 @@ export default function MaterialesLiquidacionClient() {
                         "-"
                       )}
                     </td>
-                    <td className="border p-2 text-center">{row.snFONO || "-"}</td>
-                    <td className="border p-2">
+                    <td className="border-b border-slate-100 p-2 text-center dark:border-slate-800">{row.snFONO || "-"}</td>
+                    <td className="border-b border-slate-100 p-2 dark:border-slate-800">
                       <div
                         className={`rounded-md p-2 ${liquidado ? "border border-green-300 bg-green-50" : "border border-red-300 bg-red-50"}`}
                       >
@@ -528,7 +553,7 @@ export default function MaterialesLiquidacionClient() {
                           <input
                             type="text"
                             placeholder="ACTA (scan)"
-                            className="border rounded px-2 py-1"
+                            className={smallFieldClass}
                             value={formatActa(f.acta ?? existing.acta ?? "")}
                             onChange={(e) => setField(row.id, "acta", formatActa(e.target.value))}
                             onBlur={() => validarActa(row.id, String(f.acta ?? existing.acta ?? ""))}
@@ -550,7 +575,7 @@ export default function MaterialesLiquidacionClient() {
                         </div>
 
                         <select
-                          className="border rounded px-2 py-1"
+                          className={smallFieldClass}
                           value={f.precon ?? existing.precon ?? ""}
                           onChange={(e) => setField(row.id, "precon", e.target.value)}
                           disabled={!editing || preconDisabled}
@@ -567,7 +592,7 @@ export default function MaterialesLiquidacionClient() {
                           min={0}
                           step="0.1"
                           placeholder="BOBINA (m)"
-                          className="border rounded px-2 py-1"
+                          className={smallFieldClass}
                           value={f.bobinaMetros ?? existing.bobinaMetros ?? ""}
                           onChange={(e) => setField(row.id, "bobinaMetros", e.target.value)}
                           disabled={!editing || bobinaDisabled}
@@ -579,7 +604,7 @@ export default function MaterialesLiquidacionClient() {
                               type="number"
                               min={0}
                               placeholder="ANCLAJE_P"
-                              className="border rounded px-2 py-1"
+                              className={smallFieldClass}
                               value={f.anclajeP ?? existing.anclajeP ?? ""}
                               onChange={(e) => setField(row.id, "anclajeP", e.target.value)}
                               disabled={!editing}
@@ -588,7 +613,7 @@ export default function MaterialesLiquidacionClient() {
                               type="number"
                               min={0}
                               placeholder="TEMPLADOR"
-                              className="border rounded px-2 py-1"
+                              className={smallFieldClass}
                               value={f.templador ?? existing.templador ?? ""}
                               onChange={(e) => setField(row.id, "templador", e.target.value)}
                               disabled={!editing}
@@ -597,7 +622,7 @@ export default function MaterialesLiquidacionClient() {
                               type="number"
                               min={0}
                               placeholder="CLEVI"
-                              className="border rounded px-2 py-1"
+                              className={smallFieldClass}
                               value={f.clevi ?? existing.clevi ?? ""}
                               onChange={(e) => setField(row.id, "clevi", e.target.value)}
                               disabled={!editing}
@@ -619,7 +644,7 @@ export default function MaterialesLiquidacionClient() {
                           <div className="text-xs text-gray-500">Completa los campos para liquidar.</div>
                         )}
                         <button
-                          className={`px-3 py-1 rounded text-white disabled:opacity-60 ${
+                          className={`rounded-lg px-3 py-1 text-white disabled:opacity-60 ${
                             liquidado ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"
                           }`}
                           disabled={saving || (actaStatus[row.id]?.level === "error")}
@@ -635,7 +660,7 @@ export default function MaterialesLiquidacionClient() {
                         </button>
                         {editing && liquidado ? (
                           <button
-                            className="px-3 py-1 rounded border"
+                            className="rounded-lg border border-slate-300 px-3 py-1 dark:border-slate-600"
                             onClick={() => {
                               setEditingRows((p) => {
                                 const cp = { ...p };
@@ -661,9 +686,12 @@ export default function MaterialesLiquidacionClient() {
             )}
           </tbody>
         </table>
-      </div>
+        </div>
+      </section>
     </div>
   );
 }
+
+
 
 

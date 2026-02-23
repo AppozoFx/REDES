@@ -39,6 +39,33 @@ function shortName(full: string) {
   return `${first} ${last}`.trim() || first || full;
 }
 
+function normalizeSns(input: unknown): string[] {
+  return Array.from(
+    new Set<string>(
+      (Array.isArray(input) ? input : [])
+        .map((s: unknown) => asStr(s).toUpperCase())
+        .filter(Boolean)
+    )
+  );
+}
+
+async function findEquiposBySns(db: ReturnType<typeof adminDb>, sns: string[]) {
+  const found = new Map<string, { id: string; data: any }>();
+  const notFound = new Set(sns);
+  for (let i = 0; i < sns.length; i += 10) {
+    const chunk = sns.slice(i, i + 10);
+    const snap = await db.collection("equipos").where("SN", "in", chunk).limit(1000).get();
+    for (const d of snap.docs) {
+      const data = d.data() as any;
+      const sn = asStr(data?.SN).toUpperCase();
+      if (!sn) continue;
+      found.set(sn, { id: d.id, data });
+      notFound.delete(sn);
+    }
+  }
+  return { found, notFound };
+}
+
 function photoCandidates(eq: any) {
   const out = new Set<string>();
   const p = asStr(eq?.auditoria?.fotoPath);
@@ -104,29 +131,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, saved });
     }
 
+    if (action === "analizar_sns") {
+      const sns = normalizeSns(body?.sns);
+      if (!sns.length) return NextResponse.json({ ok: false, error: "NO_SN" }, { status: 400 });
+      const { notFound } = await findEquiposBySns(db, sns);
+      return NextResponse.json({
+        ok: true,
+        total: sns.length,
+        encontrados: sns.length - notFound.size,
+        noEncontrados: Array.from(notFound),
+      });
+    }
+
     if (action === "marcar_masivo") {
-      const sns: string[] = Array.from(
-        new Set<string>(
-          (Array.isArray(body?.sns) ? body.sns : [])
-            .map((s: unknown) => asStr(s).toUpperCase())
-            .filter(Boolean)
-        )
-      );
+      const sns = normalizeSns(body?.sns);
       if (!sns.length) return NextResponse.json({ ok: false, error: "NO_SN" }, { status: 400 });
 
-      const found = new Map<string, { id: string; data: any }>();
-      const notFound = new Set(sns);
-      for (let i = 0; i < sns.length; i += 10) {
-        const chunk = sns.slice(i, i + 10);
-        const snap = await db.collection("equipos").where("SN", "in", chunk).limit(1000).get();
-        for (const d of snap.docs) {
-          const data = d.data() as any;
-          const sn = asStr(data?.SN).toUpperCase();
-          if (!sn) continue;
-          found.set(sn, { id: d.id, data });
-          notFound.delete(sn);
-        }
-      }
+      const { found, notFound } = await findEquiposBySns(db, sns);
 
       let saved = 0;
       for (let i = 0; i < sns.length; i += 400) {

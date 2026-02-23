@@ -99,7 +99,7 @@ export default function InstalacionesClient() {
   const [filtros, setFiltros] = useState({
     mes: dayjs().format("YYYY-MM"),
     dia: "",
-    cuadrilla: [] as string[],
+    cuadrilla: "",
     tipoCuadrilla: [] as string[],
     busqueda: "",
     filtrarPlanGamer: false,
@@ -178,13 +178,6 @@ export default function InstalacionesClient() {
   /* =========================
      Opciones select
   ========================= */
-  const opcionesCuadrilla = useMemo(() => {
-    return [...new Set(instalaciones.map((l) => l.cuadrillaNombre).filter(Boolean))].map((c) => ({
-      value: c,
-      label: c,
-    }));
-  }, [instalaciones]);
-
   const opcionesTipoCuadrilla = useMemo(() => {
     return [...new Set(instalaciones.map((l) => l.tipoCuadrilla).filter(Boolean))].map((t) => ({
       value: t,
@@ -199,7 +192,10 @@ export default function InstalacionesClient() {
     const deb = (debouncedBusqueda || "").trim().toLowerCase();
 
     const base = instalaciones.filter((l) => {
-      const coincideCuadrilla = filtros.cuadrilla.length > 0 ? filtros.cuadrilla.includes(l.cuadrillaNombre) : true;
+      const filtroCuadrilla = String(filtros.cuadrilla || "").trim().toLowerCase();
+      const coincideCuadrilla = filtroCuadrilla
+        ? String(l.cuadrillaNombre || "").toLowerCase().includes(filtroCuadrilla)
+        : true;
 
       const coincideTipoCuadrilla =
         filtros.tipoCuadrilla.length > 0 ? filtros.tipoCuadrilla.includes(l.tipoCuadrilla) : true;
@@ -340,7 +336,7 @@ export default function InstalacionesClient() {
     setFiltros({
       mes: dayjs().format("YYYY-MM"),
       dia: "",
-      cuadrilla: [],
+      cuadrilla: "",
       tipoCuadrilla: [],
       busqueda: "",
       filtrarPlanGamer: false,
@@ -585,7 +581,7 @@ export default function InstalacionesClient() {
             name="mes"
             value={filtros.mes}
             onChange={handleFiltroInput}
-            className="border px-2 py-1 rounded text-sm"
+            className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
           />
         </div>
 
@@ -596,7 +592,7 @@ export default function InstalacionesClient() {
             name="dia"
             value={filtros.dia}
             onChange={handleFiltroInput}
-            className="border px-2 py-1 rounded text-sm"
+            className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
           />
         </div>
 
@@ -617,16 +613,14 @@ export default function InstalacionesClient() {
 
         <div className="flex flex-col">
           <label className="text-sm font-medium text-gray-700 mb-1">Cuadrilla</label>
-          <Select
-            isMulti
+          <input
+            type="text"
             name="cuadrilla"
-            instanceId="instalaciones-cuadrilla"
-            inputId="instalaciones-cuadrilla"
-            options={opcionesCuadrilla}
-            className="text-sm"
-            placeholder="Seleccionar..."
-            value={opcionesCuadrilla.filter((opt) => filtros.cuadrilla.includes(opt.value))}
-            onChange={(sel) => setFiltros((p) => ({ ...p, cuadrilla: (sel || []).map((s) => s.value) }))}
+            placeholder="Buscar cuadrilla"
+            value={filtros.cuadrilla}
+            onChange={handleFiltroInput}
+            autoComplete="off"
+            className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
           />
         </div>
 
@@ -638,7 +632,7 @@ export default function InstalacionesClient() {
             placeholder="Buscar codigo o cliente"
             value={filtros.busqueda}
             onChange={handleFiltroInput}
-            className="border px-2 py-1 rounded text-sm"
+            className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
           />
         </div>
 

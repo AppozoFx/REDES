@@ -5,6 +5,8 @@ export type TelegramParsedTemplate = {
   potenciaCtoNapDbm?: string;
   snOnt?: string;
   meshes: string[];
+  boxes: string[];
+  snFono?: string;
   rawText: string;
 };
 
@@ -54,12 +56,22 @@ export function parseTelegramTemplate(rawInput: string): TelegramParsedTemplate 
     /^.*\bPotencia\s*CTO\s*\/\s*NAP\s*\(\s*Dbm\s*\)\s*:\s*(.+)\s*$/im
   ) || matchLine(normalized, /^.*\bPotencia\s*CTO\s*\/\s*NAP\s*:\s*(.+)\s*$/im);
   const snOnt = matchLine(normalized, /^.*\bSN\s*ONT\s*:\s*(.+)\s*$/im);
+  const snFono =
+    matchLine(normalized, /^.*\bFONOWIN\b\s*,?\s*N[UÚ]MERO\s+DE\s+SERIE\s*:\s*(.+)\s*$/im) ||
+    matchLine(normalized, /^.*\bSN\s*FONO\s*:\s*(.+)\s*$/im);
 
   const meshes: string[] = [];
   const meshRegex = /^.*\bMESH\s*\(\s*\d+\s*\)\s*:\s*(.+)\s*$/gim;
   for (const match of normalized.matchAll(meshRegex)) {
     const value = normalizeSpaces(String(match[1] || ""));
     if (value) meshes.push(value);
+  }
+
+  const boxes: string[] = [];
+  const boxRegex = /^.*\b(?:WINBOX|SN\s*BOX|BOX)\s*\(\s*\d+\s*\)\s*:\s*(.+)\s*$/gim;
+  for (const match of normalized.matchAll(boxRegex)) {
+    const value = normalizeSpaces(String(match[1] || ""));
+    if (value) boxes.push(value);
   }
 
   return {
@@ -69,6 +81,8 @@ export function parseTelegramTemplate(rawInput: string): TelegramParsedTemplate 
     potenciaCtoNapDbm,
     snOnt,
     meshes,
+    boxes,
+    snFono,
     rawText: normalized,
   };
 }

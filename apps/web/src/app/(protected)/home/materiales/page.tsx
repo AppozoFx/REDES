@@ -7,10 +7,17 @@ export default async function Page() {
   await requirePermission("MATERIALES_VIEW");
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Materiales</h1>
-        <a href="/home/materiales/crear" className="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700">Crear</a>
-      </div>
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold text-slate-900">Almacen - Materiales</h1>
+            <p className="mt-1 text-sm text-slate-500">Consulta, filtra y edita materiales de forma rapida.</p>
+          </div>
+          <a href="/home/materiales/crear" className="inline-flex h-10 items-center rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition hover:bg-blue-700">
+            Crear material
+          </a>
+        </div>
+      </section>
       <ListClient />
     </div>
   );

@@ -45,6 +45,16 @@ type Kpi = {
   correccionPendiente: number;
 };
 
+type CachedDataset = {
+  createdAt: number;
+  enriched: DetailItem[];
+  enrichedPrev: DetailItem[];
+};
+
+const DATASET_CACHE_TTL_MS = 5 * 60 * 1000;
+const DATASET_CACHE_MAX_ENTRIES = 6;
+const datasetCache = new Map<string, CachedDataset>();
+
 function norm(v: any) {
   return String(v || "")
     .trim()
@@ -181,6 +191,36 @@ function computeKpi(rows: DetailItem[]): Kpi {
   };
 }
 
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+function getCachedDataset(key: string): CachedDataset | null {
+  const entry = datasetCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.createdAt > DATASET_CACHE_TTL_MS) {
+    datasetCache.delete(key);
+    return null;
+  }
+  return entry;
+}
+
+function pruneDatasetCache() {
+  if (datasetCache.size <= DATASET_CACHE_MAX_ENTRIES) return;
+  const ordered = Array.from(datasetCache.entries()).sort((a, b) => a[1].createdAt - b[1].createdAt);
+  while (ordered.length > DATASET_CACHE_MAX_ENTRIES) {
+    const [oldestKey] = ordered.shift()!;
+    datasetCache.delete(oldestKey);
+  }
+}
+
+function setCachedDataset(key: string, value: Omit<CachedDataset, "createdAt">) {
+  datasetCache.set(key, { ...value, createdAt: Date.now() });
+  pruneDatasetCache();
+}
+
 async function fetchAllOrdenesByRange(fromYmd: string, toYmdExclusive: string) {
   const db = adminDb();
   const out: any[] = [];
@@ -229,6 +269,7 @@ export async function GET(req: Request) {
     const pageSize = Math.min(500, parseIntSafe(searchParams.get("pageSize"), 50));
 
     const fCuadrilla = String(searchParams.get("cuadrilla") || searchParams.get("cuadrillaId") || "").trim();
+    const fSearch = String(searchParams.get("q") || "").trim();
     const fRegionOrden = String(searchParams.get("regionOrden") || "").trim();
     const fDistritoOrden = String(searchParams.get("distritoOrden") || "").trim();
     const fGestorUid = String(searchParams.get("gestorUid") || "").trim();
@@ -272,107 +313,132 @@ export async function GET(req: Request) {
     const prevToYmdInclusive = addDays(prevToYmdExclusive, -1);
     const periodPrevLabel = `${prevFromYmd} - ${prevToYmdInclusive}`;
 
-    const orderDocs = await fetchAllOrdenesByRange(fromYmd, toYmdExclusive);
-    const prevOrderDocs = await fetchAllOrdenesByRange(prevFromYmd, prevToYmdExclusive);
-    const toBase = (docs: any[]) => docs.map((d) => {
-      const x = d.data() as any;
-      const codigo = String(x?.codiSeguiClien || "").trim();
-      const tipoMix = `${x?.tipo || ""} ${x?.tipoTraba || ""} ${x?.idenServi || ""} ${x?.estado || ""}`;
-      return {
-        id: d.id,
-        ymd: String(x?.fSoliYmd || x?.fechaFinVisiYmd || "").trim(),
-        hm: String(x?.fechaFinVisiHm || x?.fSoliHm || "").trim(),
-        ordenId: String(x?.ordenId || d.id).trim(),
-        codiSeguiClien: codigo,
-        cliente: String(x?.cliente || "").trim(),
-        cuadrillaId: String(x?.cuadrillaId || "").trim(),
-        cuadrillaNombre: String(x?.cuadrillaNombre || "").trim(),
-        regionOrden: String(x?.region || x?.regionNombre || "").trim(),
-        distritoOrden: String(x?.zonaDistrito || x?.distrito || "").trim(),
-        estado: String(x?.estado || "").trim().toUpperCase(),
-        tipoOrden: String(x?.tipoOrden || x?.tipo || "").trim().toUpperCase(),
-        tipoTraba: String(x?.tipoTraba || "").trim(),
-        gestorUid: String(x?.gestorCuadrilla || "").trim(),
-        coordinadorUid: String(x?.coordinadorCuadrilla || x?.coordinador || "").trim(),
-        lat: parseCoord(x?.lat),
-        lng: parseCoord(x?.lng),
-        georeferenciaRaw: String(x?.georeferenciaRaw || "").trim(),
-        isGarantia: isGarantia(tipoMix),
-      };
-    });
-    const base = toBase(orderDocs);
-    const basePrev = toBase(prevOrderDocs);
+    const datasetCacheKey = `${fromYmd}|${toYmdExclusive}|${prevFromYmd}|${prevToYmdExclusive}`;
+    let cached = getCachedDataset(datasetCacheKey);
+    let enriched: DetailItem[] = [];
+    let enrichedPrev: DetailItem[] = [];
 
-    const codigos = Array.from(new Set([...base, ...basePrev].map((x) => x.codiSeguiClien).filter(Boolean)));
-    const instMap = new Map<string, any>();
-    for (let i = 0; i < codigos.length; i += 400) {
-      const chunk = codigos.slice(i, i + 400);
-      const refs = chunk.map((c) => adminDb().collection("instalaciones").doc(c));
-      const snaps = await adminDb().getAll(...refs);
-      for (const s of snaps) {
-        if (s.exists) instMap.set(s.id, s.data() || {});
-      }
-    }
-
-    const uidSet = new Set<string>();
-    [...base, ...basePrev].forEach((x) => {
-      if (x.gestorUid) uidSet.add(x.gestorUid);
-      if (x.coordinadorUid) uidSet.add(x.coordinadorUid);
-    });
-    const uids = Array.from(uidSet);
-    const uidName = new Map<string, string>();
-    for (let i = 0; i < uids.length; i += 400) {
-      const chunk = uids.slice(i, i + 400);
-      const refs = chunk.map((uid) => adminDb().collection("usuarios").doc(uid));
-      const snaps = await adminDb().getAll(...refs);
-      snaps.forEach((s) => {
-        const data = (s.data() as any) || {};
-        const full = String(data.displayName || `${data.nombres || ""} ${data.apellidos || ""}`.trim() || s.id);
-        uidName.set(s.id, full);
-      });
-    }
-
-    const toEnriched = (rows: any[]): DetailItem[] =>
-      rows
-      .filter((x) => !x.isGarantia)
-      .map((x) => {
-        const inst = x.codiSeguiClien ? instMap.get(x.codiSeguiClien) : null;
-        const liqEstado = String(inst?.liquidacion?.estado || "").toUpperCase();
-        const liqAt = toIso(inst?.liquidacion?.at);
-        const correccionPendiente = !!(inst?.correccionPendiente || inst?.corregido);
-        const liquidado = (liqEstado === "LIQUIDADO" || !!liqAt) && !correccionPendiente;
-        const geoRaw = parseGeoRaw((x as any).georeferenciaRaw);
-        const lat = parseCoord((x as any).lat) ?? geoRaw.lat;
-        const lng = parseCoord((x as any).lng) ?? geoRaw.lng;
+    if (cached) {
+      enriched = cached.enriched;
+      enrichedPrev = cached.enrichedPrev;
+    } else {
+      const [orderDocs, prevOrderDocs] = await Promise.all([
+        fetchAllOrdenesByRange(fromYmd, toYmdExclusive),
+        fetchAllOrdenesByRange(prevFromYmd, prevToYmdExclusive),
+      ]);
+      const toBase = (docs: any[]) => docs.map((d) => {
+        const x = d.data() as any;
+        const codigo = String(x?.codiSeguiClien || "").trim();
+        const tipoMix = `${x?.tipo || ""} ${x?.tipoTraba || ""} ${x?.idenServi || ""} ${x?.estado || ""}`;
         return {
-          id: x.id,
-          ymd: x.ymd,
-          hm: x.hm,
-          ordenId: x.ordenId,
-          codiSeguiClien: x.codiSeguiClien,
-          cliente: x.cliente,
-          cuadrillaId: x.cuadrillaId,
-          cuadrillaNombre: x.cuadrillaNombre,
-          estado: x.estado,
-          tipoOrden: x.tipoOrden,
-          tipoTraba: x.tipoTraba,
-          gestorUid: x.gestorUid,
-          gestorNombre: x.gestorUid ? uidName.get(x.gestorUid) || x.gestorUid : "",
-          coordinadorUid: x.coordinadorUid,
-          coordinadorNombre: x.coordinadorUid ? uidName.get(x.coordinadorUid) || x.coordinadorUid : "",
-          regionOrden: x.regionOrden,
-          distritoOrden: x.distritoOrden,
-          lat,
-          lng,
-          liquidado,
-          correccionPendiente,
-          liquidacionAt: liqAt,
+          id: d.id,
+          ymd: String(x?.fSoliYmd || x?.fechaFinVisiYmd || "").trim(),
+          hm: String(x?.fechaFinVisiHm || x?.fSoliHm || "").trim(),
+          ordenId: String(x?.ordenId || d.id).trim(),
+          codiSeguiClien: codigo,
+          cliente: String(x?.cliente || "").trim(),
+          cuadrillaId: String(x?.cuadrillaId || "").trim(),
+          cuadrillaNombre: String(x?.cuadrillaNombre || "").trim(),
+          regionOrden: String(x?.region || x?.regionNombre || "").trim(),
+          distritoOrden: String(x?.zonaDistrito || x?.distrito || "").trim(),
+          estado: String(x?.estado || "").trim().toUpperCase(),
+          tipoOrden: String(x?.tipoOrden || x?.tipo || "").trim().toUpperCase(),
+          tipoTraba: String(x?.tipoTraba || "").trim(),
+          gestorUid: String(x?.gestorCuadrilla || "").trim(),
+          coordinadorUid: String(x?.coordinadorCuadrilla || x?.coordinador || "").trim(),
+          lat: parseCoord(x?.lat),
+          lng: parseCoord(x?.lng),
+          georeferenciaRaw: String(x?.georeferenciaRaw || "").trim(),
+          isGarantia: isGarantia(tipoMix),
         };
       });
-    const enriched: DetailItem[] = toEnriched(base);
-    const enrichedPrev: DetailItem[] = toEnriched(basePrev);
+      const base = toBase(orderDocs);
+      const basePrev = toBase(prevOrderDocs);
+
+      const codigos = Array.from(new Set([...base, ...basePrev].map((x) => x.codiSeguiClien).filter(Boolean)));
+      const instMap = new Map<string, any>();
+      const codigoChunks = chunkArray(codigos, 400);
+      const instChunkSnaps = await Promise.all(
+        codigoChunks.map((chunk) => {
+          const refs = chunk.map((c) => adminDb().collection("instalaciones").doc(c));
+          return adminDb().getAll(...refs);
+        })
+      );
+      for (const snaps of instChunkSnaps) {
+        for (const s of snaps) {
+          if (s.exists) instMap.set(s.id, s.data() || {});
+        }
+      }
+
+      const uidSet = new Set<string>();
+      [...base, ...basePrev].forEach((x) => {
+        if (x.gestorUid) uidSet.add(x.gestorUid);
+        if (x.coordinadorUid) uidSet.add(x.coordinadorUid);
+      });
+      const uids = Array.from(uidSet);
+      const uidName = new Map<string, string>();
+      const uidChunks = chunkArray(uids, 400);
+      const uidChunkSnaps = await Promise.all(
+        uidChunks.map((chunk) => {
+          const refs = chunk.map((uid) => adminDb().collection("usuarios").doc(uid));
+          return adminDb().getAll(...refs);
+        })
+      );
+      for (const snaps of uidChunkSnaps) {
+        snaps.forEach((s) => {
+          const data = (s.data() as any) || {};
+          const full = String(data.displayName || `${data.nombres || ""} ${data.apellidos || ""}`.trim() || s.id);
+          uidName.set(s.id, full);
+        });
+      }
+
+      const toEnriched = (rows: any[]): DetailItem[] =>
+        rows
+        .filter((x) => !x.isGarantia)
+        .map((x) => {
+          const inst = x.codiSeguiClien ? instMap.get(x.codiSeguiClien) : null;
+          const liqEstado = String(inst?.liquidacion?.estado || "").toUpperCase();
+          const liqAt = toIso(inst?.liquidacion?.at);
+          const correccionPendiente = !!(inst?.correccionPendiente || inst?.corregido);
+          const liquidado = (liqEstado === "LIQUIDADO" || !!liqAt) && !correccionPendiente;
+          const geoRaw = parseGeoRaw((x as any).georeferenciaRaw);
+          const lat = parseCoord((x as any).lat) ?? geoRaw.lat;
+          const lng = parseCoord((x as any).lng) ?? geoRaw.lng;
+          return {
+            id: x.id,
+            ymd: x.ymd,
+            hm: x.hm,
+            ordenId: x.ordenId,
+            codiSeguiClien: x.codiSeguiClien,
+            cliente: x.cliente,
+            cuadrillaId: x.cuadrillaId,
+            cuadrillaNombre: x.cuadrillaNombre,
+            estado: x.estado,
+            tipoOrden: x.tipoOrden,
+            tipoTraba: x.tipoTraba,
+            gestorUid: x.gestorUid,
+            gestorNombre: x.gestorUid ? uidName.get(x.gestorUid) || x.gestorUid : "",
+            coordinadorUid: x.coordinadorUid,
+            coordinadorNombre: x.coordinadorUid ? uidName.get(x.coordinadorUid) || x.coordinadorUid : "",
+            regionOrden: x.regionOrden,
+            distritoOrden: x.distritoOrden,
+            lat,
+            lng,
+            liquidado,
+            correccionPendiente,
+            liquidacionAt: liqAt,
+          };
+        });
+      enriched = toEnriched(base);
+      enrichedPrev = toEnriched(basePrev);
+      setCachedDataset(datasetCacheKey, { enriched, enrichedPrev });
+    }
 
     const matchesFilters = (x: DetailItem, includeDistrito: boolean) => {
+      if (fSearch) {
+        const hay = `${x.ordenId || ""} ${x.codiSeguiClien || ""} ${x.cliente || ""} ${x.cuadrillaNombre || ""} ${x.cuadrillaId || ""}`;
+        if (!norm(hay).includes(norm(fSearch))) return false;
+      }
       if (fCuadrilla) {
         const cuadrillaFull = `${x.cuadrillaNombre || ""} ${x.cuadrillaId || ""}`;
         if (!norm(cuadrillaFull).includes(norm(fCuadrilla))) return false;

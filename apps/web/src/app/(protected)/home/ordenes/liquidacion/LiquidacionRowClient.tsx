@@ -68,8 +68,20 @@ type StockByTipo = {
   FONO: string[];
 };
 
+type PreliquidacionLite = {
+  snOnt: string;
+  snMeshes: string[];
+  snBoxes: string[];
+  snFono: string;
+  rotuloNapCto: string;
+};
+
 function emptyStock(): StockByTipo {
   return { ONT: [], MESH: [], BOX: [], FONO: [] };
+}
+
+function emptyPreliquidacion(): PreliquidacionLite {
+  return { snOnt: "", snMeshes: [], snBoxes: [], snFono: "", rotuloNapCto: "" };
 }
 
 export function LiquidacionRowClient({
@@ -102,6 +114,7 @@ export function LiquidacionRowClient({
   const [fonoExtraEnabled, setFonoExtraEnabled] = useState(false);
   const [stock, setStock] = useState<StockByTipo>(emptyStock());
   const [stockLoading, setStockLoading] = useState(false);
+  const [preliqLoading, setPreliqLoading] = useState(false);
   const [cardFocus, setCardFocus] = useState(false);
   const [prefilledOnce, setPrefilledOnce] = useState(false);
 
@@ -225,13 +238,87 @@ export function LiquidacionRowClient({
 
   useEffect(() => {
     if (!open || prefilledOnce) return;
-    setPlanGamerChecked(!!tips.gamer);
-    setKitWifiProChecked(!!tips.kitWifiPro);
-    setCableadoMeshChecked(!!tips.cableadoMesh);
-    setCat5e(tips.cableadoMesh ? 1 : 0);
-    if (orden.rotuloNapCto) setRotuloNapCto(orden.rotuloNapCto);
-    setPrefilledOnce(true);
-  }, [open, prefilledOnce, tips.gamer, tips.kitWifiPro, tips.cableadoMesh, orden.rotuloNapCto]);
+    let cancelled = false;
+    const ctrl = new AbortController();
+
+    async function prefillFromTelegram() {
+      setPlanGamerChecked(!!tips.gamer);
+      setKitWifiProChecked(!!tips.kitWifiPro);
+      setCableadoMeshChecked(!!tips.cableadoMesh);
+      setCat5e(tips.cableadoMesh ? 1 : 0);
+      if (orden.rotuloNapCto) setRotuloNapCto(orden.rotuloNapCto);
+
+      const pedido = String(orden.codiSeguiClien || "").trim();
+      const ymd = String(orden.fechaFinVisiYmd || "").trim();
+      if (!pedido || !ymd) {
+        if (!cancelled) setPrefilledOnce(true);
+        return;
+      }
+
+      setPreliqLoading(true);
+      try {
+        const res = await fetch(
+          `/api/ordenes/liquidacion/preliquidacion?pedido=${encodeURIComponent(pedido)}&ymd=${encodeURIComponent(ymd)}`,
+          { cache: "no-store", signal: ctrl.signal }
+        );
+        const data = await res.json();
+        if (!res.ok || !data?.ok || !data?.found) {
+          if (!cancelled) setPrefilledOnce(true);
+          return;
+        }
+
+        const pre = (data?.item || emptyPreliquidacion()) as PreliquidacionLite;
+        if (cancelled) return;
+
+        const meshes = Array.isArray(pre.snMeshes)
+          ? pre.snMeshes.map((v) => String(v || "").trim()).filter(Boolean).slice(0, 4)
+          : [];
+        const boxes = Array.isArray(pre.snBoxes)
+          ? pre.snBoxes.map((v) => String(v || "").trim()).filter(Boolean).slice(0, 4)
+          : [];
+        const hasMeshExtra = meshes.length > meshBaseSlots && canAddMeshExtra;
+        const hasBoxExtra = boxes.length > boxBaseSlots && canAddBoxExtra;
+        const hasFonoExtra = !expected.fono && !!norm(pre.snFono || "");
+
+        setMeshExtraEnabled(hasMeshExtra);
+        setBoxExtraEnabled(hasBoxExtra);
+        setFonoExtraEnabled(hasFonoExtra);
+
+        if (pre.snOnt) setSnONT(pre.snOnt);
+        if (pre.snFono) setSnFONO(pre.snFono);
+        if (meshes.length) setSnMESH(meshes);
+        if (boxes.length) setSnBOX(boxes);
+        if (pre.rotuloNapCto) setRotuloNapCto(pre.rotuloNapCto);
+      } catch {
+        // Ignoramos fallas de prefill para no bloquear la liquidacion manual.
+      } finally {
+        if (!cancelled) {
+          setPreliqLoading(false);
+          setPrefilledOnce(true);
+        }
+      }
+    }
+
+    prefillFromTelegram();
+    return () => {
+      cancelled = true;
+      ctrl.abort();
+    };
+  }, [
+    open,
+    prefilledOnce,
+    tips.gamer,
+    tips.kitWifiPro,
+    tips.cableadoMesh,
+    orden.rotuloNapCto,
+    orden.codiSeguiClien,
+    orden.fechaFinVisiYmd,
+    meshBaseSlots,
+    boxBaseSlots,
+    canAddMeshExtra,
+    canAddBoxExtra,
+    expected.fono,
+  ]);
 
   useEffect(() => {
     if (!meshExtraEnabled) setSnMESH((prev) => prev.slice(0, meshBaseSlots));
@@ -774,6 +861,7 @@ export function LiquidacionRowClient({
           )}
 
           {stockLoading ? <div className="text-xs text-muted-foreground">Cargando stock de cuadrilla...</div> : null}
+          {preliqLoading ? <div className="text-xs text-muted-foreground">Cargando pre-liquidacion Telegram...</div> : null}
 
           <div className="space-y-1 rounded border bg-slate-50 p-3">
             <label className="text-sm font-medium">Materiales (consumo automatico por instalacion)</label>

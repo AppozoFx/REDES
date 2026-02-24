@@ -9,8 +9,13 @@ export default async function Page() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Equipos - Instalaciones</h1>
-      <EquiposClient canEdit={canEdit} />
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h1 className="text-xl font-semibold text-slate-900">Equipos - Instalaciones</h1>
+        <p className="mt-1 text-sm text-slate-500">Administra inventario, filtros y exportaciones de equipos de instalaciones.</p>
+      </section>
+      <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:p-4">
+        <EquiposClient canEdit={canEdit} />
+      </section>
     </div>
   );
 }

@@ -444,6 +444,7 @@ export default function DespachoClient() {
   const snInputRef = useRef<HTMLInputElement | null>(null);
   const [equipos, setEquipos] = useState<Array<{ sn: string; tipo: string }>>([]);
   const [snValidating, setSnValidating] = useState(false);
+  const [pendingScans, setPendingScans] = useState(0);
 
   // Paso 2 - Bobinas / Materiales
   const [bobinaInput, setBobinaInput] = useState("");
@@ -460,6 +461,9 @@ export default function DespachoClient() {
   const [lastPayload, setLastPayload] = useState<any>(null);
   const printedGuiaRef = useRef<string>("");
   const waWindowRef = useRef<Window | null>(null);
+  const transferIdRef = useRef<string>("");
+  const scanQueueRef = useRef<string[]>([]);
+  const scanProcessingRef = useRef(false);
 
   // -----------------------
   // Cargar lista de cuadrillas (opcional)
@@ -483,6 +487,22 @@ export default function DespachoClient() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (step !== 2 || pending || showPreview) return;
+    const t = setTimeout(() => snInputRef.current?.focus(), 0);
+    return () => clearTimeout(t);
+  }, [step, pending, showPreview]);
+
+  function ensureTransferId() {
+    if (!transferIdRef.current) {
+      transferIdRef.current =
+        typeof crypto?.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    }
+    return transferIdRef.current;
+  }
 
   useEffect(() => {
     (async () => {
@@ -543,6 +563,10 @@ export default function DespachoClient() {
     setObservacion("");
     setShowPreview(false);
     setLastPayload(null);
+    transferIdRef.current = "";
+    scanQueueRef.current = [];
+    scanProcessingRef.current = false;
+    setPendingScans(0);
   }
 
   // -----------------------
@@ -574,7 +598,7 @@ export default function DespachoClient() {
   // -----------------------
   // Helpers Paso 1
   // -----------------------
-  async function cargarInfoCuadrillaById(id: string) {
+  async function cargarInfoCuadrillaById(id: string): Promise<Segmento> {
     const res = await fetch(`/api/cuadrillas/info?id=${encodeURIComponent(id)}`, { cache: "no-store" });
     const data = await res.json();
     if (!data?.ok) throw new Error(data?.error || "No se pudo obtener info de la cuadrilla");
@@ -602,6 +626,7 @@ export default function DespachoClient() {
     setSegmento(nextSegmento);
     setZonaId(info.zonaId || "");
     setInfoLoaded(true);
+    return nextSegmento;
   }
 
   async function cargarStockCuadrillaById(id: string, seg: Segmento) {
@@ -639,8 +664,8 @@ export default function DespachoClient() {
       setCuadrillaId(found.id);
       setBusqueda(found.nombre || found.id);
       try {
-        await cargarInfoCuadrillaById(found.id);
-        await cargarStockCuadrillaById(found.id, segmento);
+        const seg = await cargarInfoCuadrillaById(found.id);
+        await cargarStockCuadrillaById(found.id, seg);
         toast.success("Cuadrilla cargada");
         setComboOpen(false);
         setTimeout(() => snInputRef.current?.focus(), 0);
@@ -661,8 +686,8 @@ export default function DespachoClient() {
     guard(async () => {
       if (!cuadrillaId) return;
       try {
-        await cargarInfoCuadrillaById(cuadrillaId);
-        await cargarStockCuadrillaById(cuadrillaId, segmento);
+        const seg = await cargarInfoCuadrillaById(cuadrillaId);
+        await cargarStockCuadrillaById(cuadrillaId, seg);
         toast.success("Info cargada");
       } catch (e: any) {
         toast.error(e?.message || "Error consultando cuadrilla");
@@ -690,51 +715,67 @@ export default function DespachoClient() {
     return parts.length ? parts.join(" - ") : "0";
   }, [equipos]);
 
-  const handleAddSN = async () =>
-    guard(async () => {
-      const sn = snInput.trim().toUpperCase();
-      if (!sn) return;
-      if (equipos.some((e) => e.sn === sn)) {
-        toast.error("Este SN ya fue agregado");
-        setSnInput("");
-        return;
+  async function processScanQueue() {
+    if (scanProcessingRef.current) return;
+    scanProcessingRef.current = true;
+    try {
+      while (scanQueueRef.current.length > 0) {
+        const sn = scanQueueRef.current.shift()!;
+        setPendingScans(scanQueueRef.current.length);
+        try {
+          setSnValidating(true);
+          const res = await fetch(`/api/equipos/validate?sn=${encodeURIComponent(sn)}`, { cache: "no-store" });
+          if (res.status === 404) {
+            toast.error(`SN ${sn}: no existe`);
+            continue;
+          }
+          const data = await res.json();
+          if (!data?.ok) {
+            toast.error(`SN ${sn}: ${data?.error || "Error validando"}`);
+            continue;
+          }
+          if (data.status === "ALMACEN") {
+            const tipoEq = String(data.equipo || "OTROS").toUpperCase();
+            let added = false;
+            setEquipos((prev) => {
+              if (prev.some((e) => e.sn === sn)) return prev;
+              added = true;
+              return [...prev, { sn, tipo: tipoEq }];
+            });
+            if (added) toast.success(`SN ${sn} en almacen`);
+            continue;
+          }
+          if (data.status === "DESPACHADO") {
+            toast.error(`SN ${sn}: ya despachada (${data.ubicacion || "N/A"})`);
+            continue;
+          }
+          toast.error(`SN ${sn}: no esta en almacen (${data.ubicacion || "N/A"})`);
+        } catch {
+          toast.error(`SN ${sn}: error validando`);
+        } finally {
+          setSnValidating(false);
+        }
       }
-      try {
-        setSnValidating(true);
-        const res = await fetch(`/api/equipos/validate?sn=${encodeURIComponent(sn)}`, { cache: "no-store" });
-        if (res.status === 404) {
-          toast.error("La SN no existe");
-          setSnInput("");
-          return;
-        }
-        const data = await res.json();
-        if (!data?.ok) {
-          toast.error(data?.error || "Error validando SN");
-          setSnInput("");
-          return;
-        }
-        if (data.status === "ALMACEN") {
-          const tipoEq = String(data.equipo || "OTROS").toUpperCase();
-          setEquipos((p) => [...p, { sn, tipo: tipoEq }]);
-          setSnInput("");
-          toast.success("SN en almacen");
-          return;
-        }
-        if (data.status === "DESPACHADO") {
-          toast.error(`Serie ya despachada. Cuadrilla: ${data.ubicacion || "N/A"}`);
-          setSnInput("");
-          return;
-        }
-        toast.error(`Serie no esta en almacen. Ubicacion: ${data.ubicacion || "N/A"}`);
-        setSnInput("");
-      } catch {
-        toast.error("Error validando SN");
-        setSnInput("");
-      } finally {
-        setSnValidating(false);
-        setTimeout(() => snInputRef.current?.focus(), 0);
-      }
-    });
+    } finally {
+      scanProcessingRef.current = false;
+      setPendingScans(0);
+      setTimeout(() => snInputRef.current?.focus(), 0);
+    }
+  }
+
+  function handleAddSN() {
+    const sn = snInput.trim().toUpperCase();
+    if (!sn) return;
+    if (equipos.some((e) => e.sn === sn) || scanQueueRef.current.includes(sn)) {
+      toast.error("Este SN ya fue agregado");
+      setSnInput("");
+      return;
+    }
+    scanQueueRef.current.push(sn);
+    setPendingScans(scanQueueRef.current.length);
+    setSnInput("");
+    void processScanQueue();
+  }
 
   const handleRemoveSN = (sn: string) => setEquipos((p) => p.filter((x) => x.sn !== sn));
 
@@ -942,6 +983,7 @@ export default function DespachoClient() {
       if (codes.length) materiales.push({ materialId: "BOBINA", metros: codes.length * 1000 });
 
       const payload = {
+        transferId: ensureTransferId(),
         cuadrillaId,
         equipos: equipos.map((e) => e.sn),
         materiales,
@@ -954,7 +996,7 @@ export default function DespachoClient() {
       const m = Math.max(0, numOr0(bobinaCondominioMetros || "0"));
       if (m > 0) materiales.push({ materialId: "BOBINA", metros: m });
 
-      const payload = { cuadrillaId, equipos: equipos.map((e) => e.sn), materiales, observacion };
+      const payload = { transferId: ensureTransferId(), cuadrillaId, equipos: equipos.map((e) => e.sn), materiales, observacion };
       return { payload, extra: { metros: m } };
     }
   }
@@ -1014,7 +1056,7 @@ export default function DespachoClient() {
   // UI
   // -----------------------
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {pending && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30">
           <div className="rounded-lg bg-white px-4 py-3 text-sm shadow">
@@ -1025,8 +1067,8 @@ export default function DespachoClient() {
       <fieldset disabled={pending} className={pending ? "opacity-60" : ""}>
         {/* Paso 1 */}
         {step === 1 && (
-          <div className="space-y-4">
-          <div className="rounded border p-3">
+          <div className="space-y-5">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="text-sm font-medium">Paso 1  -  Seleccionar cuadrilla</div>
             <div className="text-xs text-muted-foreground">
               Puedes buscar por nombre (si existe /api/cuadrillas/list) o ingresar el ID manual.
@@ -1058,7 +1100,7 @@ export default function DespachoClient() {
                     if (e.key === "Enter") buscarYSeleccionarCuadrilla();
                     if (e.key === "Escape") setComboOpen(false);
                   }}
-                  className="mt-1 w-full rounded border px-2 py-2"
+                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
                   placeholder="Escribe nombre o ID (ej: K1 MOTO o K1_MOTO)"
                 />
                 {cuadrillaId && (
@@ -1066,7 +1108,7 @@ export default function DespachoClient() {
                 )}
 
                 {comboOpen && (
-                  <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow max-h-56 overflow-auto">
+                  <div className="absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg">
                     {cuadrillasLoading && (
                       <div className="px-3 py-2 text-xs text-muted-foreground">Cargando</div>
                     )}
@@ -1118,7 +1160,7 @@ export default function DespachoClient() {
                 <input
                   value={cuadrillaId}
                   onChange={(e) => setCuadrillaId(e.target.value)}
-                  className="mt-1 w-full rounded border px-2 py-2"
+                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
                   placeholder="Ej: K35_MOTO"
                 />
               </div>
@@ -1131,7 +1173,7 @@ export default function DespachoClient() {
                 type="button"
                 disabled={!cuadrillaId}
                 onClick={handleCargarInfo}
-                className="rounded border px-3 py-2 hover:bg-muted disabled:opacity-50"
+                className="rounded-xl border border-slate-300 bg-white px-3 py-2 hover:bg-slate-50 disabled:opacity-50"
               >
                 Cargar info cuadrilla
               </button>
@@ -1149,7 +1191,7 @@ export default function DespachoClient() {
 
           {/* Card resumen + Stock */}
           {infoLoaded && (
-            <div className="rounded border p-3 text-sm space-y-1">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm space-y-1 shadow-sm">
               <div className="font-medium">Resumen</div>
               <div>
                 ID: <b>{cuadrillaId || ""}</b>  -  Segmento: <b>{segmento}</b>  -  Tipo: <b>{tipo}</b>
@@ -1164,7 +1206,7 @@ export default function DespachoClient() {
                   type="button"
                   disabled={!cuadrillaId || stockLoading}
                   onClick={() => cargarStockCuadrillaById(cuadrillaId, segmento)}
-                  className="rounded border px-3 py-2 hover:bg-muted disabled:opacity-50"
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 hover:bg-slate-50 disabled:opacity-50"
                 >
                   {stockLoading ? "Cargando stock..." : "Ver stock (opcional)"}
                 </button>
@@ -1173,7 +1215,7 @@ export default function DespachoClient() {
 
               {stock && (
                 <div className="pt-2 grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="rounded border p-2">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
                     <div className="text-xs font-medium mb-1">Materiales</div>
                     <div className="space-y-1">
                       {(stock.materiales || []).slice(0, 10).map((m, i) => (
@@ -1187,7 +1229,7 @@ export default function DespachoClient() {
                       )}
                     </div>
                   </div>
-                  <div className="rounded border p-2">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
                     <div className="text-xs font-medium mb-1">Equipos</div>
                     <div className="space-y-1">
                       {(stock.equipos || []).slice(0, 10).map((e, i) => (
@@ -1201,7 +1243,7 @@ export default function DespachoClient() {
                       )}
                     </div>
                   </div>
-                  <div className="rounded border p-2">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
                     <div className="text-xs font-medium mb-1">Bobinas</div>
                     <div className="space-y-1">
                       {(stock.bobinas || []).slice(0, 10).map((b, i) => (
@@ -1224,11 +1266,11 @@ export default function DespachoClient() {
 
         {/* Paso 2 */}
         {step === 2 && (
-          <div className="space-y-4">
+          <div className="space-y-5">
           <div className="flex items-center justify-between gap-2">
             <button
               type="button"
-              className="rounded border px-3 py-2 hover:bg-muted"
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 hover:bg-slate-50"
               onClick={() => {
                 setStep(1);
                 toast.message("Regresaste al Paso 1");
@@ -1237,7 +1279,7 @@ export default function DespachoClient() {
                Paso 1
             </button>
 
-            <div className="rounded border px-3 py-2 text-xs">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
               <div className="font-medium">Cuadrilla</div>
               <div>
                 ID: {cuadrillaId}  -  Segmento: {segmento}  -  Tipo: {tipo}
@@ -1247,7 +1289,7 @@ export default function DespachoClient() {
           </div>
 
           {/* Equipos: scanner */}
-          <div className="rounded border p-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="font-medium">Equipos (SN)  -  Scanner</div>
             <div className="mt-2 flex gap-2">
               <input
@@ -1257,33 +1299,34 @@ export default function DespachoClient() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    if (snValidating) return;
                     handleAddSN();
                   }
                 }}
-                className="w-full rounded border px-2 py-2 font-mono"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-mono"
                 placeholder="Escanea o escribe el SN y Enter"
-                disabled={snValidating}
               />
               <button
                 type="button"
                 onClick={handleAddSN}
-                className="rounded bg-indigo-600 px-3 py-2 text-white hover:bg-indigo-700 disabled:opacity-50"
-                disabled={snValidating}
+                className="rounded-xl bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 disabled:opacity-50"
+                disabled={!snInput.trim()}
               >
-                {snValidating ? "Validando..." : "Agregar"}
+                Agregar
               </button>
             </div>
             {snValidating && (
               <div className="mt-1 text-xs text-muted-foreground">Validando SN...</div>
+            )}
+            {pendingScans > 0 && (
+              <div className="mt-1 text-xs text-slate-500">En cola: {pendingScans}</div>
             )}
 
             <div className="mt-2 text-xs text-muted-foreground">Total: {resumenEquipos}</div>
 
             {equipos.length > 0 && (
               <div className="mt-3 overflow-x-auto">
-                <table className="min-w-full text-sm border rounded">
-                  <thead className="bg-muted">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-slate-100 text-slate-700">
                     <tr>
                       <th className="text-left px-3 py-2">SN</th>
                       <th className="text-left px-3 py-2">Equipo</th>
@@ -1292,7 +1335,7 @@ export default function DespachoClient() {
                   </thead>
                   <tbody>
                     {equipos.map((e) => (
-                      <tr key={e.sn} className="border-t">
+                      <tr key={e.sn} className="border-t border-slate-200">
                         <td className="px-3 py-2 font-mono">{e.sn}</td>
                         <td className="px-3 py-2">{e.tipo || "OTROS"}</td>
                         <td className="px-3 py-2 text-right">
@@ -1311,7 +1354,7 @@ export default function DespachoClient() {
 
           {/* Bobinas residencial */}
           {segmento === "RESIDENCIAL" && (
-            <div className="rounded border p-3 space-y-2">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2 shadow-sm">
               <div className="font-medium">Bobinas (RESIDENCIAL)  -  Codigos</div>
               <div className="flex gap-2">
                 <input
@@ -1319,12 +1362,12 @@ export default function DespachoClient() {
                   onChange={(e) => setBobinaInput(e.target.value.toUpperCase())}
                   onKeyDown={(e) => e.key === "Enter" && handleAddBobina()}
                   placeholder="WIN-1234"
-                  className="w-full rounded border px-2 py-2 font-mono"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-mono"
                 />
                 <button
                   type="button"
                   onClick={handleAddBobina}
-                  className="rounded bg-indigo-600 px-3 py-2 text-white hover:bg-indigo-700"
+                  className="rounded-xl bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700"
                 >
                   Agregar
                 </button>
@@ -1335,8 +1378,8 @@ export default function DespachoClient() {
 
               {bobinaCodes.length > 0 && (
                 <div className="mt-2 overflow-x-auto">
-                  <table className="min-w-full text-sm border rounded">
-                    <thead className="bg-muted">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-slate-100 text-slate-700">
                       <tr>
                         <th className="text-left px-3 py-2">Codigo</th>
                         <th className="text-right px-3 py-2">Accion</th>
@@ -1344,7 +1387,7 @@ export default function DespachoClient() {
                     </thead>
                     <tbody>
                       {bobinaCodes.map((code) => (
-                        <tr key={code} className="border-t">
+                        <tr key={code} className="border-t border-slate-200">
                           <td className="px-3 py-2 font-mono">{code}</td>
                           <td className="px-3 py-2 text-right">
                             <button
@@ -1366,7 +1409,7 @@ export default function DespachoClient() {
 
           {/* Materiales */}
 
-          <div className="rounded border p-3 space-y-2">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2 shadow-sm">
             <div className="font-medium">Materiales (INSTALACIONES)</div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -1374,7 +1417,7 @@ export default function DespachoClient() {
                 if (id === "BOBINA" && segmento === "RESIDENCIAL") return null;
                 const unidad = materialUnits[id];
                 return (
-                  <div key={id} className="rounded border p-2">
+                  <div key={id} className="rounded-xl border border-slate-200 bg-slate-50 p-2">
                     <div className="text-sm font-medium">{id}</div>
 
                     {id === "BOBINA" && segmento === "CONDOMINIO" ? (
@@ -1383,7 +1426,7 @@ export default function DespachoClient() {
                         <input
                           value={bobinaCondominioMetros}
                           onChange={(e) => setBobinaCondominioMetros(e.target.value)}
-                          className="mt-1 w-full rounded border px-2 py-1"
+                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1"
                           inputMode="decimal"
                         />
                       </div>
@@ -1393,7 +1436,7 @@ export default function DespachoClient() {
                         <input
                           value={matUnd[id] || ""}
                           onChange={(e) => handleMatUndChange(id, e.target.value)}
-                          className="mt-1 w-full rounded border px-2 py-1"
+                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1"
                           inputMode="numeric"
                           pattern="[0-9]*"
                         />
@@ -1404,7 +1447,7 @@ export default function DespachoClient() {
                         <input
                           value={matMetros[id] || ""}
                           onChange={(e) => setMatMetros((p) => ({ ...p, [id]: e.target.value }))}
-                          className="mt-1 w-full rounded border px-2 py-1"
+                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1"
                           inputMode="decimal"
                         />
                       </div>
@@ -1415,7 +1458,7 @@ export default function DespachoClient() {
                           <input
                             value={matUnd[id] || ""}
                             onChange={(e) => handleMatUndChange(id, e.target.value)}
-                            className="mt-1 w-full rounded border px-2 py-1"
+                            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1"
                             inputMode="numeric"
                             pattern="[0-9]*"
                           />
@@ -1425,7 +1468,7 @@ export default function DespachoClient() {
                           <input
                             value={matMetros[id] || ""}
                             onChange={(e) => setMatMetros((p) => ({ ...p, [id]: e.target.value }))}
-                            className="mt-1 w-full rounded border px-2 py-1"
+                            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1"
                             inputMode="decimal"
                           />
                         </div>
@@ -1437,12 +1480,12 @@ export default function DespachoClient() {
             </div>
           </div>
 
-          <div className="rounded border p-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="font-medium">Observación</div>
             <textarea
               value={observacion}
               onChange={(e) => setObservacion(e.target.value)}
-              className="mt-2 w-full rounded border px-2 py-1"
+              className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-2 py-1"
               rows={3}
               placeholder="Observaciones del despacho"
             />
@@ -1454,7 +1497,7 @@ export default function DespachoClient() {
               type="button"
               disabled={pending || !cuadrillaId}
               onClick={abrirPreview}
-              className="rounded bg-fuchsia-600 px-3 py-2 text-white hover:bg-fuchsia-700 disabled:opacity-50"
+              className="rounded-xl bg-fuchsia-600 px-4 py-2 text-white hover:bg-fuchsia-700 disabled:opacity-50"
             >
               {pending ? "Procesando..." : "Previsualizar"}
             </button>
@@ -1567,10 +1610,10 @@ export default function DespachoClient() {
                     )}
                   </div>
 
-                  <div className="rounded border p-3">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <b>Equipos ({equipos.length})</b>
                     {equipos.length === 0 ? (
-                      <div className="text-muted-foreground">-</div>
+                      <div className="text-slate-500">-</div>
                     ) : (
                       <ul className="list-disc pl-5 mt-1">
                         {equipos.map((e) => (
@@ -1582,10 +1625,10 @@ export default function DespachoClient() {
                     )}
                   </div>
 
-                  <div className="rounded border p-3">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <b>Materiales ({mats.length})</b>
                     {mats.length === 0 ? (
-                      <div className="text-muted-foreground"></div>
+                      <div className="text-slate-500"></div>
                     ) : (
                       <ul className="list-disc pl-5 mt-1">
                         {mats
@@ -1600,10 +1643,10 @@ export default function DespachoClient() {
                   </div>
 
                   {segmento === "RESIDENCIAL" && (
-                    <div className="rounded border p-3">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                       <b>Bobinas RESIDENCIAL</b>
                       {bobinasRes.length === 0 ? (
-                        <div className="text-muted-foreground"></div>
+                        <div className="text-slate-500"></div>
                       ) : (
                         <>
                           <div className="text-xs text-muted-foreground">
@@ -1618,7 +1661,7 @@ export default function DespachoClient() {
                   )}
 
                   {segmento === "CONDOMINIO" && (
-                    <div className="rounded border p-3">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                       <b>Bobina CONDOMINIO (metros)</b>
                       <div>{Math.max(0, numOr0(bobinaCondominioMetros))}</div>
                     </div>
@@ -1631,7 +1674,7 @@ export default function DespachoClient() {
               <button
                 type="button"
                 onClick={() => setShowPreview(false)}
-                className="rounded border px-3 py-2 hover:bg-muted"
+                className="rounded-xl border border-slate-300 bg-white px-3 py-2 hover:bg-slate-50"
               >
                 Cancelar
               </button>
@@ -1639,7 +1682,7 @@ export default function DespachoClient() {
                 type="button"
                 disabled={pending}
                 onClick={confirmar}
-                className="rounded bg-emerald-600 px-3 py-2 text-white hover:bg-emerald-700 disabled:opacity-50"
+                className="rounded-xl bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700 disabled:opacity-50"
               >
                 {pending ? "Registrando..." : "Confirmar y Registrar"}
               </button>
@@ -1651,6 +1694,7 @@ export default function DespachoClient() {
     </div>
   );
 }
+
 
 
 

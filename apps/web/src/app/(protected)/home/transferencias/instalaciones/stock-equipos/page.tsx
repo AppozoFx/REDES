@@ -8,8 +8,13 @@ export default async function Page() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Stock de Equipos - Instalaciones</h1>
-      <StockEquiposClient />
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h1 className="text-xl font-semibold text-slate-900">Stock de Equipos - Instalaciones</h1>
+        <p className="mt-1 text-sm text-slate-500">Vista consolidada del inventario de equipos en instalaciones.</p>
+      </section>
+      <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:p-4">
+        <StockEquiposClient />
+      </section>
     </div>
   );
 }

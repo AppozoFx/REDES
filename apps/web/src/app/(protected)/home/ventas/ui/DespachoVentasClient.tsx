@@ -282,6 +282,7 @@ export default function DespachoVentasClient({
   const [materialFilterArea, setMaterialFilterArea] = useState<"ALL" | "INSTALACIONES" | "AVERIAS">("ALL");
   const [selectedMaterialId, setSelectedMaterialId] = useState("");
   const [items, setItems] = useState<ItemState[]>([]);
+  const materialInputRef = useRef<HTMLInputElement | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -405,6 +406,8 @@ export default function DespachoVentasClient({
       { materialId: id, und: "", metros: "", precioInput: "" },
     ]);
     setSelectedMaterialId("");
+    setMaterialSearch("");
+    setTimeout(() => materialInputRef.current?.focus(), 0);
   }
 
   function removeMaterial(id: string) {
@@ -596,8 +599,8 @@ export default function DespachoVentasClient({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded border p-3 space-y-3">
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
         <div className="font-medium">Despacho de Ventas ({area})</div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
@@ -614,7 +617,7 @@ export default function DespachoVentasClient({
                   setCuadrillaNombre("");
                   setCuadrillaQuery("");
                 }}
-                className="mt-1 w-full rounded border px-2 py-2"
+                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
               >
                 <option value="">Selecciona...</option>
                 {coordinadores.map((c) => (
@@ -624,7 +627,7 @@ export default function DespachoVentasClient({
                 ))}
               </select>
             ) : (
-              <input value={coordinadorNombre} readOnly className="mt-1 w-full rounded border px-2 py-2 bg-muted" />
+              <input value={coordinadorNombre} readOnly className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2" />
             )}
           </div>
           <div>
@@ -638,10 +641,10 @@ export default function DespachoVentasClient({
               }}
               placeholder={coordinadorUid || !canEditCoordinador ? "Escribe para buscar..." : "Selecciona coordinador primero"}
               disabled={!coordinadorUid && canEditCoordinador}
-              className="mt-1 w-full rounded border px-2 py-2"
+              className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
             />
             {(coordinadorUid || !canEditCoordinador) && filteredCuadrillas.length > 0 && (
-              <div className="mt-2 max-h-40 overflow-auto border rounded">
+              <div className="mt-2 max-h-48 overflow-auto rounded-xl border border-slate-200 bg-slate-50">
                 {filteredCuadrillas.map((c) => (
                   <button
                     key={c.id}
@@ -651,7 +654,7 @@ export default function DespachoVentasClient({
                       setCuadrillaNombre(c.nombre || c.id);
                       setCuadrillaQuery(c.nombre || c.id);
                     }}
-                    className="w-full text-left px-2 py-1 hover:bg-muted"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100"
                   >
                     {c.nombre || c.id} <span className="text-xs text-muted-foreground">({c.id})</span>
                   </button>
@@ -661,12 +664,12 @@ export default function DespachoVentasClient({
           </div>
           <div>
             <label className="text-xs">Nombre cuadrilla</label>
-            <input value={cuadrillaNombre} readOnly className="mt-1 w-full rounded border px-2 py-2 bg-muted" />
+            <input value={cuadrillaNombre} readOnly className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2" />
           </div>
         </div>
       </div>
 
-      <div className="rounded border p-3 space-y-3">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div className="font-medium">Materiales vendibles</div>
           <div className="flex items-center gap-2">
@@ -674,7 +677,7 @@ export default function DespachoVentasClient({
             <select
               value={materialFilterArea}
               onChange={(e) => setMaterialFilterArea(e.target.value as any)}
-              className="rounded border px-2 py-1 text-xs"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs"
             >
               <option value="ALL">Todos</option>
               <option value="INSTALACIONES">Instalaciones</option>
@@ -685,13 +688,14 @@ export default function DespachoVentasClient({
 
         <div className="flex gap-2">
           <input
+            ref={materialInputRef}
             value={materialSearch}
             onChange={(e) => {
               setMaterialSearch(e.target.value);
               setSelectedMaterialId("");
             }}
             placeholder="Escribe material y selecciona..."
-            className="w-full rounded border px-2 py-2"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
             list="vendibles-list"
           />
           <datalist id="vendibles-list">
@@ -707,19 +711,18 @@ export default function DespachoVentasClient({
               const mat = byId || byName;
               if (!mat) return toast.error("Material no encontrado");
               setSelectedMaterialId(mat.id);
-              setMaterialSearch(mat.nombre || mat.id);
               addMaterial(mat.id);
             }}
-            className="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700"
+            className="rounded-xl bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
           >
             Agregar
           </button>
         </div>
 
         {items.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm border rounded">
-              <thead className="bg-muted">
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-100 text-slate-700">
                 <tr>
                   <th className="text-left px-3 py-2">Material</th>
                   <th className="text-left px-3 py-2">Unidad</th>
@@ -740,7 +743,7 @@ export default function DespachoVentasClient({
                       ? centsPerCmToPricePerMeter(Math.max(0, Math.floor(mat.precioPorCmCents || 0)))
                       : centsToMoney(Math.max(0, Math.floor(mat.precioUndCents || 0)));
                   return (
-                    <tr key={it.materialId} className="border-t">
+                    <tr key={it.materialId} className="border-t border-slate-200">
                       <td className="px-3 py-2">{mat.nombre || it.materialId}</td>
                       <td className="px-3 py-2">{unidad}</td>
                       <td className="px-3 py-2">
@@ -754,7 +757,7 @@ export default function DespachoVentasClient({
                                 )
                               )
                             }
-                            className="w-24 rounded border px-2 py-1"
+                            className="w-24 rounded-lg border border-slate-300 bg-white px-2 py-1"
                             inputMode="numeric"
                           />
                         ) : (
@@ -767,7 +770,7 @@ export default function DespachoVentasClient({
                                 )
                               )
                             }
-                            className="w-24 rounded border px-2 py-1"
+                            className="w-24 rounded-lg border border-slate-300 bg-white px-2 py-1"
                             inputMode="decimal"
                           />
                         )}
@@ -784,7 +787,7 @@ export default function DespachoVentasClient({
                               )
                             }
                             placeholder={defaultPrice}
-                            className="w-28 rounded border px-2 py-1"
+                            className="w-28 rounded-lg border border-slate-300 bg-white px-2 py-1"
                             inputMode="decimal"
                           />
                         ) : (
@@ -815,7 +818,7 @@ export default function DespachoVentasClient({
             <input
               value={observacion}
               onChange={(e) => setObservacion(e.target.value)}
-              className="mt-1 w-full rounded border px-2 py-2"
+              className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
               placeholder="Observación (opcional)"
             />
           </div>
@@ -828,7 +831,7 @@ export default function DespachoVentasClient({
           type="button"
           onClick={() => startTransition(() => { void handleSubmit(); })}
           disabled={submitting}
-          className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50"
+          className="rounded-xl bg-emerald-600 px-5 py-2 text-white hover:bg-emerald-700 disabled:opacity-50"
         >
           {submitting ? "Registrando..." : "Registrar venta"}
         </button>
@@ -836,5 +839,6 @@ export default function DespachoVentasClient({
     </div>
   );
 }
+
 
 

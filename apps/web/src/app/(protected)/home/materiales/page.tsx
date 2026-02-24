@@ -18,7 +18,9 @@ export default async function Page() {
           </a>
         </div>
       </section>
-      <ListClient />
+      <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:p-4">
+        <ListClient />
+      </section>
     </div>
   );
 }

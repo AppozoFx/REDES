@@ -14,7 +14,9 @@ export default async function Page() {
         <h1 className="text-xl font-semibold text-slate-900">Auditoria de Equipos (Instalaciones)</h1>
         <p className="mt-1 text-sm text-slate-500">Gestion de sustentos, observaciones y seguimiento de avance por SN.</p>
       </section>
-      <AuditoriaClient canEdit={canEdit} />
+      <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:p-4">
+        <AuditoriaClient canEdit={canEdit} />
+      </section>
     </div>
   );
 }

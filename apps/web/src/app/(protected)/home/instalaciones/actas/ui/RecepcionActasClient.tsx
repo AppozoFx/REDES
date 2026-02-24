@@ -395,7 +395,7 @@ export default function RecepcionActasClient() {
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <div className="lg:col-span-2 space-y-4">
-        <div className="rounded-xl border bg-white p-4 space-y-3">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
           <div className="grid gap-3 md:grid-cols-2">
             <div>
               <label className="text-sm font-medium text-gray-700">Coordinador (obligatorio)</label>
@@ -429,12 +429,12 @@ export default function RecepcionActasClient() {
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
                 placeholder="Escanea y presiona Enter (o pega varias líneas)"
-                className="w-full border rounded px-3 py-2 text-sm"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
               />
               <button
                 type="button"
                 onClick={() => actaCode.trim() && agregarActa(actaCode.trim())}
-                className="px-4 py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700"
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
               >
                 Agregar
               </button>
@@ -445,13 +445,13 @@ export default function RecepcionActasClient() {
           </div>
         </div>
 
-        <div className="rounded-xl border bg-white p-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold text-gray-800">Actas escaneadas</h3>
             {actas.length > 0 && (
               <button
                 onClick={() => setActas([])}
-                className="px-3 py-1 rounded border text-sm bg-slate-50 hover:bg-slate-100"
+                className="rounded-lg border border-slate-300 px-3 py-1 text-sm bg-white hover:bg-slate-50"
               >
                 Limpiar todo
               </button>
@@ -475,7 +475,7 @@ export default function RecepcionActasClient() {
       </div>
 
       <div className="space-y-4">
-        <div className="rounded-xl border bg-white p-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <h3 className="font-semibold text-gray-800 mb-3">Resumen</h3>
           <div className="text-sm space-y-2">
             <div className="flex items-center justify-between">
@@ -500,7 +500,7 @@ export default function RecepcionActasClient() {
         <button
           onClick={handleRegistrar}
           disabled={procesando || !coordinadorUid || actas.length === 0}
-          className="w-full px-4 py-3 rounded bg-emerald-600 text-white font-semibold disabled:opacity-60 hover:bg-emerald-700"
+          className="w-full rounded-xl bg-emerald-600 px-4 py-3 font-semibold text-white disabled:opacity-60 hover:bg-emerald-700"
         >
           {procesando ? "Procesando..." : "Registrar y Generar Guía"}
         </button>
@@ -508,5 +508,6 @@ export default function RecepcionActasClient() {
     </div>
   );
 }
+
 
 

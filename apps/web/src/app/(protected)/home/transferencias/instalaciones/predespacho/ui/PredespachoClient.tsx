@@ -389,12 +389,12 @@ export default function PredespachoClient() {
   }
 
   return (
-    <div className="space-y-4">
-      <section className="rounded-xl border bg-white p-4">
+    <div className="space-y-5">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-8">
           <div className="lg:col-span-1">
             <label className="mb-1 block text-xs text-slate-600">Fecha base</label>
-            <input type="date" value={anchor} onChange={(e) => setAnchor(e.target.value)} className="w-full rounded border px-3 py-2 text-sm" />
+            <input type="date" value={anchor} onChange={(e) => setAnchor(e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" />
           </div>
           <div className="lg:col-span-2">
             <label className="mb-1 block text-xs text-slate-600">Buscar cuadrilla</label>
@@ -407,10 +407,10 @@ export default function PredespachoClient() {
                 }}
                 onFocus={() => setCuadOpen(true)}
                 placeholder="Nombre o ID"
-                className="w-full rounded border px-3 py-2 text-sm"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
               />
               {cuadOpen && cuadrillaSuggestions.length > 0 && (
-                <div className="absolute z-30 mt-1 max-h-64 w-full overflow-auto rounded border bg-white p-1 shadow-xl">
+                <div className="absolute z-30 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
                   {cuadrillaSuggestions.map((c) => (
                     <button
                       key={`sug-${c.id}`}
@@ -435,17 +435,17 @@ export default function PredespachoClient() {
                 <button
                   type="button"
                   onClick={() => setCoordOpen((v) => !v)}
-                  className="w-full rounded border px-3 py-2 text-left text-sm"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm"
                 >
                   {selCoords.length ? `${selCoords.length} coordinadores seleccionados` : "Elegir coordinadores"}
                 </button>
                 {coordOpen && (
-                  <div className="absolute z-30 mt-1 w-full rounded border bg-white p-2 shadow-xl">
+                  <div className="absolute z-30 mt-1 w-full rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
                     <input
                       value={coordQuery}
                       onChange={(e) => setCoordQuery(e.target.value)}
                       placeholder="Buscar coordinador..."
-                      className="mb-2 w-full rounded border px-2 py-1 text-xs"
+                      className="mb-2 w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs"
                     />
                     <div className="max-h-56 overflow-auto">
                       {filteredCoords.map((c) => (
@@ -466,10 +466,10 @@ export default function PredespachoClient() {
                       {!filteredCoords.length && <div className="py-1 text-xs text-slate-500">Sin resultados</div>}
                     </div>
                     <div className="mt-2 flex gap-2">
-                      <button type="button" onClick={() => setSelCoords([])} className="rounded border px-2 py-1 text-xs hover:bg-slate-50">
+                      <button type="button" onClick={() => setSelCoords([])} className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50">
                         Limpiar
                       </button>
-                      <button type="button" onClick={() => setCoordOpen(false)} className="rounded border px-2 py-1 text-xs hover:bg-slate-50">
+                      <button type="button" onClick={() => setCoordOpen(false)} className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50">
                         Cerrar
                       </button>
                     </div>
@@ -480,7 +480,7 @@ export default function PredespachoClient() {
           )}
           <div className="lg:col-span-1">
             <label className="mb-1 block text-xs text-slate-600">Estado</label>
-            <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value as EstadoFiltro)} className="w-full rounded border px-3 py-2 text-sm">
+            <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value as EstadoFiltro)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">
               <option value="todas">Todas</option>
               <option value="guardadas">Guardadas</option>
               <option value="pendientes">Pendientes</option>
@@ -489,7 +489,7 @@ export default function PredespachoClient() {
           </div>
           <div className="lg:col-span-1">
             <label className="mb-1 block text-xs text-slate-600">Modelo (ONT/MESH)</label>
-            <select value={modeloFiltro} onChange={(e) => setModeloFiltro(e.target.value as ModeloFiltro)} className="w-full rounded border px-3 py-2 text-sm">
+            <select value={modeloFiltro} onChange={(e) => setModeloFiltro(e.target.value as ModeloFiltro)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">
               <option value="all">Todos</option>
               <option value="huawei">Huawei</option>
               <option value="zte">ZTE</option>
@@ -497,13 +497,13 @@ export default function PredespachoClient() {
           </div>
           <div className="lg:col-span-1">
             <label className="mb-1 block text-xs text-slate-600">Lote</label>
-            <select value={selectedBatch} onChange={(e) => setSelectedBatch(e.target.value)} className="w-full rounded border px-3 py-2 text-sm" disabled={estadoFiltro !== "lote"}>
+            <select value={selectedBatch} onChange={(e) => setSelectedBatch(e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" disabled={estadoFiltro !== "lote"}>
               <option value="">Seleccionar</option>
               {batchIds.map((b) => <option key={b} value={b}>{b.slice(0, 16).replace("T", " ")}</option>)}
             </select>
           </div>
           <div className="lg:col-span-1 flex items-end gap-2">
-            <button type="button" onClick={() => loadData(anchor)} className="rounded border px-3 py-2 text-sm hover:bg-slate-50" disabled={loading}>
+            <button type="button" onClick={() => loadData(anchor)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50" disabled={loading}>
               {loading ? "Cargando..." : "Actualizar"}
             </button>
           </div>
@@ -520,19 +520,19 @@ export default function PredespachoClient() {
       </section>
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <div className="rounded-xl border bg-white p-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="text-xs text-slate-500">Cuadrillas en alcance</div>
           <div className="text-2xl font-semibold">{totalRows}</div>
         </div>
-        <div className="rounded-xl border bg-white p-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="text-xs text-slate-500">Guardadas</div>
           <div className="text-2xl font-semibold text-emerald-700">{guardadasCount}</div>
         </div>
-        <div className="rounded-xl border bg-white p-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="text-xs text-slate-500">Pendientes</div>
           <div className="text-2xl font-semibold text-amber-700">{pendientesCount}</div>
         </div>
-        <div className="rounded-xl border bg-white p-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="text-xs text-slate-500">Mostrando en tabla</div>
           <div className="text-2xl font-semibold">{visiblesCount}</div>
         </div>
@@ -540,14 +540,14 @@ export default function PredespachoClient() {
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {EQUIPOS.map((k) => (
-          <div key={`alm-${k}`} className="rounded-xl border bg-white p-4">
+          <div key={`alm-${k}`} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="text-xs uppercase text-slate-500">{k}</div>
             <div className="text-2xl font-semibold">{stockAlmacen[k]}</div>
             <div className="text-xs text-slate-500">Stock almacen</div>
           </div>
         ))}
         {EQUIPOS.map((k) => (
-          <div key={`con-${k}`} className="rounded-xl border bg-white p-4">
+          <div key={`con-${k}`} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="text-xs uppercase text-slate-500">{k}</div>
             <div className="text-xl font-semibold">{consumoTotal[k]}</div>
             <div className="text-xs text-slate-500">Total periodo</div>
@@ -556,11 +556,11 @@ export default function PredespachoClient() {
         ))}
       </section>
 
-      <section className="rounded-xl border bg-white p-4">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-2 text-sm font-semibold">Stock PRECON en almacen y asignacion</div>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {PRECONS.map((p) => (
-            <div key={p} className="rounded border p-3">
+            <div key={p} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
               <div className="text-xs text-slate-500">{p}</div>
               <div className="text-xl font-semibold">{stockPrecon[p]}</div>
               <div className="text-xs text-slate-500">Asignado: {totalPreconAsignado[p]}</div>
@@ -569,24 +569,24 @@ export default function PredespachoClient() {
         </div>
       </section>
 
-      <section className="rounded-xl border bg-white p-4">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-2 text-sm font-semibold">Objetivo operativo por cuadrilla</div>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
           {EQUIPOS.map((k) => (
             <div key={`obj-${k}`}>
               <label className="mb-1 block text-xs text-slate-600">{k}</label>
-              <input type="number" min={0} value={objetivo[k]} disabled={readOnly} onChange={(e) => setObjetivo((p) => ({ ...p, [k]: n(e.target.value) }))} className="w-full rounded border px-3 py-2 text-right text-sm" />
+              <input type="number" min={0} value={objetivo[k]} disabled={readOnly} onChange={(e) => setObjetivo((p) => ({ ...p, [k]: n(e.target.value) }))} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-right text-sm" />
             </div>
           ))}
         </div>
       </section>
 
-      <section className="rounded-xl border bg-white p-4">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold">Predespacho por cuadrilla</h2>
           <div className="flex gap-2">
-            <button type="button" onClick={exportExcel} className="rounded border px-3 py-2 text-sm hover:bg-slate-50">Exportar Excel</button>
-            <button type="button" onClick={exportPdf} className="rounded border px-3 py-2 text-sm hover:bg-slate-50">Exportar PDF</button>
+            <button type="button" onClick={exportExcel} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50">Exportar Excel</button>
+            <button type="button" onClick={exportPdf} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50">Exportar PDF</button>
             {!readOnly && (
               <button type="button" onClick={savePredespacho} className="rounded bg-[#30518c] px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-50" disabled={saving || loading || !uiRows.length}>
                 {saving ? "Guardando..." : "Guardar filas visibles"}
@@ -668,7 +668,7 @@ export default function PredespachoClient() {
                             placeholder={String(sug[k])}
                             disabled={readOnly}
                             onChange={(e) => setManual((p) => ({ ...p, [c.id]: { ...(p[c.id] || {}), [k]: e.target.value === "" ? undefined : n(e.target.value) } }))}
-                            className="w-14 rounded border px-1 py-1 text-right text-xs"
+                            className="w-14 rounded-lg border border-slate-300 bg-white px-1 py-1 text-right text-xs"
                           />
                         ))}
                       </div>
@@ -693,14 +693,14 @@ export default function PredespachoClient() {
                             placeholder={p.replace("PRECON_", "")}
                             disabled={readOnly}
                             onChange={(e) => setPreconAsignado((prev) => ({ ...prev, [c.id]: { ...(prev[c.id] || {}), [p]: e.target.value === "" ? undefined : n(e.target.value) } }))}
-                            className="w-16 rounded border px-1 py-1 text-right text-xs"
+                            className="w-16 rounded-lg border border-slate-300 bg-white px-1 py-1 text-right text-xs"
                           />
                         ))}
                       </div>
                     </td>
                     <td className="p-2"><input type="checkbox" checked={!!omitidas[c.id]} disabled={readOnly} onChange={(e) => setOmitidas((p) => ({ ...p, [c.id]: e.target.checked }))} /></td>
                     <td className="p-2">
-                      <input type="number" min={0} value={bobinaResi[c.id] ?? 0} disabled={readOnly} onChange={(e) => setBobinaResi((p) => ({ ...p, [c.id]: n(e.target.value) }))} className="w-16 rounded border px-2 py-1 text-right text-xs" />
+                      <input type="number" min={0} value={bobinaResi[c.id] ?? 0} disabled={readOnly} onChange={(e) => setBobinaResi((p) => ({ ...p, [c.id]: n(e.target.value) }))} className="w-16 rounded-lg border border-slate-300 bg-white px-2 py-1 text-right text-xs" />
                     </td>
                     <td className="p-2"><input type="checkbox" checked={!!rolloCondo[c.id]} disabled={readOnly} onChange={(e) => setRolloCondo((p) => ({ ...p, [c.id]: e.target.checked }))} /></td>
                     <td className="p-2 text-xs text-slate-600">
@@ -716,7 +716,7 @@ export default function PredespachoClient() {
         </div>
       </section>
 
-      <section className="rounded-xl border bg-white p-4">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="text-sm font-semibold">Totales finales a despachar (filas activas)</div>
         <div className="mt-2 flex flex-wrap gap-3 text-sm">
           {EQUIPOS.map((k) => <span key={`tot-${k}`} className="rounded-full bg-slate-100 px-3 py-1">{k}: {totals.plan[k]}</span>)}
@@ -725,3 +725,4 @@ export default function PredespachoClient() {
     </div>
   );
 }
+

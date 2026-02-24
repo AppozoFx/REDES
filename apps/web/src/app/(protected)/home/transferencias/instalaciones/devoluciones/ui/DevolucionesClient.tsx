@@ -1109,7 +1109,7 @@ export default function DevolucionesClient() {
   // UI
   // -----------------------
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {pending && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30">
           <div className="rounded-lg bg-white px-4 py-3 text-sm shadow">
@@ -1120,8 +1120,8 @@ export default function DevolucionesClient() {
       <fieldset disabled={pending} className={pending ? "opacity-60" : ""}>
         {/* Paso 1 */}
         {step === 1 && (
-          <div className="space-y-4">
-          <div className="rounded border p-3">
+          <div className="space-y-5">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="text-sm font-medium">Paso 1  -  Seleccionar cuadrilla</div>
             <div className="text-xs text-muted-foreground">
               Puedes buscar por nombre (si existe /api/cuadrillas/list) o ingresar el ID manual.
@@ -1153,7 +1153,7 @@ export default function DevolucionesClient() {
                     if (e.key === "Enter") buscarYSeleccionarCuadrilla();
                     if (e.key === "Escape") setComboOpen(false);
                   }}
-                  className="mt-1 w-full rounded border px-2 py-2"
+                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
                   placeholder="Escribe nombre o ID (ej: K1 MOTO o K1_MOTO)"
                 />
                 {cuadrillaId && (
@@ -1161,7 +1161,7 @@ export default function DevolucionesClient() {
                 )}
 
                 {comboOpen && (
-                  <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow max-h-56 overflow-auto">
+                  <div className="absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg">
                     {cuadrillasLoading && (
                       <div className="px-3 py-2 text-xs text-muted-foreground">Cargando</div>
                     )}
@@ -1213,7 +1213,7 @@ export default function DevolucionesClient() {
                 <input
                   value={cuadrillaId}
                   onChange={(e) => setCuadrillaId(e.target.value)}
-                  className="mt-1 w-full rounded border px-2 py-2"
+                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
                   placeholder="Ej: K35_MOTO"
                 />
               </div>
@@ -1226,7 +1226,7 @@ export default function DevolucionesClient() {
                 type="button"
                 disabled={!cuadrillaId}
                 onClick={handleCargarInfo}
-                className="rounded border px-3 py-2 hover:bg-muted disabled:opacity-50"
+                className="rounded-xl border border-slate-300 bg-white px-3 py-2 hover:bg-slate-50 disabled:opacity-50"
               >
                 Cargar info cuadrilla
               </button>
@@ -1244,7 +1244,7 @@ export default function DevolucionesClient() {
 
           {/* Card resumen + Stock */}
           {infoLoaded && (
-            <div className="rounded border p-3 text-sm space-y-1">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm space-y-1 shadow-sm">
               <div className="font-medium">Resumen</div>
               <div>
                 ID: <b>{cuadrillaId || ""}</b>  -  Segmento: <b>{segmento}</b>  -  Tipo: <b>{tipo}</b>
@@ -1259,7 +1259,7 @@ export default function DevolucionesClient() {
                   type="button"
                   disabled={!cuadrillaId || stockLoading}
                   onClick={() => cargarStockCuadrillaById(cuadrillaId, segmento)}
-                  className="rounded border px-3 py-2 hover:bg-muted disabled:opacity-50"
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 hover:bg-slate-50 disabled:opacity-50"
                 >
                   {stockLoading ? "Cargando stock..." : "Ver stock (opcional)"}
                 </button>
@@ -1268,7 +1268,7 @@ export default function DevolucionesClient() {
 
               {stock && (
                 <div className="pt-2 grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="rounded border p-2">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
                     <div className="text-xs font-medium mb-1">Materiales</div>
                     <div className="space-y-1">
                       {(stock.materiales || []).slice(0, 10).map((m, i) => (
@@ -1282,7 +1282,7 @@ export default function DevolucionesClient() {
                       )}
                     </div>
                   </div>
-                  <div className="rounded border p-2">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
                     <div className="text-xs font-medium mb-1">Equipos</div>
                     <div className="space-y-1">
                       {(stock.equipos || []).slice(0, 10).map((e, i) => (
@@ -1296,7 +1296,7 @@ export default function DevolucionesClient() {
                       )}
                     </div>
                   </div>
-                  <div className="rounded border p-2">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
                     <div className="text-xs font-medium mb-1">Bobinas</div>
                     <div className="space-y-1">
                       {(stock.bobinas || []).slice(0, 10).map((b, i) => (
@@ -1319,11 +1319,11 @@ export default function DevolucionesClient() {
 
         {/* Paso 2 */}
         {step === 2 && (
-          <div className="space-y-4">
+          <div className="space-y-5">
           <div className="flex items-center justify-between gap-2">
             <button
               type="button"
-              className="rounded border px-3 py-2 hover:bg-muted"
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 hover:bg-slate-50"
               onClick={() => {
                 setStep(1);
                 toast.message("Regresaste al Paso 1");
@@ -1332,7 +1332,7 @@ export default function DevolucionesClient() {
                Paso 1
             </button>
 
-            <div className="rounded border px-3 py-2 text-xs">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
               <div className="font-medium">Cuadrilla</div>
               <div>
                 ID: {cuadrillaId}  -  Segmento: {segmento}  -  Tipo: {tipo}
@@ -1342,7 +1342,7 @@ export default function DevolucionesClient() {
           </div>
 
           {/* Equipos: scanner */}
-          <div className="rounded border p-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="font-medium">Equipos (SN)  -  Scanner</div>
             <div className="mt-2 flex gap-2">
               <input
@@ -1356,14 +1356,14 @@ export default function DevolucionesClient() {
                     handleAddSN();
                   }
                 }}
-                className="w-full rounded border px-2 py-2 font-mono"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-mono"
                 placeholder="Escanea o escribe el SN y Enter"
                 disabled={snValidating}
               />
               <button
                 type="button"
                 onClick={handleAddSN}
-                className="rounded bg-indigo-600 px-3 py-2 text-white hover:bg-indigo-700 disabled:opacity-50"
+                className="rounded-xl bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 disabled:opacity-50"
                 disabled={snValidating}
               >
                 {snValidating ? "Validando..." : "Agregar"}
@@ -1377,8 +1377,8 @@ export default function DevolucionesClient() {
 
             {equipos.length > 0 && (
               <div className="mt-3 overflow-x-auto">
-                <table className="min-w-full text-sm border rounded">
-                  <thead className="bg-muted">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-slate-100 text-slate-700">
                     <tr>
                       <th className="text-left px-3 py-2">SN</th>
                       <th className="text-left px-3 py-2">Equipo</th>
@@ -1388,7 +1388,7 @@ export default function DevolucionesClient() {
                   </thead>
                   <tbody>
                     {equipos.map((e) => (
-                      <tr key={e.sn} className="border-t">
+                      <tr key={e.sn} className="border-t border-slate-200">
                         <td className="px-3 py-2 font-mono">{e.sn}</td>
                         <td className="px-3 py-2">{e.tipo || "OTROS"}</td>
                         <td className="px-3 py-2">
@@ -1421,7 +1421,7 @@ export default function DevolucionesClient() {
 
           {/* Bobinas residencial */}
           {segmento === "RESIDENCIAL" && (
-            <div className="rounded border p-3 space-y-2">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2 shadow-sm">
               <div className="font-medium">Bobinas (RESIDENCIAL)  -  Codigos</div>
               <div className="flex gap-2">
                 <input
@@ -1429,7 +1429,7 @@ export default function DevolucionesClient() {
                   onChange={(e) => setBobinaInput(e.target.value.toUpperCase())}
                   onKeyDown={(e) => e.key === "Enter" && handleAddBobina()}
                   placeholder="Escribe y selecciona bobina activa"
-                  className="w-full rounded border px-2 py-2 font-mono"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-mono"
                   list="bobinas-residenciales"
                   disabled={availableBobinasToPick.length === 0}
                 />
@@ -1445,7 +1445,7 @@ export default function DevolucionesClient() {
                 <button
                   type="button"
                   onClick={handleAddBobina}
-                  className="rounded bg-indigo-600 px-3 py-2 text-white hover:bg-indigo-700 disabled:opacity-50"
+                  className="rounded-xl bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 disabled:opacity-50"
                   disabled={!bobinaInput}
                 >
                   Agregar
@@ -1462,8 +1462,8 @@ export default function DevolucionesClient() {
 
               {bobinaCodes.length > 0 && (
                 <div className="mt-2 overflow-x-auto">
-                  <table className="min-w-full text-sm border rounded">
-                    <thead className="bg-muted">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-slate-100 text-slate-700">
                       <tr>
                         <th className="text-left px-3 py-2">Codigo</th>
                         <th className="text-left px-3 py-2">Fecha despacho</th>
@@ -1472,7 +1472,7 @@ export default function DevolucionesClient() {
                     </thead>
                     <tbody>
                       {bobinaCodes.map((code) => (
-                        <tr key={code} className="border-t">
+                        <tr key={code} className="border-t border-slate-200">
                           <td className="px-3 py-2 font-mono">{code}</td>
                           <td className="px-3 py-2 text-xs">{bobinaFechaMap.get(code) || "-"}</td>
                           <td className="px-3 py-2 text-right">
@@ -1495,7 +1495,7 @@ export default function DevolucionesClient() {
 
           {/* Materiales */}
 
-          <div className="rounded border p-3 space-y-2">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2 shadow-sm">
             <div className="font-medium">Materiales (INSTALACIONES)</div>
             <label className="flex items-center gap-2 text-xs text-muted-foreground">
               <input
@@ -1511,7 +1511,7 @@ export default function DevolucionesClient() {
                 if (id === "BOBINA" && segmento === "RESIDENCIAL") return null;
                 const unidad = materialUnits[id];
                 return (
-                  <div key={id} className="rounded border p-2">
+                  <div key={id} className="rounded-xl border border-slate-200 bg-slate-50 p-2">
                     <div className="text-sm font-medium">{id}</div>
 
                     {id === "BOBINA" && segmento === "CONDOMINIO" ? (
@@ -1520,7 +1520,7 @@ export default function DevolucionesClient() {
                         <input
                           value={bobinaCondominioMetros}
                           onChange={(e) => setBobinaCondominioMetros(e.target.value)}
-                          className="mt-1 w-full rounded border px-2 py-1"
+                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1"
                           inputMode="decimal"
                         />
                       </div>
@@ -1530,7 +1530,7 @@ export default function DevolucionesClient() {
                         <input
                           value={matUnd[id] || ""}
                           onChange={(e) => handleMatUndChange(id, e.target.value)}
-                          className="mt-1 w-full rounded border px-2 py-1"
+                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1"
                           inputMode="numeric"
                           pattern="[0-9]*"
                         />
@@ -1541,7 +1541,7 @@ export default function DevolucionesClient() {
                         <input
                           value={matMetros[id] || ""}
                           onChange={(e) => setMatMetros((p) => ({ ...p, [id]: e.target.value }))}
-                          className="mt-1 w-full rounded border px-2 py-1"
+                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1"
                           inputMode="decimal"
                         />
                       </div>
@@ -1552,7 +1552,7 @@ export default function DevolucionesClient() {
                           <input
                             value={matUnd[id] || ""}
                             onChange={(e) => handleMatUndChange(id, e.target.value)}
-                            className="mt-1 w-full rounded border px-2 py-1"
+                            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1"
                             inputMode="numeric"
                             pattern="[0-9]*"
                           />
@@ -1562,7 +1562,7 @@ export default function DevolucionesClient() {
                           <input
                             value={matMetros[id] || ""}
                             onChange={(e) => setMatMetros((p) => ({ ...p, [id]: e.target.value }))}
-                            className="mt-1 w-full rounded border px-2 py-1"
+                            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1"
                             inputMode="decimal"
                           />
                         </div>
@@ -1574,12 +1574,12 @@ export default function DevolucionesClient() {
             </div>
           </div>
 
-          <div className="rounded border p-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="font-medium">Observación</div>
             <textarea
               value={observacion}
               onChange={(e) => setObservacion(e.target.value)}
-              className="mt-2 w-full rounded border px-2 py-1"
+              className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-2 py-1"
               rows={3}
               placeholder="Observaciones de la devolucion"
             />
@@ -1591,7 +1591,7 @@ export default function DevolucionesClient() {
               type="button"
               disabled={pending || !cuadrillaId}
               onClick={abrirPreview}
-              className="rounded bg-fuchsia-600 px-3 py-2 text-white hover:bg-fuchsia-700 disabled:opacity-50"
+              className="rounded-xl bg-fuchsia-600 px-4 py-2 text-white hover:bg-fuchsia-700 disabled:opacity-50"
             >
               {pending ? "Procesando..." : "Previsualizar"}
             </button>
@@ -1704,10 +1704,10 @@ export default function DevolucionesClient() {
                     )}
                   </div>
 
-                  <div className="rounded border p-3">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <b>Equipos ({equipos.length})</b>
                     {equipos.length === 0 ? (
-                      <div className="text-muted-foreground">-</div>
+                      <div className="text-slate-500">-</div>
                     ) : (
                       <ul className="list-disc pl-5 mt-1">
                         {equipos.map((e) => (
@@ -1719,10 +1719,10 @@ export default function DevolucionesClient() {
                     )}
                   </div>
 
-                  <div className="rounded border p-3">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <b>Materiales ({mats.length})</b>
                     {mats.length === 0 ? (
-                      <div className="text-muted-foreground"></div>
+                      <div className="text-slate-500"></div>
                     ) : (
                       <ul className="list-disc pl-5 mt-1">
                         {mats
@@ -1737,10 +1737,10 @@ export default function DevolucionesClient() {
                   </div>
 
                   {segmento === "RESIDENCIAL" && (
-                    <div className="rounded border p-3">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                       <b>Bobinas RESIDENCIAL</b>
                       {bobinasRes.length === 0 ? (
-                        <div className="text-muted-foreground"></div>
+                        <div className="text-slate-500"></div>
                       ) : (
                         <>
                           <div className="text-xs text-muted-foreground">
@@ -1755,7 +1755,7 @@ export default function DevolucionesClient() {
                   )}
 
                   {segmento === "CONDOMINIO" && (
-                    <div className="rounded border p-3">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                       <b>Bobina CONDOMINIO (metros)</b>
                       <div>{Math.max(0, numOr0(bobinaCondominioMetros))}</div>
                     </div>
@@ -1768,7 +1768,7 @@ export default function DevolucionesClient() {
               <button
                 type="button"
                 onClick={() => setShowPreview(false)}
-                className="rounded border px-3 py-2 hover:bg-muted"
+                className="rounded-xl border border-slate-300 bg-white px-3 py-2 hover:bg-slate-50"
               >
                 Cancelar
               </button>
@@ -1776,7 +1776,7 @@ export default function DevolucionesClient() {
                 type="button"
                 disabled={pending}
                 onClick={confirmar}
-                className="rounded bg-emerald-600 px-3 py-2 text-white hover:bg-emerald-700 disabled:opacity-50"
+                className="rounded-xl bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700 disabled:opacity-50"
               >
                 {pending ? "Registrando..." : "Confirmar y Registrar"}
               </button>
@@ -1788,6 +1788,7 @@ export default function DevolucionesClient() {
     </div>
   );
 }
+
 
 
 

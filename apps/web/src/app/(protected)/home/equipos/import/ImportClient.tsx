@@ -155,18 +155,18 @@ export default function ImportClient() {
   }, [parseResult, q]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <button onClick={downloadTemplate} className="rounded border px-3 py-2 hover:bg-muted">
+    <div className="space-y-5">
+      <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+        <button onClick={downloadTemplate} className="rounded-xl border border-slate-300 bg-white px-3 py-2 hover:bg-slate-50">
           Descargar Plantilla
         </button>
       </div>
 
-      <div onDrop={onDrop} onDragOver={onDragOver} className="rounded border border-dashed p-6 text-center">
+      <div onDrop={onDrop} onDragOver={onDragOver} className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center shadow-sm">
         <div className="mb-2">Arrastra tu archivo .xlsx aquí</div>
         <div className="text-xs text-muted-foreground">Primera hoja o "Hoja de Datos"; usa headers de la plantilla</div>
         <div className="mt-3">
-          <button className="rounded bg-blue-600 px-3 py-1 text-white hover:bg-blue-700" onClick={() => inputRef.current?.click()}>
+          <button className="rounded-xl bg-blue-600 px-4 py-2 text-white hover:bg-blue-700" onClick={() => inputRef.current?.click()}>
             Seleccionar archivo
           </button>
           <input
@@ -185,7 +185,7 @@ export default function ImportClient() {
             type="button"
             disabled={!file || parsePending}
             title={!file ? "Selecciona un archivo para habilitar" : undefined}
-            className="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-xl bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={async () => {
               if (!file) return;
               const fd = new FormData();
@@ -204,7 +204,7 @@ export default function ImportClient() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="text-sm text-muted-foreground">Vista previa (primeras filas): {rowsPreview.length}</div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
               <button disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="rounded border px-2 py-1 disabled:opacity-50">
                 Prev
               </button>
@@ -215,7 +215,7 @@ export default function ImportClient() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted">
@@ -241,7 +241,7 @@ export default function ImportClient() {
       )}
 
       {parseResult?.ok && (
-        <div className="space-y-3 rounded border p-3 text-sm">
+        <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm shadow-sm">
           <div className="flex items-center gap-3 border-b pb-2">
             <button onClick={() => setTab("nuevos")} className={`px-2 py-1 rounded ${tab === "nuevos" ? "bg-muted" : ""}`}>
               Nuevos: {parseResult.data.totalNuevos}
@@ -267,7 +267,7 @@ export default function ImportClient() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -277,7 +277,7 @@ export default function ImportClient() {
             <button
               type="button"
               disabled={!file || saving}
-              className="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="rounded-xl bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={() => {
                 (async () => {
                   if (!file || !parseResult?.ok) return;
@@ -329,12 +329,12 @@ export default function ImportClient() {
 
           {tab === "duplicados" && (
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                 <button onClick={exportDuplicados} className="rounded border px-2 py-1 hover:bg-muted">
                   Exportar duplicados
                 </button>
               </div>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-muted">
@@ -360,7 +360,7 @@ export default function ImportClient() {
           )}
 
           {tab === "nuevos" && (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-muted">
@@ -399,4 +399,5 @@ export default function ImportClient() {
     </div>
   );
 }
+
 

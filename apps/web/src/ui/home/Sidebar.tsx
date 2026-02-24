@@ -37,7 +37,7 @@ function shortName(full: string, fallback: string) {
     .filter(Boolean);
   if (!parts.length) return fallback;
   const first = parts[0] || "";
-  const firstLast = parts[1] || "";
+  const firstLast = parts.length >= 4 ? parts[2] || "" : parts[1] || "";
   return `${first} ${firstLast}`.trim() || fallback;
 }
 

@@ -144,7 +144,7 @@ export function FormCreateUsuario({ roles, areas }: { roles: string[]; areas: st
           <input name="cuadrillaId" className="w-full border rounded px-3 py-2" />
         </div>
         <div>
-          <label className="text-sm">Supervisor UID (opcional)</label>
+          <label className="text-sm">Supervisor (opcional)</label>
           <input name="supervisorUid" className="w-full border rounded px-3 py-2" />
         </div>
       </div>

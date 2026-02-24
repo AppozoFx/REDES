@@ -115,8 +115,8 @@ function shortName(name: string) {
     .filter(Boolean);
   if (!parts.length) return "";
   const first = parts[0];
-  const last = parts.length > 1 ? parts[parts.length - 1] : "";
-  return last ? `${first} ${last}` : first;
+  const firstLast = parts.length >= 4 ? parts[2] || "" : parts[1] || "";
+  return `${first} ${firstLast}`.trim() || first;
 }
 
 async function makeQrDataUrl(value: string) {
@@ -1071,7 +1071,7 @@ export default function DespachoClient() {
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="text-sm font-medium">Paso 1  -  Seleccionar cuadrilla</div>
             <div className="text-xs text-muted-foreground">
-              Puedes buscar por nombre (si existe /api/cuadrillas/list) o ingresar el ID manual.
+              Puedes buscar por nombre (si existe /api/cuadrillas/list) o ingresar el código manual.
             </div>
           </div>
 
@@ -1101,11 +1101,9 @@ export default function DespachoClient() {
                     if (e.key === "Escape") setComboOpen(false);
                   }}
                   className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
-                  placeholder="Escribe nombre o ID (ej: K1 MOTO o K1_MOTO)"
+                  placeholder="Escribe nombre o código (ej: K1 MOTO o K1_MOTO)"
                 />
-                {cuadrillaId && (
-                  <div className="mt-1 text-xs text-muted-foreground">ID: {cuadrillaId}</div>
-                )}
+                {cuadrillaId && <div className="mt-1 text-xs text-muted-foreground">Cuadrilla seleccionada</div>}
 
                 {comboOpen && (
                   <div className="absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg">
@@ -1142,7 +1140,6 @@ export default function DespachoClient() {
                           className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
                         >
                           <div className="font-medium">{c.nombre || c.id}</div>
-                          <div className="text-xs text-muted-foreground">{c.id}</div>
                         </button>
                       ))}
                   </div>
@@ -1152,11 +1149,11 @@ export default function DespachoClient() {
             </div>
           )}
 
-          {/* Fallback: ID manual + Segmento (si no hay lista) */}
+          {/* Fallback: codigo manual + Segmento (si no hay lista) */}
           {cuadrillas.length === 0 && (
             <div className="grid grid-cols-1 gap-3">
               <div>
-                <label className="block text-sm font-medium">Cuadrilla ID</label>
+                <label className="block text-sm font-medium">Código cuadrilla</label>
                 <input
                   value={cuadrillaId}
                   onChange={(e) => setCuadrillaId(e.target.value)}
@@ -1194,7 +1191,7 @@ export default function DespachoClient() {
             <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm space-y-1 shadow-sm">
               <div className="font-medium">Resumen</div>
               <div>
-                ID: <b>{cuadrillaId || ""}</b>  -  Segmento: <b>{segmento}</b>  -  Tipo: <b>{tipo}</b>
+                Segmento: <b>{segmento}</b>  -  Tipo: <b>{tipo}</b>
               </div>
               <div>Nombre: {cuadrillaNombre || ""}</div>
               <div>Zona: {zonaId || ""}</div>
@@ -1282,7 +1279,7 @@ export default function DespachoClient() {
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
               <div className="font-medium">Cuadrilla</div>
               <div>
-                ID: {cuadrillaId}  -  Segmento: {segmento}  -  Tipo: {tipo}
+                Segmento: {segmento}  -  Tipo: {tipo}
               </div>
               {!!cuadrillaNombre && <div>Nombre: {cuadrillaNombre}</div>}
             </div>
@@ -1587,7 +1584,7 @@ export default function DespachoClient() {
                 <div className="p-5 space-y-4 text-sm">
                   <div className="grid sm:grid-cols-2 gap-2">
                     <div>
-                      <b>Cuadrilla ID:</b> {cuadrillaId}
+                      <b>Cuadrilla:</b> {cuadrillaNombre || "-"}
                     </div>
                     <div>
                       <b>Segmento:</b> {segmento}

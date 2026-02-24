@@ -35,8 +35,8 @@ function canEdit(session: any) {
 function shortName(full: string) {
   const parts = String(full || "").trim().split(/\s+/).filter(Boolean);
   const first = parts[0] || "";
-  const last = parts[1] || "";
-  return `${first} ${last}`.trim() || first || full;
+  const firstLast = parts.length >= 4 ? parts[2] || "" : parts[1] || "";
+  return `${first} ${firstLast}`.trim() || first || full;
 }
 
 function normalizeSns(input: unknown): string[] {

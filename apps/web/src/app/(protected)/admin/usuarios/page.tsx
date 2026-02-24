@@ -50,7 +50,6 @@ export default async function UsuariosListPage() {
         <table className="w-full text-sm">
           <thead className="bg-black/5">
             <tr>
-              <th className="p-2 text-left">UID</th>
               <th className="p-2 text-left">Email</th>
               <th className="p-2 text-left">Roles</th>
               <th className="p-2 text-left">Áreas</th>
@@ -62,7 +61,6 @@ export default async function UsuariosListPage() {
           <tbody>
             {rows.map((r) => (
               <tr key={r.uid} className="border-t">
-                <td className="p-2 font-mono">{r.uid}</td>
                 <td className="p-2">{emailByUid.get(r.uid) ?? "-"}</td>
                 <td className="p-2">{(r.roles ?? []).join(", ")}</td>
                 <td className="p-2">{(r.areas ?? []).join(", ")}</td>
@@ -77,7 +75,7 @@ export default async function UsuariosListPage() {
 
             {rows.length === 0 && (
               <tr>
-                <td className="p-4 opacity-70" colSpan={6}>
+                <td className="p-4 opacity-70" colSpan={5}>
                   No hay usuarios todavía.
                 </td>
               </tr>

@@ -225,7 +225,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
       TieneAccionIC: hasAccion(r) ? "Si" : "No",
     }));
     const ranking = rankingData.map((r) => ({
-      GestorUID: r.gestor,
+      GestorRef: r.gestor,
       Gestor: r.nombre,
       Total: r.total,
       ConLlamadas: r.con,

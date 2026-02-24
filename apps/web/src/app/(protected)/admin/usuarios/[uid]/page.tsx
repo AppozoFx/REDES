@@ -74,9 +74,6 @@ export default async function UsuarioDetailPage({
 
       <div className="rounded border p-4 text-sm space-y-1">
         <div>
-          <b>uid:</b> <span className="font-mono">{uid}</span>
-        </div>
-        <div>
           <b>email:</b> {profile.email ?? "-"}
         </div>
         <div>
@@ -235,7 +232,7 @@ export default async function UsuarioDetailPage({
             />
           </div>
           <div>
-            <label className="text-sm">Supervisor UID</label>
+            <label className="text-sm">Supervisor</label>
             <input
               name="supervisorUid"
               defaultValue={profile.supervisorUid ?? ""}

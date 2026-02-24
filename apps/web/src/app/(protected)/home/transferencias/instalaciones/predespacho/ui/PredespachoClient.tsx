@@ -406,7 +406,7 @@ export default function PredespachoClient() {
                   setCuadOpen(true);
                 }}
                 onFocus={() => setCuadOpen(true)}
-                placeholder="Nombre o ID"
+                placeholder="Nombre o código"
                 className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
               />
               {cuadOpen && cuadrillaSuggestions.length > 0 && (

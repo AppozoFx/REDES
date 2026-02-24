@@ -154,6 +154,9 @@ export async function POST(req: Request) {
       const actaData = actaSnap.exists ? (actaSnap.data() as any) : {};
       const actaEstado = String(actaData?.estado || "").toUpperCase();
       const actaInstId = String(actaData?.instalacionId || "");
+      if (actaInstId && actaInstId !== data.id) {
+        throw new Error("ACTA_YA_ASIGNADA_OTRA_INSTALACION");
+      }
       if (actaEstado === "LIQUIDADA" && actaInstId && actaInstId !== data.id) {
         throw new Error("ACTA_YA_LIQUIDADA");
       }
@@ -214,10 +217,16 @@ export async function POST(req: Request) {
           if (delta !== 0) {
             const available = Number(stock?.stockUnd || 0);
             if (delta > 0 && available - delta < 0) throw new Error(`STOCK_INSUFICIENTE_CUADRILLA ${materialId}`);
-            tx.update(db.collection("cuadrillas").doc(cuadrillaId).collection("stock").doc(materialId), {
-              stockUnd: FieldValue.increment(-delta),
-              updatedAt: FieldValue.serverTimestamp(),
-            });
+            tx.set(
+              db.collection("cuadrillas").doc(cuadrillaId).collection("stock").doc(materialId),
+              {
+                materialId,
+                unidadTipo: "UND",
+                stockUnd: FieldValue.increment(-delta),
+                updatedAt: FieldValue.serverTimestamp(),
+              },
+              { merge: true }
+            );
           }
           if (und > 0) items.push({ materialId, und, metros: 0, status: "OK" });
         } else {
@@ -228,10 +237,16 @@ export async function POST(req: Request) {
             const needCm = metersToCm(Math.abs(deltaM));
             const available = Number(stock?.stockCm || 0);
             if (deltaM > 0 && available - needCm < 0) throw new Error(`STOCK_INSUFICIENTE_CUADRILLA ${materialId}`);
-            tx.update(db.collection("cuadrillas").doc(cuadrillaId).collection("stock").doc(materialId), {
-              stockCm: FieldValue.increment(deltaM > 0 ? -needCm : needCm),
-              updatedAt: FieldValue.serverTimestamp(),
-            });
+            tx.set(
+              db.collection("cuadrillas").doc(cuadrillaId).collection("stock").doc(materialId),
+              {
+                materialId,
+                unidadTipo: "METROS",
+                stockCm: FieldValue.increment(deltaM > 0 ? -needCm : needCm),
+                updatedAt: FieldValue.serverTimestamp(),
+              },
+              { merge: true }
+            );
           }
           if (metros > 0) items.push({ materialId, und: 0, metros, status: "OK" });
         }

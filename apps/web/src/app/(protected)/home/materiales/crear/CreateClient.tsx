@@ -56,7 +56,7 @@ export default function CreateMaterialClient() {
   useEffect(() => {
     if (!result) return;
     if ((result as any).ok) {
-      toast.success("Material creado", { description: `ID: ${(result as any).id}` });
+      toast.success("Material creado");
       if (shouldReturnRef.current) {
         shouldReturnRef.current = false;
         router.push("/home/materiales");
@@ -115,7 +115,7 @@ export default function CreateMaterialClient() {
               <input value={nombre} onChange={(e) => setNombre(e.target.value.toUpperCase())} className={fieldClass} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700">ID generado</label>
+              <label className="block text-sm font-medium text-slate-700">Código generado</label>
               <div className="mt-1 flex h-10 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 font-mono text-xs text-slate-700">
                 {matId || "(vacio)"}
               </div>

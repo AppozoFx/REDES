@@ -47,8 +47,8 @@ function shortName(full: string) {
   const parts = String(full || "").trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return "";
   const first = parts[0] || "";
-  const last = parts[1] || "";
-  return `${first} ${last}`.trim() || first;
+  const firstLast = parts.length >= 4 ? parts[2] || "" : parts[1] || "";
+  return `${first} ${firstLast}`.trim() || first;
 }
 
 function toDate(anchor: string) {

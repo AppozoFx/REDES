@@ -9,7 +9,6 @@ export default async function AdminHomePage() {
       <p className="text-sm opacity-80">Zona protegida por sesión server + RBAC.</p>
 
       <div className="mt-4 rounded border p-4 text-sm">
-        <div><b>uid:</b> {session.uid}</div>
         <div><b>roles:</b> {session.access.roles.join(", ") || "(none)"}</div>
         <div><b>areas:</b> {session.access.areas.join(", ") || "(none)"}</div>
         <div><b>estadoAcceso:</b> {session.access.estadoAcceso}</div>

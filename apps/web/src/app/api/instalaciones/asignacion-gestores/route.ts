@@ -11,8 +11,8 @@ function shortName(full: string, fallback: string) {
     .split(/\s+/)
     .filter(Boolean);
   const first = parts[0] || "";
-  const last = parts.length > 1 ? parts[parts.length - 1] : "";
-  return last ? `${first} ${last}` : first || fallback;
+  const firstLast = parts.length >= 4 ? parts[2] || "" : parts[1] || "";
+  return `${first} ${firstLast}`.trim() || fallback;
 }
 
 function validarDuplicados(map: Record<string, string[]>) {

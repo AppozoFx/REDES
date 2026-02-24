@@ -81,8 +81,8 @@ export default function MaterialesLiquidacionClient() {
   });
   const [forms, setForms] = useState<Record<string, FormState>>({});
 
-  const cargar = async () => {
-    setCargando(true);
+  const cargar = async (silent = false) => {
+    if (!silent) setCargando(true);
     try {
       const params = new URLSearchParams();
       if (filtros.dia) params.set("ymd", filtros.dia);
@@ -94,7 +94,7 @@ export default function MaterialesLiquidacionClient() {
     } catch (e: any) {
       toast.error(e?.message || "Error cargando instalaciones");
     } finally {
-      setCargando(false);
+      if (!silent) setCargando(false);
     }
   };
 
@@ -261,7 +261,24 @@ export default function MaterialesLiquidacionClient() {
       const json = await res.json();
       if (!res.ok || !json?.ok) throw new Error(json?.error || "ERROR");
       toast.success("Liquidacion de materiales registrada");
-      await cargar();
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id !== row.id
+            ? it
+            : {
+                ...it,
+                materialesLiquidacion: {
+                  ...(it.materialesLiquidacion || {}),
+                  acta,
+                  precon,
+                  bobinaMetros,
+                  anclajeP: parseIntSafe(payload.anclajeP),
+                  templador: parseIntSafe(payload.templador),
+                  clevi: parseIntSafe(payload.clevi),
+                },
+              }
+        )
+      );
       setEditingRows((p) => {
         const cp = { ...p };
         delete cp[row.id];
@@ -272,10 +289,13 @@ export default function MaterialesLiquidacionClient() {
         delete cp[row.id];
         return cp;
       });
+      void cargar(true);
     } catch (e: any) {
       const msg = String(e?.message || "");
       if (msg.includes("ACTA_YA_LIQUIDADA")) {
         toast.error("Esta acta ya fue liquidada para otro cliente");
+      } else if (msg.includes("ACTA_YA_ASIGNADA_OTRA_INSTALACION")) {
+        toast.error("Esta acta ya está asignada a otra instalación");
       } else if (msg.includes("ACTA_NOT_FOUND")) {
         toast.error("Acta no registrada en recepción");
       } else if (msg.includes("ACTA_NO_RECEPCIONADA")) {
@@ -691,7 +711,4 @@ export default function MaterialesLiquidacionClient() {
     </div>
   );
 }
-
-
-
 

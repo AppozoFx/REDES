@@ -19,8 +19,8 @@ async function getUsuarioDisplayName(uid: string) {
   const parts = `${nombres} ${apellidos}`.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return uid;
   const first = parts[0];
-  const last = parts.length > 1 ? parts[parts.length - 1] : "";
-  return last ? `${first} ${last}` : first;
+  const firstLast = parts.length >= 4 ? parts[2] || "" : parts[1] || "";
+  return `${first} ${firstLast}`.trim() || first;
 }
 
 function updateEquiposStockTx(

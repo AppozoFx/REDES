@@ -15,7 +15,6 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     <div className="space-y-4">
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <h1 className="text-xl font-semibold text-slate-900">Editar material</h1>
-        <p className="mt-1 text-sm text-slate-500">ID: <span className="font-mono">{res.doc.id}</span></p>
       </section>
       <EditClient initial={res.doc as any} />
     </div>

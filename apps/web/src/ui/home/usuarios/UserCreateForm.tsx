@@ -129,7 +129,7 @@ export default function UserCreateForm({ rolesAllowed }: Props) {
         <Field label="Sede (opcional)" name="sede" error={firstErr(fe.sede)} />
         <Field label="Cargo (opcional)" name="cargo" error={firstErr(fe.cargo)} />
         <Field label="CuadrillaId (opcional)" name="cuadrillaId" error={firstErr(fe.cuadrillaId)} />
-        <Field label="Supervisor UID (opcional)" name="supervisorUid" error={firstErr(fe.supervisorUid)} />
+        <Field label="Supervisor (opcional)" name="supervisorUid" error={firstErr(fe.supervisorUid)} />
       </div>
 
       {/* errores generales */}
@@ -148,11 +148,7 @@ export default function UserCreateForm({ rolesAllowed }: Props) {
           {pending ? "Creando..." : "Crear usuario"}
         </button>
 
-        {state && state.ok ? (
-          <div className="text-xs text-muted-foreground">
-            Creado UID: <span className="font-mono">{state.uid}</span>
-          </div>
-        ) : null}
+        {state && state.ok ? <div className="text-xs text-muted-foreground">Usuario creado correctamente</div> : null}
       </div>
     </form>
   );

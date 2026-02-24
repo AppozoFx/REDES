@@ -101,7 +101,7 @@ export default function ComunicadoForm({
     if (target === "ALL") return "Se mostrará a todos los usuarios (según fechas/estado).";
     if (target === "ROLES") return "Solo usuarios que tengan AL MENOS uno de los roles seleccionados.";
     if (target === "AREAS") return "Solo usuarios que tengan AL MENOS una de las áreas seleccionadas.";
-    return "Solo los usuarios cuyos UID estén listados.";
+    return "Solo los usuarios seleccionados en la lista.";
   }, [target]);
 
   // hidden CSV fields
@@ -191,7 +191,7 @@ export default function ComunicadoForm({
                 <option value="ALL">Todos</option>
                 <option value="ROLES">Por roles</option>
                 <option value="AREAS">Por áreas</option>
-                <option value="USERS">Por usuarios (UID)</option>
+                <option value="USERS">Por usuarios</option>
               </select>
               <p className="text-xs text-muted-foreground">{canShowTargetsHelp}</p>
             </div>
@@ -290,7 +290,7 @@ export default function ComunicadoForm({
 
           {target === "USERS" ? (
             <div className="space-y-2 rounded-lg border p-3">
-              <label className="text-sm font-medium">UIDs objetivo</label>
+              <label className="text-sm font-medium">Usuarios objetivo</label>
               <input
                 value={uidsText}
                 onChange={(e) => setUidsText(e.target.value)}

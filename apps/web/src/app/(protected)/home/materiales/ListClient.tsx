@@ -80,7 +80,7 @@ export default function ListClient() {
           </button>
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por ID o nombre" className={fieldClass} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por código o nombre" className={fieldClass} />
           <select value={unidadTipo} onChange={(e) => setUnidadTipo(e.target.value)} className={fieldClass}>
             <option value="">Unidad: todas</option>
             <option value="UND">UND</option>
@@ -105,7 +105,6 @@ export default function ListClient() {
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-slate-100">
               <tr className="text-slate-700">
-                <th className="px-3 py-2 text-left font-semibold">ID</th>
                 <th className="px-3 py-2 text-left font-semibold">Nombre</th>
                 <th className="px-3 py-2 text-left font-semibold">Unidad</th>
                 <th className="px-3 py-2 text-left font-semibold">Vendible</th>
@@ -116,7 +115,6 @@ export default function ListClient() {
             <tbody>
               {items.map((m: any) => (
                 <tr key={m.id} className="border-t border-slate-100 odd:bg-white even:bg-slate-50/50">
-                  <td className="px-3 py-2 font-mono text-xs">{m.id}</td>
                   <td className="px-3 py-2">{m.nombre}</td>
                   <td className="px-3 py-2">{m.unidadTipo}</td>
                   <td className="px-3 py-2">{m.vendible ? "Si" : "No"}</td>
@@ -130,7 +128,7 @@ export default function ListClient() {
               ))}
               {!items.length && !pending && (
                 <tr>
-                  <td colSpan={6} className="px-3 py-10 text-center text-sm text-slate-500">
+                  <td colSpan={5} className="px-3 py-10 text-center text-sm text-slate-500">
                     No hay materiales para los filtros seleccionados.
                   </td>
                 </tr>

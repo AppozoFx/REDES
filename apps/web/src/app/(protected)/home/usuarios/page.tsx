@@ -37,7 +37,6 @@ export default async function HomeUsuariosPage() {
         <table className="w-full text-sm">
           <thead className="bg-muted/50">
             <tr className="text-left">
-              <th className="p-2">UID</th>
               <th className="p-2">Nombre</th>
               <th className="p-2">Roles</th>
               <th className="p-2">Áreas</th>
@@ -48,7 +47,6 @@ export default async function HomeUsuariosPage() {
           <tbody>
             {rows.map((u) => (
               <tr key={u.uid} className="border-t">
-                <td className="p-2 font-mono text-xs">{u.uid}</td>
                 <td className="p-2">
                   {u.nombres} {u.apellidos}
                 </td>

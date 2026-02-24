@@ -13,7 +13,7 @@ export default function DevAccessPage() {
   return (
     <div style={{ padding: 16 }}>
       <h1>Access Debug</h1>
-      <p><b>uid:</b> {uid}</p>
+      <p><b>usuario:</b> autenticado</p>
       <p><b>isAdmin:</b> {String(isAdmin)}</p>
       <p><b>roles:</b> {JSON.stringify(roles)}</p>
       <p><b>areas:</b> {JSON.stringify(areas)}</p>

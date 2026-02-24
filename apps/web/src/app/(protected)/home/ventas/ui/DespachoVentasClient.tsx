@@ -75,8 +75,8 @@ function shortName(name: string) {
     .filter(Boolean);
   if (!parts.length) return "";
   const first = parts[0];
-  const last = parts.length > 1 ? parts[parts.length - 1] : "";
-  return last ? `${first} ${last}` : first;
+  const firstLast = parts.length >= 4 ? parts[2] || "" : parts[1] || "";
+  return `${first} ${firstLast}`.trim() || first;
 }
 
 async function makeQrDataUrl(value: string) {
@@ -577,7 +577,7 @@ export default function DespachoVentasClient({
       });
       if ((res as any)?.ok) {
         const ventaId = (res as any).ventaId;
-        toast.success("Venta registrada", { description: `ID: ${ventaId}` });
+        toast.success("Venta registrada");
         if (ventaId && printedVentaRef.current !== ventaId) {
           printedVentaRef.current = ventaId;
           const ok = await imprimirGuiaTermica(ventaId);

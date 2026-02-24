@@ -453,7 +453,7 @@ export default function ReposicionClient() {
         <section className="rounded-xl border bg-white p-4 space-y-3">
           <div className="rounded border p-3">
             <div className="text-sm font-medium">Paso 1  -  Seleccionar cuadrilla</div>
-            <div className="text-xs text-slate-500">Escribe nombre o ID y presiona Enter para tomar la primera coincidencia.</div>
+            <div className="text-xs text-slate-500">Escribe nombre o código y presiona Enter para tomar la primera coincidencia.</div>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             <div>
@@ -478,7 +478,7 @@ export default function ReposicionClient() {
                     }
                     if (e.key === "Escape") setComboOpen(false);
                   }}
-                  placeholder="Escribe nombre o ID de cuadrilla..."
+                  placeholder="Escribe nombre o código de cuadrilla..."
                   className="w-full rounded border px-2 py-2 text-sm"
                 />
                 {comboOpen && (
@@ -538,7 +538,7 @@ export default function ReposicionClient() {
             </button>
             <div className="rounded border px-3 py-2 text-xs">
               <div className="font-medium">Cuadrilla</div>
-              <div>ID: {cuadrillaId || "-"} {cuadrillaInfo.nombre ? ` - ${cuadrillaInfo.nombre}` : ""}</div>
+              <div>Cuadrilla: {cuadrillaInfo.nombre || "-"}</div>
             </div>
           </div>
 
@@ -596,7 +596,7 @@ export default function ReposicionClient() {
               }}
               onFocus={() => setComboMatOpen(true)}
               onBlur={() => setTimeout(() => setComboMatOpen(false), 150)}
-              placeholder="Buscar por ID o nombre..."
+              placeholder="Buscar por código o nombre..."
               className="w-full rounded border px-2 py-2 text-sm"
             />
             {comboMatOpen && (

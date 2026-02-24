@@ -530,7 +530,7 @@ export default function TecnicosMaterialesClient() {
             <input
               value={materialSearch}
               onChange={(e) => setMaterialSearch(e.target.value)}
-              placeholder="ID o nombre del material..."
+              placeholder="Código o nombre del material..."
               className="mt-1 w-full rounded border px-2 py-2 text-sm"
             />
             <div className="mt-2 max-h-40 overflow-auto rounded border">

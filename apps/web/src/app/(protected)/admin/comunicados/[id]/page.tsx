@@ -101,7 +101,7 @@ export default async function ComunicadoEditPage({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Editar comunicado</h1>
-          <p className="text-sm text-muted-foreground">ID: {id}</p>
+          <p className="text-sm text-muted-foreground">Comunicado seleccionado</p>
         </div>
 
         <div className="flex gap-2">
@@ -133,7 +133,7 @@ export default async function ComunicadoEditPage({
         <ComunicadoForm
           mode="edit"
           headerTitle="Editar comunicado"
-          headerSubtitle={`ID: ${id}`}
+          headerSubtitle="Edita el contenido y la audiencia"
           backHref="/admin/comunicados"
           rolesCatalog={rolesCatalog}
           areasCatalog={areasCatalog}

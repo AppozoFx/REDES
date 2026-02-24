@@ -21,6 +21,16 @@ type VentaDoc = {
   createdAtStr?: string;
 };
 
+type VentaItemDoc = {
+  materialId: string;
+  nombre?: string;
+  unidadTipo?: "UND" | "METROS";
+  und?: number;
+  metros?: number;
+  precioUnitCents?: number;
+  subtotalCents?: number;
+};
+
 type CuotaDoc = {
   id: string;
   n: number;
@@ -73,6 +83,7 @@ export default function VentasClient({
   const [cuotasCount, setCuotasCount] = useState(1);
   const [paymentInputs, setPaymentInputs] = useState<Record<string, string>>({});
   const [pendingAction, setPendingAction] = useState(false);
+  const [detalleItems, setDetalleItems] = useState<VentaItemDoc[]>([]);
 
   async function loadVentas(reset = false) {
     setLoading(true);
@@ -111,8 +122,10 @@ export default function VentasClient({
       if (!data?.ok) return;
       const v = data.venta as VentaDoc;
       const cs = Array.isArray(data.cuotas) ? data.cuotas : [];
+      const items = Array.isArray((data.venta as any)?.items) ? (data.venta as any).items : [];
       setSelectedVenta(v);
       setCuotas(cs);
+      setDetalleItems(items);
       setCuotasDraft(cs.map((c: any) => ({ n: c.n, monto: centsToMoney(c.montoCents || 0) })));
       setCuotasCount(cs.length || 1);
       setPaymentInputs({});
@@ -369,7 +382,7 @@ export default function VentasClient({
             ))}
             {ventasView.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-4 text-center text-muted-foreground">
+                <td colSpan={10} className="px-3 py-4 text-center text-muted-foreground">
                   No hay ventas
                 </td>
               </tr>
@@ -409,6 +422,48 @@ export default function VentasClient({
           </div>
           <div className="text-sm">
             Observación: {selectedVenta.observacion || "-"}
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-sm font-medium">Materiales vendidos</div>
+            {detalleItems.length === 0 ? (
+              <div className="text-sm text-muted-foreground">Sin detalle de materiales.</div>
+            ) : (
+              <div className="overflow-x-auto rounded border">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Material</th>
+                      <th className="px-3 py-2 text-left">Unidad</th>
+                      <th className="px-3 py-2 text-right">Cantidad</th>
+                      <th className="px-3 py-2 text-right">Precio unit.</th>
+                      <th className="px-3 py-2 text-right">Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detalleItems.map((it, idx) => {
+                      const unidad = String(it.unidadTipo || "UND");
+                      const qty =
+                        unidad === "METROS"
+                          ? Number(it.metros || 0).toFixed(2)
+                          : String(Math.floor(Number(it.und || 0)));
+                      return (
+                        <tr key={`${it.materialId}-${idx}`} className="border-t">
+                          <td className="px-3 py-2">
+                            {it.nombre || it.materialId}
+                            <div className="text-xs text-muted-foreground">{it.materialId}</div>
+                          </td>
+                          <td className="px-3 py-2">{unidad}</td>
+                          <td className="px-3 py-2 text-right">{qty}</td>
+                          <td className="px-3 py-2 text-right">{centsToMoney(Number(it.precioUnitCents || 0))}</td>
+                          <td className="px-3 py-2 text-right">{centsToMoney(Number(it.subtotalCents || 0))}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {canEdit && selectedVenta.estado !== "PAGADO" && (

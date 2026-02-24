@@ -57,55 +57,145 @@ function shortName(name: string) {
   return last ? `${first} ${last}` : first;
 }
 
-async function updateStockVentasTx(
+type StockLoc = { type: "ALMACEN" | "CUADRILLA" | "COORDINADOR"; id: string };
+type StockMovement = {
+  from: StockLoc;
+  to: StockLoc;
+  materialId: string;
+  unidadTipo: "UND" | "METROS";
+  und?: number;
+  metros?: number;
+};
+
+function stockVentasRef(
+  db: FirebaseFirestore.Firestore,
+  loc: StockLoc,
+  materialId: string
+): FirebaseFirestore.DocumentReference {
+  if (loc.type === "ALMACEN") return db.collection("almacen_stock").doc(materialId);
+  if (loc.type === "COORDINADOR") return db.collection("usuarios").doc(loc.id).collection("stock_ventas").doc(materialId);
+  return db.collection("cuadrillas").doc(loc.id).collection("stock_ventas").doc(materialId);
+}
+
+function stockKey(loc: StockLoc, materialId: string): string {
+  return `${loc.type}:${loc.id}:${materialId}`;
+}
+
+async function applyStockMovementsTx(
   tx: FirebaseFirestore.Transaction,
-  opts: {
-    from: { type: "ALMACEN" | "CUADRILLA" | "COORDINADOR"; id: string };
-    to: { type: "ALMACEN" | "CUADRILLA" | "COORDINADOR"; id: string };
-    materialId: string;
-    unidadTipo: "UND" | "METROS";
-    und?: number;
-    metros?: number;
-  }
+  movements: StockMovement[]
 ) {
+  if (!movements.length) return;
   const db = adminDb();
-  const { from, to, materialId, unidadTipo } = opts;
-  const und = Math.floor(opts.und || 0);
-  const cm = unidadTipo === "METROS" ? metersToCm(opts.metros || 0) : 0;
 
-  function stockRef(loc: { type: "ALMACEN" | "CUADRILLA" | "COORDINADOR"; id: string }) {
-    if (loc.type === "ALMACEN") return db.collection("almacen_stock").doc(materialId);
-    if (loc.type === "COORDINADOR") return db.collection("usuarios").doc(loc.id).collection("stock_ventas").doc(materialId);
-    return db.collection("cuadrillas").doc(loc.id).collection("stock_ventas").doc(materialId);
+  const refByKey = new Map<string, FirebaseFirestore.DocumentReference>();
+  const metaByKey = new Map<string, { materialId: string; unidadTipo: "UND" | "METROS" }>();
+  for (const m of movements) {
+    const fromKey = stockKey(m.from, m.materialId);
+    const toKey = stockKey(m.to, m.materialId);
+    if (!refByKey.has(fromKey)) {
+      refByKey.set(fromKey, stockVentasRef(db, m.from, m.materialId));
+      metaByKey.set(fromKey, { materialId: m.materialId, unidadTipo: m.unidadTipo });
+    }
+    if (!refByKey.has(toKey)) {
+      refByKey.set(toKey, stockVentasRef(db, m.to, m.materialId));
+      metaByKey.set(toKey, { materialId: m.materialId, unidadTipo: m.unidadTipo });
+    }
   }
 
-  const fromRef = stockRef(from);
-  const toRef = stockRef(to);
-
-  const fromSnap = await tx.get(fromRef);
-  const toSnap = await tx.get(toRef);
-
-  if (!fromSnap.exists) {
-    tx.set(fromRef, { materialId, unidadTipo, stockUnd: 0, stockCm: 0 }, { merge: true });
-  }
-  if (!toSnap.exists) {
-    tx.set(toRef, { materialId, unidadTipo, stockUnd: 0, stockCm: 0 }, { merge: true });
+  const refs = Array.from(refByKey.values());
+  const snaps = refs.length ? await tx.getAll(...refs) : [];
+  const snapByPath = new Map(snaps.map((s) => [s.ref.path, s] as const));
+  const snapByKey = new Map<string, FirebaseFirestore.DocumentSnapshot>();
+  for (const [key, ref] of refByKey.entries()) {
+    const snap = snapByPath.get(ref.path);
+    if (snap) snapByKey.set(key, snap);
   }
 
-  const fromData = fromSnap.exists ? (fromSnap.data() as any) : { stockUnd: 0, stockCm: 0 };
+  type Working = { exists: boolean; stockUnd: number; stockCm: number };
+  const working = new Map<string, Working>();
+  const deltas = new Map<string, { und: number; cm: number }>();
+  const touched = new Set<string>();
 
-  if (unidadTipo === "UND") {
-    if (from.type === "ALMACEN" && (fromData.stockUnd || 0) - und < 0) throw new Error("STOCK_INSUFICIENTE_ALMACEN");
-    if (from.type === "CUADRILLA" && (fromData.stockUnd || 0) - und < 0) throw new Error("STOCK_INSUFICIENTE_CUADRILLA");
-    if (from.type === "COORDINADOR" && (fromData.stockUnd || 0) - und < 0) throw new Error("STOCK_INSUFICIENTE_COORDINADOR");
-    tx.update(fromRef, { stockUnd: FieldValue.increment(-und) });
-    tx.update(toRef, { stockUnd: FieldValue.increment(und) });
-  } else {
-    if (from.type === "ALMACEN" && (fromData.stockCm || 0) - cm < 0) throw new Error("STOCK_INSUFICIENTE_ALMACEN");
-    if (from.type === "CUADRILLA" && (fromData.stockCm || 0) - cm < 0) throw new Error("STOCK_INSUFICIENTE_CUADRILLA");
-    if (from.type === "COORDINADOR" && (fromData.stockCm || 0) - cm < 0) throw new Error("STOCK_INSUFICIENTE_COORDINADOR");
-    tx.update(fromRef, { stockCm: FieldValue.increment(-cm) });
-    tx.update(toRef, { stockCm: FieldValue.increment(cm) });
+  function ensureWorking(key: string): Working {
+    const current = working.get(key);
+    if (current) return current;
+    const snap = snapByKey.get(key);
+    const data = snap?.exists ? (snap.data() as any) : {};
+    const w: Working = {
+      exists: !!snap?.exists,
+      stockUnd: Number(data?.stockUnd || 0),
+      stockCm: Number(data?.stockCm || 0),
+    };
+    working.set(key, w);
+    return w;
+  }
+
+  function addDelta(key: string, und: number, cm: number) {
+    const prev = deltas.get(key) || { und: 0, cm: 0 };
+    deltas.set(key, { und: prev.und + und, cm: prev.cm + cm });
+  }
+
+  for (const m of movements) {
+    const fromKey = stockKey(m.from, m.materialId);
+    const toKey = stockKey(m.to, m.materialId);
+    const from = ensureWorking(fromKey);
+    const to = ensureWorking(toKey);
+    touched.add(fromKey);
+    touched.add(toKey);
+
+    const und = Math.floor(m.und || 0);
+    const cm = m.unidadTipo === "METROS" ? metersToCm(m.metros || 0) : 0;
+    if (m.unidadTipo === "UND") {
+      if (from.stockUnd - und < 0) {
+        if (m.from.type === "ALMACEN") throw new Error("STOCK_INSUFICIENTE_ALMACEN");
+        if (m.from.type === "CUADRILLA") throw new Error("STOCK_INSUFICIENTE_CUADRILLA");
+        throw new Error("STOCK_INSUFICIENTE_COORDINADOR");
+      }
+      from.stockUnd -= und;
+      to.stockUnd += und;
+      addDelta(fromKey, -und, 0);
+      addDelta(toKey, und, 0);
+    } else {
+      if (from.stockCm - cm < 0) {
+        if (m.from.type === "ALMACEN") throw new Error("STOCK_INSUFICIENTE_ALMACEN");
+        if (m.from.type === "CUADRILLA") throw new Error("STOCK_INSUFICIENTE_CUADRILLA");
+        throw new Error("STOCK_INSUFICIENTE_COORDINADOR");
+      }
+      from.stockCm -= cm;
+      to.stockCm += cm;
+      addDelta(fromKey, 0, -cm);
+      addDelta(toKey, 0, cm);
+    }
+  }
+
+  for (const key of touched) {
+    const ref = refByKey.get(key);
+    const meta = metaByKey.get(key);
+    const state = working.get(key);
+    if (!ref || !meta || !state) continue;
+    if (!state.exists) {
+      tx.set(
+        ref,
+        {
+          materialId: meta.materialId,
+          unidadTipo: meta.unidadTipo,
+          stockUnd: 0,
+          stockCm: 0,
+        },
+        { merge: true }
+      );
+    }
+    const delta = deltas.get(key) || { und: 0, cm: 0 };
+    if (!delta.und && !delta.cm) continue;
+    tx.set(
+      ref,
+      {
+        stockUnd: FieldValue.increment(delta.und),
+        stockCm: FieldValue.increment(delta.cm),
+      },
+      { merge: true }
+    );
   }
 }
 
@@ -232,19 +322,23 @@ export async function crearVentaAction(raw: any) {
   const destinoType = input.cuadrillaId ? "CUADRILLA" : "COORDINADOR";
 
   await db.runTransaction(async (tx) => {
+    const movements: StockMovement[] = [];
     for (const [materialId, qty] of qtyMap.entries()) {
       const matSnap = matById.get(materialId);
       const mat = matSnap?.data() as any;
       const unidadTipo = String(mat?.unidadTipo || "").toUpperCase() === "METROS" ? "METROS" : "UND";
-      await updateStockVentasTx(tx, {
+      movements.push({
         from: { type: "ALMACEN", id: "ALMACEN" },
-        to: destinoType === "CUADRILLA" ? { type: "CUADRILLA", id: input.cuadrillaId as string } : { type: "COORDINADOR", id: input.coordinadorUid },
+        to: destinoType === "CUADRILLA"
+          ? { type: "CUADRILLA", id: input.cuadrillaId as string }
+          : { type: "COORDINADOR", id: input.coordinadorUid },
         materialId,
         unidadTipo,
         und: unidadTipo === "UND" ? qty.und : undefined,
         metros: unidadTipo === "METROS" ? qty.metros : undefined,
       });
     }
+    await applyStockMovementsTx(tx, movements);
 
     tx.set(ventaRef, {
       area: input.area,
@@ -465,16 +559,30 @@ export async function anularVentaAction(raw: any) {
   if (destinoType === "COORDINADOR" && !coordinadorUid) return { ok: false, error: { formErrors: ["INVALID_COORDINADOR"] } } as const;
 
   await db.runTransaction(async (tx) => {
+    const byMaterial = new Map<string, { unidadTipo: "UND" | "METROS"; und: number; metros: number }>();
     for (const it of items) {
-      await updateStockVentasTx(tx, {
-        from: destinoType === "CUADRILLA" ? { type: "CUADRILLA", id: cuadrillaId } : { type: "COORDINADOR", id: coordinadorUid },
-        to: { type: "ALMACEN", id: "ALMACEN" },
-        materialId: it.materialId,
+      const key = String(it.materialId || "").trim();
+      if (!key) continue;
+      const prev = byMaterial.get(key) || { unidadTipo: it.unidadTipo, und: 0, metros: 0 };
+      byMaterial.set(key, {
         unidadTipo: it.unidadTipo,
-        und: it.unidadTipo === "UND" ? Math.floor(it.und || 0) : 0,
-        metros: it.unidadTipo === "METROS" ? Number(it.metros || 0) : 0,
+        und: prev.und + Math.floor(it.und || 0),
+        metros: prev.metros + Number(it.metros || 0),
       });
     }
+    const movements: StockMovement[] = Array.from(byMaterial.entries()).map(
+      ([materialId, qty]) => ({
+        from: destinoType === "CUADRILLA"
+          ? { type: "CUADRILLA", id: cuadrillaId }
+          : { type: "COORDINADOR", id: coordinadorUid },
+        to: { type: "ALMACEN", id: "ALMACEN" },
+        materialId,
+        unidadTipo: qty.unidadTipo,
+        und: qty.unidadTipo === "UND" ? qty.und : undefined,
+        metros: qty.unidadTipo === "METROS" ? qty.metros : undefined,
+      })
+    );
+    await applyStockMovementsTx(tx, movements);
     tx.update(ventaRef, {
       estado: "ANULADA",
       saldoPendienteCents: 0,

@@ -27,6 +27,17 @@ type EquipoRow = {
   detalleInstalacion?: any;
 };
 
+type CuadrillaOpt = {
+  id: string;
+  nombre?: string;
+  coordinadorUid?: string;
+};
+
+type CoordinadorOpt = {
+  uid: string;
+  label: string;
+};
+
 function asStr(v: any) {
   return String(v || "").trim();
 }
@@ -62,6 +73,13 @@ function fmtDateTime(v: any) {
 
 function getFechaDespacho(e: EquipoRow) {
   return e?.f_despacho ?? e?.f_despachoAt ?? e?.f_despachoYmd ?? null;
+}
+
+function normalizePhone(raw: string) {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (!digits) return "";
+  const noPrefix = digits.startsWith("51") && digits.length >= 11 ? digits.slice(2) : digits;
+  return noPrefix.length >= 9 ? noPrefix : "";
 }
 
 function addHyperlinksToColumn(ws: XLSX.WorkSheet, headerText: string) {
@@ -100,6 +118,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
   const [filtroEstadoAud, setFiltroEstadoAud] = useState("todos");
   const [filtroEstadoGeneral, setFiltroEstadoGeneral] = useState("todos");
   const [filtroUbicacion, setFiltroUbicacion] = useState("todas");
+  const [filtroCoordinadorUid, setFiltroCoordinadorUid] = useState("");
   const [busqueda, setBusqueda] = useState("");
 
   const [fileName, setFileName] = useState("");
@@ -109,6 +128,10 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
     encontrados: number;
     noEncontrados: string[];
   } | null>(null);
+  const [avisosPorUbicacion, setAvisosPorUbicacion] = useState<Record<string, boolean>>({});
+  const [coordinadores, setCoordinadores] = useState<CoordinadorOpt[]>([]);
+  const [cuadrillas, setCuadrillas] = useState<CuadrillaOpt[]>([]);
+  const [sendingWsp, setSendingWsp] = useState(false);
   const [subiendoId, setSubiendoId] = useState("");
 
   const [fotoModal, setFotoModal] = useState<{ open: boolean; url: string; sn: string }>({
@@ -150,6 +173,23 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modo]);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const [resCoord, resCuad] = await Promise.all([
+          fetch("/api/usuarios/by-role?role=COORDINADOR", { cache: "no-store" }),
+          fetch("/api/cuadrillas/list?area=INSTALACIONES", { cache: "no-store" }),
+        ]);
+        const bCoord = await resCoord.json().catch(() => ({}));
+        const bCuad = await resCuad.json().catch(() => ({}));
+        setCoordinadores(Array.isArray(bCoord?.items) ? bCoord.items : []);
+        setCuadrillas(Array.isArray(bCuad?.items) ? bCuad.items : []);
+      } catch {
+        // noop
+      }
+    })();
+  }, []);
+
   const baseParaListas = useMemo(() => {
     let out = [...rows];
     if (filtroEstadoAud !== "todos") {
@@ -157,6 +197,24 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
     }
     return out;
   }, [rows, filtroEstadoAud]);
+
+  const coordinadorByUbicacion = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of cuadrillas) {
+      const nombre = asStr(c?.nombre).toUpperCase();
+      const uid = asStr(c?.coordinadorUid);
+      if (nombre && uid) map.set(nombre, uid);
+    }
+    return map;
+  }, [cuadrillas]);
+
+  const rowsConFiltroCoordinador = useMemo(() => {
+    if (!filtroCoordinadorUid) return baseParaListas;
+    return baseParaListas.filter((r) => {
+      const ub = asStr(r.ubicacion).toUpperCase();
+      return asStr(coordinadorByUbicacion.get(ub)) === filtroCoordinadorUid;
+    });
+  }, [baseParaListas, filtroCoordinadorUid, coordinadorByUbicacion]);
 
   const kpis = useMemo(() => {
     const total = baseParaListas.length;
@@ -171,16 +229,38 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
   }, [kpis]);
 
   const ubicacionesDisponibles = useMemo(() => {
-    return Array.from(new Set(baseParaListas.map((r) => asStr(r.ubicacion)).filter(Boolean))).sort((a, b) => a.localeCompare(b));
-  }, [baseParaListas]);
+    return Array.from(new Set(rowsConFiltroCoordinador.map((r) => asStr(r.ubicacion)).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  }, [rowsConFiltroCoordinador]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(`auditoria_inst_avisos_${modo}`);
+      if (!raw) {
+        setAvisosPorUbicacion({});
+        return;
+      }
+      const parsed = JSON.parse(raw) as Record<string, boolean>;
+      setAvisosPorUbicacion(parsed && typeof parsed === "object" ? parsed : {});
+    } catch {
+      setAvisosPorUbicacion({});
+    }
+  }, [modo]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(`auditoria_inst_avisos_${modo}`, JSON.stringify(avisosPorUbicacion));
+    } catch {
+      // noop
+    }
+  }, [avisosPorUbicacion, modo]);
 
   const estadosGenerales = useMemo(() => {
-    return Array.from(new Set(baseParaListas.map((r) => asStr(r.estado)).filter(Boolean))).sort((a, b) => a.localeCompare(b));
-  }, [baseParaListas]);
+    return Array.from(new Set(rowsConFiltroCoordinador.map((r) => asStr(r.estado)).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  }, [rowsConFiltroCoordinador]);
 
   const equiposFiltrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    return baseParaListas.filter((r) => {
+    return rowsConFiltroCoordinador.filter((r) => {
       const okUb = filtroUbicacion === "todas" ? true : asStr(r.ubicacion) === filtroUbicacion;
       const okEstado = filtroEstadoGeneral === "todos" ? true : asStr(r.estado) === filtroEstadoGeneral;
       const okQ =
@@ -191,9 +271,32 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
         asStr(r.cliente).toLowerCase().includes(q);
       return okUb && okEstado && okQ;
     });
-  }, [baseParaListas, busqueda, filtroEstadoGeneral, filtroUbicacion]);
+  }, [rowsConFiltroCoordinador, busqueda, filtroEstadoGeneral, filtroUbicacion]);
 
-  const hasFiltros = filtroEstadoAud !== "todos" || filtroEstadoGeneral !== "todos" || filtroUbicacion !== "todas" || !!busqueda.trim();
+  const statsByUbicacion = useMemo(() => {
+    const map = new Map<string, { total: number; sust: number; pend: number }>();
+    for (const r of rowsConFiltroCoordinador) {
+      const ub = asStr(r.ubicacion);
+      if (!ub) continue;
+      const cur = map.get(ub) || { total: 0, sust: 0, pend: 0 };
+      const estadoAud = asStr(r.auditoria?.estado || "pendiente");
+      cur.total += 1;
+      if (estadoAud === "sustentada") cur.sust += 1;
+      else cur.pend += 1;
+      map.set(ub, cur);
+    }
+    return map;
+  }, [rowsConFiltroCoordinador]);
+
+  const hasFiltros =
+    filtroEstadoAud !== "todos" ||
+    filtroEstadoGeneral !== "todos" ||
+    filtroUbicacion !== "todas" ||
+    !!filtroCoordinadorUid ||
+    !!busqueda.trim();
+  const totalUbicaciones = ubicacionesDisponibles.length;
+  const ubicacionesAvisadas = ubicacionesDisponibles.filter((u) => !!avisosPorUbicacion[u]).length;
+  const ubicacionesPendientes = Math.max(0, totalUbicaciones - ubicacionesAvisadas);
 
   async function onFile(file: File) {
     try {
@@ -465,6 +568,65 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
     toast.success("Exportado no encontrados");
   }
 
+  async function enviarWspCuadrillaSeleccionada() {
+    if (!filtroCoordinadorUid) {
+      toast.error("Selecciona un coordinador");
+      return;
+    }
+    if (filtroUbicacion === "todas") {
+      toast.error("Selecciona una cuadrilla/ubicacion");
+      return;
+    }
+
+    const cuadrilla = asStr(filtroUbicacion);
+    const filas = rowsConFiltroCoordinador.filter((r) => asStr(r.ubicacion) === cuadrilla);
+    if (!filas.length) {
+      toast.error("No hay equipos para enviar");
+      return;
+    }
+
+    setSendingWsp(true);
+    const preWin = window.open("about:blank", "_blank");
+    try {
+      const res = await fetch(`/api/usuarios/phones?uids=${encodeURIComponent(filtroCoordinadorUid)}`, { cache: "no-store" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body?.ok) throw new Error(String(body?.error || "ERROR"));
+      const celularRaw = Array.isArray(body?.items) ? String(body.items[0]?.celular || "") : "";
+      const celular = normalizePhone(celularRaw);
+      if (!celular) throw new Error("El coordinador no tiene celular registrado");
+
+      const header = "SN                  Equipo      F. Despacho";
+      const lines = filas.slice(0, 200).map((r) => {
+        const sn = asStr(r.SN || r.id).padEnd(20, " ").slice(0, 20);
+        const eq = asStr(r.equipo).padEnd(10, " ").slice(0, 10);
+        const fd = fmtDate(getFechaDespacho(r));
+        return `${sn} ${eq} ${fd}`;
+      });
+      const coordLabel = coordinadores.find((c) => c.uid === filtroCoordinadorUid)?.label || "Coordinador";
+      const msg = [
+        `${cuadrilla} (${coordLabel})`,
+        header,
+        ...lines,
+        `Total: ${filas.length}`,
+      ].join("\n");
+
+      const url = `https://wa.me/51${celular}?text=${encodeURIComponent(msg)}`;
+      if (preWin && !preWin.closed) {
+        preWin.location.href = url;
+        preWin.focus();
+      } else {
+        const win = window.open(url, "_blank");
+        if (!win) window.location.href = url;
+      }
+      toast.success("Abriendo WhatsApp");
+    } catch (e: any) {
+      if (preWin && !preWin.closed) preWin.close();
+      toast.error(e?.message || "No se pudo abrir WhatsApp");
+    } finally {
+      setSendingWsp(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       {!canEdit && (
@@ -523,7 +685,69 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
       </section>
 
       <section className="rounded-xl border bg-white p-4">
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="text-sm font-semibold text-slate-900">Control de avisos por cuadrilla/ubicacion</div>
+            <div className="text-xs text-slate-500">
+              Avisadas: {ubicacionesAvisadas} | Pendientes: {ubicacionesPendientes} | Total: {totalUbicaciones}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={btnSoftClass}
+              onClick={() => {
+                const next: Record<string, boolean> = {};
+                for (const u of ubicacionesDisponibles) next[u] = true;
+                setAvisosPorUbicacion(next);
+              }}
+              disabled={!ubicacionesDisponibles.length}
+            >
+              Marcar todas avisadas
+            </button>
+            <button
+              type="button"
+              className={btnSoftClass}
+              onClick={() => setAvisosPorUbicacion({})}
+              disabled={!ubicacionesDisponibles.length}
+            >
+              Limpiar marcas
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {ubicacionesDisponibles.map((u) => {
+            const checked = !!avisosPorUbicacion[u];
+            const st = statsByUbicacion.get(u) || { total: 0, sust: 0, pend: 0 };
+            return (
+              <label
+                key={u}
+                className={`flex items-center justify-between rounded-lg border px-3 py-2 text-sm ${
+                  checked ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-white"
+                }`}
+              >
+                <span className="truncate pr-3">
+                  {u}
+                  <span className="ml-2 text-[11px] text-slate-500">S:{st.sust} | P:{st.pend} | T:{st.total}</span>
+                </span>
+                <span className="inline-flex items-center gap-2 whitespace-nowrap text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => setAvisosPorUbicacion((prev) => ({ ...prev, [u]: e.target.checked }))}
+                  />
+                  {checked ? "Avisada" : "Pendiente"}
+                </span>
+              </label>
+            );
+          })}
+          {!ubicacionesDisponibles.length && <div className="text-sm text-slate-500">No hay ubicaciones disponibles para marcar.</div>}
+        </div>
+      </section>
+
+      <section className="rounded-xl border bg-white p-4">
+        <div className="grid gap-3 md:grid-cols-5">
           <div>
             <label className="mb-1 block text-xs text-slate-500">Estado auditoria</label>
             <select className={fieldClass} value={filtroEstadoAud} onChange={(e) => setFiltroEstadoAud(e.target.value)}>
@@ -559,11 +783,22 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
               onChange={(e) => setBusqueda(e.target.value)}
             />
           </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-500">Coordinador</label>
+            <select className={fieldClass} value={filtroCoordinadorUid} onChange={(e) => setFiltroCoordinadorUid(e.target.value)}>
+              <option value="">Todos</option>
+              {coordinadores.map((c) => (
+                <option key={c.uid} value={c.uid}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           <div className="text-xs text-slate-500">
-            Mostrando {equiposFiltrados.length} de {baseParaListas.length} equipos
+            Mostrando {equiposFiltrados.length} de {rowsConFiltroCoordinador.length} equipos
           </div>
           <div className="flex flex-wrap gap-2">
             <button
@@ -573,6 +808,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
                 setFiltroEstadoAud("todos");
                 setFiltroEstadoGeneral("todos");
                 setFiltroUbicacion("todas");
+                setFiltroCoordinadorUid("");
                 setBusqueda("");
               }}
               disabled={!hasFiltros}
@@ -584,6 +820,14 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
             </button>
             <button type="button" onClick={exportManifest} className={btnPrimaryClass}>
               Exportar Excel
+            </button>
+            <button
+              type="button"
+              onClick={enviarWspCuadrillaSeleccionada}
+              disabled={sendingWsp || !filtroCoordinadorUid || filtroUbicacion === "todas"}
+              className="rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white transition hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {sendingWsp ? "Enviando..." : "Enviar WSP"}
             </button>
           </div>
         </div>

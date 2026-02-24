@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
+  bulkSetEquiposCampoByFiltrosAction,
   getCuadrillaPreconStockAction,
   marcarAuditoriaAction,
   moverEquipoManualAction,
@@ -36,8 +37,23 @@ type ListResponse = {
   items: EquipoRow[];
   nextCursor?: string | null;
   hasMore?: boolean;
+  totalFiltered?: number;
   cuadrillas?: CuadrillaRow[];
 };
+
+type EquiposFiltersSnapshot = {
+  sn: string;
+  exact: boolean;
+  estados: string[];
+  ubicacion: string;
+  equipo: string;
+  pri_tec: string;
+  tec_liq: string;
+  inv: string;
+  descripcionList: string[];
+};
+
+const FILTERS_STORAGE_KEY = "equipos_instalaciones_filters_v1";
 
 const ONT_MATERIAL_KIT: Record<string, number> = {
   ACOPLADOR: 1,
@@ -63,12 +79,26 @@ function formatYmdToDmy(ymd?: string | null): string {
   return s;
 }
 
+function hasAnyUserFilter(filters: EquiposFiltersSnapshot): boolean {
+  return !!(
+    filters.sn ||
+    filters.estados.length > 0 ||
+    filters.ubicacion ||
+    filters.equipo ||
+    filters.pri_tec ||
+    filters.tec_liq ||
+    filters.inv ||
+    filters.descripcionList.length > 0
+  );
+}
+
 export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
   const [equipos, setEquipos] = useState<EquipoRow[]>([]);
   const [cuadrillas, setCuadrillas] = useState<CuadrillaRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
+  const [totalFiltered, setTotalFiltered] = useState<number>(0);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [nextUbicacion, setNextUbicacion] = useState<string>("");
@@ -104,6 +134,8 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
   const [estadoOpen, setEstadoOpen] = useState(false);
   const [descOpen, setDescOpen] = useState(false);
   const [scannerMode, setScannerMode] = useState(false);
+  const [filtersHydrated, setFiltersHydrated] = useState(false);
+  const [bulkRunning, setBulkRunning] = useState(false);
   const snInputRef = useRef<HTMLInputElement | null>(null);
   const scanStatsRef = useRef<{ startedAt: number; lastAt: number; keyCount: number }>({
     startedAt: 0,
@@ -124,7 +156,70 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
     return () => window.removeEventListener("click", onClick);
   }, [estadoOpen, descOpen]);
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FILTERS_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<EquiposFiltersSnapshot>;
+        const sn = String(parsed.sn || "").trim().toUpperCase();
+        setSnQuery(sn);
+        setSnFilter(sn);
+        setExactSearch(!!parsed.exact);
+        setFiltroEstados(new Set((parsed.estados || []).map((x) => String(x || "").trim().toUpperCase()).filter(Boolean)));
+        setFiltroUbicacion(String(parsed.ubicacion || "").trim().toUpperCase());
+        setFiltroEquipo(String(parsed.equipo || "").trim().toUpperCase());
+        setFiltroPriTec(String(parsed.pri_tec || "").trim().toUpperCase());
+        setFiltroTecLiq(String(parsed.tec_liq || "").trim().toUpperCase());
+        setFiltroInv(String(parsed.inv || "").trim().toUpperCase());
+        setSelectedDescs(new Set((parsed.descripcionList || []).map((x) => String(x || "").trim()).filter(Boolean)));
+      }
+    } catch {
+      // ignorar filtros corruptos
+    } finally {
+      setFiltersHydrated(true);
+    }
+  }, []);
+
   const [isPending, startTransition] = useTransition();
+
+  const filtroEstadosKey = useMemo(
+    () => Array.from(filtroEstados).sort().join("|"),
+    [filtroEstados]
+  );
+
+  const selectedDescsKey = useMemo(
+    () => Array.from(selectedDescs).sort().join("|"),
+    [selectedDescs]
+  );
+
+  const getFiltersSnapshot = (): EquiposFiltersSnapshot => ({
+    sn: snFilter.trim().toUpperCase(),
+    exact: !!exactSearch,
+    estados: Array.from(filtroEstados).map((v) => String(v || "").trim().toUpperCase()).filter(Boolean),
+    ubicacion: String(filtroUbicacion || "").trim().toUpperCase(),
+    equipo: String(filtroEquipo || "").trim().toUpperCase(),
+    pri_tec: String(filtroPriTec || "").trim().toUpperCase(),
+    tec_liq: String(filtroTecLiq || "").trim().toUpperCase(),
+    inv: String(filtroInv || "").trim().toUpperCase(),
+    descripcionList: Array.from(selectedDescs).map((v) => String(v || "").trim()).filter(Boolean),
+  });
+
+  const confirmNoFiltersMassive = (operationLabel: string, filters: EquiposFiltersSnapshot): boolean => {
+    if (hasAnyUserFilter(filters)) return true;
+    const ok = window.confirm(
+      `No hay filtros activos. Esta accion aplicara sobre TODO el universo por defecto (estado ALMACEN/CAMPO). ¿Deseas continuar con ${operationLabel}?`
+    );
+    if (!ok) return false;
+    const typed = window.prompt("Para confirmar, escribe TODOS");
+    return String(typed || "").trim().toUpperCase() === "TODOS";
+  };
+
+  const confirmExportUpdateCount = (sheet: "PRI-TEC" | "TEC-LIQ" | "INV", count: number): boolean => {
+    const msg =
+      `Se exportaran ${count} documentos filtrados y se actualizara ${sheet} en BD.\n` +
+      "¿Deseas continuar?";
+    return window.confirm(msg);
+  };
 
   const resetScanStats = () => {
     scanStatsRef.current = { startedAt: 0, lastAt: 0, keyCount: 0 };
@@ -184,7 +279,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
     Inv: e.inv || "",
   });
 
-  const resumenByEquipo = useMemo(() => {
+  const resumenPaginaByEquipo = useMemo(() => {
     const map = new Map<string, number>();
     equipos.forEach((e: any) => {
       const k = String(e.equipo || "OTROS").toUpperCase();
@@ -198,26 +293,41 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
   }, [equipos]);
 
   const exportarEquipos = async () => {
-    if (!equipos.length) {
-      toast.error("No hay equipos para exportar");
-      return;
-    }
+    if (bulkRunning) return;
     const toastId = toast(
       () => (
         <div>
-          <div className="text-sm font-medium">Se exporta LISTA {equipos.length} series.</div>
+          <div className="text-sm font-medium">Se exportara LISTA con todos los equipos filtrados.</div>
           <div className="mt-2 flex justify-end gap-2">
             <button
               className="rounded bg-blue-600 px-3 py-1 text-white"
-              onClick={() => {
+              onClick={async () => {
                 toast.dismiss(toastId);
-                const data = equipos.map(mapExportRow);
-                const ws = XLSX.utils.json_to_sheet(data);
-                const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, "Equipos");
-                XLSX.writeFile(wb, exportFilename("LISTA"));
-                toast.success(`Equipos exportados: ${equipos.length}`);
+                setBulkRunning(true);
+                try {
+                  const filters = getFiltersSnapshot();
+                  if (!confirmNoFiltersMassive("EXPORTAR LISTA", filters)) {
+                    toast.message("Operacion cancelada");
+                    return;
+                  }
+                  const rows = await fetchAllFilteredRowsForExport();
+                  if (!rows.length) {
+                    toast.error("No hay equipos para exportar");
+                    return;
+                  }
+                  const data = rows.map(mapExportRow);
+                  const ws = XLSX.utils.json_to_sheet(data);
+                  const wb = XLSX.utils.book_new();
+                  XLSX.utils.book_append_sheet(wb, ws, "Equipos");
+                  XLSX.writeFile(wb, exportFilename("LISTA"));
+                  toast.success(`Equipos exportados: ${rows.length}`);
+                } catch (e: any) {
+                  toast.error(String(e?.message || "No se pudo exportar"));
+                } finally {
+                  setBulkRunning(false);
+                }
               }}
+              disabled={bulkRunning}
             >
               Confirmar
             </button>
@@ -235,40 +345,19 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
   };
 
   const exportarPriTec = async () => {
-    if (!equipos.length) {
-      toast.error("No hay equipos para exportar");
-      return;
-    }
+    if (bulkRunning) return;
     const toastId = toast(
       () => (
         <div>
-          <div className="text-sm font-medium">Se exporta PRI-TEC {equipos.length} series.</div>
+          <div className="text-sm font-medium">Se exportara PRI-TEC y se marcara en BD segun filtros.</div>
           <div className="mt-2 flex justify-end gap-2">
             <button
               className="rounded bg-purple-600 px-3 py-1 text-white"
               onClick={async () => {
                 toast.dismiss(toastId);
-                const data = equipos.map((e) => ({ ...mapExportRow(e), "Pri-Tec": "SI" }));
-                const ws = XLSX.utils.json_to_sheet(data);
-                const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, "PRI-TEC");
-                XLSX.writeFile(wb, exportFilename("PRI-TEC"));
-                try {
-                  await Promise.all(
-                    equipos.map((e: any) =>
-                      moverEquipoManualAction({
-                        sn: String(e.SN || e.id || "").toUpperCase(),
-                        toUbicacion: String(e.ubicacion || ""),
-                        caso: String(e.caso || ""),
-                        observacion: String(e.observacion || ""),
-                        pri_tec: "SI",
-                      })
-                    )
-                  );
-                } catch {}
-                setEquipos((prev) => prev.map((e: any) => ({ ...e, pri_tec: "SI" })));
-                toast.success(`PRI-TEC exportado y actualizado: ${equipos.length}`);
+                await exportarYActualizarCampo("pri_tec", "PRI-TEC");
               }}
+              disabled={bulkRunning}
             >
               Confirmar
             </button>
@@ -286,40 +375,49 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
   };
 
   const exportarTecLiq = async () => {
-    if (!equipos.length) {
-      toast.error("No hay equipos para exportar");
-      return;
-    }
+    if (bulkRunning) return;
     const toastId = toast(
       () => (
         <div>
-          <div className="text-sm font-medium">Se exporta TEC-LIQ {equipos.length} series.</div>
+          <div className="text-sm font-medium">Se exportara TEC-LIQ y se marcara en BD segun filtros.</div>
           <div className="mt-2 flex justify-end gap-2">
             <button
               className="rounded bg-green-600 px-3 py-1 text-white"
               onClick={async () => {
                 toast.dismiss(toastId);
-                const data = equipos.map((e) => ({ ...mapExportRow(e), "Tec-Liq": "SI" }));
-                const ws = XLSX.utils.json_to_sheet(data);
-                const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, "TEC-LIQ");
-                XLSX.writeFile(wb, exportFilename("TEC-LIQ"));
-                try {
-                  await Promise.all(
-                    equipos.map((e: any) =>
-                      moverEquipoManualAction({
-                        sn: String(e.SN || e.id || "").toUpperCase(),
-                        toUbicacion: String(e.ubicacion || ""),
-                        caso: String(e.caso || ""),
-                        observacion: String(e.observacion || ""),
-                        tec_liq: "SI",
-                      })
-                    )
-                  );
-                } catch {}
-                setEquipos((prev) => prev.map((e: any) => ({ ...e, tec_liq: "SI" })));
-                toast.success(`TEC-LIQ exportado y actualizado: ${equipos.length}`);
+                await exportarYActualizarCampo("tec_liq", "TEC-LIQ");
               }}
+              disabled={bulkRunning}
+            >
+              Confirmar
+            </button>
+            <button
+              className="rounded border px-3 py-1"
+              onClick={() => toast.dismiss(toastId)}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ),
+      { duration: 10000 }
+    );
+  };
+
+  const exportarInv = async () => {
+    if (bulkRunning) return;
+    const toastId = toast(
+      () => (
+        <div>
+          <div className="text-sm font-medium">Se exportara INV y se marcara en BD segun filtros.</div>
+          <div className="mt-2 flex justify-end gap-2">
+            <button
+              className="rounded bg-amber-600 px-3 py-1 text-white"
+              onClick={async () => {
+                toast.dismiss(toastId);
+                await exportarYActualizarCampo("inv", "INV");
+              }}
+              disabled={bulkRunning}
             >
               Confirmar
             </button>
@@ -346,6 +444,26 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
   useEffect(() => {
     setExactSearch(false);
   }, [snQuery]);
+
+  useEffect(() => {
+    if (!filtersHydrated) return;
+    try {
+      localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(getFiltersSnapshot()));
+    } catch {
+      // best effort
+    }
+  }, [
+    filtersHydrated,
+    snFilter,
+    exactSearch,
+    filtroEstadosKey,
+    filtroUbicacion,
+    filtroEquipo,
+    filtroPriTec,
+    filtroTecLiq,
+    filtroInv,
+    selectedDescsKey,
+  ]);
 
   const cuadrillaByNombre = useMemo(() => {
     const m = new Map<string, string>();
@@ -375,38 +493,46 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
     []
   );
 
-  const equiposDisponibles = useMemo(() => normalizeList((equipos || []).map((e) => e.equipo || "")), [equipos]);
-
-  const selectedDescsKey = useMemo(
-    () => Array.from(selectedDescs).sort().join("|"),
-    [selectedDescs]
+  const equiposBase = useMemo(
+    () => normalizeList(["ONT", "MESH", "FONO", "BOX", ...(equipos || []).map((e) => e.equipo || "")]),
+    [equipos]
   );
 
   const descripcionesFiltradas = useMemo(() => descOptions, [descOptions]);
 
+  const buildListParams = (opts?: {
+    reset?: boolean;
+    cursorValue?: string | null;
+    exactOverride?: boolean;
+    snOverride?: string;
+  }) => {
+    const params = new URLSearchParams();
+    params.set("limit", "200");
+    const shouldReset = !!opts?.reset;
+    const cursorValue = opts?.cursorValue ?? cursor;
+    if (!shouldReset && cursorValue) params.set("cursor", cursorValue);
+    const snVal = (opts?.snOverride ?? snFilter).trim();
+    if (snVal) {
+      params.set("sn", snVal);
+      if (typeof opts?.exactOverride === "boolean" ? opts.exactOverride : exactSearch) {
+        params.set("exact", "1");
+      }
+    }
+    if (filtroEstados.size > 0) Array.from(filtroEstados).forEach((e) => params.append("estado", e));
+    if (filtroUbicacion) params.set("ubicacion", filtroUbicacion);
+    if (filtroEquipo) params.set("equipo", filtroEquipo);
+    if (filtroPriTec) params.set("pri_tec", filtroPriTec);
+    if (filtroTecLiq) params.set("tec_liq", filtroTecLiq);
+    if (filtroInv) params.set("inv", filtroInv);
+    if (selectedDescs.size > 0) Array.from(selectedDescs).forEach((d) => params.append("descripcion", d));
+    return params;
+  };
+
   async function fetchList(reset = false, exactOverride?: boolean, snOverride?: string) {
+    if (!filtersHydrated) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      params.set("limit", "200");
-      if (!reset && cursor) params.set("cursor", cursor);
-      const snVal = (snOverride ?? snFilter).trim();
-      if (snVal) {
-        params.set("sn", snVal);
-        if (typeof exactOverride === "boolean" ? exactOverride : exactSearch) params.set("exact", "1");
-      }
-      if (filtroEstados.size > 0) {
-        Array.from(filtroEstados).forEach((e) => params.append("estado", e));
-      }
-      if (filtroUbicacion) params.set("ubicacion", filtroUbicacion);
-      if (filtroEquipo) params.set("equipo", filtroEquipo);
-      if (filtroPriTec) params.set("pri_tec", filtroPriTec);
-      if (filtroTecLiq) params.set("tec_liq", filtroTecLiq);
-      if (filtroInv) params.set("inv", filtroInv);
-      if (selectedDescs.size > 0) {
-        Array.from(selectedDescs).forEach((d) => params.append("descripcion", d));
-      }
-
+      const params = buildListParams({ reset, exactOverride, snOverride });
       const res = await fetch(`/api/equipos/list?${params.toString()}`, { cache: "no-store" });
       if (!res.ok) throw new Error("LIST_FAIL");
       const data = (await res.json()) as ListResponse;
@@ -414,11 +540,84 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
       if (data.cuadrillas) setCuadrillas(data.cuadrillas);
       setHasMore(!!data.hasMore);
       setCursor(data.nextCursor || null);
+      setTotalFiltered(Number(data.totalFiltered || 0));
       setEquipos((prev) => (reset ? data.items : [...prev, ...data.items]));
     } catch (e: any) {
       toast.error(String(e?.message || "No se pudo cargar"));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchAllFilteredRowsForExport(): Promise<EquipoRow[]> {
+    const out: EquipoRow[] = [];
+    let pageCursor: string | null = null;
+    let safety = 0;
+    while (safety < 500) {
+      safety += 1;
+      const params = buildListParams({ reset: true, cursorValue: null });
+      params.set("limit", "200");
+      if (pageCursor) params.set("cursor", pageCursor);
+      const res = await fetch(`/api/equipos/list?${params.toString()}`, { cache: "no-store" });
+      if (!res.ok) throw new Error("LIST_FAIL");
+      const data = (await res.json()) as ListResponse;
+      if (!data?.ok) throw new Error("LIST_FAIL");
+      out.push(...(Array.isArray(data.items) ? data.items : []));
+      if (!data.hasMore || !data.nextCursor) break;
+      pageCursor = data.nextCursor;
+    }
+    return out;
+  }
+
+  async function exportarYActualizarCampo(
+    field: "pri_tec" | "tec_liq" | "inv",
+    sheet: "PRI-TEC" | "TEC-LIQ" | "INV"
+  ) {
+    if (bulkRunning) return;
+    setBulkRunning(true);
+    try {
+      const filters = getFiltersSnapshot();
+      if (!confirmNoFiltersMassive(`EXPORTAR ${sheet} Y ACTUALIZAR`, filters)) {
+        toast.message("Operacion cancelada");
+        return;
+      }
+      const rows = await fetchAllFilteredRowsForExport();
+      if (!rows.length) {
+        toast.error("No hay equipos para exportar");
+        return;
+      }
+      if (!confirmExportUpdateCount(sheet, rows.length)) {
+        toast.message("Operacion cancelada");
+        return;
+      }
+
+      const data = rows.map((e: any) => {
+        const row = mapExportRow(e);
+        if (field === "pri_tec") row["Pri-Tec"] = "SI";
+        if (field === "tec_liq") row["Tec-Liq"] = "SI";
+        if (field === "inv") row.Inv = "SI";
+        return row;
+      });
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, sheet);
+      XLSX.writeFile(wb, exportFilename(sheet));
+
+      const result = await bulkSetEquiposCampoByFiltrosAction({
+        field,
+        value: "SI",
+        filters,
+      });
+      if (!result?.ok) throw new Error("BULK_UPDATE_FAIL");
+
+      setEquipos([]);
+      setCursor(null);
+      await fetchList(true);
+      toast.success(`${sheet} exportado. Actualizados: ${result.updated} de ${result.matched}.`);
+    } catch (e: any) {
+      toast.error(String(e?.message || "No se pudo exportar/actualizar"));
+    } finally {
+      setBulkRunning(false);
     }
   }
 
@@ -440,16 +639,18 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
   }
 
   useEffect(() => {
+    if (!filtersHydrated) return;
     setEquipos([]);
     setCursor(null);
     fetchList(true);
     fetchDescOptions();
-  }, [snFilter, filtroUbicacion, filtroEquipo, filtroPriTec, filtroTecLiq, filtroInv, selectedDescsKey, filtroEstados.size]);
+  }, [filtersHydrated, snFilter, filtroUbicacion, filtroEquipo, filtroPriTec, filtroTecLiq, filtroInv, selectedDescsKey, filtroEstadosKey]);
 
   useEffect(() => {
+    if (!filtersHydrated) return;
     fetchDescOptions();
     setSelectedDescs(new Set());
-  }, [filtroEquipo, filtroUbicacion, filtroEstados.size]);
+  }, [filtersHydrated, filtroEquipo, filtroUbicacion, filtroEstadosKey]);
 
   const startEdit = (row: EquipoRow) => {
     setEditingId(row.id);
@@ -654,7 +855,10 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
           </div>
           <div className="rounded-lg border bg-white px-3 py-2 text-sm">
             <div className="font-medium">Resumen</div>
-            <div className="text-muted-foreground">{resumenByEquipo.parts.join(" - ") || "-"}</div>
+            <div className="text-muted-foreground">Total filtrados: {totalFiltered}</div>
+            <div className="text-xs text-slate-500">
+              Pagina cargada: {resumenPaginaByEquipo.parts.join(" - ") || "-"}
+            </div>
           </div>
         </div>
       </div>
@@ -763,7 +967,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
           className="rounded-lg border px-3 py-2 text-sm"
         >
           <option value="">Equipo</option>
-          {equiposDisponibles.map((eq) => (
+          {equiposBase.map((eq) => (
             <option key={eq} value={eq}>
               {eq}
             </option>
@@ -815,6 +1019,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
           type="button"
           onClick={exportarEquipos}
           className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white shadow-sm"
+          disabled={bulkRunning}
         >
           Exportar Equipos
         </button>
@@ -822,6 +1027,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
           type="button"
           onClick={exportarPriTec}
           className="rounded-lg bg-purple-600 px-3 py-2 text-sm text-white shadow-sm"
+          disabled={bulkRunning}
         >
           Exportar PRI-TEC
         </button>
@@ -829,8 +1035,17 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
           type="button"
           onClick={exportarTecLiq}
           className="rounded-lg bg-green-600 px-3 py-2 text-sm text-white shadow-sm"
+          disabled={bulkRunning}
         >
           Exportar TEC-LIQ
+        </button>
+        <button
+          type="button"
+          onClick={exportarInv}
+          className="rounded-lg bg-amber-600 px-3 py-2 text-sm text-white shadow-sm"
+          disabled={bulkRunning}
+        >
+          Exportar INV
         </button>
       </div>
 
@@ -1035,7 +1250,9 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
       </div>
 
       <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <div>{loading ? "Cargando..." : `${equipos.length} registros`}</div>
+        <div>
+          {loading ? "Cargando..." : `Mostrando ${equipos.length} de ${totalFiltered} filtrados`}
+        </div>
         <div className="flex items-center gap-2">
           <button
             type="button"

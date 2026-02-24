@@ -60,7 +60,14 @@ export async function GET(req: Request) {
       const items = docSnap.exists ? [toPlain({ id: docSnap.id, ...docSnap.data() })] : [];
       const cuadSnap = await db.collection("cuadrillas").where("area", "==", "INSTALACIONES").get();
       const cuadrillas = cuadSnap.docs.map((d) => toPlain({ id: d.id, ...d.data() }));
-      return NextResponse.json({ ok: true, items, hasMore: false, nextCursor: null, cuadrillas });
+      return NextResponse.json({
+        ok: true,
+        items,
+        hasMore: false,
+        nextCursor: null,
+        totalFiltered: items.length,
+        cuadrillas,
+      });
     }
 
     if (sn && sn.length === 6) {
@@ -91,19 +98,22 @@ export async function GET(req: Request) {
       q = q.where("descripcion", "in", descripcionList.slice(0, 10));
     }
 
-    if (cursor) q = q.startAfter(cursor);
-    q = q.limit(limit + 1);
+    const qCount = q;
+    let qPage = q;
+    if (cursor) qPage = qPage.startAfter(cursor);
+    qPage = qPage.limit(limit + 1);
 
-    const snap = await q.get();
+    const [snap, countSnap] = await Promise.all([qPage.get(), qCount.count().get()]);
     const docs = snap.docs.slice(0, limit);
     const items = docs.map((d) => toPlain({ id: d.id, ...d.data() }));
     const hasMore = snap.docs.length > limit;
     const nextCursor = docs.length ? docs[docs.length - 1].id : null;
+    const totalFiltered = Number(countSnap.data().count || 0);
 
     const cuadSnap = await db.collection("cuadrillas").where("area", "==", "INSTALACIONES").get();
     const cuadrillas = cuadSnap.docs.map((d) => toPlain({ id: d.id, ...d.data() }));
 
-    return NextResponse.json({ ok: true, items, hasMore, nextCursor, cuadrillas });
+    return NextResponse.json({ ok: true, items, hasMore, nextCursor, totalFiltered, cuadrillas });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }

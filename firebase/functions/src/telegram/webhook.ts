@@ -23,6 +23,7 @@ const TELEGRAM_ALLOWED_USER_IDS = defineString("TELEGRAM_ALLOWED_USER_IDS", {
 const UPDATES_COLLECTION = "telegram_updates";
 const PRELIQ_COLLECTION = "telegram_preliquidaciones";
 const ORDENES_COLLECTION = "ordenes";
+const FOUND_GUARDS_COLLECTION = "telegram_found_guards";
 
 type TelegramChat = { id?: number | string };
 type TelegramFrom = { id?: number | string };
@@ -64,6 +65,23 @@ type OrdenResumen = {
 function isOrdenEstadoValido(estadoRaw: unknown): boolean {
   const estado = String(estadoRaw || "").trim().toUpperCase();
   return estado === "FINALIZADA" || estado === "INICIADA";
+}
+
+function normalizeTextKey(value: unknown): string {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+}
+
+function isTipoTrabaGarantia(tipoTrabaRaw: unknown): boolean {
+  return normalizeTextKey(tipoTrabaRaw) === "GARANTIA";
+}
+
+function isOrdenConsiderada(orden: Record<string, unknown>): boolean {
+  return isOrdenEstadoValido(orden.estado) && !isTipoTrabaGarantia(orden.tipoTraba);
 }
 
 function isValidTelegramSecretFormat(value: string): boolean {
@@ -217,6 +235,8 @@ function buildClienteLiquidadoBlock(args: {
   potenciaCtoNapDbm?: string;
   snOnt?: string;
   meshes: string[];
+  boxes: string[];
+  snFono?: string;
 }): string {
   const fecha = cleanValue(args.orden.fechaFinVisiYmd || args.orden.fSoliYmd || "-");
   const tramo = resolveTramoNombre(args.orden.fSoliHm || "", args.orden.fechaFinVisiHm || "");
@@ -239,6 +259,10 @@ function buildClienteLiquidadoBlock(args: {
   args.meshes.forEach((mesh, idx) => {
     lines.push(`SN MESH ${idx + 1}: ${cleanValue(mesh)}`);
   });
+  args.boxes.forEach((box, idx) => {
+    lines.push(`SN BOX ${idx + 1}: ${cleanValue(box)}`);
+  });
+  if (args.snFono) lines.push(`SN FONO: ${cleanValue(args.snFono)}`);
   if (args.ctoNap) lines.push(`Caja NAP/CTO: ${cleanValue(args.ctoNap)}`);
   if (args.puerto) lines.push(`Puerto: ${cleanValue(args.puerto)}`);
   if (args.potenciaCtoNapDbm) {
@@ -281,13 +305,12 @@ async function fetchOrdenByPedido(pedido: string): Promise<{
   const snap = await db
     .collection(ORDENES_COLLECTION)
     .where("codiSeguiClien", "==", pedido)
-    .limit(30)
     .get();
   if (snap.empty) return null;
 
   const candidates = snap.docs
     .map((doc) => ({ id: doc.id, data: (doc.data() || {}) as Record<string, unknown> }))
-    .filter((row) => isOrdenEstadoValido(row.data.estado));
+    .filter((row) => isOrdenConsiderada(row.data));
 
   if (!candidates.length) return null;
 
@@ -312,7 +335,7 @@ async function fetchOrdenesFinalizadasByYmd(ymd: string): Promise<OrdenResumen[]
     .get();
   const rows = snap.docs
     .map((doc) => (doc.data() || {}) as Record<string, unknown>)
-    .filter((orden) => isOrdenEstadoValido(orden.estado))
+    .filter((orden) => isOrdenConsiderada(orden))
     .map((orden) => buildOrdenResumen(orden))
     .filter((row) => !!row.pedido);
   return dedupeListByPedido(rows);
@@ -342,21 +365,44 @@ async function fetchTelegramFoundByYmd(
   return dedupeListByPedido(rows);
 }
 
-async function wasPedidoAlreadyReportedToday(
+function foundGuardDocId(chatId: string, pedido: string, ymd: string): string {
+  const cleanChatId = cleanValue(chatId).replace(/[\/\\\s]+/g, "_");
+  const cleanPedido = cleanValue(pedido).replace(/[\/\\\s]+/g, "_");
+  return `${cleanChatId}_${cleanPedido}_${ymd}`;
+}
+
+async function tryAcquireFoundGuard(
   chatId: string,
   pedido: string,
   ymd: string
 ): Promise<boolean> {
-  const snap = await db
-    .collection(UPDATES_COLLECTION)
-    .where("chatId", "==", chatId)
-    .where("pedido", "==", pedido)
-    .limit(20)
-    .get();
-  return snap.docs.some((d) => {
-    const x = d.data() as Record<string, unknown>;
-    return String(x.status || "") === "FOUND" && String(x.ymd || "") === ymd;
+  const ref = db.collection(FOUND_GUARDS_COLLECTION).doc(foundGuardDocId(chatId, pedido, ymd));
+  let acquired = false;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (snap.exists) {
+      acquired = false;
+      return;
+    }
+    tx.create(ref, {
+      chatId,
+      pedido,
+      ymd,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    acquired = true;
   });
+  return acquired;
+}
+
+async function releaseFoundGuard(chatId: string, pedido: string, ymd: string): Promise<void> {
+  const ref = db.collection(FOUND_GUARDS_COLLECTION).doc(foundGuardDocId(chatId, pedido, ymd));
+  try {
+    await ref.delete();
+  } catch {
+    // No bloquear procesamiento por falla al liberar candado.
+  }
 }
 
 function buildCuadrillaStatusMessage(args: {
@@ -493,12 +539,7 @@ function cuadrillaActionsKeyboard(cuadrilla: string, ymd: string): Record<string
 }
 
 function normalizeKey(value: string): string {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toUpperCase();
+  return normalizeTextKey(value);
 }
 
 function filterByCuadrilla(rows: OrdenResumen[], query: string): OrdenResumen[] {
@@ -1031,7 +1072,12 @@ export const telegramWebhook = onRequest(
 
     const orderMeta = buildOrdenResumen(orderResult.data);
     const operacionYmd = resolveOperacionYmdFromOrden(orderResult.data);
-    const already = await wasPedidoAlreadyReportedToday(chatId, parsed.pedido, operacionYmd);
+    const foundGuardAcquired = await tryAcquireFoundGuard(
+      chatId,
+      parsed.pedido,
+      operacionYmd
+    );
+    const already = !foundGuardAcquired;
     if (already) {
       await sendTelegramMessage({
         token,
@@ -1081,8 +1127,11 @@ export const telegramWebhook = onRequest(
         potenciaCtoNapDbm: parsed.potenciaCtoNapDbm,
         snOnt: parsed.snOnt,
         meshes: parsed.meshes,
+        boxes: parsed.boxes,
+        snFono: parsed.snFono,
       });
-      await sendTelegramMessage({ token, chatId, text: resumen });
+      const sent = await sendTelegramMessage({ token, chatId, text: resumen });
+      if (!sent) throw new Error("TELEGRAM_SEND_FAILED");
       await updateRef.set(
         {
           pedido: parsed.pedido,
@@ -1141,6 +1190,9 @@ export const telegramWebhook = onRequest(
     }
 
     if (result !== "FOUND") {
+      if (foundGuardAcquired) {
+        await releaseFoundGuard(chatId, parsed.pedido, operacionYmd);
+      }
       await updateRef.set(
         {
           pedido: parsed.pedido,

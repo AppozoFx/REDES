@@ -118,6 +118,7 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
   const [routeError, setRouteError] = useState("");
   const mapRef = useRef<any>(null);
   const outerRef = useRef<HTMLDivElement | null>(null);
+  const skipNextAutoFitRef = useRef(false);
   const [mapHeight, setMapHeight] = useState(600);
 
   const baseLayers: Record<string, { name: string; url: string; attr: string }> = {
@@ -209,6 +210,10 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
 
   useEffect(() => {
     if (!mapRef.current) return;
+    if (skipNextAutoFitRef.current) {
+      skipNextAutoFitRef.current = false;
+      return;
+    }
     const points = filtered
       .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng))
       .map((r) => [r.lat, r.lng] as [number, number]);
@@ -281,6 +286,7 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
           <button
             className="rounded-xl bg-[#30518c] px-4 py-2 text-white"
             onClick={() => {
+              skipNextAutoFitRef.current = true;
               setFCuadrilla("");
               setFEstado("");
               setFecha(todayLimaYmd());
@@ -304,7 +310,7 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
               <option value="">Seleccionar A</option>
               {routeCandidates.map((r) => (
                 <option key={`a-${r.id}`} value={r.id}>
-                  {r.cuadrillaNombre} | {r.codigoCliente || r.ordenId} | {r.cliente}
+                  {r.cuadrillaNombre || "-"} | {r.cliente || "-"} | {r.estado || "-"}
                 </option>
               ))}
             </select>
@@ -319,7 +325,7 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
               <option value="">Seleccionar B</option>
               {routeCandidates.map((r) => (
                 <option key={`b-${r.id}`} value={r.id}>
-                  {r.cuadrillaNombre} | {r.codigoCliente || r.ordenId} | {r.cliente}
+                  {r.cuadrillaNombre || "-"} | {r.cliente || "-"} | {r.estado || "-"}
                 </option>
               ))}
             </select>

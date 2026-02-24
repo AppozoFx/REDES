@@ -19,6 +19,7 @@ const formatearFecha = (f: any) => (f ? dayjs(f).format("DD/MM/YYYY") : "-");
 
 type Row = {
   id: string;
+  orderId?: string;
   codigoCliente: string;
   cliente: string;
   cuadrillaNombre: string;
@@ -55,8 +56,8 @@ export default function LiquidacionDetalleClient() {
     coordinadorCuadrilla: "",
   });
 
-  const cargar = async () => {
-    setCargando(true);
+  const cargar = async (silent = false) => {
+    if (!silent) setCargando(true);
     try {
       const params = new URLSearchParams();
       if (filtros.dia) params.set("ymd", filtros.dia);
@@ -69,7 +70,7 @@ export default function LiquidacionDetalleClient() {
     } catch (e: any) {
       toast.error(e?.message || "Error cargando instalaciones");
     } finally {
-      setCargando(false);
+      if (!silent) setCargando(false);
     }
   };
 
@@ -96,7 +97,7 @@ export default function LiquidacionDetalleClient() {
     const cuad = filtros.cuadrilla.toLowerCase().trim();
     const coord = filtros.coordinadorCuadrilla.toLowerCase().trim();
     return items.filter((x) => {
-      const hay = `${x.codigoCliente || ""} ${x.cliente || ""} ${x.cuadrillaNombre || ""} ${x.id || ""}`.toLowerCase();
+      const hay = `${x.codigoCliente || ""} ${x.orderId || ""} ${x.cliente || ""} ${x.cuadrillaNombre || ""} ${x.id || ""}`.toLowerCase();
       const okQ = q ? hay.includes(q) : true;
       const okCuad = cuad ? String(x.cuadrillaNombre || "").toLowerCase().includes(cuad) : true;
       const okCoord = coord ? String(x.coordinadorUid || "").toLowerCase().includes(coord) : true;
@@ -123,7 +124,7 @@ export default function LiquidacionDetalleClient() {
     if (!entries.length) return toast.message("Sin cambios");
     try {
       setGuardando(true);
-      await Promise.all(
+      const results = await Promise.allSettled(
         entries.map(async ([id, ch]) => {
           const payload = {
             id,
@@ -138,11 +139,45 @@ export default function LiquidacionDetalleClient() {
           });
           const data = await res.json();
           if (!res.ok || !data?.ok) throw new Error(data?.error || "ERROR");
+          return { id, ch };
         })
       );
-      toast.success("Cambios guardados");
-      setEdiciones({});
-      await cargar();
+      const okRows = results
+        .filter((r): r is PromiseFulfilledResult<{ id: string; ch: EditMap[string] }> => r.status === "fulfilled")
+        .map((r) => r.value);
+      const failCount = results.length - okRows.length;
+
+      if (okRows.length > 0) {
+        const okById = new Map(okRows.map((r) => [r.id, r.ch]));
+        setItems((prev) =>
+          prev.map((it) => {
+            const ch = okById.get(it.id);
+            if (!ch) return it;
+            return {
+              ...it,
+              tipoOrden: ch.tipoOrden ?? it.tipoOrden,
+              coordinadorUid: ch.coordinadorCuadrilla ?? it.coordinadorUid,
+              observacion: ch.observacion ?? it.observacion,
+            };
+          })
+        );
+      }
+
+      setEdiciones((prev) => {
+        const next = { ...prev };
+        for (const r of okRows) delete next[r.id];
+        return next;
+      });
+
+      if (okRows.length > 0 && failCount === 0) {
+        toast.success(`Cambios guardados (${okRows.length})`);
+      } else if (okRows.length > 0 && failCount > 0) {
+        toast.error(`Se guardaron ${okRows.length}, fallaron ${failCount}. Revisa y reintenta.`);
+      } else {
+        toast.error("No se pudo guardar ningun cambio");
+      }
+
+      void cargar(true);
     } catch (e: any) {
       toast.error(e?.message || "No se pudo guardar");
     } finally {
@@ -311,7 +346,7 @@ export default function LiquidacionDetalleClient() {
         <div className="text-sm text-gray-600">
           Mostrando{" "}
           <strong>
-            {pageData.length > 0 ? (page - 1) * pageSize + 1 : 0}–{(page - 1) * pageSize + pageData.length}
+            {pageData.length > 0 ? (page - 1) * pageSize + 1 : 0}-{(page - 1) * pageSize + pageData.length}
           </strong>{" "}
           de <strong>{filtered.length}</strong>
         </div>
@@ -338,3 +373,4 @@ export default function LiquidacionDetalleClient() {
     </div>
   );
 }
+

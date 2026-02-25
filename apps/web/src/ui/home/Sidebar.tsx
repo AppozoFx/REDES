@@ -13,6 +13,7 @@ type GroupKey =
   | "ORDENES"
   | "INCONCERT"
   | "GESTION"
+  | "GERENCIA"
   | "ADMINISTRACION"
   | "ALMACEN"
   | "OTROS";
@@ -22,6 +23,7 @@ const GROUP_ORDER: GroupKey[] = [
   "ORDENES",
   "INCONCERT",
   "GESTION",
+  "GERENCIA",
   "ADMINISTRACION",
   "ALMACEN",
   "OTROS",
@@ -52,6 +54,13 @@ function getGroup(href: string): GroupKey {
   }
   if (href.startsWith("/home/ordenes/")) return "ORDENES";
   if (href.startsWith("/home/inconcert/")) return "INCONCERT";
+  if (
+    href === "/home/gerencia/coordinadores" ||
+    href === "/home/gerencia/orden-compra" ||
+    href === "/home/gerencia/ordenes-compra"
+  ) {
+    return "GERENCIA";
+  }
   if (
     href === "/home/instalaciones/asistencia" ||
     href === "/home/instalaciones/asistencia-programada" ||
@@ -90,6 +99,7 @@ function groupBadge(group: GroupKey) {
   if (group === "ORDENES") return "OR";
   if (group === "INCONCERT") return "IC";
   if (group === "GESTION") return "GE";
+  if (group === "GERENCIA") return "GR";
   if (group === "ADMINISTRACION") return "AD";
   if (group === "ALMACEN") return "AL";
   return "OT";

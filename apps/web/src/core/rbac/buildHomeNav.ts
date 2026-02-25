@@ -6,6 +6,9 @@ export type NavItem = {
   href: string;
 };
 
+const PERM_GERENCIA_COORDINADORES = "GERENCIA_COORDINADORES";
+const PERM_GERENCIA_ORDEN_COMPRA = "GERENCIA_ORDEN_COMPRA";
+
 function hasArea(session: ServerSession, area: string) {
   return session.isAdmin || (session.access.areas?.includes(area) ?? false);
 }
@@ -19,6 +22,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
   const isGestor = roles.includes("GESTOR");
   const isCoord = roles.includes("COORDINADOR");
   const isPriv = roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
+  const isGerencia = roles.includes("GERENCIA");
   const hasInstArea = hasArea(session, "INSTALACIONES");
 
   if (isGestor && !session.isAdmin && !isPriv) {
@@ -127,6 +131,27 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
 
   if (hasPerm(session, "USERS_LIST")) {
     items.push({ key: "USUARIOS", label: "Usuarios", href: "/home/usuarios" });
+  }
+
+  if (session.isAdmin || (isGerencia && hasPerm(session, PERM_GERENCIA_COORDINADORES))) {
+    items.push({
+      key: "GERENCIA_COORDINADORES",
+      label: "Gerencia: Coordinadores",
+      href: "/home/gerencia/coordinadores",
+    });
+  }
+
+  if (session.isAdmin || (isGerencia && hasPerm(session, PERM_GERENCIA_ORDEN_COMPRA))) {
+    items.push({
+      key: "GERENCIA_ORDEN_COMPRA",
+      label: "Gerencia: Orden de Compra",
+      href: "/home/gerencia/orden-compra",
+    });
+    items.push({
+      key: "GERENCIA_ORDENES_COMPRA_MES",
+      label: "Gerencia: OC por Mes",
+      href: "/home/gerencia/ordenes-compra",
+    });
   }
 
   if (hasPerm(session, "ZONAS_MANAGE")) {

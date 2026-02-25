@@ -847,22 +847,22 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border bg-gradient-to-r from-slate-50 to-white px-4 py-3">
+      <div className="rounded-xl border border-slate-200 bg-gradient-to-r from-slate-50 to-white px-4 py-3 dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Control de Equipos</div>
-            <div className="text-lg font-semibold text-slate-900">Traslados entre cuadrillas (Instalaciones)</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Control de Equipos</div>
+            <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">Traslados entre cuadrillas (Instalaciones)</div>
           </div>
-          <div className="rounded-lg border bg-white px-3 py-2 text-sm">
+          <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm">
             <div className="font-medium">Resumen</div>
-            <div className="text-muted-foreground">Total filtrados: {totalFiltered}</div>
+            <div className="text-slate-500 dark:text-slate-400">Total filtrados: {totalFiltered}</div>
             <div className="text-xs text-slate-500">
               Pagina cargada: {resumenPaginaByEquipo.parts.join(" - ") || "-"}
             </div>
           </div>
         </div>
       </div>
-      <div className="rounded-xl border bg-white p-3">
+      <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-3">
         <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Filtros</div>
         <div className="flex flex-wrap gap-2">
         <input
@@ -918,7 +918,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
               {filtroEstados.size > 0 ? `Seleccionados: ${filtroEstados.size}` : "Seleccionar estados"}
             </button>
             {estadoOpen && (
-              <div className="absolute z-20 mt-1 w-48 rounded-lg border bg-white p-2 shadow">
+              <div className="absolute z-20 mt-1 w-48 rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-2 shadow">
                 {estadosDisponibles.map((estado) => (
                   <label key={estado} className="flex items-center gap-2 py-1 text-xs">
                     <input
@@ -1007,7 +1007,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
         <button
           type="button"
           onClick={clearFilters}
-          className="rounded-lg border px-3 py-2 text-sm hover:bg-muted"
+          className="rounded-lg border px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
         >
           Limpiar filtros
         </button>
@@ -1061,9 +1061,9 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
               {selectedDescs.size > 0 ? `Seleccionadas: ${selectedDescs.size}` : "Seleccionar descripciones"}
             </button>
             {descOpen && (
-              <div className="absolute z-20 mt-1 w-64 rounded border bg-white p-2 shadow max-h-56 overflow-auto">
+              <div className="absolute z-20 mt-1 w-64 rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-2 shadow max-h-56 overflow-auto">
                 {descripcionesFiltradas.length === 0 ? (
-                  <div className="text-xs text-muted-foreground">Sin descripciones</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">Sin descripciones</div>
                 ) : (
                   descripcionesFiltradas.map((d) => (
                     <label key={d} className="flex items-center gap-2 py-1 text-xs">
@@ -1098,7 +1098,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
 
       <div className="rounded border overflow-auto">
         <table className="min-w-[1100px] text-sm">
-          <thead className="bg-muted/50">
+          <thead className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
             <tr className="text-left">
               <th className="p-2">SN</th>
               <th className="p-2">F. Despacho</th>
@@ -1240,7 +1240,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
             })}
             {equipos.length === 0 && !loading && (
               <tr>
-                <td colSpan={16} className="p-4 text-center text-muted-foreground">
+                <td colSpan={16} className="p-4 text-center text-slate-500 dark:text-slate-400">
                   Sin resultados
                 </td>
               </tr>
@@ -1249,7 +1249,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
         </table>
       </div>
 
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
+      <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
         <div>
           {loading ? "Cargando..." : `Mostrando ${equipos.length} de ${totalFiltered} filtrados`}
         </div>
@@ -1267,16 +1267,16 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
 
       {ontModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-          <div className="w-full max-w-2xl rounded-xl border bg-white p-4 shadow-2xl">
+          <div className="w-full max-w-2xl rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-2xl">
             <div className="mb-3 border-b pb-2">
               <div className="text-base font-semibold">Movimiento ONT con materiales</div>
-              <div className="text-sm text-muted-foreground">
+              <div className="text-sm text-slate-500 dark:text-slate-400">
                 Se movera el equipo ONT junto con su kit base de materiales entre cuadrillas.
               </div>
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-lg border bg-slate-50 p-3 text-sm">
+              <div className="rounded-lg border bg-slate-50 dark:bg-slate-800/60 p-3 text-sm">
                 <div><span className="font-medium">SN:</span> <span className="font-mono">{ontModalRow?.SN || ontModalRow?.id || "-"}</span></div>
                 <div><span className="font-medium">Origen:</span> {ontModalFromUb || "-"}</div>
                 <div><span className="font-medium">Destino:</span> {ontModalToUb || "-"}</div>
@@ -1284,9 +1284,9 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
                 <div><span className="font-medium">Cuadrilla destino:</span> {ontModalToCuadrillaId || "-"}</div>
               </div>
 
-              <div className="rounded-lg border p-3 text-sm">
+              <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm dark:border-slate-700 dark:bg-slate-900">
                 <div className="mb-1 font-medium">Kit ONT a mover</div>
-                <div className="space-y-1 text-muted-foreground">
+                <div className="space-y-1 text-slate-500 dark:text-slate-400">
                   {Object.entries(ONT_MATERIAL_KIT).map(([id, qty]) => (
                     <div key={id} className="flex items-center justify-between">
                       <span>{id}</span>
@@ -1297,7 +1297,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
               </div>
             </div>
 
-            <div className="mt-4 rounded-lg border p-3">
+            <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
               <label className="flex items-center gap-2 text-sm font-medium">
                 <input
                   type="checkbox"
@@ -1314,7 +1314,9 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
                   <label
                     key={it.id}
                     className={`flex cursor-pointer items-center justify-between rounded border px-3 py-2 text-sm ${
-                      ontModalWithPrecon && ontModalPreconId === it.id ? "border-blue-600 bg-blue-50" : "border-slate-200"
+                      ontModalWithPrecon && ontModalPreconId === it.id
+                        ? "border-blue-600 bg-blue-50 dark:bg-blue-950/40"
+                        : "border-slate-200 dark:border-slate-700"
                     } ${it.stock <= 0 ? "opacity-50" : ""}`}
                   >
                     <span className="flex items-center gap-2">
@@ -1357,5 +1359,7 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
     </div>
   );
 }
+
+
 
 

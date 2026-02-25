@@ -600,7 +600,7 @@ export default function DespachoVentasClient({
 
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+      <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm space-y-3">
         <div className="font-medium">Despacho de Ventas ({area})</div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
@@ -617,7 +617,7 @@ export default function DespachoVentasClient({
                   setCuadrillaNombre("");
                   setCuadrillaQuery("");
                 }}
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+                className="mt-1 w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2"
               >
                 <option value="">Selecciona...</option>
                 {coordinadores.map((c) => (
@@ -627,11 +627,11 @@ export default function DespachoVentasClient({
                 ))}
               </select>
             ) : (
-              <input value={coordinadorNombre} readOnly className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2" />
+              <input value={coordinadorNombre} readOnly className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200" />
             )}
           </div>
           <div>
-            <label className="text-xs">Cuadrilla</label>
+            <label className="text-xs text-slate-600 dark:text-slate-300">Cuadrilla</label>
             <input
               value={cuadrillaQuery}
               onChange={(e) => {
@@ -641,10 +641,10 @@ export default function DespachoVentasClient({
               }}
               placeholder={coordinadorUid || !canEditCoordinador ? "Escribe para buscar..." : "Selecciona coordinador primero"}
               disabled={!coordinadorUid && canEditCoordinador}
-              className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2"
             />
             {(coordinadorUid || !canEditCoordinador) && filteredCuadrillas.length > 0 && (
-              <div className="mt-2 max-h-48 overflow-auto rounded-xl border border-slate-200 bg-slate-50">
+              <div className="mt-2 max-h-48 overflow-auto rounded-xl border border-slate-200 bg-slate-50 dark:bg-slate-800/60">
                 {filteredCuadrillas.map((c) => (
                   <button
                     key={c.id}
@@ -654,30 +654,30 @@ export default function DespachoVentasClient({
                       setCuadrillaNombre(c.nombre || c.id);
                       setCuadrillaQuery(c.nombre || c.id);
                     }}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100"
+                    className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700/60"
                   >
-                    {c.nombre || c.id} <span className="text-xs text-muted-foreground">({c.id})</span>
+                    {c.nombre || c.id} <span className="text-xs text-slate-500 dark:text-slate-400">({c.id})</span>
                   </button>
                 ))}
               </div>
             )}
           </div>
           <div>
-            <label className="text-xs">Nombre cuadrilla</label>
-            <input value={cuadrillaNombre} readOnly className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2" />
+            <label className="text-xs text-slate-600 dark:text-slate-300">Nombre cuadrilla</label>
+            <input value={cuadrillaNombre} readOnly className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200" />
           </div>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
-        <div className="flex items-center justify-between gap-3">
+      <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="font-medium">Materiales vendibles</div>
           <div className="flex items-center gap-2">
-            <label className="text-xs">Filtro área</label>
+            <label className="text-xs text-slate-600 dark:text-slate-300">Filtro área</label>
             <select
               value={materialFilterArea}
               onChange={(e) => setMaterialFilterArea(e.target.value as any)}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs"
+              className="rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-1 text-xs"
             >
               <option value="ALL">Todos</option>
               <option value="INSTALACIONES">Instalaciones</option>
@@ -695,7 +695,7 @@ export default function DespachoVentasClient({
               setSelectedMaterialId("");
             }}
             placeholder="Escribe material y selecciona..."
-            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+            className="w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2"
             list="vendibles-list"
           />
           <datalist id="vendibles-list">
@@ -720,9 +720,9 @@ export default function DespachoVentasClient({
         </div>
 
         {items.length > 0 && (
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
             <table className="min-w-full text-sm">
-              <thead className="bg-slate-100 text-slate-700">
+              <thead className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 <tr>
                   <th className="text-left px-3 py-2">Material</th>
                   <th className="text-left px-3 py-2">Unidad</th>
@@ -743,7 +743,7 @@ export default function DespachoVentasClient({
                       ? centsPerCmToPricePerMeter(Math.max(0, Math.floor(mat.precioPorCmCents || 0)))
                       : centsToMoney(Math.max(0, Math.floor(mat.precioUndCents || 0)));
                   return (
-                    <tr key={it.materialId} className="border-t border-slate-200">
+                    <tr key={it.materialId} className="border-t border-slate-200 dark:border-slate-700">
                       <td className="px-3 py-2">{mat.nombre || it.materialId}</td>
                       <td className="px-3 py-2">{unidad}</td>
                       <td className="px-3 py-2">
@@ -757,7 +757,7 @@ export default function DespachoVentasClient({
                                 )
                               )
                             }
-                            className="w-24 rounded-lg border border-slate-300 bg-white px-2 py-1"
+                            className="w-24 rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1"
                             inputMode="numeric"
                           />
                         ) : (
@@ -770,7 +770,7 @@ export default function DespachoVentasClient({
                                 )
                               )
                             }
-                            className="w-24 rounded-lg border border-slate-300 bg-white px-2 py-1"
+                            className="w-24 rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1"
                             inputMode="decimal"
                           />
                         )}
@@ -787,7 +787,7 @@ export default function DespachoVentasClient({
                               )
                             }
                             placeholder={defaultPrice}
-                            className="w-28 rounded-lg border border-slate-300 bg-white px-2 py-1"
+                            className="w-28 rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1"
                             inputMode="decimal"
                           />
                         ) : (
@@ -812,13 +812,13 @@ export default function DespachoVentasClient({
           </div>
         )}
 
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="w-full">
             <label className="text-xs">Observación</label>
             <input
               value={observacion}
               onChange={(e) => setObservacion(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2"
               placeholder="Observación (opcional)"
             />
           </div>
@@ -826,12 +826,12 @@ export default function DespachoVentasClient({
         </div>
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex justify-stretch sm:justify-end">
         <button
           type="button"
           onClick={() => startTransition(() => { void handleSubmit(); })}
           disabled={submitting}
-          className="rounded-xl bg-emerald-600 px-5 py-2 text-white hover:bg-emerald-700 disabled:opacity-50"
+          className="w-full rounded-xl bg-emerald-600 px-5 py-2 text-white hover:bg-emerald-700 disabled:opacity-50 sm:w-auto"
         >
           {submitting ? "Registrando..." : "Registrar venta"}
         </button>
@@ -839,6 +839,9 @@ export default function DespachoVentasClient({
     </div>
   );
 }
+
+
+
 
 
 

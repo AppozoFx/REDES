@@ -38,15 +38,15 @@ export default function ListClient() {
 
   const hasFilters = !!q || !!unidadTipo || !!area || !!vendible;
   const fieldClass =
-    "h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
-  const statCardClass = "rounded-xl border border-slate-200 bg-white p-3 shadow-sm";
+    "h-10 w-full rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40";
+  const statCardClass = "rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-3 shadow-sm";
 
   return (
     <div className="space-y-4">
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className={statCardClass}>
           <div className="text-xs text-slate-500">Total</div>
-          <div className="mt-1 text-2xl font-semibold text-slate-900">{stats.total}</div>
+          <div className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">{stats.total}</div>
         </div>
         <div className={statCardClass}>
           <div className="text-xs text-slate-500">Vendibles</div>
@@ -62,9 +62,9 @@ export default function ListClient() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-900">Filtros</h2>
+      <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Filtros</h2>
           <button
             type="button"
             onClick={() => {
@@ -74,7 +74,7 @@ export default function ListClient() {
               setVendible("");
             }}
             disabled={!hasFilters}
-            className="h-9 rounded-lg border border-slate-300 px-3 text-sm text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-9 rounded-lg border border-slate-300 px-3 text-sm text-slate-700 dark:text-slate-200 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Limpiar filtros
           </button>
@@ -100,11 +100,11 @@ export default function ListClient() {
         {pending && <div className="mt-2 text-xs text-slate-500">Actualizando listado...</div>}
       </section>
 
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-slate-100">
-              <tr className="text-slate-700">
+              <tr className="text-slate-700 dark:text-slate-200">
                 <th className="px-3 py-2 text-left font-semibold">Nombre</th>
                 <th className="px-3 py-2 text-left font-semibold">Unidad</th>
                 <th className="px-3 py-2 text-left font-semibold">Vendible</th>
@@ -114,7 +114,7 @@ export default function ListClient() {
             </thead>
             <tbody>
               {items.map((m: any) => (
-                <tr key={m.id} className="border-t border-slate-100 odd:bg-white even:bg-slate-50/50">
+                <tr key={m.id} className="border-t border-slate-100 odd:bg-white even:bg-slate-50/50 dark:odd:bg-slate-900 dark:even:bg-slate-800/50">
                   <td className="px-3 py-2">{m.nombre}</td>
                   <td className="px-3 py-2">{m.unidadTipo}</td>
                   <td className="px-3 py-2">{m.vendible ? "Si" : "No"}</td>
@@ -140,3 +140,5 @@ export default function ListClient() {
     </div>
   );
 }
+
+

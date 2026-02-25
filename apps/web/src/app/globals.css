@@ -19,6 +19,9 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --heading-ink: #e2e8f0;
+    --body-ink: #cbd5e1;
+    --muted-ink: #94a3b8;
   }
 }
 
@@ -62,5 +65,40 @@ body {
   label {
     color: var(--muted-ink);
     letter-spacing: 0.01em;
+  }
+
+  input,
+  select,
+  textarea {
+    color: #0f172a;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #94a3b8;
+  }
+
+  .dark input,
+  .dark select,
+  .dark textarea {
+    color: #e2e8f0;
+  }
+
+  .dark input::placeholder,
+  .dark textarea::placeholder {
+    color: #64748b;
+  }
+
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid rgba(59, 130, 246, 0.35);
+    outline-offset: 1px;
+  }
+
+  .dark input:focus-visible,
+  .dark select:focus-visible,
+  .dark textarea:focus-visible {
+    outline-color: rgba(96, 165, 250, 0.45);
   }
 }

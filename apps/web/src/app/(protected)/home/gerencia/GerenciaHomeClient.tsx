@@ -194,27 +194,27 @@ export function GerenciaHomeClient() {
   }
 
   return (
-    <div className="space-y-4">
-      <section className="rounded-xl border bg-white p-4">
+    <div className="space-y-4 text-slate-900 dark:text-slate-100">
+      <section className="rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <div className="grid gap-2 md:grid-cols-2">
-          <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm">
+          <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
             Gestores: <b>{data?.resumen.gestoresTotal ?? 0}</b> | Online{" "}
             <b>{data?.resumen.gestoresOnline ?? 0}</b> | En turno{" "}
             <b>{data?.resumen.gestoresEnTurno ?? 0}</b> | Refrigerio{" "}
             <b>{data?.resumen.gestoresEnRefrigerio ?? 0}</b>
           </div>
-          <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+          <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
             Llamadas: Realizadas <b>{data?.resumen.llamadasRealizadas ?? 0}</b> de{" "}
             <b>{data?.resumen.llamadasTotal ?? 0}</b> | Pendientes{" "}
             <b>{data?.resumen.llamadasPendientes ?? 0}</b>
           </div>
-          <div className="rounded border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-700">
+          <div className="rounded border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-700 dark:border-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
             Cuadrillas: <b>{data?.resumen.cuadrillasTotal ?? 0}</b> | Operativa{" "}
             <b>{data?.resumen.cuadrillasOperativa ?? 0}</b> | En campo{" "}
             <b>{data?.resumen.cuadrillasEnCampo ?? 0}</b> | Ruta cerrada{" "}
             <b>{data?.resumen.cuadrillasRutaCerrada ?? 0}</b>
           </div>
-          <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+          <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
             Ordenes: <b>{data?.resumen.ordenesTotal ?? 0}</b> | Agendada{" "}
             <b>{data?.resumen.ordenesAgendada ?? 0}</b> | Iniciada{" "}
             <b>{data?.resumen.ordenesIniciada ?? 0}</b> | Finalizada{" "}
@@ -223,20 +223,20 @@ export function GerenciaHomeClient() {
         </div>
       </section>
 
-      <section className="rounded-xl border bg-white p-4">
+      <section className="rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-lg font-semibold">Estado de gestores</h2>
-            <p className="text-xs text-slate-500">{importLine}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{importLine}</p>
           </div>
           <div className="flex items-center gap-2">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Buscar gestor..."
-              className="h-9 min-w-[220px] rounded border px-3 text-sm"
+              className="h-9 min-w-[220px] rounded border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
             />
-            <button onClick={cargar} className="rounded border px-3 py-2 text-sm">
+            <button onClick={cargar} className="rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:text-slate-200">
               Actualizar
             </button>
           </div>
@@ -244,7 +244,7 @@ export function GerenciaHomeClient() {
 
         <div className="mt-3 overflow-x-auto">
           <table className="min-w-full border-collapse text-sm">
-            <thead className="bg-slate-100 text-slate-700">
+            <thead className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
               <tr>
                 <th className="border p-2 text-left">Gestor</th>
                 <th className="border p-2 text-left">Jornada</th>
@@ -255,10 +255,10 @@ export function GerenciaHomeClient() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.uid} className="border">
+                <tr key={r.uid} className="border border-slate-200 dark:border-slate-700">
                   <td className="border p-2">
                     <div className="font-medium">{r.nombre}</div>
-                    <div className="text-xs text-slate-500">{r.uid}</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">{r.uid}</div>
                     <div
                       className={`mt-1 inline-flex rounded border px-2 py-0.5 text-xs ${
                         r.online
@@ -275,11 +275,11 @@ export function GerenciaHomeClient() {
                     >
                       {r.jornada.estadoTurno}
                     </div>
-                    <div className="mt-1 text-xs text-slate-500">
+                    <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                       Ingreso {fmtDateTime(r.jornada.ingresoAt)} | Salida{" "}
                       {fmtDateTime(r.jornada.salidaAt)}
                     </div>
-                    <div className="text-xs text-slate-500">
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
                       Refrigerio acumulado: {r.jornada.refrigerioMin || 0} min
                     </div>
                   </td>
@@ -287,7 +287,7 @@ export function GerenciaHomeClient() {
                     <button
                       type="button"
                       onClick={() => abrirDetalleGestor("cuadrillas", r)}
-                      className="w-full rounded border border-transparent px-1 py-1 text-left transition hover:border-indigo-200 hover:bg-indigo-50"
+                      className="w-full rounded border border-transparent px-1 py-1 text-left transition hover:border-indigo-200 hover:bg-indigo-50 dark:hover:border-indigo-700 dark:hover:bg-indigo-900/30"
                     >
                       Total <b>{r.cuadrillas.total}</b> | Operativa{" "}
                       <b>{r.cuadrillas.operativa}</b> | En campo{" "}
@@ -299,15 +299,15 @@ export function GerenciaHomeClient() {
                     <button
                       type="button"
                       onClick={() => abrirDetalleGestor("ordenes", r)}
-                      className="w-full rounded border border-transparent px-1 py-1 text-left transition hover:border-emerald-200 hover:bg-emerald-50"
+                      className="w-full rounded border border-transparent px-1 py-1 text-left transition hover:border-emerald-200 hover:bg-emerald-50 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/30"
                     >
                       Total <b>{r.ordenes.total}</b> |{" "}
-                      <span className={r.ordenes.agendada > 0 ? "font-semibold text-slate-800" : ""}>
+                      <span className={r.ordenes.agendada > 0 ? "font-semibold text-slate-800 dark:text-slate-100" : ""}>
                         Agendada{" "}
                         <span
                           className={
                             r.ordenes.agendada > 0
-                              ? "rounded bg-amber-100 px-1 py-0.5 font-bold text-amber-800"
+                              ? "rounded bg-amber-100 px-1 py-0.5 font-bold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
                               : ""
                           }
                         >
@@ -320,7 +320,7 @@ export function GerenciaHomeClient() {
                         <span
                           className={
                             r.ordenes.iniciada > 0
-                              ? "rounded bg-emerald-100 px-1 py-0.5 font-bold text-emerald-800"
+                              ? "rounded bg-emerald-100 px-1 py-0.5 font-bold text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
                               : ""
                           }
                         >
@@ -335,7 +335,7 @@ export function GerenciaHomeClient() {
                     <button
                       type="button"
                       onClick={() => abrirDetalleGestor("llamadas", r)}
-                      className="w-full rounded border border-transparent px-1 py-1 text-left transition hover:border-amber-200 hover:bg-amber-50"
+                      className="w-full rounded border border-transparent px-1 py-1 text-left transition hover:border-amber-200 hover:bg-amber-50 dark:hover:border-amber-700 dark:hover:bg-amber-900/30"
                     >
                       {r.llamadas.realizadas}/{r.llamadas.total} | Pendientes{" "}
                       <b>{r.llamadas.pendientes}</b>
@@ -364,10 +364,10 @@ export function GerenciaHomeClient() {
           }}
         >
           <div
-            className="max-h-[85vh] w-full max-w-6xl overflow-hidden rounded-xl border bg-white shadow-2xl"
+            className="max-h-[85vh] w-full max-w-6xl overflow-hidden rounded-xl border bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b p-3">
+            <div className="flex items-center justify-between border-b p-3 dark:border-slate-700">
               <h3 className="text-base font-semibold">
                 {modal.type === "cuadrillas"
                   ? `Cuadrillas de ${modal.gestorNombre}`
@@ -381,7 +381,7 @@ export function GerenciaHomeClient() {
                   setModal(null);
                   setDetalle(null);
                 }}
-                className="rounded border px-3 py-1 text-sm"
+                className="rounded border border-slate-300 px-3 py-1 text-sm dark:border-slate-700 dark:text-slate-200"
               >
                 Cerrar
               </button>
@@ -399,7 +399,7 @@ export function GerenciaHomeClient() {
               )}
               {!loadingDetalle && !!detalle && (
                 <table className="min-w-full border-collapse text-sm">
-                  <thead className="bg-slate-100 text-slate-700">
+                  <thead className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                     <tr>
                       {modal.type === "cuadrillas" && (
                         <>
@@ -426,10 +426,10 @@ export function GerenciaHomeClient() {
                   <tbody>
                     {modal.type === "cuadrillas" &&
                       detalle.cuadrillas.map((c) => (
-                        <tr key={c.cuadrillaId} className="border">
+                        <tr key={c.cuadrillaId} className="border border-slate-200 dark:border-slate-700">
                           <td className="border p-2">
                             <div className="font-medium">{c.cuadrillaNombre}</div>
-                            <div className="text-xs text-slate-500">{c.cuadrillaId}</div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">{c.cuadrillaId}</div>
                           </td>
                           <td className="border p-2">
                             <span
@@ -440,12 +440,12 @@ export function GerenciaHomeClient() {
                           </td>
                           <td className="border p-2 text-xs">
                             Total <b>{c.ordenes.total}</b> |{" "}
-                            <span className={c.ordenes.agendada > 0 ? "font-semibold text-slate-800" : ""}>
+                            <span className={c.ordenes.agendada > 0 ? "font-semibold text-slate-800 dark:text-slate-100" : ""}>
                               Agendada{" "}
                               <span
                                 className={
                                   c.ordenes.agendada > 0
-                                    ? "rounded bg-amber-100 px-1 py-0.5 font-bold text-amber-800"
+                                    ? "rounded bg-amber-100 px-1 py-0.5 font-bold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
                                     : ""
                                 }
                               >
@@ -458,7 +458,7 @@ export function GerenciaHomeClient() {
                               <span
                                 className={
                                   c.ordenes.iniciada > 0
-                                    ? "rounded bg-emerald-100 px-1 py-0.5 font-bold text-emerald-800"
+                                    ? "rounded bg-emerald-100 px-1 py-0.5 font-bold text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
                                     : ""
                                 }
                               >
@@ -476,7 +476,7 @@ export function GerenciaHomeClient() {
                       ))}
                     {(modal.type === "ordenes" || modal.type === "llamadas") &&
                       groupedOrdenes.flatMap((g) => [
-                        <tr key={`h-${modal.type}-${g.cuadrillaId}`} className="border bg-slate-50">
+                        <tr key={`h-${modal.type}-${g.cuadrillaId}`} className="border bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
                           <td
                             className="border p-2 font-semibold"
                             colSpan={modal.type === "ordenes" ? 3 : 5}
@@ -489,7 +489,7 @@ export function GerenciaHomeClient() {
                             modal.type === "ordenes" ? true : !!String(o.estadoLlamada || "").trim()
                           )
                           .map((o) => (
-                            <tr key={`${modal.type}-${o.id}-${o.cuadrillaId}`} className="border">
+                            <tr key={`${modal.type}-${o.id}-${o.cuadrillaId}`} className="border border-slate-200 dark:border-slate-700">
                               <td className="border p-2">{o.tramo || "-"}</td>
                               <td className="border p-2">{o.cliente || "-"}</td>
                               <td className="border p-2">

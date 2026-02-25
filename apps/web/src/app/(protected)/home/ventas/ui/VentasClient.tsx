@@ -257,13 +257,13 @@ export default function VentasClient({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+    <div className="space-y-4 text-slate-900 dark:text-slate-100">
+      <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
         <label className="text-sm">Área</label>
         <select
           value={areaFilter}
           onChange={(e) => setAreaFilter(e.target.value as any)}
-          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
         >
           <option value="ALL">Todas</option>
           <option value="INSTALACIONES">Instalaciones</option>
@@ -275,7 +275,7 @@ export default function VentasClient({
             <select
               value={coordFilter}
               onChange={(e) => setCoordFilter(e.target.value)}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             >
               <option value="">Todos</option>
               {coordinadores.map((c) => (
@@ -294,7 +294,7 @@ export default function VentasClient({
             setYearFilter(v as any);
             if (v === "ALL") setMonthFilter("ALL");
           }}
-          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
         >
           <option value="ALL">Todos</option>
           {Array.from({ length: 5 }).map((_, i) => {
@@ -310,7 +310,7 @@ export default function VentasClient({
         <select
           value={monthFilter}
           onChange={(e) => setMonthFilter(e.target.value === "ALL" ? "ALL" : Number(e.target.value))}
-          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
           disabled={yearFilter === "ALL"}
         >
           <option value="ALL">Todos</option>
@@ -339,12 +339,12 @@ export default function VentasClient({
           checked={onlyPending}
           onChange={(e) => setOnlyPending(e.target.checked)}
         />
-        {loading && <span className="text-xs text-slate-500">Cargando...</span>}
+        {loading && <span className="text-xs text-slate-500 dark:text-slate-400">Cargando...</span>}
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-100 text-slate-700">
+          <thead className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-100">
             <tr>
               <th className="text-left px-3 py-2">ID</th>
               <th className="text-left px-3 py-2">Área</th>
@@ -360,7 +360,7 @@ export default function VentasClient({
           </thead>
           <tbody>
             {ventasView.map((v) => (
-              <tr key={v.id} className="border-t border-slate-200 hover:bg-slate-50">
+              <tr key={v.id} className="border-t border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/70">
                 <td className="px-3 py-2 font-mono">{v.id}</td>
                 <td className="px-3 py-2">{v.area}</td>
                 <td className="px-3 py-2">{v.cuadrillaNombre || v.cuadrillaId}</td>
@@ -372,7 +372,7 @@ export default function VentasClient({
                 <td className="px-3 py-2">{v.createdAtStr || "-"}</td>
                 <td className="px-3 py-2 text-right">
                   <button
-                    className="rounded-lg border border-blue-300 px-2 py-1 text-blue-700 hover:bg-blue-50"
+                    className="rounded-lg border border-blue-300 px-2 py-1 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-900/30"
                     onClick={() => loadDetalle(v.id)}
                   >
                     Ver
@@ -382,7 +382,7 @@ export default function VentasClient({
             ))}
             {ventasView.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-3 py-4 text-center text-muted-foreground">
+                <td colSpan={10} className="px-3 py-4 text-center text-slate-500 dark:text-slate-400">
                   No hay ventas
                 </td>
               </tr>
@@ -397,7 +397,7 @@ export default function VentasClient({
             type="button"
             onClick={() => loadVentas(false)}
             disabled={loading}
-            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
           >
             {loading ? "Cargando..." : "Cargar más"}
           </button>
@@ -405,8 +405,8 @@ export default function VentasClient({
       )}
 
       {selectedVenta && (
-        <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
+        <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="font-medium">Detalle venta: {selectedVenta.id}</div>
             <div className="text-sm">Estado: {selectedVenta.estado}</div>
           </div>
@@ -427,11 +427,11 @@ export default function VentasClient({
           <div className="space-y-2">
             <div className="text-sm font-medium">Materiales vendidos</div>
             {detalleItems.length === 0 ? (
-              <div className="text-sm text-muted-foreground">Sin detalle de materiales.</div>
+              <div className="text-sm text-slate-500 dark:text-slate-400">Sin detalle de materiales.</div>
             ) : (
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
                 <table className="min-w-full text-sm">
-                  <thead className="bg-slate-100 text-slate-700">
+                  <thead className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-100">
                     <tr>
                       <th className="px-3 py-2 text-left">Material</th>
                       <th className="px-3 py-2 text-left">Unidad</th>
@@ -448,10 +448,10 @@ export default function VentasClient({
                           ? Number(it.metros || 0).toFixed(2)
                           : String(Math.floor(Number(it.und || 0)));
                       return (
-                        <tr key={`${it.materialId}-${idx}`} className="border-t border-slate-200 hover:bg-slate-50">
+                        <tr key={`${it.materialId}-${idx}`} className="border-t border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/70">
                           <td className="px-3 py-2">
                             {it.nombre || it.materialId}
-                            <div className="text-xs text-slate-500">{it.materialId}</div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">{it.materialId}</div>
                           </td>
                           <td className="px-3 py-2">{unidad}</td>
                           <td className="px-3 py-2 text-right">{qty}</td>
@@ -469,12 +469,12 @@ export default function VentasClient({
           {canEdit && selectedVenta.estado !== "PAGADO" && (
             <div className="space-y-2">
               <div className="text-sm font-medium">Cuotas</div>
-              <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
                 <input
                   type="number"
                   min={1}
                   value={cuotasCount}
-                  className="w-24 rounded border px-2 py-1"
+                  className="w-24 rounded border border-slate-300 bg-white px-2 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                   onChange={(e) => {
                     const n = Math.max(1, Number(e.target.value || 1));
                     setCuotasCount(n);
@@ -483,19 +483,19 @@ export default function VentasClient({
                 />
                 <button
                   type="button"
-                  className="rounded border px-2 py-1 text-xs"
+                  className="rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:hover:bg-slate-800"
                   onClick={() => splitCuotas(cuotasCount || 1)}
                 >
                   Recalcular
                 </button>
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-slate-500 dark:text-slate-400">
                   Suma: {centsToMoney(totalCentsDraft)}
                 </span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                 {cuotasDraft.map((c, idx) => (
-                  <div key={c.n} className="rounded border p-2">
+                  <div key={c.n} className="rounded border border-slate-200 p-2 dark:border-slate-700">
                     <div className="text-xs mb-1">Cuota {c.n}</div>
                     <input
                       value={c.monto}
@@ -504,7 +504,7 @@ export default function VentasClient({
                           prev.map((p, i) => (i === idx ? { ...p, monto: e.target.value } : p))
                         )
                       }
-                      className="w-full rounded border px-2 py-1"
+                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                       inputMode="decimal"
                     />
                   </div>
@@ -528,18 +528,18 @@ export default function VentasClient({
               const pagado = Number(c.pagadoMontoCents || 0);
               const pendiente = Math.max(0, Number(c.montoCents || 0) - pagado);
               return (
-                <div key={c.id} className="rounded border p-2 flex items-center justify-between gap-2">
+                <div key={c.id} className="flex flex-col gap-2 rounded border border-slate-200 p-2 dark:border-slate-700 md:flex-row md:items-center md:justify-between">
                   <div className="text-sm">
                     Cuota {c.n} | Monto: {centsToMoney(c.montoCents)} | Pagado: {centsToMoney(pagado)} | Pendiente: {centsToMoney(pendiente)} | Estado: {c.estado || "-"}
                   </div>
                   {canPagar && pendiente > 0 && (
-                    <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
                       <input
                         value={paymentInputs[String(c.n)] || ""}
                         onChange={(e) =>
                           setPaymentInputs((prev) => ({ ...prev, [String(c.n)]: e.target.value }))
                         }
-                        className="w-24 rounded border px-2 py-1"
+                        className="w-24 rounded border border-slate-300 bg-white px-2 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                         inputMode="decimal"
                         placeholder={centsToMoney(pendiente)}
                       />
@@ -573,4 +573,5 @@ export default function VentasClient({
     </div>
   );
 }
+
 

@@ -38,17 +38,17 @@ export default async function UsuariosListPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 text-slate-900 dark:text-slate-100">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Usuarios</h1>
-        <Link className="rounded border px-3 py-2 hover:bg-black/5" href="/admin/usuarios/new">
+        <Link className="rounded border border-slate-300 px-3 py-2 hover:bg-black/5 dark:border-slate-700 dark:hover:bg-slate-800" href="/admin/usuarios/new">
           Nuevo usuario
         </Link>
       </div>
 
-      <div className="rounded border overflow-hidden">
+      <div className="rounded border border-slate-200 overflow-hidden dark:border-slate-700">
         <table className="w-full text-sm">
-          <thead className="bg-black/5">
+          <thead className="bg-black/5 dark:bg-slate-800">
             <tr>
               <th className="p-2 text-left">Email</th>
               <th className="p-2 text-left">Roles</th>
@@ -60,13 +60,13 @@ export default async function UsuariosListPage() {
 
           <tbody>
             {rows.map((r) => (
-              <tr key={r.uid} className="border-t">
+              <tr key={r.uid} className="border-t border-slate-200 dark:border-slate-700">
                 <td className="p-2">{emailByUid.get(r.uid) ?? "-"}</td>
                 <td className="p-2">{(r.roles ?? []).join(", ")}</td>
                 <td className="p-2">{(r.areas ?? []).join(", ")}</td>
                 <td className="p-2">{r.estadoAcceso}</td>
                 <td className="p-2">
-                  <Link className="underline" href={`/admin/usuarios/${r.uid}`}>
+                  <Link className="underline decoration-slate-400 underline-offset-2 dark:decoration-slate-500" href={`/admin/usuarios/${r.uid}`}>
                     Ver / editar
                   </Link>
                 </td>
@@ -75,7 +75,7 @@ export default async function UsuariosListPage() {
 
             {rows.length === 0 && (
               <tr>
-                <td className="p-4 opacity-70" colSpan={5}>
+                <td className="p-4 text-slate-500 dark:text-slate-400" colSpan={5}>
                   No hay usuarios todavía.
                 </td>
               </tr>
@@ -84,7 +84,7 @@ export default async function UsuariosListPage() {
         </table>
 
         {missing.length > 10 && (
-          <div className="p-3 text-xs opacity-70 border-t">
+          <div className="border-t border-slate-200 p-3 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
             Nota: se muestran emails de Auth solo para los primeros {MAX_AUTH_LOOKUPS} usuarios sin perfil.
             (Recomendación: crear/sincronizar perfiles para todos.)
           </div>

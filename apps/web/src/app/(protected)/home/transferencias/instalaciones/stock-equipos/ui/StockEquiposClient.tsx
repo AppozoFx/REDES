@@ -480,7 +480,7 @@ export default function StockEquiposClient() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-xl border bg-white p-4">
+      <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4">
         <div className="mb-2 text-sm font-semibold">Filtros de Analisis</div>
         <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-6">
           <input
@@ -506,7 +506,7 @@ export default function StockEquiposClient() {
                 : "Filtrar por descripciones"}
             </button>
             {descripcionOpen && (
-              <div className="absolute left-0 top-full z-50 mt-1 w-[min(92vw,420px)] rounded border bg-white p-2 shadow-xl">
+              <div className="absolute left-0 top-full z-50 mt-1 w-[min(92vw,420px)] rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-2 shadow-xl">
                 <input
                   value={descripcionQuery}
                   onChange={(e) => setDescripcionQuery(e.target.value)}
@@ -539,14 +539,14 @@ export default function StockEquiposClient() {
                   <button
                     type="button"
                     onClick={() => setDescripcionesSeleccionadas(new Set())}
-                    className="rounded border px-2 py-1 text-xs hover:bg-slate-50"
+                    className="rounded border px-2 py-1 text-xs hover:bg-slate-50 dark:hover:bg-slate-800"
                   >
                     Limpiar
                   </button>
                   <button
                     type="button"
                     onClick={() => setDescripcionOpen(false)}
-                    className="rounded border px-2 py-1 text-xs hover:bg-slate-50"
+                    className="rounded border px-2 py-1 text-xs hover:bg-slate-50 dark:hover:bg-slate-800"
                   >
                     Cerrar
                   </button>
@@ -584,7 +584,7 @@ export default function StockEquiposClient() {
               setBusquedaSerie("");
               setSeleccionDetalle(null);
             }}
-            className="rounded border px-3 py-2 text-sm hover:bg-slate-50"
+            className="rounded border px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             Limpiar filtros
           </button>
@@ -593,14 +593,14 @@ export default function StockEquiposClient() {
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {viewerScope === "all" && kpiAlmacen.map((k) => (
-          <div key={`alm-${k.tipo}`} className="rounded-xl border bg-white p-4">
+          <div key={`alm-${k.tipo}`} className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4">
             <div className="text-xs uppercase text-slate-500">{k.tipo}</div>
             <div className="text-2xl font-semibold">{k.cantidad}</div>
             <div className="text-xs text-slate-500">En almacen</div>
           </div>
         ))}
         {kpiCampo.map((k) => (
-          <div key={`cam-${k.tipo}`} className="rounded-xl border bg-white p-4">
+          <div key={`cam-${k.tipo}`} className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4">
             <div className="text-xs uppercase text-slate-500">{k.tipo}</div>
             <div className="text-2xl font-semibold">{k.cantidad}</div>
             <div className="text-xs text-slate-500">En campo</div>
@@ -608,11 +608,11 @@ export default function StockEquiposClient() {
         ))}
       </section>
 
-      <section className="rounded-xl border bg-white p-4">
+      <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4">
         <h2 className="mb-3 text-lg font-semibold">Resumen por cuadrilla</h2>
         <div className="overflow-auto">
           <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-slate-700">
+            <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-200">
               <tr className="text-left">
                 <th className="p-2">Cuadrilla</th>
                 <th className="p-2 text-right">ONT</th>
@@ -627,7 +627,7 @@ export default function StockEquiposClient() {
             </thead>
             <tbody>
               {resumenCampoPorCuadrilla.map((row) => (
-                <tr key={row.nombre} className="border-t hover:bg-slate-50">
+                <tr key={row.nombre} className="border-t hover:bg-slate-50 dark:hover:bg-slate-800">
                   <td className="p-2 font-medium">{row.nombre}</td>
                   <td className="p-2 text-right">{row.ONT}</td>
                   <td className="p-2 text-right">{row.MESH}</td>
@@ -652,7 +652,7 @@ export default function StockEquiposClient() {
       </section>
 
       {seleccionDetalle && (
-        <section className="rounded-xl border bg-white p-4">
+        <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 className="text-lg font-semibold">Detalle de equipos - {seleccionDetalle}</h3>
@@ -666,7 +666,7 @@ export default function StockEquiposClient() {
           </div>
           <div className="overflow-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-slate-700">
+              <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-200">
                 <tr className="text-left">
                   <th className="p-2">SN</th>
                   <th className="p-2">Equipo</th>
@@ -709,7 +709,7 @@ export default function StockEquiposClient() {
       )}
 
       {viewerScope === "all" && (
-        <section className="rounded-xl border bg-white p-4">
+        <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-semibold">Series en almacen</h2>
             <div className="text-xs text-slate-600">
@@ -726,7 +726,7 @@ export default function StockEquiposClient() {
           </div>
           <div className="overflow-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-slate-700">
+              <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-200">
                 <tr className="text-left">
                   <th className="p-2">SN</th>
                   <th className="p-2">Equipo</th>
@@ -756,3 +756,6 @@ export default function StockEquiposClient() {
     </div>
   );
 }
+
+
+

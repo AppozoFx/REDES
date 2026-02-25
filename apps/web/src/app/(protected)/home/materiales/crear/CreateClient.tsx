@@ -97,49 +97,49 @@ export default function CreateMaterialClient() {
   }
 
   const fieldClass =
-    "mt-1 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
+    "mt-1 h-10 w-full rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40";
 
   return (
-    <div className="space-y-4">
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h1 className="text-xl font-semibold text-slate-900">Crear material</h1>
-        <p className="mt-1 text-sm text-slate-500">Completa datos basicos, unidad y reglas de stock/precio.</p>
+    <div className="space-y-4 text-slate-900 dark:text-slate-100">
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Crear material</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Completa datos basicos, unidad y reglas de stock/precio.</p>
       </section>
 
       <form onSubmit={onSubmit} className="space-y-4">
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-3 text-sm font-semibold text-slate-900">Datos generales</h2>
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <h2 className="mb-3 text-sm font-semibold text-slate-900 dark:text-slate-100">Datos generales</h2>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div className="lg:col-span-2">
-              <label className="block text-sm font-medium text-slate-700">Nombre</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Nombre</label>
               <input value={nombre} onChange={(e) => setNombre(e.target.value.toUpperCase())} className={fieldClass} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700">Código generado</label>
-              <div className="mt-1 flex h-10 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 font-mono text-xs text-slate-700">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Código generado</label>
+              <div className="mt-1 flex h-10 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 font-mono text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200">
                 {matId || "(vacio)"}
               </div>
             </div>
             <div className="lg:col-span-3">
-              <label className="block text-sm font-medium text-slate-700">Descripcion (opcional)</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Descripcion (opcional)</label>
               <textarea
                 value={descripcion}
                 onChange={(e) => setDescripcion(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40"
                 rows={3}
               />
             </div>
           </div>
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-3 text-sm font-semibold text-slate-900">Clasificacion</h2>
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <h2 className="mb-3 text-sm font-semibold text-slate-900 dark:text-slate-100">Clasificacion</h2>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">Areas</label>
+              <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Areas</label>
               <div className="flex flex-wrap gap-3 text-sm">
                 {[{ key: "INSTALACIONES", label: "INSTALACIONES" }, { key: "AVERIAS", label: "AVERIAS" }].map((a) => (
-                  <label key={a.key} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
+                  <label key={a.key} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700 dark:text-slate-200">
                     <input
                       type="checkbox"
                       checked={areas.includes(a.key)}
@@ -153,10 +153,10 @@ export default function CreateMaterialClient() {
               </div>
             </div>
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">Unidad de medida</label>
+              <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Unidad de medida</label>
               <div className="flex gap-3 text-sm">
                 {["UND", "METROS"].map((u) => (
-                  <label key={u} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
+                  <label key={u} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700 dark:text-slate-200">
                     <input type="radio" name="unidad" checked={unidadTipo === u} onChange={() => setUnidadTipo(u as any)} />
                     {u}
                   </label>
@@ -166,10 +166,10 @@ export default function CreateMaterialClient() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-900">Stock y precios</h2>
-            <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Stock y precios</h2>
+            <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
               <input type="checkbox" checked={vendible} onChange={(e) => setVendible(e.target.checked)} />
               Material vendible
             </label>
@@ -179,19 +179,19 @@ export default function CreateMaterialClient() {
             <div className="space-y-3">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">1 UND = (metros)</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">1 UND = (metros)</label>
                   <input value={metrosPorUnd} onChange={(e) => setMetrosPorUnd(e.target.value)} className={fieldClass} inputMode="decimal" />
                 </div>
                 {vendible && (
                   <div>
-                    <label className="block text-sm font-medium text-slate-700">Precio por metro</label>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Precio por metro</label>
                     <input value={precioPorMetro} onChange={(e) => setPrecioPorMetro(e.target.value)} className={fieldClass} inputMode="decimal" />
                   </div>
                 )}
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">Minimo (UND)</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Minimo (UND)</label>
                   <input
                     value={minUndUi}
                     onChange={(e) => {
@@ -204,7 +204,7 @@ export default function CreateMaterialClient() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">Metros sueltos</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Metros sueltos</label>
                   <input value={minMetrosSueltosUi} onChange={(e) => setMinMetrosSueltosUi(e.target.value)} className={fieldClass} inputMode="decimal" />
                 </div>
               </div>
@@ -216,19 +216,19 @@ export default function CreateMaterialClient() {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {vendible && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">Precio por UND</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Precio por UND</label>
                   <input value={precioUnd} onChange={(e) => setPrecioUnd(e.target.value)} className={fieldClass} inputMode="decimal" />
                 </div>
               )}
               <div>
-                <label className="block text-sm font-medium text-slate-700">Minimo (UND)</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Minimo (UND)</label>
                 <input value={minStockUnd} onChange={(e) => setMinStockUnd(e.target.value)} className={fieldClass} inputMode="numeric" />
               </div>
             </div>
           )}
         </section>
 
-        <div className="sticky bottom-3 z-10 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+        <div className="sticky bottom-3 z-10 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
           <div className="flex flex-wrap items-center gap-3">
             <button type="submit" disabled={pending} className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50">
               {pending ? "Guardando..." : "Guardar"}
@@ -237,15 +237,15 @@ export default function CreateMaterialClient() {
               type="button"
               disabled={pending}
               onClick={() => router.push("/home/materiales")}
-              className="h-10 rounded-lg border border-slate-300 px-4 text-sm transition hover:bg-slate-100 disabled:opacity-50"
+              className="h-10 rounded-lg border border-slate-300 px-4 text-sm transition hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               Volver al listado
             </button>
-            <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+            <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
               <input type="checkbox" checked={volverAlGuardar} onChange={(e) => setVolverAlGuardar(e.target.checked)} />
               Volver al guardar
             </label>
-            <button type="button" disabled={pending} className="text-sm text-slate-500 underline-offset-2 hover:underline disabled:opacity-50" onClick={resetForm}>
+            <button type="button" disabled={pending} className="text-sm text-slate-500 underline-offset-2 hover:underline disabled:opacity-50 dark:text-slate-400" onClick={resetForm}>
               Limpiar campos
             </button>
           </div>

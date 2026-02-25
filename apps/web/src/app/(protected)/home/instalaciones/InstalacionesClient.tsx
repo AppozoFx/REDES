@@ -87,6 +87,7 @@ const toArray = (v: unknown) => {
    Componente principal
 ========================= */
 export default function InstalacionesClient() {
+  const [isDark, setIsDark] = useState(false);
   const [instalaciones, setInstalaciones] = useState<any[]>([]);
   const [cargando, setCargando] = useState(false);
   const [ediciones, setEdiciones] = useState<Record<string, any>>({});
@@ -110,6 +111,20 @@ export default function InstalacionesClient() {
   });
 
   const debouncedBusqueda = useDebounce(filtros.busqueda);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const sync = () => setIsDark(root.classList.contains("dark") || mq.matches);
+    sync();
+    const obs = new MutationObserver(sync);
+    obs.observe(root, { attributes: true, attributeFilter: ["class"] });
+    mq.addEventListener?.("change", sync);
+    return () => {
+      obs.disconnect();
+      mq.removeEventListener?.("change", sync);
+    };
+  }, []);
 
   /* ===== Sticky offsets / mediciones ===== */
   const kpiRef = useRef<HTMLDivElement | null>(null);
@@ -414,8 +429,8 @@ export default function InstalacionesClient() {
 
   const renderLinea = (label: string, value: any) => (
     <div className="flex items-start gap-2 text-sm">
-      <span className="w-32 shrink-0 text-slate-500">{label}</span>
-      <span className="text-slate-800 break-words">{value || "-"}</span>
+      <span className="w-32 shrink-0 text-slate-500 dark:text-slate-400">{label}</span>
+      <span className="break-words text-slate-800 dark:text-slate-100">{value || "-"}</span>
     </div>
   );
 
@@ -521,7 +536,7 @@ export default function InstalacionesClient() {
      Render
   ========================= */
   return (
-    <div className="p-4">
+    <div className="p-4 text-slate-900 dark:text-slate-100">
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Instalaciones</h1>
@@ -534,7 +549,7 @@ export default function InstalacionesClient() {
           </button>
           <button
             onClick={limpiarFiltros}
-            className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm px-3 py-2 rounded border"
+            className="rounded border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-700 hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
           >
             Limpiar filtros
           </button>
@@ -565,7 +580,7 @@ export default function InstalacionesClient() {
             <span className="bg-orange-200 text-orange-800 rounded-full px-2 py-0.5 text-xs">Cableado</span> {kpis.totalCableado}
           </span>
           <span className="inline-flex items-center gap-2">
-            <span className="bg-slate-200 text-slate-800 rounded-full px-2 py-0.5 text-xs">Cat5e</span> {kpis.totalCat5e}
+            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-800 dark:bg-slate-700 dark:text-slate-100">Cat5e</span> {kpis.totalCat5e}
             <span className="bg-slate-400 text-slate-900 rounded-full px-2 py-0.5 text-xs">Cat6</span> {kpis.totalCat6}
             <span className="bg-slate-800 text-white rounded-full px-2 py-0.5 text-xs">UTP</span> {kpis.totalUTP}
           </span>
@@ -575,7 +590,7 @@ export default function InstalacionesClient() {
       {/* Filtros */}
       <div className="mb-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
         <div className="flex flex-col">
-          <label className="text-sm font-medium text-gray-700">Mes</label>
+          <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Mes</label>
           <input
             type="month"
             name="mes"
@@ -586,7 +601,7 @@ export default function InstalacionesClient() {
         </div>
 
         <div className="flex flex-col">
-          <label className="text-sm font-medium text-gray-700">Dia</label>
+          <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Dia</label>
           <input
             type="date"
             name="dia"
@@ -597,7 +612,7 @@ export default function InstalacionesClient() {
         </div>
 
         <div className="flex flex-col">
-          <label className="text-sm font-medium text-gray-700 mb-1">Tipo de Cuadrilla</label>
+          <label className="mb-1 text-sm font-medium text-gray-700 dark:text-slate-300">Tipo de Cuadrilla</label>
           <Select
             isMulti
             name="tipoCuadrilla"
@@ -608,11 +623,33 @@ export default function InstalacionesClient() {
             placeholder="Seleccionar..."
             value={opcionesTipoCuadrilla.filter((opt) => filtros.tipoCuadrilla.includes(opt.value))}
             onChange={(sel) => setFiltros((p) => ({ ...p, tipoCuadrilla: (sel || []).map((s) => s.value) }))}
+            styles={
+              isDark
+                ? {
+                    control: (base: any, state: any) => ({
+                      ...base,
+                      backgroundColor: "#020617",
+                      borderColor: state.isFocused ? "#38bdf8" : "#334155",
+                      boxShadow: "none",
+                    }),
+                    menu: (base: any) => ({ ...base, backgroundColor: "#0f172a", color: "#e2e8f0" }),
+                    option: (base: any, state: any) => ({
+                      ...base,
+                      backgroundColor: state.isSelected ? "#1d4ed8" : state.isFocused ? "#1e293b" : "#0f172a",
+                      color: "#e2e8f0",
+                    }),
+                    input: (base: any) => ({ ...base, color: "#e2e8f0" }),
+                    placeholder: (base: any) => ({ ...base, color: "#94a3b8" }),
+                    multiValue: (base: any) => ({ ...base, backgroundColor: "#1e293b" }),
+                    multiValueLabel: (base: any) => ({ ...base, color: "#e2e8f0" }),
+                  }
+                : undefined
+            }
           />
         </div>
 
         <div className="flex flex-col">
-          <label className="text-sm font-medium text-gray-700 mb-1">Cuadrilla</label>
+          <label className="mb-1 text-sm font-medium text-gray-700 dark:text-slate-300">Cuadrilla</label>
           <input
             type="text"
             name="cuadrilla"
@@ -625,7 +662,7 @@ export default function InstalacionesClient() {
         </div>
 
         <div className="flex flex-col">
-          <label className="text-sm font-medium text-gray-700">Codigo o Cliente</label>
+          <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Codigo o Cliente</label>
           <input
             type="text"
             name="busqueda"
@@ -666,12 +703,12 @@ export default function InstalacionesClient() {
             </label>
 
             <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-700">Cat5e</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Cat5e</label>
               <select
                 name="cat5eFiltro"
                 value={filtros.cat5eFiltro}
                 onChange={handleFiltroInput}
-                className="border px-2 py-1 rounded text-sm"
+                className="rounded border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
               >
                 <option value="">Todos</option>
                 {[0, 1, 2, 3, 4, 5].map((n) => (
@@ -706,10 +743,10 @@ export default function InstalacionesClient() {
       </div>
 
       {/* Tabla */}
-      <div className="overflow-x-auto border rounded-lg relative">
+      <div className="relative overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
         <table className="min-w-full text-sm">
-          <thead className="bg-gray-100" ref={theadRef}>
-            <tr className="text-center text-gray-700 font-semibold">
+          <thead className="bg-gray-100 dark:bg-slate-800" ref={theadRef}>
+            <tr className="text-center font-semibold text-gray-700 dark:text-slate-200">
               {[
                 { k: "fechaInstalacion", lbl: "Fecha Instalacion", w: "w-40" },
                 { k: "cuadrillaNombre", lbl: "Cuadrilla", w: "w-44" },
@@ -733,7 +770,7 @@ export default function InstalacionesClient() {
               ].map((col) => (
                 <th
                   key={col.k}
-                  className={cls("p-2 border cursor-pointer select-none bg-gray-100", col.w)}
+                  className={cls("cursor-pointer select-none border border-slate-200 bg-gray-100 p-2 dark:border-slate-700 dark:bg-slate-800", col.w)}
                   onClick={() => col.k !== "accion" && setSortKey(col.k)}
                   title="Ordenar"
                 >
@@ -755,13 +792,13 @@ export default function InstalacionesClient() {
 
             {cargando ? (
               <tr>
-                <td colSpan={19} className="p-6 text-center text-gray-500">
+                <td colSpan={19} className="p-6 text-center text-gray-500 dark:text-slate-400">
                   Cargando...
                 </td>
               </tr>
             ) : pageData.length === 0 ? (
               <tr>
-                <td colSpan={19} className="p-6 text-center text-gray-500">
+                <td colSpan={19} className="p-6 text-center text-gray-500 dark:text-slate-400">
                   No hay registros para los filtros seleccionados.
                 </td>
               </tr>
@@ -775,25 +812,25 @@ export default function InstalacionesClient() {
                 const puntos = cat5 + cat6;
 
                 return (
-                  <tr key={l.id} className="hover:bg-gray-50 text-center">
-                    <td className="border p-2">{formatearFecha(f)}</td>
+                  <tr key={l.id} className="text-center hover:bg-gray-50 dark:hover:bg-slate-800/70">
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">{formatearFecha(f)}</td>
 
-                    <td className="border p-2">{l.cuadrillaNombre || "-"}</td>
-                    <td className="border p-2">{l.codigoCliente || "-"}</td>
-                    <td className="border p-2">{l.documento || "-"}</td>
-                    <td className="border p-2">{l.cliente || "-"}</td>
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">{l.cuadrillaNombre || "-"}</td>
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">{l.codigoCliente || "-"}</td>
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">{l.documento || "-"}</td>
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">{l.cliente || "-"}</td>
 
-                    <td className="border p-2">{(l.tipoOrden || "-").toString()}</td>
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">{(l.tipoOrden || "-").toString()}</td>
 
                     <td
-                      className="border p-1 text-left max-w-[360px]"
+                      className="max-w-[360px] border border-slate-200 p-1 text-left dark:border-slate-700"
                       style={{ maxHeight: 64, overflowY: "auto" }}
                       dangerouslySetInnerHTML={{ __html: resaltarPlanHTML(l.plan) }}
                     />
 
-                    <td className="border p-2">{l.snONT || "-"}</td>
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">{l.snONT || "-"}</td>
 
-                    <td className="border p-2">
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">
                       {Array.isArray(l.snMESH) && l.snMESH.filter(Boolean).length > 0 ? (
                         <div className="flex flex-wrap gap-1 justify-center">
                           {l.snMESH.filter(Boolean).map((sn: string, i: number) => (
@@ -810,7 +847,7 @@ export default function InstalacionesClient() {
                       )}
                     </td>
 
-                    <td className="border p-2">
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">
                       {Array.isArray(l.snBOX) && l.snBOX.filter(Boolean).length > 0 ? (
                         <div className="flex flex-wrap gap-1 justify-center">
                           {l.snBOX.filter(Boolean).map((sn: string, i: number) => (
@@ -827,9 +864,9 @@ export default function InstalacionesClient() {
                       )}
                     </td>
 
-                    <td className="border p-2">{l.snFONO || "-"}</td>
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">{l.snFONO || "-"}</td>
 
-                    <td className="border p-2">
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">
                       <input
                         type="checkbox"
                         className="scale-110"
@@ -842,7 +879,7 @@ export default function InstalacionesClient() {
                       />
                     </td>
 
-                    <td className="border p-2">
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">
                       <input
                         type="checkbox"
                         className="scale-110"
@@ -857,7 +894,7 @@ export default function InstalacionesClient() {
                       />
                     </td>
 
-                    <td className="border p-2">
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">
                       <input
                         type="checkbox"
                         className="scale-110"
@@ -874,31 +911,31 @@ export default function InstalacionesClient() {
                       />
                     </td>
 
-                    <td className="border p-1">
+                    <td className="border border-slate-200 p-1 dark:border-slate-700">
                       <input
                         type="number"
                         min={0}
                         step={1}
                         disabled={!cableadoChecked}
                         value={ediciones[l.id]?.cat5e ?? l.cat5e ?? 0}
-                        className="w-20 text-center border rounded px-2 py-1 disabled:bg-slate-100 disabled:text-slate-500"
+                        className="w-20 rounded border border-slate-300 px-2 py-1 text-center disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:disabled:bg-slate-800"
                         onChange={(e) => handleEdicionChange(l.id, "cat5e", Math.max(0, parseIntSafe(e.target.value)))}
                       />
                     </td>
 
-                    <td className="border p-2">{cat6}</td>
-                    <td className="border p-2">{puntos}</td>
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">{cat6}</td>
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">{puntos}</td>
 
-                    <td className="border p-1">
+                    <td className="border border-slate-200 p-1 dark:border-slate-700">
                       <input
                         type="text"
                         value={ediciones[l.id]?.observacion ?? l.observacion ?? ""}
-                        className="w-full px-2 py-1 border rounded"
+                        className="w-full rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                         onChange={(e) => handleEdicionChange(l.id, "observacion", e.target.value)}
                       />
                     </td>
 
-                    <td className="border p-2">
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">
                       <div className="flex items-center justify-center gap-2">
                         <button
                           className={cls(
@@ -928,14 +965,14 @@ export default function InstalacionesClient() {
 
       {/* Paginacion */}
       <div className="mt-3 flex items-center justify-between">
-        <div className="text-sm text-gray-600">
+        <div className="text-sm text-gray-600 dark:text-slate-400">
           Mostrando <strong>{pageData.length > 0 ? (page - 1) * pageSize + 1 : 0}</strong>-<strong>{
             (page - 1) * pageSize + pageData.length
           }</strong> de <strong>{instalacionesFiltradas.length}</strong>
         </div>
         <div className="flex items-center gap-2">
           <button
-            className="px-3 py-1 rounded border bg-white disabled:opacity-40"
+            className="rounded border border-slate-300 bg-white px-3 py-1 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page === 1}
           >
@@ -945,7 +982,7 @@ export default function InstalacionesClient() {
             Pagina <strong>{page}</strong> / {totalPages}
           </span>
           <button
-            className="px-3 py-1 rounded border bg-white disabled:opacity-40"
+            className="rounded border border-slate-300 bg-white px-3 py-1 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
           >
@@ -958,14 +995,14 @@ export default function InstalacionesClient() {
       {detalleOpen && (
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/40" onClick={cerrarDetalle} />
-          <div className="absolute right-0 top-0 h-full w-full max-w-[520px] bg-white shadow-xl border-l overflow-y-auto">
-            <div className="p-4 border-b flex items-center justify-between">
+          <div className="absolute right-0 top-0 h-full w-full max-w-[520px] overflow-y-auto border-l bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex items-center justify-between border-b p-4 dark:border-slate-700">
               <div>
                 <div className="text-lg font-semibold">Detalle de instalacion</div>
-                <div className="text-xs text-slate-500">Codigo: {detalleItem?.codigoCliente || "-"}</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">Codigo: {detalleItem?.codigoCliente || "-"}</div>
               </div>
               <button
-                className="px-3 py-1 rounded text-sm bg-slate-100 hover:bg-slate-200"
+                className="rounded bg-slate-100 px-3 py-1 text-sm hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                 onClick={cerrarDetalle}
               >
                 Cerrar
@@ -973,7 +1010,7 @@ export default function InstalacionesClient() {
             </div>
 
             <div className="p-4 space-y-4">
-              <div className="rounded-lg border p-3">
+              <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
                 <div className="text-sm font-semibold mb-2">Resumen</div>
                 <div className="space-y-2">
                   {renderLinea("Cliente", detalleItem?.cliente)}
@@ -988,7 +1025,7 @@ export default function InstalacionesClient() {
                 </div>
               </div>
 
-              <div className="rounded-lg border p-3">
+              <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
                 <div className="text-sm font-semibold mb-2">Auditoria</div>
                 <div className="space-y-2">
                   {renderLinea(
@@ -1005,12 +1042,12 @@ export default function InstalacionesClient() {
                 </div>
               </div>
 
-              <div className="rounded-lg border p-3">
+              <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
                 <div className="text-sm font-semibold mb-2">Equipos</div>
                 <div className="space-y-2">
                   {(() => {
                     const equipos = toArray(detalleItem?.equiposInstalados || detalleItem?.equipos || []);
-                    if (!equipos.length) return <div className="text-sm text-slate-500">Sin equipos</div>;
+                    if (!equipos.length) return <div className="text-sm text-slate-500 dark:text-slate-400">Sin equipos</div>;
                     return equipos.map((e: any, i: number) => (
                       <div key={i} className="text-sm border rounded px-2 py-1">
                         {e.tipo || e.kind || "Equipo"} {e.sn ? `- ${e.sn}` : ""} {e.proid ? `(PROID ${e.proid})` : ""}
@@ -1020,12 +1057,12 @@ export default function InstalacionesClient() {
                 </div>
               </div>
 
-              <div className="rounded-lg border p-3">
+              <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
                 <div className="text-sm font-semibold mb-2">Materiales</div>
                 <div className="space-y-2">
                   {(() => {
                     const mats = toArray(detalleItem?.materialesConsumidos || detalleItem?.materiales || []);
-                    if (!mats.length) return <div className="text-sm text-slate-500">Sin materiales</div>;
+                    if (!mats.length) return <div className="text-sm text-slate-500 dark:text-slate-400">Sin materiales</div>;
                     return mats.map((m: any, i: number) => (
                       <div key={i} className="text-sm border rounded px-2 py-1">
                         {m.tipo || m.nombre || "Material"} {m.cantidad ? `x ${m.cantidad}` : ""}
@@ -1035,16 +1072,16 @@ export default function InstalacionesClient() {
                 </div>
               </div>
 
-              <div className="rounded-lg border p-3">
+              <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
                 <div className="text-sm font-semibold mb-2">Llamadas</div>
                 <div className="space-y-2">
                   {(() => {
                     const llamadas = toArray(detalleItem?.llamadas || detalleItem?.llamadasGestoras || []);
-                    if (!llamadas.length) return <div className="text-sm text-slate-500">Sin llamadas</div>;
+                    if (!llamadas.length) return <div className="text-sm text-slate-500 dark:text-slate-400">Sin llamadas</div>;
                     return llamadas.map((ll: any, i: number) => (
                       <div key={i} className="text-sm border rounded px-2 py-1">
                         <div>{ll.gestora || ll.user || ll.estadoLlamada || "Llamada"}</div>
-                        <div className="text-xs text-slate-500">
+                        <div className="text-xs text-slate-500 dark:text-slate-400">
                           {ll.fecha ? formatearFecha(convertirAFecha(ll.fecha)) : ""}{" "}
                           {ll.resultado ? `- ${ll.resultado}` : ""}
                           {ll.horaInicioLlamada && ll.horaInicioLlamada !== "-" ? ` | ${ll.horaInicioLlamada}` : ""}

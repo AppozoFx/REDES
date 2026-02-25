@@ -130,30 +130,30 @@ export default function TecnicosGestionClient() {
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 text-slate-900 dark:text-slate-100">
       <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border bg-white p-4">
-          <div className="text-xs text-gray-500">Total</div>
-          <div className="text-2xl font-semibold text-slate-900">{resumen.total}</div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <div className="text-xs text-gray-500 dark:text-slate-400">Total</div>
+          <div className="text-2xl font-semibold text-slate-900 dark:text-slate-100">{resumen.total}</div>
         </div>
-        <div className="rounded-xl border bg-white p-4">
-          <div className="text-xs text-gray-500">Activos</div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <div className="text-xs text-gray-500 dark:text-slate-400">Activos</div>
           <div className="text-2xl font-semibold text-emerald-700">{resumen.activos}</div>
         </div>
-        <div className="rounded-xl border bg-white p-4">
-          <div className="text-xs text-gray-500">Inactivos</div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <div className="text-xs text-gray-500 dark:text-slate-400">Inactivos</div>
           <div className="text-2xl font-semibold text-rose-700">{resumen.inactivos}</div>
         </div>
       </div>
 
-      <div className="rounded-xl border bg-white p-4">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <input
             type="text"
             placeholder="Buscar por nombre..."
             value={filtro}
             onChange={(e) => setFiltro(e.target.value)}
-            className="w-full md:max-w-md rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm"
+            className="w-full md:max-w-md rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
           />
           <button
             onClick={cargar}
@@ -164,9 +164,9 @@ export default function TecnicosGestionClient() {
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border bg-white">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-100 text-gray-700">
+          <thead className="bg-slate-100 text-gray-700 dark:bg-slate-800 dark:text-slate-200">
             <tr>
               <th className="p-2 text-left">DNI/CE</th>
               <th className="p-2 text-left">Nombres</th>
@@ -182,14 +182,14 @@ export default function TecnicosGestionClient() {
           <tbody>
             {cargando && (
               <tr>
-                <td colSpan={9} className="p-6 text-center text-gray-500">
+                <td colSpan={9} className="p-6 text-center text-gray-500 dark:text-slate-400">
                   Cargando...
                 </td>
               </tr>
             )}
             {!cargando && filtrados.length === 0 && (
               <tr>
-                <td colSpan={9} className="p-6 text-center text-gray-500">
+                <td colSpan={9} className="p-6 text-center text-gray-500 dark:text-slate-400">
                   No hay técnicos para mostrar.
                 </td>
               </tr>
@@ -200,11 +200,11 @@ export default function TecnicosGestionClient() {
                 const estadoColor = estado === "activo" ? "green" : estado === "inactivo" ? "red" : "slate";
                 const editing = editId === t.id;
                 return (
-                  <tr key={t.id} className="border-t">
+                  <tr key={t.id} className="border-t border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/70">
                     <td className="p-2">
                       {editing ? (
                         <input
-                          className="border rounded px-2 py-1 w-full"
+                          className="w-full rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                           value={form.dni_ce || ""}
                           onChange={(e) => setForm((p) => ({ ...p, dni_ce: e.target.value }))}
                         />
@@ -217,7 +217,7 @@ export default function TecnicosGestionClient() {
                     <td className="p-2">
                       {editing ? (
                         <input
-                          className="border rounded px-2 py-1 w-full"
+                          className="w-full rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                           value={form.celular || ""}
                           onChange={(e) => setForm((p) => ({ ...p, celular: e.target.value }))}
                         />
@@ -233,7 +233,7 @@ export default function TecnicosGestionClient() {
                     <td className="p-2">
                       {editing ? (
                         <input
-                          className="border rounded px-2 py-1 w-full"
+                          className="w-full rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                           value={form.fecha_nacimiento || ""}
                           onChange={(e) => setForm((p) => ({ ...p, fecha_nacimiento: e.target.value }))}
                         />

@@ -543,28 +543,28 @@ export default function OrdenCompraClient() {
 
   return (
     <div className="w-full space-y-4">
-      <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-lg">
+      <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-2xl font-semibold text-slate-900">Orden de Compra</h2>
-            <p className="text-sm text-slate-500">
+            <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Orden de Compra</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               Gestiona la orden, revisa instalaciones y genera el PDF final.
             </p>
           </div>
-          <div className={`rounded-full border px-3 py-1 text-xs font-semibold ${lastCode ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+          <div className={`rounded-full border px-3 py-1 text-xs font-semibold ${lastCode ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"}`}>
             {lastCode ? `Ultima OC: ${lastCode}` : "Sin OC generada en esta sesion"}
           </div>
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">
         <div className="grid gap-3 md:grid-cols-4">
           <div className="md:col-span-2">
-            <label className="mb-1 block text-xs font-semibold text-slate-600">Coordinador</label>
+            <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">Coordinador</label>
             <select
               value={coordinadorUid}
               onChange={(e) => setCoordinadorUid(e.target.value)}
-              className="h-10 w-full rounded border px-3 text-sm"
+              className="h-10 w-full rounded border border-slate-300 px-3 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
             >
               <option value="">Selecciona...</option>
               {coordinadores.map((c) => (
@@ -575,21 +575,21 @@ export default function OrdenCompraClient() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-600">Desde</label>
+            <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">Desde</label>
             <input
               type="date"
               value={periodo.desde}
               onChange={(e) => setPeriodo((p) => ({ ...p, desde: e.target.value }))}
-              className="h-10 w-full rounded border px-3 text-sm"
+              className="h-10 w-full rounded border border-slate-300 px-3 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-600">Hasta</label>
+            <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">Hasta</label>
             <input
               type="date"
               value={periodo.hasta}
               onChange={(e) => setPeriodo((p) => ({ ...p, hasta: e.target.value }))}
-              className="h-10 w-full rounded border px-3 text-sm"
+              className="h-10 w-full rounded border border-slate-300 px-3 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
             />
           </div>
         </div>
@@ -606,32 +606,32 @@ export default function OrdenCompraClient() {
           <button
             type="button"
             onClick={agregarItem}
-            className="rounded border px-4 py-2 text-sm hover:bg-slate-50"
+            className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             Agregar ítem
           </button>
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">
         <h2 className="mb-2 text-sm font-semibold">Proveedor (desde Coordinadores)</h2>
         <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded border bg-slate-50 p-2 text-sm">
+          <div className="rounded border bg-slate-50 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
             <div className="text-xs text-slate-500">Razón social</div>
             <div className="font-medium">{selected?.razonSocial || "-"}</div>
           </div>
-          <div className="rounded border bg-slate-50 p-2 text-sm">
+          <div className="rounded border bg-slate-50 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
             <div className="text-xs text-slate-500">RUC</div>
             <div className="font-medium">{selected?.ruc || "-"}</div>
           </div>
-          <div className="rounded border bg-slate-50 p-2 text-sm">
+          <div className="rounded border bg-slate-50 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
             <div className="text-xs text-slate-500">Coordinador</div>
             <div className="font-medium">{selected?.nombre || "-"}</div>
           </div>
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">
         <h2 className="mb-2 text-sm font-semibold">Resumen por instalaciones</h2>
         <div className="grid gap-2 md:grid-cols-5">
           <Metric title="Total instalaciones" value={String(resumen?.totalInstalaciones || 0)} />
@@ -642,11 +642,11 @@ export default function OrdenCompraClient() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">
         <h2 className="mb-2 text-sm font-semibold">Resumen por cuadrilla</h2>
         <div className="overflow-x-auto">
           <table className="min-w-full border-collapse text-sm">
-            <thead className="bg-slate-100">
+            <thead className="bg-slate-100 dark:bg-slate-800 dark:text-slate-200">
               <tr>
                 <th className="border p-2 text-left">Cuadrilla</th>
                 <th className="border p-2">Residencial</th>
@@ -658,7 +658,7 @@ export default function OrdenCompraClient() {
             <tbody>
               {!porCuadrilla.length && (
                 <tr>
-                  <td className="border p-3 text-center text-slate-500" colSpan={5}>
+                  <td className="border p-3 text-center text-slate-500 dark:border-slate-700 dark:text-slate-300" colSpan={5}>
                     Sin datos
                   </td>
                 </tr>
@@ -677,11 +677,11 @@ export default function OrdenCompraClient() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">
         <h2 className="mb-2 text-sm font-semibold">Ítems de Orden de Compra</h2>
         <div className="overflow-x-auto">
           <table className="min-w-full border-collapse text-sm">
-            <thead className="bg-slate-100">
+            <thead className="bg-slate-100 dark:bg-slate-800 dark:text-slate-200">
               <tr>
                 <th className="border p-2">Código</th>
                 <th className="border p-2 text-left">Descripción</th>
@@ -693,7 +693,7 @@ export default function OrdenCompraClient() {
             <tbody>
               {!items.length && (
                 <tr>
-                  <td className="border p-3 text-center text-slate-500" colSpan={5}>
+                  <td className="border p-3 text-center text-slate-500 dark:border-slate-700 dark:text-slate-300" colSpan={5}>
                     Sin ítems
                   </td>
                 </tr>
@@ -704,14 +704,14 @@ export default function OrdenCompraClient() {
                     <input
                       value={it.codigo}
                       onChange={(e) => updateItem(idx, { codigo: e.target.value })}
-                      className="h-9 w-full rounded border px-2"
+                      className="h-9 w-full rounded border border-slate-300 px-2 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                     />
                   </td>
                   <td className="border p-2">
                     <input
                       value={it.descripcion}
                       onChange={(e) => updateItem(idx, { descripcion: e.target.value })}
-                      className="h-9 w-full rounded border px-2"
+                      className="h-9 w-full rounded border border-slate-300 px-2 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                     />
                   </td>
                   <td className="border p-2">
@@ -719,7 +719,7 @@ export default function OrdenCompraClient() {
                       type="number"
                       value={it.cantidad}
                       onChange={(e) => updateItem(idx, { cantidad: Number(e.target.value || 0) })}
-                      className="h-9 w-full rounded border px-2"
+                      className="h-9 w-full rounded border border-slate-300 px-2 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                     />
                   </td>
                   <td className="border p-2">
@@ -727,7 +727,7 @@ export default function OrdenCompraClient() {
                       type="number"
                       value={it.precio}
                       onChange={(e) => updateItem(idx, { precio: Number(e.target.value || 0) })}
-                      className="h-9 w-full rounded border px-2"
+                      className="h-9 w-full rounded border border-slate-300 px-2 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                     />
                   </td>
                   <td className="border p-2 text-right">{money(it.total)}</td>
@@ -739,15 +739,15 @@ export default function OrdenCompraClient() {
 
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-600">Observaciones</label>
+            <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">Observaciones</label>
             <textarea
               value={obs}
               onChange={(e) => setObs(e.target.value)}
-              className="min-h-[84px] w-full rounded border p-2 text-sm"
+              className="min-h-[84px] w-full rounded border border-slate-300 p-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
               placeholder="Observaciones de la orden..."
             />
           </div>
-          <div className="rounded border bg-slate-50 p-3 text-sm">
+          <div className="rounded border bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
             <div>Subtotal: <b>{money(totals.subtotal)}</b></div>
             <div>IGV (18%): <b>{money(totals.igv)}</b></div>
             <div className="text-base">Total: <b>{money(totals.total)}</b></div>
@@ -759,7 +759,7 @@ export default function OrdenCompraClient() {
             >
               {saving ? "Generando..." : "Guardar + Generar PDF"}
             </button>
-            {lastCode && <div className="mt-2 text-xs text-slate-600">Última OC: {lastCode}</div>}
+            {lastCode && <div className="mt-2 text-xs text-slate-600 dark:text-slate-300">Última OC: {lastCode}</div>}
           </div>
         </div>
       </section>
@@ -781,11 +781,11 @@ export default function OrdenCompraClient() {
               Crear nueva OC
             </button>
           </div>
-          <div className="mb-2 flex gap-2">
+          <div className="mb-2 flex flex-wrap gap-2">
             <a
               href={previewUrl}
               download={`${lastCode || "orden-compra"}.pdf`}
-              className="rounded border border-emerald-300 bg-white px-3 py-2 text-sm hover:bg-emerald-50"
+              className="rounded border border-emerald-300 bg-white px-3 py-2 text-sm hover:bg-emerald-50 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-emerald-900/20"
             >
               Descargar PDF
             </a>
@@ -793,12 +793,12 @@ export default function OrdenCompraClient() {
               href={previewUrl}
               target="_blank"
               rel="noreferrer"
-              className="rounded border border-emerald-300 bg-white px-3 py-2 text-sm hover:bg-emerald-50"
+              className="rounded border border-emerald-300 bg-white px-3 py-2 text-sm hover:bg-emerald-50 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-emerald-900/20"
             >
               Ver PDF
             </a>
           </div>
-          <iframe src={previewUrl} className="h-[680px] w-full rounded-xl border border-emerald-200 bg-white" />
+          <iframe src={previewUrl} className="h-[60vh] w-full rounded-xl border border-emerald-200 bg-white md:h-[680px] dark:bg-slate-900" />
         </section>
       )}
     </div>
@@ -807,9 +807,9 @@ export default function OrdenCompraClient() {
 
 function Metric({ title, value }: { title: string; value: string }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-      <div className="text-xs uppercase tracking-wide text-slate-500">{title}</div>
-      <div className="mt-1 text-2xl font-semibold text-slate-800">{value}</div>
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800">
+      <div className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{title}</div>
+      <div className="mt-1 text-2xl font-semibold text-slate-800 dark:text-slate-100">{value}</div>
     </div>
   );
 }

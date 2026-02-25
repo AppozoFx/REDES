@@ -83,41 +83,41 @@ export default function CoordinadoresClient() {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-lg">
+      <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-2xl font-semibold text-slate-900">Coordinadores</h2>
-            <p className="text-sm text-slate-500">
+            <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Coordinadores</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               Administra razon social y RUC para ordenes de compra.
             </p>
           </div>
-          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
             Total visibles: {visible.length}
           </div>
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-lg">
+      <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-700 dark:bg-slate-900">
         <div className="flex flex-wrap items-center gap-2">
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Buscar coordinador"
-            className="h-10 min-w-[240px] rounded-xl border border-slate-300 px-3 text-sm"
+            className="h-10 min-w-[240px] rounded-xl border border-slate-300 px-3 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
           />
           <button
             type="button"
             onClick={cargar}
-            className="rounded-xl border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50"
+            className="rounded-xl border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             Actualizar
           </button>
         </div>
       </section>
 
-      <section className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-lg">
+      <section className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
         <table className="min-w-full border-collapse text-sm">
-          <thead className="bg-slate-100 text-slate-700">
+          <thead className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
             <tr>
               <th className="border border-slate-200 p-2 text-left">Coordinador</th>
               <th className="border border-slate-200 p-2 text-left">Email</th>
@@ -130,36 +130,36 @@ export default function CoordinadoresClient() {
           <tbody>
             {loading && (
               <tr>
-                <td className="border border-slate-200 p-4 text-center text-slate-500" colSpan={6}>
+                <td className="border border-slate-200 p-4 text-center text-slate-500 dark:border-slate-700 dark:text-slate-300" colSpan={6}>
                   Cargando...
                 </td>
               </tr>
             )}
             {!loading &&
               visible.map((r) => (
-                <tr key={r.uid} className="odd:bg-white even:bg-slate-50/60">
-                  <td className="border border-slate-200 p-2 font-medium text-slate-800">{r.nombre}</td>
-                  <td className="border border-slate-200 p-2">{r.email || "-"}</td>
-                  <td className="border border-slate-200 p-2">{r.celular || "-"}</td>
-                  <td className="border border-slate-200 p-2">
+                <tr key={r.uid} className="odd:bg-white even:bg-slate-50/60 dark:odd:bg-slate-900 dark:even:bg-slate-800/60">
+                  <td className="border border-slate-200 p-2 font-medium text-slate-800 dark:border-slate-700 dark:text-slate-100">{r.nombre}</td>
+                  <td className="border border-slate-200 p-2 dark:border-slate-700 dark:text-slate-200">{r.email || "-"}</td>
+                  <td className="border border-slate-200 p-2 dark:border-slate-700 dark:text-slate-200">{r.celular || "-"}</td>
+                  <td className="border border-slate-200 p-2 dark:border-slate-700">
                     <input
                       value={r.razonSocial}
                       onChange={(e) => onChange(r.uid, { razonSocial: e.target.value })}
-                      className="h-9 w-full rounded-lg border border-slate-300 px-2"
+                      className="h-9 w-full rounded-lg border border-slate-300 px-2 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                       placeholder="Razon social"
                     />
                   </td>
-                  <td className="border border-slate-200 p-2">
+                  <td className="border border-slate-200 p-2 dark:border-slate-700">
                     <input
                       value={r.ruc}
                       onChange={(e) =>
                         onChange(r.uid, { ruc: e.target.value.replace(/\D/g, "").slice(0, 11) })
                       }
-                      className="h-9 w-full rounded-lg border border-slate-300 px-2"
+                      className="h-9 w-full rounded-lg border border-slate-300 px-2 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                       placeholder="11 digitos"
                     />
                   </td>
-                  <td className="border border-slate-200 p-2">
+                  <td className="border border-slate-200 p-2 dark:border-slate-700">
                     <button
                       type="button"
                       disabled={savingUid === r.uid}
@@ -173,7 +173,7 @@ export default function CoordinadoresClient() {
               ))}
             {!loading && !visible.length && (
               <tr>
-                <td className="border border-slate-200 p-4 text-center text-slate-500" colSpan={6}>
+                <td className="border border-slate-200 p-4 text-center text-slate-500 dark:border-slate-700 dark:text-slate-300" colSpan={6}>
                   Sin resultados
                 </td>
               </tr>

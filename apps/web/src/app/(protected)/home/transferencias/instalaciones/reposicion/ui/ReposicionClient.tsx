@@ -450,7 +450,7 @@ export default function ReposicionClient() {
   return (
     <div className="space-y-4">
       {step === 1 && (
-        <section className="rounded-xl border bg-white p-4 space-y-3">
+        <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 space-y-3">
           <div className="rounded border p-3">
             <div className="text-sm font-medium">Paso 1  -  Seleccionar cuadrilla</div>
             <div className="text-xs text-slate-500">Escribe nombre o código y presiona Enter para tomar la primera coincidencia.</div>
@@ -482,12 +482,12 @@ export default function ReposicionClient() {
                   className="w-full rounded border px-2 py-2 text-sm"
                 />
                 {comboOpen && (
-                  <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 max-h-52 overflow-auto rounded border bg-white shadow">
+                  <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 max-h-52 overflow-auto rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 shadow">
                     {cuadrillasFiltradas.map((c) => (
                       <button
                         key={c.id}
                         type="button"
-                        className="w-full border-b px-2 py-2 text-left text-sm hover:bg-slate-50"
+                        className="w-full border-b px-2 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
                         onMouseDown={(e) => {
                           e.preventDefault();
                           seleccionarCuadrilla(c);
@@ -504,7 +504,7 @@ export default function ReposicionClient() {
                 )}
               </div>
             </div>
-            <div className="rounded border bg-slate-50 p-3 text-xs text-slate-600">
+            <div className="rounded border bg-slate-50 dark:bg-slate-800/60 p-3 text-xs text-slate-600">
               <div>Cuadrilla: <b>{cuadrillaInfo.nombre || "-"}</b></div>
               <div>Coordinador: <b>{cuadrillaInfo.coordinadorNombre || "-"}</b></div>
               <div>Tecnicos: <b>{(cuadrillaInfo.tecnicosNombres || []).slice(0, 3).join(", ") || "-"}</b></div>
@@ -527,11 +527,11 @@ export default function ReposicionClient() {
       )}
 
       {step === 2 && (
-        <section className="rounded-xl border bg-white p-4 space-y-3">
+        <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <button
               type="button"
-              className="rounded border px-3 py-2 hover:bg-slate-50"
+              className="rounded border px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800"
               onClick={() => setStep(1)}
             >
               Paso 1
@@ -565,13 +565,13 @@ export default function ReposicionClient() {
                 key={m.id}
                 type="button"
                 onClick={() => addItem(m.id)}
-                className="w-32 shrink-0 rounded border p-2 text-left hover:bg-slate-50"
+                className="w-32 shrink-0 rounded border p-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800"
               >
                 {m.fotoUrl ? (
                   <img
                     src={m.fotoUrl}
                     alt={m.nombre || m.id}
-                    className="mb-2 h-16 w-full rounded border bg-white p-1 object-contain"
+                    className="mb-2 h-16 w-full rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-1 object-contain"
                   />
                 ) : (
                   <div className="mb-2 flex h-16 w-full items-center justify-center rounded bg-slate-100 text-xs text-slate-500">
@@ -600,7 +600,7 @@ export default function ReposicionClient() {
               className="w-full rounded border px-2 py-2 text-sm"
             />
             {comboMatOpen && (
-              <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 max-h-52 overflow-auto rounded border bg-white shadow">
+              <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 max-h-52 overflow-auto rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 shadow">
                 {otrosMateriales.map((m) => (
                   <button
                     key={m.id}
@@ -610,7 +610,7 @@ export default function ReposicionClient() {
                       addItem(m.id);
                       setComboMatOpen(false);
                     }}
-                    className="w-full border-b px-2 py-1 text-left text-xs hover:bg-slate-50"
+                    className="w-full border-b px-2 py-1 text-left text-xs hover:bg-slate-50 dark:hover:bg-slate-800"
                   >
                     {m.id} {m.nombre ? `- ${m.nombre}` : ""} ({m.unidadTipo || "UND"})
                   </button>
@@ -635,7 +635,7 @@ export default function ReposicionClient() {
 
         <div className="overflow-x-auto rounded border">
           <table className="min-w-full border-collapse text-sm">
-            <thead className="bg-slate-100 text-slate-700">
+            <thead className="bg-slate-100 text-slate-700 dark:text-slate-200">
               <tr>
                 <th className="border p-2 text-left">Material</th>
                 <th className="border p-2 text-left">Cantidad</th>
@@ -700,7 +700,7 @@ export default function ReposicionClient() {
         </section>
       )}
 
-      <section className="rounded-xl border bg-white p-4">
+      <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4">
         <h2 className="text-lg font-semibold">Historial de reposicion de cuadrilla</h2>
         {!cuadrillaId && <p className="mt-2 text-sm text-slate-500">Selecciona una cuadrilla para ver historial.</p>}
         {cuadrillaId && (
@@ -748,7 +748,7 @@ export default function ReposicionClient() {
         {cuadrillaId && (
           <div className="mt-3 overflow-x-auto rounded border">
             <table className="min-w-full border-collapse text-sm">
-              <thead className="bg-slate-100 text-slate-700">
+              <thead className="bg-slate-100 text-slate-700 dark:text-slate-200">
                 <tr>
                   <th className="border p-2 text-left">Fecha</th>
                   <th className="border p-2 text-left">Guia</th>
@@ -797,5 +797,7 @@ export default function ReposicionClient() {
     </div>
   );
 }
+
+
 
 

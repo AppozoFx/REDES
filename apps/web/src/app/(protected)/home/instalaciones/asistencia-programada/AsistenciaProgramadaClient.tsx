@@ -395,12 +395,12 @@ export default function AsistenciaProgramadaClient() {
   };
 
   return (
-    <div className="p-4 space-y-4">
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="space-y-4 p-4 text-slate-900 dark:text-slate-100">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-[#30518c]">Programacion semanal de asistencia</h1>
-            <p className="text-sm text-slate-500">Semana de 7 dias. Domingo descanso. Max 1 descanso, 2 si hay feriado.</p>
+            <h1 className="text-2xl font-bold text-[#30518c] dark:text-sky-300">Programacion semanal de asistencia</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Semana de 7 dias. Domingo descanso. Max 1 descanso, 2 si hay feriado.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className={cls("px-2 py-1 text-xs rounded border", estado === "CERRADO" ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-emerald-50 text-emerald-700 border-emerald-200")}>
@@ -412,63 +412,63 @@ export default function AsistenciaProgramadaClient() {
                 type="date"
                 value={startYmd}
                 onChange={(e) => handleStartChange(e.target.value)}
-                className="border rounded px-3 py-2"
+                className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
               />
             </div>
-            <span className="text-xs text-slate-500">Fin: {dayjs(endYmd).format("DD/MM/YYYY")}</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">Fin: {dayjs(endYmd).format("DD/MM/YYYY")}</span>
           </div>
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
-          <div className="rounded-xl border border-slate-200 p-3">
-            <div className="text-xs text-slate-500">Cuadrillas visibles</div>
-            <div className="text-lg font-semibold text-slate-800">{totalVisible}</div>
+          <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700 dark:bg-slate-950">
+            <div className="text-xs text-slate-500 dark:text-slate-400">Cuadrillas visibles</div>
+            <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{totalVisible}</div>
           </div>
-          <div className="rounded-xl border border-slate-200 p-3">
-            <div className="text-xs text-slate-500">Con descanso</div>
-            <div className="text-lg font-semibold text-slate-800">{conDescanso}</div>
+          <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700 dark:bg-slate-950">
+            <div className="text-xs text-slate-500 dark:text-slate-400">Con descanso</div>
+            <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{conDescanso}</div>
           </div>
-          <div className="rounded-xl border border-slate-200 p-3">
-            <div className="text-xs text-slate-500">Sin descanso</div>
-            <div className="text-lg font-semibold text-slate-800">{sinDescansoCount}</div>
+          <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700 dark:bg-slate-950">
+            <div className="text-xs text-slate-500 dark:text-slate-400">Sin descanso</div>
+            <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{sinDescansoCount}</div>
           </div>
-          <div className="rounded-xl border border-slate-200 p-3">
-            <div className="text-xs text-slate-500">Feriados marcados</div>
-            <div className="text-lg font-semibold text-slate-800">{feriados.length}</div>
+          <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700 dark:bg-slate-950">
+            <div className="text-xs text-slate-500 dark:text-slate-400">Feriados marcados</div>
+            <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{feriados.length}</div>
           </div>
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
-          <div className="rounded-xl border border-slate-200 p-3">
-            <div className="text-xs text-slate-500">Filtros</div>
+          <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700 dark:bg-slate-950">
+            <div className="text-xs text-slate-500 dark:text-slate-400">Filtros</div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <label className="text-xs text-slate-600">Coordinador</label>
+              <label className="text-xs text-slate-600 dark:text-slate-300">Coordinador</label>
               <select
                 value={coordinadorUid}
                 onChange={(e) => setCoordinadorUid(e.target.value)}
-                className="px-2 py-1.5 rounded border text-sm"
+                className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
               >
                 <option value="">Todos</option>
                 {coordinadoresUnicos.map((c) => (
                   <option key={c.uid} value={c.uid}>{c.nombre}</option>
                 ))}
               </select>
-              <label className="flex items-center gap-2 text-sm text-slate-600">
+              <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                 <input type="checkbox" checked={soloDescanso} onChange={(e) => setSoloDescanso(e.target.checked)} />
                 Solo con descanso
               </label>
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-200 p-3">
-            <div className="text-xs text-slate-500">Acciones de semana</div>
+          <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700 dark:bg-slate-950">
+            <div className="text-xs text-slate-500 dark:text-slate-400">Acciones de semana</div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <button className="px-3 py-1.5 rounded border text-sm" onClick={copiarSemanaAnterior}>Copiar semana anterior</button>
+              <button className="rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:text-slate-200" onClick={copiarSemanaAnterior}>Copiar semana anterior</button>
               <div className="flex items-center gap-2">
                 <select
                   value={feriadoDay}
                   onChange={(e) => setFeriadoDay(e.target.value)}
-                  className="px-2 py-1.5 rounded border text-sm"
+                  className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 >
                   <option value="">Feriado (elige dia)</option>
                   {weekDays.map((d) => (
@@ -476,7 +476,7 @@ export default function AsistenciaProgramadaClient() {
                   ))}
                 </select>
                 <button
-                  className="px-3 py-1.5 rounded border text-sm"
+                  className="rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:text-slate-200"
                   onClick={() => {
                     if (!feriadoDay) return;
                     setAllRowsForDay(feriadoDay, "descanso");
@@ -488,7 +488,7 @@ export default function AsistenciaProgramadaClient() {
                 </button>
               </div>
               <button
-                className="px-3 py-1.5 rounded border text-sm"
+                className="rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:text-slate-200"
                 onClick={() => {
                   const sundays = weekDays.filter((d) => dayjs(d).day() === 0);
                   sundays.forEach((d) => setAllRowsForDay(d, "descanso"));
@@ -506,8 +506,8 @@ export default function AsistenciaProgramadaClient() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-200 p-3">
-            <div className="text-xs text-slate-500">Control</div>
+          <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700 dark:bg-slate-950">
+            <div className="text-xs text-slate-500 dark:text-slate-400">Control</div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {!canAdmin && estado === "CERRADO" && (
                 <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
@@ -518,7 +518,7 @@ export default function AsistenciaProgramadaClient() {
                 <span className="text-xs text-rose-600">Sin asistencia semanal: {sinAsistencia.length}</span>
               )}
               {estado === "CERRADO" ? (
-                <div className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
                   <div className="text-xs font-semibold">Semana cerrada</div>
                   <div className="text-sm">
                     Semana del {dayjs(weekDays[0]).format("DD/MM/YYYY")} al {dayjs(weekDays[weekDays.length - 1]).format("DD/MM/YYYY")}
@@ -535,12 +535,12 @@ export default function AsistenciaProgramadaClient() {
               )}
               {canAdmin && (
                 <div className="flex items-center gap-2">
-                  <label className="text-xs text-slate-600">Cierre coord.</label>
+                  <label className="text-xs text-slate-600 dark:text-slate-300">Cierre coord.</label>
                   <input
                     type="time"
                     value={openUntil ? dayjs(openUntil).format("HH:mm") : ""}
                     onChange={(e) => setOpenUntilTime(e.target.value)}
-                    className="border rounded px-2 py-1 text-xs"
+                    className="rounded border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                   />
                 </div>
               )}
@@ -552,7 +552,7 @@ export default function AsistenciaProgramadaClient() {
                 >
                   {saving ? "Guardando..." : "Guardar cambios"}
                 </button>
-                <span className="text-[11px] text-slate-500">Solo actualiza cambios.</span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">Solo actualiza cambios.</span>
               </div>
               <div className="flex flex-col items-start">
                 <button
@@ -561,7 +561,7 @@ export default function AsistenciaProgramadaClient() {
                 >
                   {estado === "CERRADO" ? "Abrir edicion" : "Cerrar semana"}
                 </button>
-                <span className="text-[11px] text-slate-500">
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
                   {estado === "CERRADO" ? "Permite editar nuevamente." : "Bloquea edicion a coordinadores."}
                 </span>
               </div>
@@ -570,12 +570,12 @@ export default function AsistenciaProgramadaClient() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white overflow-auto">
+      <div className="overflow-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
         {cargando ? (
-          <div className="p-6 text-center text-slate-500">Cargando...</div>
+          <div className="p-6 text-center text-slate-500 dark:text-slate-400">Cargando...</div>
         ) : (
           <table className="min-w-full text-sm">
-            <thead className="bg-slate-100 text-slate-700">
+            <thead className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
               <tr>
                 <th className="p-2 text-left">Cuadrilla</th>
                 {weekDays.map((d) => (
@@ -588,10 +588,10 @@ export default function AsistenciaProgramadaClient() {
               {visibleRows.map((r) => {
                 const dc = descansoCount(r.id);
                 return (
-                  <tr key={r.id} className="border-t">
+                  <tr key={r.id} className="border-t border-slate-200 dark:border-slate-700">
                     <td className="p-2">
-                      <div className="font-medium text-slate-700">{r.nombre}</div>
-                      <div className="text-[11px] text-slate-500">{r.coordinadorNombre || "-"}</div>
+                      <div className="font-medium text-slate-700 dark:text-slate-100">{r.nombre}</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">{r.coordinadorNombre || "-"}</div>
                     </td>
                     {weekDays.map((d) => (
                       <td key={`${r.id}_${d}`} className="p-2">
@@ -609,7 +609,7 @@ export default function AsistenciaProgramadaClient() {
                     ))}
                     <td className="p-2">
                       <div className="flex items-center gap-2">
-                        <button onClick={() => setRowAll(r.id, "asistencia")} disabled={isLocked} className="px-2 py-1 border rounded text-xs">De Largo</button>
+                        <button onClick={() => setRowAll(r.id, "asistencia")} disabled={isLocked} className="rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:text-slate-200">De Largo</button>
                         <span className={cls("text-xs", dc > (feriados.length > 0 ? 2 : 1) ? "text-rose-600" : "text-slate-500")}>Descansos: {dc}</span>
                       </div>
                     </td>
@@ -618,7 +618,7 @@ export default function AsistenciaProgramadaClient() {
               })}
               {visibleRows.length === 0 && (
                 <tr>
-                  <td colSpan={weekDays.length + 2} className="p-6 text-center text-slate-500">Sin cuadrillas para mostrar</td>
+                  <td colSpan={weekDays.length + 2} className="p-6 text-center text-slate-500 dark:text-slate-400">Sin cuadrillas para mostrar</td>
                 </tr>
               )}
             </tbody>

@@ -169,26 +169,26 @@ export default function CuadrillasGestionClient() {
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 text-slate-900 dark:text-slate-100">
       <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border bg-white p-4">
-          <div className="text-xs text-gray-500">Total</div>
-          <div className="text-2xl font-semibold text-slate-900">{resumen.total}</div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <div className="text-xs text-gray-500 dark:text-slate-400">Total</div>
+          <div className="text-2xl font-semibold text-slate-900 dark:text-slate-100">{resumen.total}</div>
         </div>
-        <div className="rounded-xl border bg-white p-4">
-          <div className="text-xs text-gray-500">Habilitadas</div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <div className="text-xs text-gray-500 dark:text-slate-400">Habilitadas</div>
           <div className="text-2xl font-semibold text-emerald-700">{resumen.habilitadas}</div>
         </div>
-        <div className="rounded-xl border bg-white p-4">
-          <div className="text-xs text-gray-500">Inhabilitadas</div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <div className="text-xs text-gray-500 dark:text-slate-400">Inhabilitadas</div>
           <div className="text-2xl font-semibold text-rose-700">{resumen.inhabilitadas}</div>
         </div>
       </div>
 
-      <div className="rounded-xl border bg-white p-4">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <div className="grid gap-3 md:grid-cols-3">
           <input
-            className="border rounded px-3 py-2 text-sm"
+            className="rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
             placeholder="Buscar por nombre"
             value={filtroNombre}
             onChange={(e) => setFiltroNombre(e.target.value)}
@@ -212,9 +212,9 @@ export default function CuadrillasGestionClient() {
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border bg-white">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-100 text-gray-700">
+          <thead className="bg-slate-100 text-gray-700 dark:bg-slate-800 dark:text-slate-200">
             <tr>
               <th className="p-2 text-left">Nombre</th>
               <th className="p-2 text-left">R/C</th>
@@ -231,7 +231,7 @@ export default function CuadrillasGestionClient() {
             {filtered.map((row) => {
               const editing = editingId === row.id;
               return (
-                <tr key={row.id} className="border-t">
+                <tr key={row.id} className="border-t border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/70">
                   <td className="p-2 font-medium">{row.nombre}</td>
                   <td className="p-2">{row.r_c || "-"}</td>
                   <td className="p-2">{row.estado || "-"}</td>
@@ -256,7 +256,7 @@ export default function CuadrillasGestionClient() {
                   <td className="p-2 min-w-[160px]">
                     {editing ? (
                       <input
-                        className="border rounded px-2 py-1 w-full"
+                        className="w-full rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                         value={form.tipoZona || ""}
                         onChange={(e) => setForm((p) => ({ ...p, tipoZona: e.target.value }))}
                         readOnly
@@ -344,7 +344,7 @@ export default function CuadrillasGestionClient() {
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={10} className="p-6 text-center text-gray-500">
+                <td colSpan={10} className="p-6 text-center text-gray-500 dark:text-slate-400">
                   No hay cuadrillas para mostrar.
                 </td>
               </tr>

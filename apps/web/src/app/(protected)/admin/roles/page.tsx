@@ -9,17 +9,17 @@ export default async function RolesPage() {
   const roles = snap.docs.map(d => d.data() as any);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 text-slate-900 dark:text-slate-100">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Roles</h1>
-        <Link className="rounded border px-3 py-2 hover:bg-black/5" href="/admin/roles/new">
+        <Link className="rounded border border-slate-300 px-3 py-2 hover:bg-black/5 dark:border-slate-700 dark:hover:bg-slate-800" href="/admin/roles/new">
           Nuevo rol
         </Link>
       </div>
 
-      <div className="rounded border overflow-hidden">
+      <div className="rounded border border-slate-200 overflow-hidden dark:border-slate-700">
         <table className="w-full text-sm">
-          <thead className="bg-black/5">
+          <thead className="bg-black/5 dark:bg-slate-800">
             <tr>
               <th className="text-left p-2">ID</th>
               <th className="text-left p-2">Nombre</th>
@@ -29,12 +29,12 @@ export default async function RolesPage() {
           </thead>
           <tbody>
             {roles.map((r) => (
-              <tr key={r.id} className="border-t">
+              <tr key={r.id} className="border-t border-slate-200 dark:border-slate-700">
                 <td className="p-2 font-mono">{r.id}</td>
                 <td className="p-2">{r.nombre}</td>
                 <td className="p-2">{r.estado}</td>
                 <td className="p-2">
-                  <Link className="underline" href={`/admin/roles/${r.id}`}>
+                  <Link className="underline decoration-slate-400 underline-offset-2 dark:decoration-slate-500" href={`/admin/roles/${r.id}`}>
                     Ver / editar
                   </Link>
                 </td>
@@ -42,7 +42,7 @@ export default async function RolesPage() {
             ))}
             {roles.length === 0 && (
               <tr>
-                <td className="p-4 opacity-70" colSpan={4}>
+                <td className="p-4 text-slate-500 dark:text-slate-400" colSpan={4}>
                   No hay roles todavía.
                 </td>
               </tr>

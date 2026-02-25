@@ -168,8 +168,23 @@ export default function RecepcionActasClient() {
   const [actaCode, setActaCode] = useState("");
   const [actas, setActas] = useState<string[]>([]);
   const [procesando, setProcesando] = useState(false);
+  const [isDark, setIsDark] = useState(false);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const sync = () => setIsDark(root.classList.contains("dark") || mq.matches);
+    sync();
+    const obs = new MutationObserver(sync);
+    obs.observe(root, { attributes: true, attributeFilter: ["class"] });
+    mq.addEventListener?.("change", sync);
+    return () => {
+      obs.disconnect();
+      mq.removeEventListener?.("change", sync);
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -216,6 +231,34 @@ export default function RecepcionActasClient() {
   }, [actas.length]);
 
   const cuadrillaSeleccionada = useMemo(() => cuadrillas.find((c) => c.value === cuadrillaId), [cuadrillas, cuadrillaId]);
+
+  const selectStyles = useMemo(
+    () =>
+      isDark
+        ? {
+            control: (base: any, state: any) => ({
+              ...base,
+              backgroundColor: "#020617",
+              borderColor: state.isFocused ? "#38bdf8" : "#334155",
+              boxShadow: "none",
+              ":hover": { borderColor: "#475569" },
+            }),
+            menu: (base: any) => ({ ...base, backgroundColor: "#0f172a", color: "#e2e8f0" }),
+            option: (base: any, state: any) => ({
+              ...base,
+              backgroundColor: state.isSelected ? "#1d4ed8" : state.isFocused ? "#1e293b" : "#0f172a",
+              color: "#e2e8f0",
+            }),
+            singleValue: (base: any) => ({ ...base, color: "#e2e8f0" }),
+            input: (base: any) => ({ ...base, color: "#e2e8f0" }),
+            placeholder: (base: any) => ({ ...base, color: "#94a3b8" }),
+            multiValue: (base: any) => ({ ...base, backgroundColor: "#1e293b" }),
+            multiValueLabel: (base: any) => ({ ...base, color: "#e2e8f0" }),
+            multiValueRemove: (base: any) => ({ ...base, color: "#cbd5e1" }),
+          }
+        : undefined,
+    [isDark]
+  );
 
   const agregarActa = (code: string, silent = false) => {
     const clean = normalizeActa(code);
@@ -393,22 +436,23 @@ export default function RecepcionActasClient() {
   };
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
+    <div className="grid gap-4 text-slate-900 dark:text-slate-100 lg:grid-cols-3">
       <div className="lg:col-span-2 space-y-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+        <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <div className="grid gap-3 md:grid-cols-2">
             <div>
-              <label className="text-sm font-medium text-gray-700">Coordinador (obligatorio)</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Coordinador (obligatorio)</label>
               <Select
                 options={coordinadores}
                 value={coordinadores.find((c) => c.value === coordinadorUid) || null}
                 onChange={(sel) => setCoordinadorUid(sel?.value || "")}
                 placeholder="Seleccionar coordinador"
                 isClearable
+                styles={selectStyles}
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700">Cuadrilla (opcional)</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Cuadrilla (opcional)</label>
               <Select
                 options={cuadrillas}
                 value={cuadrillas.find((c) => c.value === cuadrillaId) || null}
@@ -416,11 +460,12 @@ export default function RecepcionActasClient() {
                 placeholder={coordinadorUid ? "Seleccionar cuadrilla" : "Selecciona coordinador primero"}
                 isClearable
                 isDisabled={!coordinadorUid}
+                styles={selectStyles}
               />
             </div>
           </div>
           <div>
-            <label className="text-sm font-medium text-gray-700">Escanear código de acta</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Escanear código de acta</label>
             <div className="flex gap-2">
               <input
                 ref={inputRef}
@@ -429,7 +474,7 @@ export default function RecepcionActasClient() {
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
                 placeholder="Escanea y presiona Enter (o pega varias líneas)"
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
               />
               <button
                 type="button"
@@ -439,26 +484,26 @@ export default function RecepcionActasClient() {
                 Agregar
               </button>
             </div>
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
               Puedes pegar múltiples códigos, uno por línea.
             </p>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-gray-800">Actas escaneadas</h3>
+            <h3 className="font-semibold text-gray-800 dark:text-slate-200">Actas escaneadas</h3>
             {actas.length > 0 && (
               <button
                 onClick={() => setActas([])}
-                className="rounded-lg border border-slate-300 px-3 py-1 text-sm bg-white hover:bg-slate-50"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 Limpiar todo
               </button>
             )}
           </div>
           {actas.length === 0 ? (
-            <div className="text-sm text-gray-500">No hay actas agregadas.</div>
+            <div className="text-sm text-gray-500 dark:text-slate-400">No hay actas agregadas.</div>
           ) : (
             <div className="flex flex-wrap gap-2">
               {actas.map((a) => (
@@ -475,23 +520,23 @@ export default function RecepcionActasClient() {
       </div>
 
       <div className="space-y-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="font-semibold text-gray-800 mb-3">Resumen</h3>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <h3 className="mb-3 font-semibold text-gray-800 dark:text-slate-200">Resumen</h3>
           <div className="text-sm space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-gray-500">Coordinador</span>
+              <span className="text-gray-500 dark:text-slate-400">Coordinador</span>
               <span className="font-medium">
                 {coordinadores.find((c) => c.value === coordinadorUid)?.label || "-"}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-gray-500">Cuadrilla</span>
+              <span className="text-gray-500 dark:text-slate-400">Cuadrilla</span>
               <span className="font-medium">
                 {cuadrillas.find((c) => c.value === cuadrillaId)?.label || "-"}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-gray-500">Actas</span>
+              <span className="text-gray-500 dark:text-slate-400">Actas</span>
               <span className="font-medium">{actas.length}</span>
             </div>
           </div>

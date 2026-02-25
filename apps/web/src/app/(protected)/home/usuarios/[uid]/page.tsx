@@ -34,13 +34,13 @@ export default async function HomeUsuariosEditPage({
   const fNacimientoMs = toMs(profile.fNacimiento);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 text-slate-900 dark:text-slate-100">
       <div>
-        <h1 className="text-xl font-semibold">Editar usuario</h1>
-        <div className="text-sm text-muted-foreground font-mono">{uid}</div>
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Editar usuario</h1>
+        <div className="font-mono text-sm text-slate-500 dark:text-slate-400">{uid}</div>
       </div>
 
-      <div className="rounded border p-4 text-sm space-y-1">
+      <div className="space-y-1 rounded border border-slate-200 bg-white p-4 text-sm dark:border-slate-700 dark:bg-slate-900">
         <div>F. Ingreso: {fIngresoMs ? <LocalTime dateMs={fIngresoMs} /> : "-"}</div>
         <div>F. Nacimiento: {fNacimientoMs ? <LocalTime dateMs={fNacimientoMs} /> : "-"}</div>
       </div>

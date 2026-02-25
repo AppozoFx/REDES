@@ -65,18 +65,18 @@ export default function OrdenesCompraMesClient() {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-lg">
+      <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-2xl font-semibold text-slate-900">Ordenes de Compra por Mes</h2>
-            <p className="text-sm text-slate-500">
+            <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Ordenes de Compra por Mes</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               Visualiza las ordenes generadas y abre su PDF.
             </p>
           </div>
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Mes</label>
@@ -84,7 +84,7 @@ export default function OrdenesCompraMesClient() {
               type="month"
               value={ym}
               onChange={(e) => setYm(e.target.value)}
-              className="h-10 rounded-xl border border-slate-300 px-3 text-sm"
+              className="h-10 rounded-xl border border-slate-300 px-3 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
             />
           </div>
           <button
@@ -103,9 +103,9 @@ export default function OrdenesCompraMesClient() {
         </div>
       </section>
 
-      <section className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-lg">
+      <section className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
         <table className="min-w-full border-collapse text-sm">
-          <thead className="bg-slate-100 text-slate-700">
+          <thead className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
             <tr>
               <th className="border border-slate-200 p-2 text-left">Codigo</th>
               <th className="border border-slate-200 p-2 text-left">Generada</th>
@@ -120,45 +120,45 @@ export default function OrdenesCompraMesClient() {
           <tbody>
             {loading && (
               <tr>
-                <td className="border border-slate-200 p-4 text-center text-slate-500" colSpan={8}>
+                <td className="border border-slate-200 p-4 text-center text-slate-500 dark:border-slate-700 dark:text-slate-300" colSpan={8}>
                   Cargando...
                 </td>
               </tr>
             )}
             {!loading && !rows.length && (
               <tr>
-                <td className="border border-slate-200 p-4 text-center text-slate-500" colSpan={8}>
+                <td className="border border-slate-200 p-4 text-center text-slate-500 dark:border-slate-700 dark:text-slate-300" colSpan={8}>
                   Sin ordenes para el mes seleccionado
                 </td>
               </tr>
             )}
             {!loading &&
               rows.map((r) => (
-                <tr key={r.id} className="odd:bg-white even:bg-slate-50/60">
-                  <td className="border border-slate-200 p-2 font-semibold text-slate-800">{r.codigo}</td>
-                  <td className="border border-slate-200 p-2">{formatDate(r.createdAt)}</td>
-                  <td className="border border-slate-200 p-2">{r.coordinadorNombre || "-"}</td>
-                  <td className="border border-slate-200 p-2">
+                <tr key={r.id} className="odd:bg-white even:bg-slate-50/60 dark:odd:bg-slate-900 dark:even:bg-slate-800/60">
+                  <td className="border border-slate-200 p-2 font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-100">{r.codigo}</td>
+                  <td className="border border-slate-200 p-2 dark:border-slate-700 dark:text-slate-200">{formatDate(r.createdAt)}</td>
+                  <td className="border border-slate-200 p-2 dark:border-slate-700 dark:text-slate-200">{r.coordinadorNombre || "-"}</td>
+                  <td className="border border-slate-200 p-2 dark:border-slate-700">
                     <div className="font-medium">{r.proveedor?.razonSocial || "-"}</div>
-                    <div className="text-xs text-slate-500">{r.proveedor?.ruc || ""}</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">{r.proveedor?.ruc || ""}</div>
                   </td>
-                  <td className="border border-slate-200 p-2">
+                  <td className="border border-slate-200 p-2 dark:border-slate-700 dark:text-slate-200">
                     {r.periodo?.desde || "-"} al {r.periodo?.hasta || "-"}
                   </td>
-                  <td className="border border-slate-200 p-2">{r.estado || "-"}</td>
-                  <td className="border border-slate-200 p-2 text-right">{money(r.totales?.total || 0)}</td>
-                  <td className="border border-slate-200 p-2">
+                  <td className="border border-slate-200 p-2 dark:border-slate-700 dark:text-slate-200">{r.estado || "-"}</td>
+                  <td className="border border-slate-200 p-2 text-right dark:border-slate-700 dark:text-slate-200">{money(r.totales?.total || 0)}</td>
+                  <td className="border border-slate-200 p-2 dark:border-slate-700">
                     {r.pdfUrl ? (
                       <a
                         href={r.pdfUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="rounded-lg border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
+                        className="rounded-lg border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
                       >
                         Ver PDF
                       </a>
                     ) : (
-                      <span className="text-xs text-slate-500">Sin PDF</span>
+                      <span className="text-xs text-slate-500 dark:text-slate-400">Sin PDF</span>
                     )}
                   </td>
                 </tr>
@@ -172,10 +172,9 @@ export default function OrdenesCompraMesClient() {
 
 function Metric({ title, value }: { title: string; value: string }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-      <div className="text-xs uppercase tracking-wide text-slate-500">{title}</div>
-      <div className="mt-1 text-2xl font-semibold text-slate-800">{value}</div>
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800">
+      <div className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{title}</div>
+      <div className="mt-1 text-2xl font-semibold text-slate-800 dark:text-slate-100">{value}</div>
     </div>
   );
 }
-

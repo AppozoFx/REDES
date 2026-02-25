@@ -392,6 +392,15 @@ export function LiquidacionRowClient({
     window.setTimeout(() => setCardFocus(false), 1600);
   };
 
+  const copyText = async (value: string, ok = "Copiado") => {
+    try {
+      await navigator.clipboard.writeText(value || "");
+      toast.success(ok);
+    } catch {
+      toast.error("No se pudo copiar");
+    }
+  };
+
   function updateAt(arr: string[], idx: number, value: string) {
     const next = [...arr];
     next[idx] = value;
@@ -416,19 +425,14 @@ export function LiquidacionRowClient({
   }, [orden.fechaFinVisiYmd, orden.codiSeguiClien, orden.ordenId, orden.cliente, orden.cuadrillaNombre, orden.cuadrillaId, tramo]);
 
   return (
-    <div className={`rounded-xl border p-4 space-y-3 transition-all ${cardFocus ? "ring-2 ring-blue-500 border-blue-400 bg-blue-50/40" : ""}`}>
+    <div className={`rounded-xl border border-slate-200 p-4 space-y-3 text-slate-900 transition-all dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 ${cardFocus ? "ring-2 ring-blue-500 border-blue-400 bg-blue-50/40 dark:bg-blue-900/20" : ""}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1 min-w-0 flex-1">
           <button
             type="button"
-            className="text-left rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 py-1 text-lg font-extrabold tracking-wide text-slate-900 hover:bg-slate-100"
+            className="text-left rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 py-1 text-lg font-extrabold tracking-wide text-slate-900 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
             onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(codigoTxt);
-                toast.success("Codigo copiado");
-              } catch {
-                toast.error("No se pudo copiar codigo");
-              }
+              copyText(codigoTxt, "Codigo copiado");
             }}
             title="Copiar codigo"
           >
@@ -437,46 +441,36 @@ export function LiquidacionRowClient({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              className="text-left text-sm rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 py-1 hover:bg-slate-100"
+              className="text-left text-sm rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 py-1 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700"
               onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(clienteTxt);
-                  toast.success("Cliente copiado");
-                } catch {
-                  toast.error("No se pudo copiar cliente");
-                }
+                copyText(clienteTxt, "Cliente copiado");
               }}
               title="Copiar cliente"
             >
-              <span className="text-muted-foreground">{clienteTxt}</span>
+              <span className="text-slate-700 dark:text-slate-100">{clienteTxt}</span>
             </button>
           </div>
-          <div className="text-sm text-muted-foreground break-words">
+          <div className="text-sm break-words text-slate-600 dark:text-slate-300">
             Direccion: {orden.direccion || "-"}
           </div>
-          <div className="text-sm text-muted-foreground">
+          <div className="text-sm text-slate-600 dark:text-slate-300">
             Plan: {orden.plan || orden.idenServi || "-"}
           </div>
-          <div className="inline-flex items-center gap-2 rounded-md border border-blue-300 bg-blue-50 px-2 py-1 text-sm text-blue-900">
+          <div className="inline-flex items-center gap-2 rounded-md border border-blue-300 bg-blue-50 px-2 py-1 text-sm text-blue-900 dark:border-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
             <span className="font-medium">Cuadrilla</span>
             <span className="font-semibold">{orden.cuadrillaNombre || orden.cuadrillaId}</span>
-            <span className="text-blue-700">|</span>
+            <span className="text-blue-700 dark:text-blue-300">|</span>
             <span>{ymdToDmy(orden.fechaFinVisiYmd || "")}</span>
           </div>
-          <div className="text-xs text-muted-foreground">
+          <div className="text-xs text-slate-500 dark:text-slate-400">
             Estado: {orden.estado || "-"} | Tipo: {orden.tipo || "-"}
           </div>
           <div>
             <button
               type="button"
-              className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs hover:bg-slate-50"
+              className="inline-flex items-center rounded-md border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(tramoCopyText);
-                  toast.success("Resumen de tramo copiado");
-                } catch {
-                  toast.error("No se pudo copiar");
-                }
+                await copyText(tramoCopyText, "Resumen de tramo copiado");
               }}
               title="Copiar resumen de tramo"
             >
@@ -484,9 +478,9 @@ export function LiquidacionRowClient({
             </button>
           </div>
           <div className="flex flex-wrap gap-1">
-            {tips.cableadoMesh ? <span className="inline-flex items-center rounded-md border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700">SERVICIO CABLEADO DE MESH</span> : null}
-            {tips.gamer ? <span className="inline-flex items-center rounded-md border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs text-blue-700">INTERNETGAMER</span> : null}
-            {tips.kitWifiPro ? <span className="inline-flex items-center rounded-md border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">KIT WIFI PRO (EN VENTA)</span> : null}
+            {tips.cableadoMesh ? <span className="inline-flex items-center rounded-md border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700 dark:border-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-200">SERVICIO CABLEADO DE MESH</span> : null}
+            {tips.gamer ? <span className="inline-flex items-center rounded-md border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs text-blue-700 dark:border-blue-700 dark:bg-blue-900/30 dark:text-blue-200">INTERNETGAMER</span> : null}
+            {tips.kitWifiPro ? <span className="inline-flex items-center rounded-md border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200">KIT WIFI PRO (EN VENTA)</span> : null}
           </div>
         </div>
         <div className="shrink-0 flex flex-col items-end gap-2">
@@ -522,7 +516,7 @@ export function LiquidacionRowClient({
         </div>
       </div>
       {orden.correccionPendiente || orden.correccionYmd ? (
-        <div className="rounded border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2 text-xs">
+        <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
           Pendiente por corregir. Devuelve equipos y vuelve a liquidar con las series correctas.
           {orden.correccionYmd ? ` Corregida: ${orden.correccionYmd.split("-").reverse().join("/")}` : ""}
           {orden.correccionBy ? ` • Por: ${orden.correccionBy}` : ""}
@@ -532,12 +526,12 @@ export function LiquidacionRowClient({
       {open ? (
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/45" onClick={closeModal} />
-          <div className="absolute inset-x-0 top-4 bottom-4 mx-auto w-[96vw] max-w-4xl overflow-y-auto rounded-xl bg-white p-4 shadow-2xl">
+	            <div className="absolute inset-x-0 top-4 bottom-4 mx-auto w-[96vw] max-w-4xl overflow-y-auto rounded-xl bg-white p-4 shadow-2xl dark:bg-slate-900 dark:text-slate-100">
             <div className="mb-3 flex items-center justify-between">
               <div className="font-semibold text-base">Liquidar orden {orden.codiSeguiClien || orden.ordenId}</div>
-              <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={closeModal}>
-                Cerrar
-              </button>
+	              <button type="button" className="rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:text-slate-200" onClick={closeModal}>
+	                Cerrar
+	              </button>
             </div>
             <form action={action} className="space-y-3">
           <input type="hidden" name="ordenId" value={orden.id} />
@@ -555,24 +549,24 @@ export function LiquidacionRowClient({
           <input type="hidden" name="puntosUTP" value={String(puntosUTP)} />
           <input type="hidden" name="observacion" value={observacion} />
 
-          <div className="rounded border bg-slate-50 p-3 space-y-2">
+          <div className="rounded border border-slate-200 bg-slate-50 p-3 space-y-2 dark:border-slate-700 dark:bg-slate-800">
             <div className="text-sm font-medium">Datos de la orden</div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
               <div>
-                <span className="text-muted-foreground">Fecha:</span>{" "}
+                <span className="text-slate-500 dark:text-slate-400">Fecha:</span>{" "}
                 <span>{ymdToDmy(orden.fechaFinVisiYmd || "")}</span>
               </div>
               <div>
-                <span className="text-muted-foreground">Cuadrilla:</span>{" "}
-                <span className="inline-flex rounded bg-blue-100 px-2 py-0.5 font-semibold text-blue-900">
+                <span className="text-slate-500 dark:text-slate-400">Cuadrilla:</span>{" "}
+                <span className="inline-flex rounded bg-blue-100 px-2 py-0.5 font-semibold text-blue-900 dark:bg-blue-900/30 dark:text-blue-200">
                   {orden.cuadrillaNombre || orden.cuadrillaId || "-"}
                 </span>
               </div>
               <div>
-                <span className="text-muted-foreground">Código Cliente:</span>{" "}
+                <span className="text-slate-500 dark:text-slate-400">Código Cliente:</span>{" "}
                 <button
                   type="button"
-                  className="rounded border border-dashed border-slate-300 bg-white px-2 py-0.5 text-xs font-medium hover:bg-slate-50"
+                  className="rounded border border-dashed border-slate-300 bg-white px-2 py-0.5 text-xs font-medium hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
                   onClick={async () => {
                     try {
                       await navigator.clipboard.writeText(codigoTxt);
@@ -587,10 +581,10 @@ export function LiquidacionRowClient({
                 </button>
               </div>
               <div>
-                <span className="text-muted-foreground">Cliente:</span>{" "}
+                <span className="text-slate-500 dark:text-slate-400">Cliente:</span>{" "}
                 <button
                   type="button"
-                  className="rounded border border-dashed border-slate-300 bg-white px-2 py-0.5 text-xs hover:bg-slate-50"
+                  className="rounded border border-dashed border-slate-300 bg-white px-2 py-0.5 text-xs hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
                   onClick={async () => {
                     try {
                       await navigator.clipboard.writeText(clienteTxt);
@@ -605,28 +599,27 @@ export function LiquidacionRowClient({
                 </button>
               </div>
               <div className="md:col-span-2">
-                <span className="text-muted-foreground">Direccion:</span>{" "}
+                <span className="text-slate-500 dark:text-slate-400">Direccion:</span>{" "}
                 <span>{orden.direccion || "-"}</span>
               </div>
               <div>
-                <span className="text-muted-foreground">Tipo:</span>{" "}
+                <span className="text-slate-500 dark:text-slate-400">Tipo:</span>{" "}
                 <span>{orden.tipo || "-"}</span>
               </div>
               <div>
-                <span className="text-muted-foreground">Plan:</span>{" "}
+                <span className="text-slate-500 dark:text-slate-400">Plan:</span>{" "}
                 <span className="block whitespace-pre-line">{planLines.join("\n")}</span>
               </div>
             </div>
           </div>
 
-          <div className="text-xs text-muted-foreground">
+          <div className="text-xs text-slate-500 dark:text-slate-400">
             Esperado por orden: ONT=1, MESH={meshBaseSlots}, FONO={expected.fono}, BOX={boxBaseSlots}
           </div>
 
-          <div className="text-xs text-muted-foreground">
+          <div className="text-xs text-slate-500 dark:text-slate-400">
             Tipificaciones: Gamer={tips.gamer ? "Si" : "No"} | Kit Wifi Pro={tips.kitWifiPro ? "Si" : "No"} | Cableado Mesh={tips.cableadoMesh ? "Si" : "No"}
           </div>
-
           {observacionRequerida ? (
             <div className="rounded border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2 text-xs">
               Estas usando equipos fuera del plan. La observacion es obligatoria para liquidar.
@@ -642,16 +635,31 @@ export function LiquidacionRowClient({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-sm font-medium">SN ONT (obligatorio)</label>
-              <input
-                list={`ont-list-${orden.ordenId}`}
-                value={snONT}
-                onChange={(e) => setSnONT(e.target.value)}
-                className={`w-full rounded border px-3 py-2 text-sm ${
-                  !norm(snONT) ? "" : validONT ? "border-emerald-500 bg-emerald-50" : "border-red-500 bg-red-50"
-                }`}
-                placeholder="Ejemplo: ONT123456"
-                required
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  list={`ont-list-${orden.ordenId}`}
+                  value={snONT}
+                  onChange={(e) => setSnONT(e.target.value)}
+                  className={`w-full rounded border px-3 py-2 text-sm text-slate-900 dark:text-slate-100 ${
+                    !norm(snONT)
+                      ? "border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900"
+                      : validONT
+                      ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
+                      : "border-red-500 bg-red-50 dark:bg-red-900/20"
+                  }`}
+                  placeholder="Ejemplo: ONT123456"
+                  required
+                />
+                <button
+                  type="button"
+                  className="rounded border border-slate-300 px-2 py-2 text-xs dark:border-slate-700 dark:text-slate-200"
+                  onClick={() => copyText(snONT, "SN ONT copiada")}
+                  disabled={!norm(snONT)}
+                  title="Copiar SN ONT"
+                >
+                  Copiar
+                </button>
+              </div>
               <datalist id={`ont-list-${orden.ordenId}`}>
                 {stock.ONT.map((o) => (
                   <option key={o.sn} value={o.sn} />
@@ -660,7 +668,7 @@ export function LiquidacionRowClient({
               <input
                 value={proidONT}
                 readOnly
-                className="mt-2 w-full rounded border px-3 py-2 text-sm bg-gray-100 text-gray-700"
+                className="mt-2 w-full rounded border border-slate-300 bg-gray-100 px-3 py-2 text-sm text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                 placeholder="PROID ONT"
               />
               {!!norm(snONT) && !validONT ? (
@@ -673,12 +681,12 @@ export function LiquidacionRowClient({
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-3">
                 <label className="text-sm font-medium">SN MESH</label>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-xs text-slate-500 dark:text-slate-400">
                   usados: {meshEnteredCount}/4
                 </div>
                 <button
                   type="button"
-                  className="rounded border px-2 py-1 text-xs disabled:opacity-60"
+                  className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-60 dark:border-slate-700 dark:text-slate-200"
                   onClick={() => canAddMeshExtra && setMeshExtraEnabled((v) => !v)}
                   disabled={!canAddMeshExtra}
                 >
@@ -695,22 +703,33 @@ export function LiquidacionRowClient({
                     {(() => {
                       const prevFilled = i === 0 ? true : !!norm(snMESHUi[i - 1] || "");
                       return (
-                    <input
-                      list={`mesh-list-${orden.ordenId}`}
-                      value={v}
-                      onChange={(e) => setSnMESH((prev) => updateAt(ensureArraySize(prev, snMESHUi.length), i, e.target.value))}
-                      className={`w-full rounded border px-3 py-2 text-sm ${
-                        !prevFilled
-                          ? "bg-gray-100 text-gray-500 cursor-not-allowed"
-                          : !norm(v)
-                          ? ""
-                          : meshSet.has(norm(v))
-                          ? "border-emerald-500 bg-emerald-50"
-                          : "border-red-500 bg-red-50"
-                      }`}
-                      placeholder={`MESH ${i + 1}`}
-                      disabled={!prevFilled}
-                    />
+                    <div className="flex items-center gap-2">
+                      <input
+                        list={`mesh-list-${orden.ordenId}`}
+                        value={v}
+                        onChange={(e) => setSnMESH((prev) => updateAt(ensureArraySize(prev, snMESHUi.length), i, e.target.value))}
+                        className={`w-full rounded border px-3 py-2 text-sm text-slate-900 dark:text-slate-100 ${
+                          !prevFilled
+                            ? "cursor-not-allowed border-slate-300 bg-gray-100 text-gray-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+                            : !norm(v)
+                            ? "border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900"
+                            : meshSet.has(norm(v))
+                            ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
+                            : "border-red-500 bg-red-50 dark:bg-red-900/20"
+                        }`}
+                        placeholder={`MESH ${i + 1}`}
+                        disabled={!prevFilled}
+                      />
+                      <button
+                        type="button"
+                        className="rounded border border-slate-300 px-2 py-2 text-xs dark:border-slate-700 dark:text-slate-200"
+                        onClick={() => copyText(v, `SN MESH ${i + 1} copiada`)}
+                        disabled={!norm(v)}
+                        title={`Copiar SN MESH ${i + 1}`}
+                      >
+                        Copiar
+                      </button>
+                    </div>
                       );
                     })()}
                     {!!norm(v) && !meshSet.has(norm(v)) ? (
@@ -729,11 +748,11 @@ export function LiquidacionRowClient({
               ) : null}
             </div>
           ) : (
-            <div className="text-xs text-muted-foreground space-y-2">
+            <div className="space-y-2 text-xs text-slate-500 dark:text-slate-400">
               <div>MESH no requerido para esta orden.</div>
               <button
                 type="button"
-                className="rounded border px-2 py-1"
+                className="rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:text-slate-200"
                 onClick={() => setMeshExtraEnabled(true)}
               >
                 Agregar MESH adicionales
@@ -745,12 +764,12 @@ export function LiquidacionRowClient({
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-3">
                 <label className="text-sm font-medium">SN BOX</label>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-xs text-slate-500 dark:text-slate-400">
                   usados: {boxEnteredCount}/4
                 </div>
                 <button
                   type="button"
-                  className="rounded border px-2 py-1 text-xs disabled:opacity-60"
+                  className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-60 dark:border-slate-700 dark:text-slate-200"
                   onClick={() => canAddBoxExtra && setBoxExtraEnabled((v) => !v)}
                   disabled={!canAddBoxExtra}
                 >
@@ -767,22 +786,33 @@ export function LiquidacionRowClient({
                     {(() => {
                       const prevFilled = i === 0 ? true : !!norm(snBOXUi[i - 1] || "");
                       return (
-                    <input
-                      list={`box-list-${orden.ordenId}`}
-                      value={v}
-                      onChange={(e) => setSnBOX((prev) => updateAt(ensureArraySize(prev, snBOXUi.length), i, e.target.value))}
-                      className={`w-full rounded border px-3 py-2 text-sm ${
-                        !prevFilled
-                          ? "bg-gray-100 text-gray-500 cursor-not-allowed"
-                          : !norm(v)
-                          ? ""
-                          : boxSet.has(norm(v))
-                          ? "border-emerald-500 bg-emerald-50"
-                          : "border-red-500 bg-red-50"
-                      }`}
-                      placeholder={`BOX ${i + 1}`}
-                      disabled={!prevFilled}
-                    />
+                    <div className="flex items-center gap-2">
+                      <input
+                        list={`box-list-${orden.ordenId}`}
+                        value={v}
+                        onChange={(e) => setSnBOX((prev) => updateAt(ensureArraySize(prev, snBOXUi.length), i, e.target.value))}
+                        className={`w-full rounded border px-3 py-2 text-sm text-slate-900 dark:text-slate-100 ${
+                          !prevFilled
+                            ? "cursor-not-allowed border-slate-300 bg-gray-100 text-gray-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+                            : !norm(v)
+                            ? "border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900"
+                            : boxSet.has(norm(v))
+                            ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
+                            : "border-red-500 bg-red-50 dark:bg-red-900/20"
+                        }`}
+                        placeholder={`BOX ${i + 1}`}
+                        disabled={!prevFilled}
+                      />
+                      <button
+                        type="button"
+                        className="rounded border border-slate-300 px-2 py-2 text-xs dark:border-slate-700 dark:text-slate-200"
+                        onClick={() => copyText(v, `SN BOX ${i + 1} copiada`)}
+                        disabled={!norm(v)}
+                        title={`Copiar SN BOX ${i + 1}`}
+                      >
+                        Copiar
+                      </button>
+                    </div>
                       );
                     })()}
                     {!!norm(v) && !boxSet.has(norm(v)) ? (
@@ -801,11 +831,11 @@ export function LiquidacionRowClient({
               ) : null}
             </div>
           ) : (
-            <div className="text-xs text-muted-foreground space-y-2">
+            <div className="space-y-2 text-xs text-slate-500 dark:text-slate-400">
               <div>BOX no requerido para esta orden.</div>
               <button
                 type="button"
-                className="rounded border px-2 py-1"
+                className="rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:text-slate-200"
                 onClick={() => setBoxExtraEnabled(true)}
               >
                 Agregar BOX adicionales
@@ -822,22 +852,37 @@ export function LiquidacionRowClient({
                 {expected.fono <= 0 ? (
                   <button
                     type="button"
-                    className="rounded border px-2 py-1 text-xs"
+                    className="rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:text-slate-200"
                     onClick={() => setFonoExtraEnabled(false)}
                   >
                     Quitar FONO adicionales
                   </button>
                 ) : null}
               </div>
-              <input
-                list={`fono-list-${orden.ordenId}`}
-                value={snFONO}
-                onChange={(e) => setSnFONO(e.target.value)}
-                className={`w-full rounded border px-3 py-2 text-sm ${
-                  !norm(snFONO) ? "" : fonoSet.has(norm(snFONO)) ? "border-emerald-500 bg-emerald-50" : "border-red-500 bg-red-50"
-                }`}
-                placeholder="Ejemplo: FONO123456"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  list={`fono-list-${orden.ordenId}`}
+                  value={snFONO}
+                  onChange={(e) => setSnFONO(e.target.value)}
+                  className={`w-full rounded border px-3 py-2 text-sm text-slate-900 dark:text-slate-100 ${
+                    !norm(snFONO)
+                      ? "border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900"
+                      : fonoSet.has(norm(snFONO))
+                      ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
+                      : "border-red-500 bg-red-50 dark:bg-red-900/20"
+                  }`}
+                  placeholder="Ejemplo: FONO123456"
+                />
+                <button
+                  type="button"
+                  className="rounded border border-slate-300 px-2 py-2 text-xs dark:border-slate-700 dark:text-slate-200"
+                  onClick={() => copyText(snFONO, "SN FONO copiada")}
+                  disabled={!norm(snFONO)}
+                  title="Copiar SN FONO"
+                >
+                  Copiar
+                </button>
+              </div>
               <datalist id={`fono-list-${orden.ordenId}`}>
                 {stock.FONO.map((sn) => (
                   <option key={sn} value={sn} />
@@ -848,11 +893,11 @@ export function LiquidacionRowClient({
               ) : null}
             </div>
           ) : (
-            <div className="text-xs text-muted-foreground space-y-2">
+            <div className="space-y-2 text-xs text-slate-500 dark:text-slate-400">
               <div>FONO no requerido para esta orden.</div>
               <button
                 type="button"
-                className="rounded border px-2 py-1"
+                className="rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:text-slate-200"
                 onClick={() => setFonoExtraEnabled(true)}
               >
                 Agregar FONO adicionales
@@ -860,17 +905,17 @@ export function LiquidacionRowClient({
             </div>
           )}
 
-          {stockLoading ? <div className="text-xs text-muted-foreground">Cargando stock de cuadrilla...</div> : null}
-          {preliqLoading ? <div className="text-xs text-muted-foreground">Cargando pre-liquidacion Telegram...</div> : null}
+          {stockLoading ? <div className="text-xs text-slate-500 dark:text-slate-400">Cargando stock de cuadrilla...</div> : null}
+          {preliqLoading ? <div className="text-xs text-slate-500 dark:text-slate-400">Cargando pre-liquidacion Telegram...</div> : null}
 
-          <div className="space-y-1 rounded border bg-slate-50 p-3">
+          <div className="space-y-1 rounded border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800">
             <label className="text-sm font-medium">Materiales (consumo automatico por instalacion)</label>
-            <div className="text-xs text-slate-700">
+            <div className="text-xs text-slate-700 dark:text-slate-200">
               ACTA:1, CINTILLO_30:4, CINTILLO_BANDERA:1, CONECTOR:1, ACOPLADOR:1, PACHCORD:1, ROSETA:1
             </div>
           </div>
 
-          <div className="rounded border p-3 space-y-3">
+            <div className="rounded border border-slate-200 p-3 space-y-3 dark:border-slate-700">
             <div className="text-sm font-medium">Servicios detectados / confirmados</div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <label className="inline-flex items-center gap-2 text-sm">
@@ -906,7 +951,7 @@ export function LiquidacionRowClient({
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">CAT 5e</label>
+                <label className="text-xs text-slate-500 dark:text-slate-400">CAT 5e</label>
                 <input
                   type="number"
                   min={1}
@@ -919,23 +964,23 @@ export function LiquidacionRowClient({
                     setCat5e(safe);
                   }}
                   disabled={!cableadoMeshChecked}
-                  className={`w-full rounded border px-3 py-2 text-sm ${!cableadoMeshChecked ? "bg-gray-100 text-gray-500" : ""}`}
+                  className={`w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 ${!cableadoMeshChecked ? "bg-gray-100 text-gray-500 dark:bg-slate-800 dark:text-slate-400" : ""}`}
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">CAT 6</label>
+                <label className="text-xs text-slate-500 dark:text-slate-400">CAT 6</label>
                 <input
                   value={String(cat6)}
                   readOnly
-                  className="w-full rounded border px-3 py-2 text-sm bg-gray-100 text-gray-700"
+                  className="w-full rounded border border-slate-300 bg-gray-100 px-3 py-2 text-sm text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Puntos UTP</label>
+                <label className="text-xs text-slate-500 dark:text-slate-400">Puntos UTP</label>
                 <input
                   value={String(puntosUTP)}
                   readOnly
-                  className="w-full rounded border px-3 py-2 text-sm bg-gray-100 text-gray-700"
+                  className="w-full rounded border border-slate-300 bg-gray-100 px-3 py-2 text-sm text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                 />
               </div>
             </div>
@@ -946,7 +991,11 @@ export function LiquidacionRowClient({
             <input
               value={rotuloNapCto}
               onChange={(e) => setRotuloNapCto(e.target.value)}
-              className={`w-full rounded border px-3 py-2 text-sm ${!norm(rotuloNapCto) ? "border-red-500 bg-red-50" : ""}`}
+              className={`w-full rounded border px-3 py-2 text-sm text-slate-900 dark:text-slate-100 ${
+                !norm(rotuloNapCto)
+                  ? "border-red-500 bg-red-50 dark:bg-red-900/20"
+                  : "border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900"
+              }`}
               placeholder="Ejemplo: NAP-12 / CTO-45"
               required
             />
@@ -959,8 +1008,10 @@ export function LiquidacionRowClient({
             <input
               value={observacion}
               onChange={(e) => setObservacion(e.target.value)}
-              className={`w-full rounded border px-3 py-2 text-sm ${
-                observacionRequerida && !norm(observacion) ? "border-red-500 bg-red-50" : ""
+              className={`w-full rounded border px-3 py-2 text-sm text-slate-900 dark:text-slate-100 ${
+                observacionRequerida && !norm(observacion)
+                  ? "border-red-500 bg-red-50 dark:bg-red-900/20"
+                  : "border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900"
               }`}
               placeholder={observacionRequerida ? "Observacion obligatoria por excepcion" : "Notas de liquidacion"}
             />

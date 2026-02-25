@@ -1059,7 +1059,7 @@ export default function DespachoClient() {
     <div className="space-y-5">
       {pending && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30">
-          <div className="rounded-lg bg-white px-4 py-3 text-sm shadow">
+          <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm shadow dark:border-slate-700 dark:bg-slate-900">
             Registrando despacho...
           </div>
         </div>
@@ -1068,9 +1068,9 @@ export default function DespachoClient() {
         {/* Paso 1 */}
         {step === 1 && (
           <div className="space-y-5">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
             <div className="text-sm font-medium">Paso 1  -  Seleccionar cuadrilla</div>
-            <div className="text-xs text-muted-foreground">
+            <div className="text-xs text-slate-500 dark:text-slate-400">
               Puedes buscar por nombre (si existe /api/cuadrillas/list) o ingresar el código manual.
             </div>
           </div>
@@ -1100,18 +1100,18 @@ export default function DespachoClient() {
                     if (e.key === "Enter") buscarYSeleccionarCuadrilla();
                     if (e.key === "Escape") setComboOpen(false);
                   }}
-                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2"
                   placeholder="Escribe nombre o código (ej: K1 MOTO o K1_MOTO)"
                 />
-                {cuadrillaId && <div className="mt-1 text-xs text-muted-foreground">Cuadrilla seleccionada</div>}
+                {cuadrillaId && <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Cuadrilla seleccionada</div>}
 
                 {comboOpen && (
-                  <div className="absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+                  <div className="absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 shadow-lg">
                     {cuadrillasLoading && (
-                      <div className="px-3 py-2 text-xs text-muted-foreground">Cargando</div>
+                      <div className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">Cargando</div>
                     )}
                     {!cuadrillasLoading && filteredCuadrillas.length === 0 && (
-                      <div className="px-3 py-2 text-xs text-muted-foreground">Sin resultados</div>
+                      <div className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">Sin resultados</div>
                     )}
                     {!cuadrillasLoading &&
                       filteredCuadrillas.map((c) => (
@@ -1137,7 +1137,7 @@ export default function DespachoClient() {
                               setTimeout(() => snInputRef.current?.focus(), 0);
                             }
                           }}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
                         >
                           <div className="font-medium">{c.nombre || c.id}</div>
                         </button>
@@ -1157,7 +1157,7 @@ export default function DespachoClient() {
                 <input
                   value={cuadrillaId}
                   onChange={(e) => setCuadrillaId(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2"
                   placeholder="Ej: K35_MOTO"
                 />
               </div>
@@ -1170,7 +1170,7 @@ export default function DespachoClient() {
                 type="button"
                 disabled={!cuadrillaId}
                 onClick={handleCargarInfo}
-                className="rounded-xl border border-slate-300 bg-white px-3 py-2 hover:bg-slate-50 disabled:opacity-50"
+                className="rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
               >
                 Cargar info cuadrilla
               </button>
@@ -1188,7 +1188,7 @@ export default function DespachoClient() {
 
           {/* Card resumen + Stock */}
           {infoLoaded && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm space-y-1 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 text-sm space-y-1 shadow-sm">
               <div className="font-medium">Resumen</div>
               <div>
                 Segmento: <b>{segmento}</b>  -  Tipo: <b>{tipo}</b>
@@ -1203,16 +1203,16 @@ export default function DespachoClient() {
                   type="button"
                   disabled={!cuadrillaId || stockLoading}
                   onClick={() => cargarStockCuadrillaById(cuadrillaId, segmento)}
-                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 hover:bg-slate-50 disabled:opacity-50"
+                  className="rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
                 >
                   {stockLoading ? "Cargando stock..." : "Ver stock (opcional)"}
                 </button>
-                {!stock && <span className="text-xs text-muted-foreground">Si no existe el endpoint, no se mostrar.</span>}
+                {!stock && <span className="text-xs text-slate-500 dark:text-slate-400">Si no existe el endpoint, no se mostrar.</span>}
               </div>
 
               {stock && (
                 <div className="pt-2 grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 dark:bg-slate-800/60 p-2">
                     <div className="text-xs font-medium mb-1">Materiales</div>
                     <div className="space-y-1">
                       {(stock.materiales || []).slice(0, 10).map((m, i) => (
@@ -1222,11 +1222,11 @@ export default function DespachoClient() {
                         </div>
                       ))}
                       {(stock.materiales || []).length > 10 && (
-                        <div className="text-[11px] text-muted-foreground">+{(stock.materiales || []).length - 10} ms</div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">+{(stock.materiales || []).length - 10} ms</div>
                       )}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 dark:bg-slate-800/60 p-2">
                     <div className="text-xs font-medium mb-1">Equipos</div>
                     <div className="space-y-1">
                       {(stock.equipos || []).slice(0, 10).map((e, i) => (
@@ -1236,11 +1236,11 @@ export default function DespachoClient() {
                         </div>
                       ))}
                       {(stock.equipos || []).length > 10 && (
-                        <div className="text-[11px] text-muted-foreground">+{(stock.equipos || []).length - 10} ms</div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">+{(stock.equipos || []).length - 10} ms</div>
                       )}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 dark:bg-slate-800/60 p-2">
                     <div className="text-xs font-medium mb-1">Bobinas</div>
                     <div className="space-y-1">
                       {(stock.bobinas || []).slice(0, 10).map((b, i) => (
@@ -1250,7 +1250,7 @@ export default function DespachoClient() {
                         </div>
                       ))}
                       {(stock.bobinas || []).length > 10 && (
-                        <div className="text-[11px] text-muted-foreground">+{(stock.bobinas || []).length - 10} ms</div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">+{(stock.bobinas || []).length - 10} ms</div>
                       )}
                     </div>
                   </div>
@@ -1267,7 +1267,7 @@ export default function DespachoClient() {
           <div className="flex items-center justify-between gap-2">
             <button
               type="button"
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 hover:bg-slate-50"
+              className="rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800"
               onClick={() => {
                 setStep(1);
                 toast.message("Regresaste al Paso 1");
@@ -1276,7 +1276,7 @@ export default function DespachoClient() {
                Paso 1
             </button>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-xs">
               <div className="font-medium">Cuadrilla</div>
               <div>
                 Segmento: {segmento}  -  Tipo: {tipo}
@@ -1286,7 +1286,7 @@ export default function DespachoClient() {
           </div>
 
           {/* Equipos: scanner */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
             <div className="font-medium">Equipos (SN)  -  Scanner</div>
             <div className="mt-2 flex gap-2">
               <input
@@ -1299,7 +1299,7 @@ export default function DespachoClient() {
                     handleAddSN();
                   }
                 }}
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-mono"
+                className="w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 font-mono"
                 placeholder="Escanea o escribe el SN y Enter"
               />
               <button
@@ -1312,18 +1312,18 @@ export default function DespachoClient() {
               </button>
             </div>
             {snValidating && (
-              <div className="mt-1 text-xs text-muted-foreground">Validando SN...</div>
+              <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Validando SN...</div>
             )}
             {pendingScans > 0 && (
               <div className="mt-1 text-xs text-slate-500">En cola: {pendingScans}</div>
             )}
 
-            <div className="mt-2 text-xs text-muted-foreground">Total: {resumenEquipos}</div>
+            <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">Total: {resumenEquipos}</div>
 
             {equipos.length > 0 && (
               <div className="mt-3 overflow-x-auto">
                 <table className="min-w-full text-sm">
-                  <thead className="bg-slate-100 text-slate-700">
+                  <thead className="bg-slate-100 text-slate-700 dark:text-slate-200">
                     <tr>
                       <th className="text-left px-3 py-2">SN</th>
                       <th className="text-left px-3 py-2">Equipo</th>
@@ -1332,7 +1332,7 @@ export default function DespachoClient() {
                   </thead>
                   <tbody>
                     {equipos.map((e) => (
-                      <tr key={e.sn} className="border-t border-slate-200">
+                      <tr key={e.sn} className="border-t border-slate-200 dark:border-slate-700">
                         <td className="px-3 py-2 font-mono">{e.sn}</td>
                         <td className="px-3 py-2">{e.tipo || "OTROS"}</td>
                         <td className="px-3 py-2 text-right">
@@ -1351,7 +1351,7 @@ export default function DespachoClient() {
 
           {/* Bobinas residencial */}
           {segmento === "RESIDENCIAL" && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 space-y-2 shadow-sm">
               <div className="font-medium">Bobinas (RESIDENCIAL)  -  Codigos</div>
               <div className="flex gap-2">
                 <input
@@ -1359,7 +1359,7 @@ export default function DespachoClient() {
                   onChange={(e) => setBobinaInput(e.target.value.toUpperCase())}
                   onKeyDown={(e) => e.key === "Enter" && handleAddBobina()}
                   placeholder="WIN-1234"
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-mono"
+                  className="w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 font-mono"
                 />
                 <button
                   type="button"
@@ -1369,14 +1369,14 @@ export default function DespachoClient() {
                   Agregar
                 </button>
               </div>
-              <div className="text-xs text-muted-foreground">
+              <div className="text-xs text-slate-500 dark:text-slate-400">
                 Total bobinas: {bobinaCodes.length}  -  Total metros: {bobinaCodes.length * 1000}
               </div>
 
               {bobinaCodes.length > 0 && (
                 <div className="mt-2 overflow-x-auto">
                   <table className="min-w-full text-sm">
-                    <thead className="bg-slate-100 text-slate-700">
+                    <thead className="bg-slate-100 text-slate-700 dark:text-slate-200">
                       <tr>
                         <th className="text-left px-3 py-2">Codigo</th>
                         <th className="text-right px-3 py-2">Accion</th>
@@ -1384,7 +1384,7 @@ export default function DespachoClient() {
                     </thead>
                     <tbody>
                       {bobinaCodes.map((code) => (
-                        <tr key={code} className="border-t border-slate-200">
+                        <tr key={code} className="border-t border-slate-200 dark:border-slate-700">
                           <td className="px-3 py-2 font-mono">{code}</td>
                           <td className="px-3 py-2 text-right">
                             <button
@@ -1406,7 +1406,7 @@ export default function DespachoClient() {
 
           {/* Materiales */}
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 space-y-2 shadow-sm">
             <div className="font-medium">Materiales (INSTALACIONES)</div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -1414,7 +1414,7 @@ export default function DespachoClient() {
                 if (id === "BOBINA" && segmento === "RESIDENCIAL") return null;
                 const unidad = materialUnits[id];
                 return (
-                  <div key={id} className="rounded-xl border border-slate-200 bg-slate-50 p-2">
+                  <div key={id} className="rounded-xl border border-slate-200 bg-slate-50 dark:bg-slate-800/60 p-2">
                     <div className="text-sm font-medium">{id}</div>
 
                     {id === "BOBINA" && segmento === "CONDOMINIO" ? (
@@ -1423,7 +1423,7 @@ export default function DespachoClient() {
                         <input
                           value={bobinaCondominioMetros}
                           onChange={(e) => setBobinaCondominioMetros(e.target.value)}
-                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1"
+                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1"
                           inputMode="decimal"
                         />
                       </div>
@@ -1433,7 +1433,7 @@ export default function DespachoClient() {
                         <input
                           value={matUnd[id] || ""}
                           onChange={(e) => handleMatUndChange(id, e.target.value)}
-                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1"
+                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1"
                           inputMode="numeric"
                           pattern="[0-9]*"
                         />
@@ -1444,7 +1444,7 @@ export default function DespachoClient() {
                         <input
                           value={matMetros[id] || ""}
                           onChange={(e) => setMatMetros((p) => ({ ...p, [id]: e.target.value }))}
-                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1"
+                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1"
                           inputMode="decimal"
                         />
                       </div>
@@ -1455,7 +1455,7 @@ export default function DespachoClient() {
                           <input
                             value={matUnd[id] || ""}
                             onChange={(e) => handleMatUndChange(id, e.target.value)}
-                            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1"
+                            className="mt-1 w-full rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1"
                             inputMode="numeric"
                             pattern="[0-9]*"
                           />
@@ -1465,7 +1465,7 @@ export default function DespachoClient() {
                           <input
                             value={matMetros[id] || ""}
                             onChange={(e) => setMatMetros((p) => ({ ...p, [id]: e.target.value }))}
-                            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1"
+                            className="mt-1 w-full rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1"
                             inputMode="decimal"
                           />
                         </div>
@@ -1477,12 +1477,12 @@ export default function DespachoClient() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
             <div className="font-medium">Observación</div>
             <textarea
               value={observacion}
               onChange={(e) => setObservacion(e.target.value)}
-              className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-2 py-1"
+              className="mt-2 w-full rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1"
               rows={3}
               placeholder="Observaciones del despacho"
             />
@@ -1564,7 +1564,7 @@ export default function DespachoClient() {
       {/* Modal Preview */}
       {showPreview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-3xl bg-white rounded-xl shadow-xl overflow-hidden">
+          <div className="w-full max-w-3xl rounded-xl bg-white shadow-xl overflow-hidden dark:bg-slate-900">
             <div className="px-5 py-4 border-b flex items-center justify-between">
               <div className="font-semibold">Resumen de despacho</div>
               <button
@@ -1607,7 +1607,7 @@ export default function DespachoClient() {
                     )}
                   </div>
 
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
                     <b>Equipos ({equipos.length})</b>
                     {equipos.length === 0 ? (
                       <div className="text-slate-500">-</div>
@@ -1622,7 +1622,7 @@ export default function DespachoClient() {
                     )}
                   </div>
 
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
                     <b>Materiales ({mats.length})</b>
                     {mats.length === 0 ? (
                       <div className="text-slate-500"></div>
@@ -1640,13 +1640,13 @@ export default function DespachoClient() {
                   </div>
 
                   {segmento === "RESIDENCIAL" && (
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
                       <b>Bobinas RESIDENCIAL</b>
                       {bobinasRes.length === 0 ? (
                         <div className="text-slate-500"></div>
                       ) : (
                         <>
-                          <div className="text-xs text-muted-foreground">
+                          <div className="text-xs text-slate-500 dark:text-slate-400">
                             Cantidad: {bobinasRes.length}  -  Total metros: {bobinasRes.length * 1000}
                           </div>
                           <div className="mt-1 text-xs break-words">
@@ -1658,7 +1658,7 @@ export default function DespachoClient() {
                   )}
 
                   {segmento === "CONDOMINIO" && (
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
                       <b>Bobina CONDOMINIO (metros)</b>
                       <div>{Math.max(0, numOr0(bobinaCondominioMetros))}</div>
                     </div>
@@ -1671,7 +1671,7 @@ export default function DespachoClient() {
               <button
                 type="button"
                 onClick={() => setShowPreview(false)}
-                className="rounded-xl border border-slate-300 bg-white px-3 py-2 hover:bg-slate-50"
+                className="rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800"
               >
                 Cancelar
               </button>
@@ -1691,6 +1691,11 @@ export default function DespachoClient() {
     </div>
   );
 }
+
+
+
+
+
 
 
 

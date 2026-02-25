@@ -10,14 +10,14 @@ export default async function HomeUsuariosPage() {
   const rows = await listUsuariosForHome(60);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 text-slate-900 dark:text-slate-100">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">Usuarios</h1>
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Usuarios</h1>
 
         <div className="flex items-center gap-2">
           {canCreate && (
             <Link
-              className="rounded border px-3 py-2 text-sm hover:bg-muted"
+              className="rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
               href="/home/usuarios/new"
             >
               Crear
@@ -25,7 +25,7 @@ export default async function HomeUsuariosPage() {
           )}
 
           <Link
-            className="rounded border px-3 py-2 text-sm hover:bg-muted"
+            className="rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
             href="/home"
           >
             Inicio
@@ -33,9 +33,9 @@ export default async function HomeUsuariosPage() {
         </div>
       </div>
 
-      <div className="rounded border overflow-auto">
+      <div className="overflow-auto rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
         <table className="w-full text-sm">
-          <thead className="bg-muted/50">
+          <thead className="bg-slate-100 dark:bg-slate-800 dark:text-slate-100">
             <tr className="text-left">
               <th className="p-2">Nombre</th>
               <th className="p-2">Roles</th>
@@ -46,7 +46,7 @@ export default async function HomeUsuariosPage() {
           </thead>
           <tbody>
             {rows.map((u) => (
-              <tr key={u.uid} className="border-t">
+              <tr key={u.uid} className="border-t border-slate-200 dark:border-slate-700">
                 <td className="p-2">
                   {u.nombres} {u.apellidos}
                 </td>
@@ -64,7 +64,7 @@ export default async function HomeUsuariosPage() {
         </table>
       </div>
 
-      <p className="text-xs text-muted-foreground">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         En Home se edita solo perfil (nombres/apellidos/contacto). RBAC se gestiona en Admin.
       </p>
     </div>

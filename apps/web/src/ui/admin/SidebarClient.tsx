@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import type { AdminNavItem } from "@/core/rbac/menu";
@@ -43,8 +43,9 @@ export default function AdminSidebarClient({
   areas: string[];
 }) {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [openGroup, setOpenGroup] = useState<GroupKey>("GENERAL");
+  const [navigatingHref, setNavigatingHref] = useState<string | null>(null);
   const activeLabel = useMemo(() => {
     const exact = items.find((it) => pathname === it.href);
     if (exact) return exact.label;
@@ -64,12 +65,24 @@ export default function AdminSidebarClient({
     return out;
   }, [items]);
 
+  useEffect(() => {
+    setNavigatingHref(null);
+  }, [pathname]);
+
+  const handleNavClick = (e: MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (href === pathname) return;
+    if (e.defaultPrevented) return;
+    if (e.button !== 0) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    setNavigatingHref(href);
+  };
+
   return (
     <motion.aside
       initial={false}
       animate={{ width: collapsed ? "5rem" : "16rem" }}
       transition={SIDEBAR_SPRING}
-      className="h-dvh shrink-0 overflow-x-hidden border-r border-[rgba(15,23,42,.08)] bg-gradient-to-b from-white to-slate-50/70 shadow-[0_6px_20px_rgba(15,23,42,.05)]"
+      className="h-dvh shrink-0 overflow-x-hidden border-r border-[rgba(15,23,42,.08)] bg-gradient-to-b from-white to-slate-50/70 shadow-[0_6px_20px_rgba(15,23,42,.05)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-950 dark:shadow-none"
       style={
         {
           "--brand": "#30518c",
@@ -91,7 +104,7 @@ export default function AdminSidebarClient({
                 transition={FADE_SLIDE}
                 className="flex items-center gap-2"
               >
-                <span className="inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl bg-white shadow-[0_6px_18px_rgba(48,81,140,.2)] ring-1 ring-[var(--line)]">
+                <span className="inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl bg-white shadow-[0_6px_18px_rgba(48,81,140,.2)] ring-1 ring-[var(--line)] dark:bg-slate-800 dark:shadow-none">
                   <Image src="/img/logo.png" alt="Logo REDES" width={26} height={26} className="h-6 w-6 object-contain" />
                 </span>
                 <span className="text-sm font-semibold text-[var(--brand-ink)]">Admin</span>
@@ -102,7 +115,7 @@ export default function AdminSidebarClient({
           <button
             type="button"
             onClick={() => setCollapsed((v) => !v)}
-            className="rounded-xl border border-[var(--line)] px-2 py-1 text-xs text-[var(--muted-ink)] transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45"
+            className="rounded-xl border border-[var(--line)] px-2 py-1 text-xs text-[var(--muted-ink)] transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45 dark:hover:bg-slate-800"
             aria-label={collapsed ? "Expandir sidebar" : "Colapsar sidebar"}
           >
             <span className={`inline-block transition-transform duration-300 ${collapsed ? "rotate-180" : ""}`}>
@@ -120,7 +133,7 @@ export default function AdminSidebarClient({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -6, scale: 0.98 }}
               transition={FADE_SLIDE}
-              className="mb-2 rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-[11px] text-slate-500"
+              className="mb-2 rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-[11px] text-slate-500 dark:bg-slate-800 dark:text-slate-400"
             >
               Ruta actual: <span className="font-semibold text-[var(--brand-ink)]">{activeLabel}</span>
             </motion.div>
@@ -129,7 +142,7 @@ export default function AdminSidebarClient({
 
         {collapsed && (
           <div className="group relative mb-2">
-            <div className="flex h-10 w-full items-center justify-center rounded-xl border border-[var(--line)] bg-white text-[11px] font-semibold text-[var(--brand-ink)]">
+            <div className="flex h-10 w-full items-center justify-center rounded-xl border border-[var(--line)] bg-white text-[11px] font-semibold text-[var(--brand-ink)] dark:bg-slate-800 dark:text-slate-200">
               EN
             </div>
             <div className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-30 -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-900 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition group-hover:opacity-100">
@@ -164,7 +177,7 @@ export default function AdminSidebarClient({
                         : "text-[var(--muted-ink)] hover:bg-white/70 hover:text-[#30518c]"
                     }`}
                   >
-                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--line)] bg-white text-sm font-semibold">
+                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--line)] bg-white text-sm font-semibold dark:bg-slate-800">
                       {groupBadge(group)}
                     </span>
                     <AnimatePresence initial={false}>
@@ -219,6 +232,7 @@ export default function AdminSidebarClient({
                             <Link
                               key={it.href}
                               href={it.href}
+                              onClick={(e) => handleNavClick(e, it.href)}
                               className={`relative mt-1 flex items-center rounded-xl px-2 py-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45 ${
                                 active
                                   ? "bg-[#dbe7ff] font-bold text-[#1f3154] ring-1 ring-[#9db8ea] shadow-[inset_0_0_0_1px_rgba(48,81,140,.08)]"
@@ -229,6 +243,12 @@ export default function AdminSidebarClient({
                                 <span className="absolute -left-[9px] h-7 w-2 rounded-full bg-[#30518c] shadow-[0_0_14px_rgba(48,81,140,.65)]" />
                               )}
                               <span className="truncate">{it.label}</span>
+                              {navigatingHref === it.href && (
+                                <span
+                                  className="ml-auto inline-flex h-4 w-4 animate-spin rounded-full border-2 border-[#30518c]/35 border-t-[#30518c]"
+                                  aria-hidden="true"
+                                />
+                              )}
                             </Link>
                           );
                         })}
@@ -248,7 +268,7 @@ export default function AdminSidebarClient({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.98 }}
               transition={FADE_SLIDE}
-              className="mt-3 rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-[11px] text-slate-500"
+              className="mt-3 rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-[11px] text-slate-500 dark:bg-slate-800 dark:text-slate-400"
             >
               Areas: {areas.join(", ") || "(none)"}
             </motion.div>

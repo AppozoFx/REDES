@@ -284,8 +284,8 @@ export default function AsistenciaClient() {
   const disabled = modoAdmin ? draftEstado === "CERRADO" : draftEstado !== "ABIERTO";
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border bg-white p-4">
+    <div className="space-y-4 text-slate-900 dark:text-slate-100">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-xl font-semibold text-slate-800">Asistencia de Cuadrillas</h1>
@@ -297,7 +297,7 @@ export default function AsistenciaClient() {
               type="date"
               value={fecha}
               onChange={(e) => setFecha(e.target.value)}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
             />
           </div>
         </div>
@@ -309,7 +309,7 @@ export default function AsistenciaClient() {
               placeholder="Buscar cuadrilla..."
               value={filtroNombre}
               onChange={(e) => setFiltroNombre(e.target.value)}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
             />
             <button
               onClick={() => cargar(gestorUid)}
@@ -404,9 +404,9 @@ export default function AsistenciaClient() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border bg-white">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-100 text-gray-700">
+          <thead className="bg-slate-100 text-gray-700 dark:bg-slate-800 dark:text-slate-200">
             <tr>
               <th className="p-2 text-left">Cuadrilla</th>
               <th className="p-2 text-left">Zona</th>
@@ -419,21 +419,21 @@ export default function AsistenciaClient() {
           <tbody>
             {cargando && (
               <tr>
-                <td colSpan={6} className="p-6 text-center text-gray-500">
+                <td colSpan={6} className="p-6 text-center text-gray-500 dark:text-slate-400">
                   Cargando...
                 </td>
               </tr>
             )}
             {!cargando && filtered.length === 0 && (
               <tr>
-                <td colSpan={6} className="p-6 text-center text-gray-500">
+                <td colSpan={6} className="p-6 text-center text-gray-500 dark:text-slate-400">
                   No hay cuadrillas para mostrar.
                 </td>
               </tr>
             )}
             {!cargando &&
               filtered.map((r) => (
-                <tr key={r.id} className="border-t">
+                <tr key={r.id} className="border-t border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/70">
                   <td className="p-2">{r.nombre}</td>
                   <td className="p-2">{r.zonaNombre || r.zonaId || "-"}</td>
                   <td className="p-2 min-w-[260px]">
@@ -455,7 +455,7 @@ export default function AsistenciaClient() {
                       value={r.estadoAsistencia || "asistencia"}
                       onChange={(e) => updateRow(r.id, { estadoAsistencia: e.target.value })}
                       disabled={disabled}
-                      className="border rounded px-2 py-1"
+                      className="rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                     >
                       {estados.map((e) => (
                         <option key={e} value={e}>
@@ -469,7 +469,7 @@ export default function AsistenciaClient() {
                       value={r.observacion || ""}
                       onChange={(e) => updateRow(r.id, { observacion: e.target.value })}
                       disabled={disabled}
-                      className="border rounded px-2 py-1 w-full"
+                      className="w-full rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                     />
                   </td>
                   <td className="p-2">{r.coordinadorNombre || r.coordinadorUid || "-"}</td>
@@ -516,3 +516,4 @@ export default function AsistenciaClient() {
     </div>
   );
 }
+

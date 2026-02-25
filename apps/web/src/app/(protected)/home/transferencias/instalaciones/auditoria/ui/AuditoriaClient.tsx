@@ -141,8 +141,8 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
   });
 
   const fieldClass =
-    "h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
-  const btnSoftClass = "rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-100 disabled:opacity-50";
+    "h-10 w-full rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40";
+  const btnSoftClass = "rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 transition hover:bg-slate-100 disabled:opacity-50";
   const btnPrimaryClass = "rounded-lg bg-blue-600 px-3 py-2 text-sm text-white transition hover:bg-blue-700 disabled:opacity-50";
   const btnSuccessClass = "rounded-lg bg-emerald-700 px-3 py-2 text-sm text-white transition hover:bg-emerald-800 disabled:opacity-50";
 
@@ -635,24 +635,24 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
         </div>
       )}
 
-      <section className="rounded-xl border bg-white p-4">
+      <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <div className="text-lg font-semibold">Control de Auditoria</div>
             <div className="text-xs text-slate-500">Seguimiento de equipos pendientes y sustentados</div>
           </div>
-          <div className="inline-flex rounded-full bg-slate-100 p-1 text-xs">
+          <div className="inline-flex rounded-full bg-slate-100 p-1 text-xs dark:bg-slate-800">
             <button
               type="button"
               onClick={() => setModo("campo")}
-              className={`rounded-full px-3 py-1 ${modo === "campo" ? "bg-white shadow" : ""}`}
+              className={`rounded-full px-3 py-1 ${modo === "campo" ? "bg-white shadow dark:bg-slate-700 dark:text-slate-100" : "dark:text-slate-300"}`}
             >
               Equipos en campo
             </button>
             <button
               type="button"
               onClick={() => setModo("instalados")}
-              className={`rounded-full px-3 py-1 ${modo === "instalados" ? "bg-white shadow" : ""}`}
+              className={`rounded-full px-3 py-1 ${modo === "instalados" ? "bg-white shadow dark:bg-slate-700 dark:text-slate-100" : "dark:text-slate-300"}`}
             >
               Equipos instalados
             </button>
@@ -660,7 +660,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-4">
-          <div className="rounded-xl border bg-slate-50 p-3">
+          <div className="rounded-xl border bg-slate-50 dark:bg-slate-800/60 p-3">
             <div className="text-xs text-slate-500">En auditoria</div>
             <div className="text-2xl font-semibold">{kpis.total}</div>
           </div>
@@ -672,7 +672,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
             <div className="text-xs text-emerald-700">Sustentadas</div>
             <div className="text-2xl font-semibold text-emerald-800">{kpis.sust}</div>
           </div>
-          <div className="rounded-xl border bg-white p-3">
+          <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-3">
             <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
               <span>Avance</span>
               <span>{avance}%</span>
@@ -684,10 +684,10 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
         </div>
       </section>
 
-      <section className="rounded-xl border bg-white p-4">
+      <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <div className="text-sm font-semibold text-slate-900">Control de avisos por cuadrilla/ubicacion</div>
+            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Control de avisos por cuadrilla/ubicacion</div>
             <div className="text-xs text-slate-500">
               Avisadas: {ubicacionesAvisadas} | Pendientes: {ubicacionesPendientes} | Total: {totalUbicaciones}
             </div>
@@ -724,7 +724,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
               <label
                 key={u}
                 className={`flex items-center justify-between rounded-lg border px-3 py-2 text-sm ${
-                  checked ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-white"
+                  checked ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
                 }`}
               >
                 <span className="truncate pr-3">
@@ -746,7 +746,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
         </div>
       </section>
 
-      <section className="rounded-xl border bg-white p-4">
+      <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4">
         <div className="grid gap-3 md:grid-cols-5">
           <div>
             <label className="mb-1 block text-xs text-slate-500">Estado auditoria</label>
@@ -833,7 +833,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
         </div>
 
         {canEdit && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 dark:bg-slate-800/60 p-2">
             <button type="button" onClick={guardarObservaciones} className={btnSuccessClass} disabled={saving}>
               Guardar cambios
             </button>
@@ -881,7 +881,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
               {fileName && <div className="text-xs text-slate-500">Archivo: {fileName}</div>}
             </div>
             {snAnalisis && (
-              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700">
+              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 dark:bg-slate-800/60 p-2 text-xs text-slate-700 dark:text-slate-200">
                 <div>Total: {snAnalisis.total} | Encontrados: {snAnalisis.encontrados} | No encontrados: {snAnalisis.noEncontrados.length}</div>
                 {!!snAnalisis.noEncontrados.length && (
                   <div className="mt-2 space-y-2">
@@ -902,7 +902,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
         )}
       </section>
 
-      <section className="rounded-xl border bg-white shadow-sm">
+      <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 shadow-sm">
         {loading ? (
           <div className="p-6 text-center text-slate-600">Cargando auditoria...</div>
         ) : (
@@ -928,7 +928,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
                   const estadoAud = asStr(r.auditoria?.estado || "pendiente");
                   const pendiente = estadoAud !== "sustentada";
                   return (
-                    <tr key={r.id} className="border-t hover:bg-slate-50/70">
+                    <tr key={r.id} className="border-t hover:bg-slate-50 dark:hover:bg-slate-800/70">
                       <td className="p-2 font-mono text-xs">{asStr(r.SN || r.id)}</td>
                       <td className="p-2">{asStr(r.equipo) || "-"}</td>
                       <td className="p-2">{modo === "instalados" ? fmtDate(liq.fechaInstalacion) : fmtDate(getFechaDespacho(r))}</td>
@@ -1042,14 +1042,14 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
 
       {fotoModal.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setFotoModal({ open: false, url: "", sn: "" })}>
-          <div className="relative w-[92vw] max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="relative w-[92vw] max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-slate-900" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b px-4 py-2">
-              <div className="text-sm font-medium text-slate-700">Foto auditoria - SN {fotoModal.sn}</div>
+              <div className="text-sm font-medium text-slate-700 dark:text-slate-200">Foto auditoria - SN {fotoModal.sn}</div>
               <button type="button" className="text-slate-500 hover:text-slate-800" onClick={() => setFotoModal({ open: false, url: "", sn: "" })}>
                 Cerrar
               </button>
             </div>
-            <div className="flex justify-center bg-slate-50 p-3">
+            <div className="flex justify-center bg-slate-50 dark:bg-slate-800/60 p-3">
               <img src={fotoModal.url} alt={`foto-${fotoModal.sn}`} className="max-h-[75vh] rounded object-contain" />
             </div>
           </div>
@@ -1058,6 +1058,9 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
     </div>
   );
 }
+
+
+
 
 
 

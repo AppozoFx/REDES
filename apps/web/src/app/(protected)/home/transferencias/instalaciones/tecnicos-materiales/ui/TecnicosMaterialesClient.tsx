@@ -443,7 +443,7 @@ export default function TecnicosMaterialesClient() {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-xl border bg-white p-4">
+      <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4">
         <div className="grid gap-3 md:grid-cols-3">
           <div>
             <label className="text-xs text-slate-500">Coordinador</label>
@@ -454,7 +454,7 @@ export default function TecnicosMaterialesClient() {
                 setCuadrillaId("");
                 setTecnicoUid("");
               }}
-              className="mt-1 w-full rounded border px-2 py-2 text-sm"
+              className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             >
               <option value="">Todos</option>
               {coordinadores.map((c) => (
@@ -470,7 +470,7 @@ export default function TecnicosMaterialesClient() {
                 setCuadrillaId(e.target.value);
                 setTecnicoUid("");
               }}
-              className="mt-1 w-full rounded border px-2 py-2 text-sm"
+              className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             >
               <option value="">Todas</option>
               {cuadrillasFiltradas.map((c) => (
@@ -483,7 +483,7 @@ export default function TecnicosMaterialesClient() {
             <select
               value={tecnicoUid}
               onChange={(e) => setTecnicoUid(e.target.value)}
-              className="mt-1 w-full rounded border px-2 py-2 text-sm"
+              className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             >
               <option value="">Selecciona tecnico...</option>
               {tecnicosFiltrados.map((t) => (
@@ -496,20 +496,20 @@ export default function TecnicosMaterialesClient() {
         </div>
       </section>
 
-      <section className="rounded-xl border bg-white p-4 space-y-3">
+      <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="inline-flex rounded border p-1 text-sm">
+          <div className="inline-flex rounded border border-slate-300 p-1 text-sm dark:border-slate-700">
             <button
               type="button"
               onClick={() => setModo("ENTREGA")}
-              className={`rounded px-3 py-1 ${modo === "ENTREGA" ? "bg-slate-900 text-white" : ""}`}
+              className={`rounded px-3 py-1 ${modo === "ENTREGA" ? "bg-slate-900 text-white" : "text-slate-700 dark:text-slate-200"}`}
             >
               Entrega
             </button>
             <button
               type="button"
               onClick={() => setModo("DEVOLUCION")}
-              className={`rounded px-3 py-1 ${modo === "DEVOLUCION" ? "bg-slate-900 text-white" : ""}`}
+              className={`rounded px-3 py-1 ${modo === "DEVOLUCION" ? "bg-slate-900 text-white" : "text-slate-700 dark:text-slate-200"}`}
             >
               Devolucion
             </button>
@@ -531,15 +531,15 @@ export default function TecnicosMaterialesClient() {
               value={materialSearch}
               onChange={(e) => setMaterialSearch(e.target.value)}
               placeholder="Código o nombre del material..."
-              className="mt-1 w-full rounded border px-2 py-2 text-sm"
+              className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             />
-            <div className="mt-2 max-h-40 overflow-auto rounded border">
+            <div className="mt-2 max-h-40 overflow-auto rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
               {materialesFiltrados.map((m) => (
                 <button
                   key={m.id}
                   type="button"
                   onClick={() => addItem(m.id)}
-                  className="w-full border-b px-2 py-1 text-left text-xs hover:bg-slate-50"
+                  className="w-full border-b px-2 py-1 text-left text-xs hover:bg-slate-50 dark:hover:bg-slate-800"
                 >
                   {m.id} {m.nombre ? `- ${m.nombre}` : ""} ({m.unidadTipo || "UND"})
                 </button>
@@ -552,14 +552,14 @@ export default function TecnicosMaterialesClient() {
               value={observacion}
               onChange={(e) => setObservacion(e.target.value)}
               rows={5}
-              className="mt-1 w-full rounded border px-2 py-2 text-sm"
+              className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             />
           </div>
         </div>
 
         <div className="overflow-x-auto rounded border">
           <table className="min-w-full border-collapse text-sm">
-            <thead className="bg-slate-100 text-slate-700">
+            <thead className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
               <tr>
                 <th className="border p-2 text-left">Material</th>
                 <th className="border p-2 text-left">Cantidad</th>
@@ -668,7 +668,7 @@ export default function TecnicosMaterialesClient() {
         </div>
       </section>
 
-      <section className="rounded-xl border bg-white p-4">
+      <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4">
         <h2 className="text-lg font-semibold">Historial del tecnico</h2>
         {!tecnicoUid && <p className="mt-2 text-sm text-slate-500">Selecciona un tecnico para ver su historial.</p>}
         {tecnicoUid && (
@@ -703,7 +703,7 @@ export default function TecnicosMaterialesClient() {
         {tecnicoUid && (
           <div className="mt-3 overflow-x-auto rounded border">
             <table className="min-w-full border-collapse text-sm">
-              <thead className="bg-slate-100 text-slate-700">
+              <thead className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 <tr>
                   <th className="border p-2 text-left">Fecha</th>
                   <th className="border p-2 text-left">Tipo</th>
@@ -740,5 +740,7 @@ export default function TecnicosMaterialesClient() {
     </div>
   );
 }
+
+
 
 

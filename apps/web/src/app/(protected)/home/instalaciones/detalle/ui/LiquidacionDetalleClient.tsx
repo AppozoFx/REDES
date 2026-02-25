@@ -41,6 +41,7 @@ type EditMap = Record<
 >;
 
 export default function LiquidacionDetalleClient() {
+  const [isDark, setIsDark] = useState(false);
   const [items, setItems] = useState<Row[]>([]);
   const [cargando, setCargando] = useState(false);
   const [ediciones, setEdiciones] = useState<EditMap>({});
@@ -55,6 +56,20 @@ export default function LiquidacionDetalleClient() {
     cuadrilla: "",
     coordinadorCuadrilla: "",
   });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const sync = () => setIsDark(root.classList.contains("dark") || mq.matches);
+    sync();
+    const obs = new MutationObserver(sync);
+    obs.observe(root, { attributes: true, attributeFilter: ["class"] });
+    mq.addEventListener?.("change", sync);
+    return () => {
+      obs.disconnect();
+      mq.removeEventListener?.("change", sync);
+    };
+  }, []);
 
   const cargar = async (silent = false) => {
     if (!silent) setCargando(true);
@@ -186,11 +201,11 @@ export default function LiquidacionDetalleClient() {
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 text-slate-900 dark:text-slate-100">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="grid gap-3 md:grid-cols-5 flex-1 min-w-[520px]">
           <div className="flex flex-col">
-            <label className="text-sm font-medium text-gray-700">Mes</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Mes</label>
             <input
               type="month"
               name="mes"
@@ -200,7 +215,7 @@ export default function LiquidacionDetalleClient() {
             />
           </div>
           <div className="flex flex-col">
-            <label className="text-sm font-medium text-gray-700">Dia</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Dia</label>
             <input
               type="date"
               name="dia"
@@ -210,7 +225,7 @@ export default function LiquidacionDetalleClient() {
             />
           </div>
           <div className="flex flex-col">
-            <label className="text-sm font-medium text-gray-700">Cuadrilla</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Cuadrilla</label>
             <input
               type="text"
               name="cuadrilla"
@@ -222,7 +237,7 @@ export default function LiquidacionDetalleClient() {
             />
           </div>
           <div className="flex flex-col">
-            <label className="text-sm font-medium text-gray-700">Coordinador</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Coordinador</label>
             <Select
               classNamePrefix="coord-filter"
               options={coordinadores}
@@ -236,10 +251,31 @@ export default function LiquidacionDetalleClient() {
               }
               placeholder="Seleccionar coordinador"
               isClearable
+              styles={
+                isDark
+                  ? {
+                      control: (base: any, state: any) => ({
+                        ...base,
+                        backgroundColor: "#020617",
+                        borderColor: state.isFocused ? "#38bdf8" : "#334155",
+                        boxShadow: "none",
+                      }),
+                      menu: (base: any) => ({ ...base, backgroundColor: "#0f172a", color: "#e2e8f0" }),
+                      option: (base: any, state: any) => ({
+                        ...base,
+                        backgroundColor: state.isSelected ? "#1d4ed8" : state.isFocused ? "#1e293b" : "#0f172a",
+                        color: "#e2e8f0",
+                      }),
+                      input: (base: any) => ({ ...base, color: "#e2e8f0" }),
+                      placeholder: (base: any) => ({ ...base, color: "#94a3b8" }),
+                      singleValue: (base: any) => ({ ...base, color: "#e2e8f0" }),
+                    }
+                  : undefined
+              }
             />
           </div>
           <div className="flex flex-col">
-            <label className="text-sm font-medium text-gray-700">Codigo o Cliente</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Codigo o Cliente</label>
             <input
               type="text"
               name="busqueda"
@@ -259,10 +295,10 @@ export default function LiquidacionDetalleClient() {
         </button>
       </div>
 
-      <div className="overflow-x-auto border rounded-lg">
+      <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
         <table className="min-w-full text-sm">
-          <thead className="bg-gray-100">
-            <tr className="text-center text-gray-700 font-semibold">
+          <thead className="bg-gray-100 dark:bg-slate-800">
+            <tr className="text-center font-semibold text-gray-700 dark:text-slate-200">
               <th className="p-2 border w-32">Fecha</th>
               <th className="p-2 border w-44">Cuadrilla</th>
               <th className="p-2 border w-56">Coordinador</th>
@@ -275,13 +311,13 @@ export default function LiquidacionDetalleClient() {
           <tbody>
             {cargando ? (
               <tr>
-                <td colSpan={7} className="p-6 text-center text-gray-500">
+                <td colSpan={7} className="p-6 text-center text-gray-500 dark:text-slate-400">
                   Cargando...
                 </td>
               </tr>
             ) : pageData.length === 0 ? (
               <tr>
-                <td colSpan={7} className="p-6 text-center text-gray-500">
+                <td colSpan={7} className="p-6 text-center text-gray-500 dark:text-slate-400">
                   No hay registros
                 </td>
               </tr>
@@ -290,10 +326,10 @@ export default function LiquidacionDetalleClient() {
                 const coordUid = row.coordinadorUid || "";
                 const coordLabel = row.coordinadorNombre || row.coordinador || "";
                 return (
-                  <tr key={row.id} className="hover:bg-gray-50 text-center">
-                    <td className="border p-2">{formatearFecha(row.fechaInstalacion)}</td>
-                    <td className="border p-2">{row.cuadrillaNombre || "-"}</td>
-                  <td className="border p-2 min-w-[220px]">
+                  <tr key={row.id} className="text-center hover:bg-gray-50 dark:hover:bg-slate-800/70">
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">{formatearFecha(row.fechaInstalacion)}</td>
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">{row.cuadrillaNombre || "-"}</td>
+                  <td className="min-w-[220px] border border-slate-200 p-2 dark:border-slate-700">
                     <Select
                       classNamePrefix="coord"
                       value={
@@ -311,13 +347,34 @@ export default function LiquidacionDetalleClient() {
                       options={coordinadores}
                       placeholder="Seleccionar coordinador"
                       isClearable
+                      styles={
+                        isDark
+                          ? {
+                              control: (base: any, state: any) => ({
+                                ...base,
+                                backgroundColor: "#020617",
+                                borderColor: state.isFocused ? "#38bdf8" : "#334155",
+                                boxShadow: "none",
+                              }),
+                              menu: (base: any) => ({ ...base, backgroundColor: "#0f172a", color: "#e2e8f0" }),
+                              option: (base: any, state: any) => ({
+                                ...base,
+                                backgroundColor: state.isSelected ? "#1d4ed8" : state.isFocused ? "#1e293b" : "#0f172a",
+                                color: "#e2e8f0",
+                              }),
+                              input: (base: any) => ({ ...base, color: "#e2e8f0" }),
+                              placeholder: (base: any) => ({ ...base, color: "#94a3b8" }),
+                              singleValue: (base: any) => ({ ...base, color: "#e2e8f0" }),
+                            }
+                          : undefined
+                      }
                     />
                     </td>
-                    <td className="border p-2">{row.codigoCliente || "-"}</td>
-                    <td className="border p-2">{row.cliente || "-"}</td>
-                    <td className="border p-2">
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">{row.codigoCliente || "-"}</td>
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">{row.cliente || "-"}</td>
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">
                       <select
-                        className="border rounded px-2 py-1 text-sm"
+                        className="rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                         value={ediciones[row.id]?.tipoOrden ?? row.tipoOrden ?? ""}
                         onChange={(e) => setEdit(row.id, { tipoOrden: e.target.value })}
                       >
@@ -326,10 +383,10 @@ export default function LiquidacionDetalleClient() {
                         <option value="CONDOMINIO">CONDOMINIO</option>
                       </select>
                     </td>
-                    <td className="border p-2">
+                    <td className="border border-slate-200 p-2 dark:border-slate-700">
                       <input
                         type="text"
-                        className="w-full px-2 py-1 border rounded"
+                        className="w-full rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                         value={ediciones[row.id]?.observacion ?? row.observacion ?? ""}
                         onChange={(e) => setEdit(row.id, { observacion: e.target.value })}
                       />
@@ -343,7 +400,7 @@ export default function LiquidacionDetalleClient() {
       </div>
 
       <div className="mt-3 flex items-center justify-between">
-        <div className="text-sm text-gray-600">
+        <div className="text-sm text-gray-600 dark:text-slate-400">
           Mostrando{" "}
           <strong>
             {pageData.length > 0 ? (page - 1) * pageSize + 1 : 0}-{(page - 1) * pageSize + pageData.length}
@@ -352,7 +409,7 @@ export default function LiquidacionDetalleClient() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            className="px-3 py-1 rounded border bg-white disabled:opacity-40"
+            className="rounded border border-slate-300 bg-white px-3 py-1 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page === 1}
           >
@@ -362,7 +419,7 @@ export default function LiquidacionDetalleClient() {
             Pagina <strong>{page}</strong> / {Math.max(1, Math.ceil(filtered.length / pageSize))}
           </span>
           <button
-            className="px-3 py-1 rounded border bg-white disabled:opacity-40"
+            className="rounded border border-slate-300 bg-white px-3 py-1 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
             onClick={() => setPage((p) => Math.min(Math.max(1, Math.ceil(filtered.length / pageSize)), p + 1))}
             disabled={page >= Math.max(1, Math.ceil(filtered.length / pageSize))}
           >

@@ -83,6 +83,21 @@ export default function AsignacionGestoresClient() {
   const [soloCambios, setSoloCambios] = useState(false);
   const [programState, setProgramState] = useState<Record<string, string>>({});
   const [modalGestor, setModalGestor] = useState<string | null>(null);
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const sync = () => setIsDark(root.classList.contains("dark") || mq.matches);
+    sync();
+    const obs = new MutationObserver(sync);
+    obs.observe(root, { attributes: true, attributeFilter: ["class"] });
+    mq.addEventListener?.("change", sync);
+    return () => {
+      obs.disconnect();
+      mq.removeEventListener?.("change", sync);
+    };
+  }, []);
 
   const cargar = async (ymd: string) => {
     setCargando(true);
@@ -217,6 +232,34 @@ export default function AsignacionGestoresClient() {
   }, [cuadrillas, tab, programState]);
   const isTopGestor = (uid: string) => currentTop.includes(uid);
 
+  const selectStyles = useMemo(
+    () =>
+      isDark
+        ? {
+            control: (base: any, state: any) => ({
+              ...base,
+              backgroundColor: "#020617",
+              borderColor: state.isFocused ? "#38bdf8" : "#334155",
+              boxShadow: "none",
+              ":hover": { borderColor: "#475569" },
+            }),
+            menu: (base: any) => ({ ...base, backgroundColor: "#0f172a", color: "#e2e8f0" }),
+            option: (base: any, state: any) => ({
+              ...base,
+              backgroundColor: state.isSelected ? "#1d4ed8" : state.isFocused ? "#1e293b" : "#0f172a",
+              color: "#e2e8f0",
+            }),
+            singleValue: (base: any) => ({ ...base, color: "#e2e8f0" }),
+            input: (base: any) => ({ ...base, color: "#e2e8f0" }),
+            placeholder: (base: any) => ({ ...base, color: "#94a3b8" }),
+            multiValue: (base: any) => ({ ...base, backgroundColor: "#1e293b" }),
+            multiValueLabel: (base: any) => ({ ...base, color: "#e2e8f0" }),
+            multiValueRemove: (base: any) => ({ ...base, color: "#cbd5e1" }),
+          }
+        : undefined,
+    [isDark]
+  );
+
   const listNames = (ids: string[]) => ids
     .map((id) => cuadrillas.find((c) => c.value === id)?.label || id)
     .sort((a, b) => String(a).localeCompare(String(b), "es", { sensitivity: "base" }));
@@ -233,10 +276,10 @@ export default function AsignacionGestoresClient() {
 
   const renderCardList = (uid: string) => {
     const lista = listNames(asignadosPorGestor(uid));
-    if (!lista.length) return <div className="text-xs text-slate-500">Sin cuadrillas</div>;
+    if (!lista.length) return <div className="text-xs text-slate-500 dark:text-slate-400">Sin cuadrillas</div>;
   
   return (
-      <div className="text-xs text-slate-700 space-y-0.5">
+      <div className="space-y-0.5 text-xs text-slate-700 dark:text-slate-200">
         {lista.map((x) => (
           <div key={x} className="truncate">- {x}</div>
         ))}
@@ -293,12 +336,12 @@ export default function AsignacionGestoresClient() {
   };
 
   return (
-    <div className="p-4 space-y-4">
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="space-y-4 p-4 text-slate-900 dark:text-slate-100">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-[#30518c]">Asignacion de Gestores</h1>
-            <p className="text-sm text-slate-500">
+            <h1 className="text-2xl font-bold text-[#30518c] dark:text-sky-300">Asignacion de Gestores</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               Base permanente (actualiza cuadrillas.gestorUid) y cambios temporales por dia.
             </p>
           </div>
@@ -308,19 +351,19 @@ export default function AsignacionGestoresClient() {
               type="date"
               value={fecha}
               onChange={(e) => setFecha(e.target.value)}
-              className="border rounded px-3 py-2"
+              className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
             />
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-slate-500 dark:text-slate-400">
               {dayjs(fecha, "YYYY-MM-DD").format("DD/MM/YYYY")}
             </span>
             <button
-              className="text-xs px-2 py-1 rounded border hover:bg-slate-50"
+              className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-slate-800"
               onClick={() => setFecha(dayjs().format("YYYY-MM-DD"))}
             >
               Hoy
             </button>
             <button
-              className="text-xs px-2 py-1 rounded border hover:bg-slate-50"
+              className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-slate-800"
               onClick={() => setFecha(dayjs().add(1, "day").format("YYYY-MM-DD"))}
             >
               Manana
@@ -329,27 +372,27 @@ export default function AsignacionGestoresClient() {
         </div>
 
         <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-2">
-          <div className="rounded-xl border bg-slate-50 px-3 py-2">
-            <div className="text-xs text-slate-500">Gestores</div>
-            <div className="text-lg font-semibold text-slate-800">{resumen.totalGestores}</div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
+            <div className="text-xs text-slate-500 dark:text-slate-400">Gestores</div>
+            <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{resumen.totalGestores}</div>
           </div>
-          <div className="rounded-xl border bg-slate-50 px-3 py-2">
-            <div className="text-xs text-slate-500">Cuadrillas</div>
-            <div className="text-lg font-semibold text-slate-800">{resumen.totalCuadrillas}</div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
+            <div className="text-xs text-slate-500 dark:text-slate-400">Cuadrillas</div>
+            <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{resumen.totalCuadrillas}</div>
           </div>
-          <div className="rounded-xl border bg-slate-50 px-3 py-2">
-            <div className="text-xs text-slate-500">Asignadas</div>
-            <div className="text-lg font-semibold text-slate-800">{resumen.totalAsignadas}</div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
+            <div className="text-xs text-slate-500 dark:text-slate-400">Asignadas</div>
+            <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{resumen.totalAsignadas}</div>
           </div>
-          <div className="rounded-xl border bg-slate-50 px-3 py-2">
-            <div className="text-xs text-slate-500">Sin asignar</div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
+            <div className="text-xs text-slate-500 dark:text-slate-400">Sin asignar</div>
             <div className={cls("text-lg font-semibold", unassignedCount > 0 ? "text-rose-700" : "text-slate-800")}>
               {unassignedCount}
             </div>
           </div>
-          <div className="rounded-xl border bg-slate-50 px-3 py-2">
-            <div className="text-xs text-slate-500">TOP</div>
-            <div className="text-lg font-semibold text-slate-800">{resumen.totalTop}</div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
+            <div className="text-xs text-slate-500 dark:text-slate-400">TOP</div>
+            <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{resumen.totalTop}</div>
           </div>
         </div>
 
@@ -360,7 +403,7 @@ export default function AsignacionGestoresClient() {
               "px-3 py-1.5 rounded-full text-sm ring-1",
               tab === "dia"
                 ? "bg-[#30518c] text-white ring-[#30518c]"
-                : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50"
+                : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-800"
             )}
           >
             Programacion diaria
@@ -371,7 +414,7 @@ export default function AsignacionGestoresClient() {
                 "px-2 py-1 text-xs rounded border",
                 hasDay
                   ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                  : "bg-slate-50 text-slate-600 border-slate-200"
+                : "bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-700"
               )}
             >
               {hasDay ? "Con programacion" : "Usando base"}
@@ -383,7 +426,7 @@ export default function AsignacionGestoresClient() {
               "px-3 py-1.5 rounded-full text-sm ring-1",
               tab === "base"
                 ? "bg-[#30518c] text-white ring-[#30518c]"
-                : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50"
+                : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-800"
             )}
           >
             Base permanente
@@ -392,14 +435,14 @@ export default function AsignacionGestoresClient() {
           {tab === "dia" && (
             <button
               onClick={usarBaseParaDia}
-              className="px-3 py-1.5 rounded border text-sm hover:bg-slate-50"
+              className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               Usar base para este dia
             </button>
           )}
 
           {tab === "dia" && (
-            <label className="flex items-center gap-2 text-sm text-slate-600">
+            <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
               <input
                 type="checkbox"
                 checked={soloCambios}
@@ -415,7 +458,7 @@ export default function AsignacionGestoresClient() {
               placeholder="Buscar gestor..."
               value={filtroGestor}
               onChange={(e) => setFiltroGestor(e.target.value)}
-              className="border rounded px-3 py-2 text-sm"
+              className="rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
             />
                         <button
               onClick={guardar}
@@ -434,17 +477,17 @@ export default function AsignacionGestoresClient() {
         )}
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm font-semibold text-slate-700">Gestor TOP (ve todas las cuadrillas)</div>
-            <div className="text-xs text-slate-500">
+            <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">Gestor TOP (ve todas las cuadrillas)</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">
               {tab === "dia" ? "Si no defines, se usa la base." : "Configuracion base"}
             </div>
           </div>
           {tab === "dia" && (
             <button
-              className="text-xs px-2 py-1 rounded border hover:bg-slate-50"
+              className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
               onClick={() => setTopDay(null)}
             >
               Usar TOP base
@@ -465,14 +508,14 @@ export default function AsignacionGestoresClient() {
             placeholder="Seleccionar gestor(es) TOP"
             menuPortalTarget={typeof document !== "undefined" ? document.body : null}
             menuPosition="fixed"
-            styles={{ menuPortal: (base) => ({ ...base, zIndex: 9999 }) }}
+            styles={{ ...(selectStyles || {}), menuPortal: (base) => ({ ...base, zIndex: 9999 }) }}
           />
         </div>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {cargando ? (
-          <div className="p-6 text-center text-slate-500">Cargando...</div>
+          <div className="p-6 text-center text-slate-500 dark:text-slate-400">Cargando...</div>
         ) : (
           gestoresVisible.map((g) => {
             const selected = asignadosPorGestor(g.value);
@@ -523,13 +566,13 @@ export default function AsignacionGestoresClient() {
   return (
               <div
                 key={g.value}
-                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900"
                 style={{ minHeight: cardMinH }}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <div className="text-sm text-slate-500">Gestor</div>
-                    <div className="text-lg font-semibold text-slate-800">{g.label}</div>
+                    <div className="text-sm text-slate-500 dark:text-slate-400">Gestor</div>
+                    <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{g.label}</div>
                   </div>
                   <div className="flex items-center gap-2">
                     {isTopGestor(g.value) && (
@@ -545,7 +588,7 @@ export default function AsignacionGestoresClient() {
                   </div>
                 </div>
 
-                <div className="mt-3 rounded border border-slate-100 bg-slate-50 p-3">
+                <div className="mt-3 rounded border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950">
                   {renderCardList(g.value)}
                 </div>
 
@@ -558,11 +601,11 @@ export default function AsignacionGestoresClient() {
                   </button>
                   <button
                     onClick={() => copyResumenGestor(g.value)}
-                    className="px-3 py-1.5 rounded border text-xs"
+                    className="rounded border border-slate-300 px-3 py-1.5 text-xs dark:border-slate-700 dark:text-slate-200"
                   >
                     Copiar resumen
                   </button>
-                  <span className="ml-auto text-xs text-slate-500">{selected.length} cuadrillas</span>
+                  <span className="ml-auto text-xs text-slate-500 dark:text-slate-400">{selected.length} cuadrillas</span>
                 </div>
               </div>
             );
@@ -571,17 +614,17 @@ export default function AsignacionGestoresClient() {
       </div>
 
       {gestoresVisible.length === 0 && !cargando && (
-        <div className="p-6 text-center text-slate-500">No hay gestores para mostrar</div>
+        <div className="p-6 text-center text-slate-500 dark:text-slate-400">No hay gestores para mostrar</div>
       )}
 
       {modalGestor && (
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/40" onClick={() => setModalGestor(null)} />
-          <div className="absolute left-1/2 top-1/2 w-[92%] max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white p-4 shadow-2xl">
+          <div className="absolute left-1/2 top-1/2 w-[92%] max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white p-4 shadow-2xl dark:bg-slate-900">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-xs text-slate-500">Gestor</div>
-                <div className="text-lg font-semibold text-slate-800">{gestorLabel(modalGestor)}</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">Gestor</div>
+                <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{gestorLabel(modalGestor)}</div>
               </div>
               <button onClick={() => setModalGestor(null)} className="px-3 py-1 rounded border text-sm">X</button>
             </div>
@@ -595,15 +638,15 @@ export default function AsignacionGestoresClient() {
                 placeholder="Asignar cuadrillas"
                 menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                 menuPosition="fixed"
-                styles={{ menuPortal: (base) => ({ ...base, zIndex: 9999 }) }}
+                styles={{ ...(selectStyles || {}), menuPortal: (base) => ({ ...base, zIndex: 9999 }) }}
               />
-              <div className="mt-2 text-xs text-slate-500">
+              <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                 Solo se muestran cuadrillas libres o ya asignadas a esta gestora.
               </div>
             </div>
 
             <div className="mt-4 flex items-center justify-end gap-2">
-              <button onClick={() => setModalGestor(null)} className="px-3 py-2 rounded border text-sm">Cancelar</button>
+              <button onClick={() => setModalGestor(null)} className="rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:text-slate-200">Cancelar</button>
               <button
                 onClick={() => {
                   toast.success("Cambios listos. Recuerda guardar.");

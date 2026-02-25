@@ -17,11 +17,11 @@ export default async function Page() {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h1 className="text-xl font-semibold text-slate-900">Ventas</h1>
-        <p className="mt-1 text-sm text-slate-500">Consulta, seguimiento y control de pagos de ventas registradas.</p>
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Ventas</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Consulta, seguimiento y control de pagos de ventas registradas.</p>
       </section>
-      <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:p-4">
+      <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:p-4 dark:border-slate-700 dark:bg-slate-900">
         <VentasClient canEdit={canEdit} canPagar={canPagar} canAnular={canAnular} canViewAll={canViewAll} />
       </section>
     </div>

@@ -240,16 +240,16 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
   }
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-center">InConcert - Vista Gerencia</h1>
-      <p className="text-center text-sm text-muted-foreground">Hora actual Lima: {clock}</p>
+    <div className="space-y-4 text-slate-900 dark:text-slate-100">
+      <h1 className="text-center text-xl font-semibold">InConcert - Vista Gerencia</h1>
+      <p className="text-center text-sm text-muted-foreground dark:text-slate-400">Hora actual Lima: {clock}</p>
 
       <div className="flex flex-wrap justify-center gap-2 text-xs font-semibold">
-        <div className="bg-slate-100 px-3 py-2 rounded">Total: {filtered.length}</div>
-        <div className="bg-slate-100 px-3 py-2 rounded">Fuera tolerancia: {totalFueraTolerancia}</div>
-        <div className="bg-slate-100 px-3 py-2 rounded">Sin gestion: {totalSinGestion}</div>
-        <div className="bg-slate-100 px-3 py-2 rounded">Con llamadas: {totalConAccion}</div>
-        <div className="bg-slate-100 px-3 py-2 rounded">Sin llamadas: {totalSinAccion}</div>
+        <div className="rounded bg-slate-100 px-3 py-2 dark:bg-slate-800">Total: {filtered.length}</div>
+        <div className="rounded bg-slate-100 px-3 py-2 dark:bg-slate-800">Fuera tolerancia: {totalFueraTolerancia}</div>
+        <div className="rounded bg-slate-100 px-3 py-2 dark:bg-slate-800">Sin gestion: {totalSinGestion}</div>
+        <div className="rounded bg-slate-100 px-3 py-2 dark:bg-slate-800">Con llamadas: {totalConAccion}</div>
+        <div className="rounded bg-slate-100 px-3 py-2 dark:bg-slate-800">Sin llamadas: {totalSinAccion}</div>
       </div>
 
       <div className="mx-auto w-full max-w-5xl">
@@ -259,14 +259,14 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
             <button
               type="button"
               onClick={() => setShowRanking((v) => !v)}
-              className="px-3 py-1.5 rounded bg-slate-800 text-white"
+              className="rounded bg-slate-800 px-3 py-1.5 text-white dark:bg-slate-700"
             >
               {showRanking ? "Ocultar cumplimiento" : "Mostrar cumplimiento"}
             </button>
             <span>{pctConAccion}% ({totalConAccion}/{filtered.length || 0})</span>
           </div>
         </div>
-        <div className="w-full h-3 rounded-full bg-slate-200 overflow-hidden">
+        <div className="h-3 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
           <div className="h-full bg-gradient-to-r from-slate-700 to-orange-500" style={{ width: `${pctConAccion}%` }} />
         </div>
       </div>
@@ -274,18 +274,18 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
       {showRanking ? (
         <div className="mx-auto w-full max-w-5xl space-y-2">
           {rankingData.length === 0 ? (
-            <div className="text-xs text-muted-foreground">No hay datos para ranking.</div>
+            <div className="text-xs text-muted-foreground dark:text-slate-400">No hay datos para ranking.</div>
           ) : (
             rankingData.map((g) => (
-              <div key={g.gestor} className="rounded border bg-white p-3">
+              <div key={g.gestor} className="rounded border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
                 <div className="flex items-center justify-between text-xs mb-1">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold">{g.nombre}</span>
-                    <span className="px-2 py-0.5 rounded-full bg-slate-100">{g.con}/{g.total} con llamadas</span>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">{g.con}/{g.total} con llamadas</span>
                   </div>
                   <span className="font-bold">{g.pct}%</span>
                 </div>
-                <div className="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
                   <div className="h-full bg-gradient-to-r from-emerald-500 to-blue-500" style={{ width: `${g.pct}%` }} />
                 </div>
               </div>
@@ -295,30 +295,30 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
       ) : null}
 
       <div className="flex flex-wrap gap-2 justify-center">
-        <input type="date" value={ymd} onChange={(e) => setYmd(e.target.value)} className="px-3 py-2 border rounded" />
+        <input type="date" value={ymd} onChange={(e) => setYmd(e.target.value)} className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
 
-        <select value={filters.gestor} onChange={(e) => setFilters((f) => ({ ...f, gestor: e.target.value }))} className="px-3 py-2 border rounded">
+        <select value={filters.gestor} onChange={(e) => setFilters((f) => ({ ...f, gestor: e.target.value }))} className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
           <option value="">Todos los gestores</option>
           {gestores.map((g) => (
             <option key={g.uid} value={g.uid}>{g.nombre}</option>
           ))}
         </select>
 
-        <select value={filters.coordinador} onChange={(e) => setFilters((f) => ({ ...f, coordinador: e.target.value }))} className="px-3 py-2 border rounded">
+        <select value={filters.coordinador} onChange={(e) => setFilters((f) => ({ ...f, coordinador: e.target.value }))} className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
           <option value="">Todos los coordinadores</option>
           {coordinadores.map((c) => (
             <option key={c.uid} value={c.uid}>{c.nombre}</option>
           ))}
         </select>
 
-        <select value={filters.tramo} onChange={(e) => setFilters((f) => ({ ...f, tramo: e.target.value }))} className="px-3 py-2 border rounded">
+        <select value={filters.tramo} onChange={(e) => setFilters((f) => ({ ...f, tramo: e.target.value }))} className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
           <option value="">Todos los tramos</option>
           <option value="Primer Tramo">Primer Tramo</option>
           <option value="Segundo Tramo">Segundo Tramo</option>
           <option value="Tercer Tramo">Tercer Tramo</option>
         </select>
 
-        <select value={filters.estado} onChange={(e) => setFilters((f) => ({ ...f, estado: e.target.value }))} className="px-3 py-2 border rounded">
+        <select value={filters.estado} onChange={(e) => setFilters((f) => ({ ...f, estado: e.target.value }))} className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
           <option value="">Todos los estados</option>
           <option value="Agendada">Agendada</option>
           <option value="En camino">En camino</option>
@@ -330,7 +330,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
           <option value="Regestión">Regestion (con tilde)</option>
         </select>
 
-        <select value={filters.estadoLlamada} onChange={(e) => setFilters((f) => ({ ...f, estadoLlamada: e.target.value }))} className="px-3 py-2 border rounded">
+        <select value={filters.estadoLlamada} onChange={(e) => setFilters((f) => ({ ...f, estadoLlamada: e.target.value }))} className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
           <option value="">Todos los estados llamada</option>
           <option value="Contesto">Contesto</option>
           <option value="No Contesto">No Contesto</option>
@@ -338,13 +338,13 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
           <option value="noLlamo">No se llamo</option>
         </select>
 
-        <select value={filters.acciones} onChange={(e) => setFilters((f) => ({ ...f, acciones: e.target.value as any }))} className="px-3 py-2 border rounded">
+        <select value={filters.acciones} onChange={(e) => setFilters((f) => ({ ...f, acciones: e.target.value as any }))} className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
           <option value="">Acciones: Todas</option>
           <option value="con">Acciones: Con llamadas</option>
           <option value="sin">Acciones: Sin llamadas</option>
         </select>
 
-        <select value={filters.alerta} onChange={(e) => setFilters((f) => ({ ...f, alerta: e.target.value }))} className="px-3 py-2 border rounded">
+        <select value={filters.alerta} onChange={(e) => setFilters((f) => ({ ...f, alerta: e.target.value }))} className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
           <option value="">Todas las alertas</option>
           <option value="tolerancia">Fuera de tolerancia</option>
           <option value="sinaction">Sin gestion</option>
@@ -354,18 +354,18 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
           value={filters.cuadrilla}
           onChange={(e) => setFilters((f) => ({ ...f, cuadrilla: e.target.value }))}
           placeholder="Buscar cuadrilla"
-          className="px-3 py-2 border rounded"
+          className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
         />
 
-        <button type="button" onClick={exportExcel} className="px-3 py-2 rounded bg-slate-800 text-white">
+        <button type="button" onClick={exportExcel} className="rounded bg-slate-800 px-3 py-2 text-white dark:bg-slate-700">
           Exportar Excel
         </button>
       </div>
 
       {error ? <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
-      {loading ? <div className="text-sm text-center text-muted-foreground">Cargando datos...</div> : null}
+      {loading ? <div className="text-center text-sm text-muted-foreground dark:text-slate-400">Cargando datos...</div> : null}
 
-      <div className="relative max-h-[70vh] overflow-auto rounded border">
+      <div className="relative max-h-[70vh] overflow-auto rounded border border-slate-200 dark:border-slate-700">
         <table className="w-full text-xs md:text-sm min-w-[2100px]">
           <thead className="sticky top-0 bg-slate-800 text-white z-10">
             <tr>
@@ -380,7 +380,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
           </thead>
           <tbody>
             {filtered.map((r) => (
-              <tr key={r.id} className={`border-b ${r.icCount > 0 ? "" : "bg-yellow-50"}`}>
+              <tr key={r.id} className={`border-b border-slate-200 dark:border-slate-700 ${r.icCount > 0 ? "" : "bg-yellow-50 dark:bg-yellow-900/20"}`}>
                 <td className="p-2">{r.cliente}</td>
                 <td className="p-2">{r.codigoCliente}</td>
                 <td className="p-2">{r.documento}</td>
@@ -410,11 +410,11 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
                       type="button"
                       onClick={() => openCalls(r)}
                       disabled={!r.icCount}
-                      className={`px-2 py-1 rounded text-white ${r.icCount ? "bg-indigo-700" : "bg-indigo-400"}`}
+                      className={`rounded px-2 py-1 text-white ${r.icCount ? "bg-indigo-700" : "bg-indigo-400"}`}
                     >
                       Ver llamadas ({r.icCount})
                     </button>
-                    <span className={`px-2 py-1 rounded-full text-[10px] font-semibold ${r.icCount ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}`}>
+                    <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${r.icCount ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"}`}>
                       {r.icCount ? "Con llamadas" : "Sin llamadas"}
                     </span>
                   </div>
@@ -423,7 +423,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
             ))}
             {!loading && filtered.length === 0 ? (
               <tr>
-                <td colSpan={24} className="text-center py-4 text-muted-foreground">No hay resultados con los filtros aplicados</td>
+                  <td colSpan={24} className="py-4 text-center text-muted-foreground dark:text-slate-400">No hay resultados con los filtros aplicados</td>
               </tr>
             ) : null}
           </tbody>
@@ -432,16 +432,16 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
 
       {modal ? (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center">
-          <div className="bg-white rounded-xl shadow-xl max-w-5xl w-full mx-4">
-            <div className="p-4 border-b flex items-center justify-between">
+          <div className="mx-4 w-full max-w-5xl rounded-xl bg-white shadow-xl dark:bg-slate-900 dark:text-slate-100">
+            <div className="flex items-center justify-between border-b p-4 dark:border-slate-700">
               <h3 className="text-lg font-semibold">Llamadas InConcert - Tel: <span className="font-mono">{modal.tel}</span></h3>
-              <button type="button" className="px-3 py-1 rounded bg-slate-700 text-white" onClick={() => setModal(null)}>
+              <button type="button" className="rounded bg-slate-700 px-3 py-1 text-white" onClick={() => setModal(null)}>
                 Cerrar
               </button>
             </div>
             <div className="p-4 overflow-auto max-h-[70vh]">
-              <table className="w-full text-xs md:text-sm border">
-                <thead className="bg-slate-100">
+              <table className="w-full border text-xs md:text-sm dark:border-slate-700">
+                <thead className="bg-slate-100 dark:bg-slate-800 dark:text-slate-200">
                   <tr>
                     {["Usuario","Inicio","Entra","Fin","Duracion","Espera","Timbrado","Atencion","BO","Observacion"].map((h) => (
                       <th key={h} className="p-2 whitespace-nowrap">{h}</th>
@@ -450,7 +450,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
                 </thead>
                 <tbody>
                   {modal.list.map((r: any) => (
-                    <tr key={r.id} className="border-b">
+                    <tr key={r.id} className="border-b border-slate-200 dark:border-slate-700">
                       <td className="p-2">{r.usuaruioInconcert || "-"}</td>
                       <td className="p-2">{r.inicioLlamadaInconcert || "-"}</td>
                       <td className="p-2">{r.entraLlamadaInconcert || "-"}</td>
@@ -465,7 +465,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
                   ))}
                   {!modal.list.length ? (
                     <tr>
-                      <td colSpan={10} className="text-center p-4 text-muted-foreground">Sin llamadas</td>
+                      <td colSpan={10} className="p-4 text-center text-muted-foreground dark:text-slate-400">Sin llamadas</td>
                     </tr>
                   ) : null}
                 </tbody>

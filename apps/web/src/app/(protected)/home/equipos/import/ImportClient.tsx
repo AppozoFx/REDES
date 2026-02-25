@@ -155,16 +155,16 @@ export default function ImportClient() {
   }, [parseResult, q]);
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-        <button onClick={downloadTemplate} className="rounded-xl border border-slate-300 bg-white px-3 py-2 hover:bg-slate-50">
+    <div className="space-y-5 text-slate-900 dark:text-slate-100">
+      <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
+        <button onClick={downloadTemplate} className="rounded-xl border border-slate-300 bg-white px-3 py-2 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800">
           Descargar Plantilla
         </button>
       </div>
 
-      <div onDrop={onDrop} onDragOver={onDragOver} className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center shadow-sm">
+      <div onDrop={onDrop} onDragOver={onDragOver} className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <div className="mb-2">Arrastra tu archivo .xlsx aquí</div>
-        <div className="text-xs text-muted-foreground">Primera hoja o "Hoja de Datos"; usa headers de la plantilla</div>
+        <div className="text-xs text-slate-500 dark:text-slate-400">Primera hoja o "Hoja de Datos"; usa headers de la plantilla</div>
         <div className="mt-3">
           <button className="rounded-xl bg-blue-600 px-4 py-2 text-white hover:bg-blue-700" onClick={() => inputRef.current?.click()}>
             Seleccionar archivo
@@ -203,22 +203,22 @@ export default function ImportClient() {
       {rowsPreview.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <div className="text-sm text-muted-foreground">Vista previa (primeras filas): {rowsPreview.length}</div>
-            <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-              <button disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="rounded border px-2 py-1 disabled:opacity-50">
+            <div className="text-sm text-slate-500 dark:text-slate-400">Vista previa (primeras filas): {rowsPreview.length}</div>
+            <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
+              <button disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="rounded border border-slate-300 px-2 py-1 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800">
                 Prev
               </button>
               <div className="text-sm">{page}/{totalPages}</div>
-              <button disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} className="rounded border px-2 py-1 disabled:opacity-50">
+              <button disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} className="rounded border border-slate-300 px-2 py-1 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800">
                 Next
               </button>
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-muted">
+                <tr className="bg-slate-100 dark:bg-slate-800 dark:text-slate-100">
                   {Array.from({ length: 10 }).map((_, i) => (
                     <th key={i} className="px-2 py-1 text-left">
                       {i}
@@ -228,7 +228,7 @@ export default function ImportClient() {
               </thead>
               <tbody>
                 {slice.map((r, idx) => (
-                  <tr key={idx} className="border-b">
+                  <tr key={idx} className="border-b border-slate-200 dark:border-slate-700">
                     {Array.from({ length: 10 }).map((_, i) => (
                       <td key={i} className="px-2 py-1 whitespace-nowrap max-w-[240px] overflow-hidden text-ellipsis">{String(r[i] ?? "")}</td>
                     ))}
@@ -241,12 +241,12 @@ export default function ImportClient() {
       )}
 
       {parseResult?.ok && (
-        <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm shadow-sm">
-          <div className="flex items-center gap-3 border-b pb-2">
-            <button onClick={() => setTab("nuevos")} className={`px-2 py-1 rounded ${tab === "nuevos" ? "bg-muted" : ""}`}>
+        <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex items-center gap-3 border-b border-slate-200 pb-2 dark:border-slate-700">
+            <button onClick={() => setTab("nuevos")} className={`px-2 py-1 rounded ${tab === "nuevos" ? "bg-slate-100 dark:bg-slate-800" : ""}`}>
               Nuevos: {parseResult.data.totalNuevos}
             </button>
-            <button onClick={() => setTab("duplicados")} className={`px-2 py-1 rounded ${tab === "duplicados" ? "bg-muted" : ""}`}>
+            <button onClick={() => setTab("duplicados")} className={`px-2 py-1 rounded ${tab === "duplicados" ? "bg-slate-100 dark:bg-slate-800" : ""}`}>
               Duplicados BD: {parseResult.data.duplicadosBD.length}
             </button>
           </div>
@@ -267,12 +267,12 @@ export default function ImportClient() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+          <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Buscar SN/descripcion/equipo/ubicacion"
-              className="w-full rounded border px-2 py-1"
+              className="w-full rounded border border-slate-300 bg-white px-2 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             />
             <button
               type="button"
@@ -329,15 +329,15 @@ export default function ImportClient() {
 
           {tab === "duplicados" && (
             <div className="space-y-2">
-              <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                <button onClick={exportDuplicados} className="rounded border px-2 py-1 hover:bg-muted">
+              <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
+                <button onClick={exportDuplicados} className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
                   Exportar duplicados
                 </button>
               </div>
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-muted">
+                    <tr className="bg-slate-100 dark:bg-slate-800 dark:text-slate-100">
                       <th className="px-2 py-1 text-left">SN</th>
                       <th className="px-2 py-1 text-left">Equipo</th>
                       <th className="px-2 py-1 text-left">Descripción</th>
@@ -346,7 +346,7 @@ export default function ImportClient() {
                   </thead>
                   <tbody>
                     {duplicadosFiltered.map((d: any) => (
-                      <tr key={d.SN} className="border-b">
+                      <tr key={d.SN} className="border-b border-slate-200 dark:border-slate-700">
                         <td className="px-2 py-1">{d.SN}</td>
                         <td className="px-2 py-1">{d.equipo}</td>
                         <td className="px-2 py-1">{d.descripcion}</td>
@@ -360,10 +360,10 @@ export default function ImportClient() {
           )}
 
           {tab === "nuevos" && (
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-muted">
+                  <tr className="bg-slate-100 dark:bg-slate-800 dark:text-slate-100">
                     <th className="px-2 py-1 text-left">SN</th>
                     <th className="px-2 py-1 text-left">Equipo</th>
                     <th className="px-2 py-1 text-left">Descripción</th>
@@ -373,7 +373,7 @@ export default function ImportClient() {
                 </thead>
                 <tbody>
                   {nuevosFiltered.map((n: any) => (
-                    <tr key={n.SN} className="border-b">
+                    <tr key={n.SN} className="border-b border-slate-200 dark:border-slate-700">
                       <td className="px-2 py-1">{n.SN}</td>
                       <td className="px-2 py-1">{n.equipo}</td>
                       <td className="px-2 py-1">{n.descripcion}</td>
@@ -390,9 +390,9 @@ export default function ImportClient() {
 
       {(saving || parsePending) && (
         <div className="fixed inset-0 bg-black/25 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="rounded bg-white p-4 shadow-md w-[360px] text-center space-y-2">
+          <div className="w-[360px] space-y-2 rounded bg-white p-4 text-center shadow-md dark:bg-slate-900 dark:text-slate-100">
             <div className="font-medium">{saving ? "Guardando equipos..." : "Analizando archivo..."}</div>
-            <div className="text-sm text-muted-foreground">{saving && parseResult?.ok ? `${saved}/${(parseResult as any).data.totalNuevos} (${Math.round(((saved || 0) / Math.max(1, (parseResult as any).data.totalNuevos)) * 100)}%)` : "Por favor espera"}</div>
+            <div className="text-sm text-slate-500 dark:text-slate-400">{saving && parseResult?.ok ? `${saved}/${(parseResult as any).data.totalNuevos} (${Math.round(((saved || 0) / Math.max(1, (parseResult as any).data.totalNuevos)) * 100)}%)` : "Por favor espera"}</div>
           </div>
         </div>
       )}

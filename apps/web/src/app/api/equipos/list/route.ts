@@ -54,6 +54,7 @@ export async function GET(req: Request) {
 
     const db = adminDb();
     let q: FirebaseFirestore.Query = db.collection("equipos");
+    let usePrefixRange = false;
 
     if (sn && exact) {
       const docSnap = await db.collection("equipos").doc(sn).get();
@@ -72,11 +73,9 @@ export async function GET(req: Request) {
 
     if (sn && sn.length === 6) {
       q = q.where("sn_tail", "==", sn);
-      q = q.orderBy(FieldPath.documentId());
     } else if (sn) {
-      q = q.orderBy(FieldPath.documentId()).startAt(sn).endAt(sn + "\uf8ff");
+      usePrefixRange = true;
     } else {
-      q = q.orderBy(FieldPath.documentId());
       if (estados.length === 1) {
         q = q.where("estado", "==", estados[0]);
       } else if (estados.length > 1) {
@@ -89,18 +88,29 @@ export async function GET(req: Request) {
       }
     }
 
-    if (ubicacion) q = q.where("ubicacion", "==", ubicacion);
-    if (equipo) q = q.where("equipo", "==", equipo);
-    if (pri_tec) q = q.where("pri_tec", "==", pri_tec);
-    if (tec_liq) q = q.where("tec_liq", "==", tec_liq);
-    if (inv) q = q.where("inv", "==", inv);
-    if (descripcionList.length > 0) {
-      q = q.where("descripcion", "in", descripcionList.slice(0, 10));
+    // Cuando se busca por SN, devolver resultados sin filtrar por estado/ubicacion/etc.
+    if (!sn) {
+      if (ubicacion) q = q.where("ubicacion", "==", ubicacion);
+      if (equipo) q = q.where("equipo", "==", equipo);
+      if (pri_tec) q = q.where("pri_tec", "==", pri_tec);
+      if (tec_liq) q = q.where("tec_liq", "==", tec_liq);
+      if (inv) q = q.where("inv", "==", inv);
+      if (descripcionList.length > 0) {
+        q = q.where("descripcion", "in", descripcionList.slice(0, 10));
+      }
     }
+
+    q = q.orderBy(FieldPath.documentId());
 
     const qCount = q;
     let qPage = q;
-    if (cursor) qPage = qPage.startAfter(cursor);
+    if (usePrefixRange) {
+      qPage = qPage.endAt(sn + "\uf8ff");
+      if (cursor) qPage = qPage.startAfter(cursor);
+      else qPage = qPage.startAt(sn);
+    } else if (cursor) {
+      qPage = qPage.startAfter(cursor);
+    }
     qPage = qPage.limit(limit + 1);
 
     const [snap, countSnap] = await Promise.all([qPage.get(), qCount.count().get()]);

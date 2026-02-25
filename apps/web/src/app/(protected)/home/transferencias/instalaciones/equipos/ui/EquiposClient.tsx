@@ -534,9 +534,8 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
     try {
       const params = buildListParams({ reset, exactOverride, snOverride });
       const res = await fetch(`/api/equipos/list?${params.toString()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error("LIST_FAIL");
-      const data = (await res.json()) as ListResponse;
-      if (!data?.ok) throw new Error("LIST_FAIL");
+      const data = (await res.json().catch(() => ({}))) as ListResponse & { error?: string };
+      if (!res.ok || !data?.ok) throw new Error(String((data as any)?.error || `LIST_FAIL_${res.status}`));
       if (data.cuadrillas) setCuadrillas(data.cuadrillas);
       setHasMore(!!data.hasMore);
       setCursor(data.nextCursor || null);
@@ -559,9 +558,8 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
       params.set("limit", "200");
       if (pageCursor) params.set("cursor", pageCursor);
       const res = await fetch(`/api/equipos/list?${params.toString()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error("LIST_FAIL");
-      const data = (await res.json()) as ListResponse;
-      if (!data?.ok) throw new Error("LIST_FAIL");
+      const data = (await res.json().catch(() => ({}))) as ListResponse & { error?: string };
+      if (!res.ok || !data?.ok) throw new Error(String((data as any)?.error || `LIST_FAIL_${res.status}`));
       out.push(...(Array.isArray(data.items) ? data.items : []));
       if (!data.hasMore || !data.nextCursor) break;
       pageCursor = data.nextCursor;
@@ -1359,7 +1357,6 @@ export default function EquiposClient({ canEdit }: { canEdit: boolean }) {
     </div>
   );
 }
-
 
 
 

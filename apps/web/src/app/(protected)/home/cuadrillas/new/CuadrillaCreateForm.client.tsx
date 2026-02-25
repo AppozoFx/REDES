@@ -36,14 +36,14 @@ export default function CuadrillaCreateForm({
       <div className="grid gap-3 md:grid-cols-3">
         <div>
           <label className="text-sm">Categoría</label>
-          <select name="categoria" className="w-full border rounded px-3 py-2">
+          <select name="categoria" className="ui-select-inline ui-select-inline ui-select">
             <option value="CONDOMINIO">CONDOMINIO</option>
             <option value="RESIDENCIAL">RESIDENCIAL</option>
           </select>
         </div>
         <div>
           <label className="text-sm">Estado</label>
-          <select name="estado" className="w-full border rounded px-3 py-2" defaultValue="HABILITADO">
+          <select name="estado" className="ui-select-inline ui-select-inline ui-select" defaultValue="HABILITADO">
             <option value="HABILITADO">HABILITADO</option>
             <option value="INHABILITADO">INHABILITADO</option>
           </select>
@@ -58,22 +58,22 @@ export default function CuadrillaCreateForm({
       <div className="grid gap-3 md:grid-cols-2">
         <div>
           <label className="text-sm">Placa</label>
-          <input name="placa" className="w-full border rounded px-3 py-2" />
+          <input name="placa" className="ui-input-inline ui-input-inline ui-input" />
         </div>
         <div>
           <label className="text-sm">Modelo (opcional)</label>
-          <input name="vehiculoModelo" className="w-full border rounded px-3 py-2" />
+          <input name="vehiculoModelo" className="ui-input-inline ui-input-inline ui-input" />
         </div>
         <div>
           <label className="text-sm">Marca (opcional)</label>
-          <input name="vehiculoMarca" className="w-full border rounded px-3 py-2" />
+          <input name="vehiculoMarca" className="ui-input-inline ui-input-inline ui-input" />
         </div>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
         <div>
           <label className="text-sm">Técnicos</label>
-          <select name="tecnicosUids" multiple className="w-full border rounded px-3 py-2 h-40">
+          <select name="tecnicosUids" multiple className="ui-select-inline ui-select-inline ui-select h-40">
             {tecnicos.map((u) => (
               <option key={u.uid} value={u.uid}>
                 {u.label}
@@ -87,19 +87,19 @@ export default function CuadrillaCreateForm({
       <div className="grid gap-3 md:grid-cols-3">
         <div>
           <label className="text-sm">Licencia (número)</label>
-          <input name="licenciaNumero" className="w-full border rounded px-3 py-2" />
+          <input name="licenciaNumero" className="ui-input-inline ui-input-inline ui-input" />
         </div>
         <div>
           <label className="text-sm">Licencia vence</label>
-          <input name="licenciaVenceAt" type="date" className="w-full border rounded px-3 py-2" />
+          <input name="licenciaVenceAt" type="date" className="ui-input-inline ui-input-inline ui-input" />
         </div>
         <div>
           <label className="text-sm">SOAT vence</label>
-          <input name="soatVenceAt" type="date" className="w-full border rounded px-3 py-2" />
+          <input name="soatVenceAt" type="date" className="ui-input-inline ui-input-inline ui-input" />
         </div>
         <div>
           <label className="text-sm">Rev. técnica vence</label>
-          <input name="revTecVenceAt" type="date" className="w-full border rounded px-3 py-2" />
+          <input name="revTecVenceAt" type="date" className="ui-input-inline ui-input-inline ui-input" />
         </div>
       </div>
 
@@ -113,3 +113,5 @@ export default function CuadrillaCreateForm({
     </form>
   );
 }
+
+

@@ -84,11 +84,11 @@ export default async function CuadrillaDetailPage(props: { params: Promise<{ id:
         <div className="grid gap-3 md:grid-cols-3">
           <div>
             <label className="text-sm">Placa</label>
-            <input name="placa" defaultValue={c.placa ?? ""} className="w-full border rounded px-3 py-2" />
+            <input name="placa" defaultValue={c.placa ?? ""} className="ui-input-inline ui-input-inline ui-input" />
           </div>
           <div>
             <label className="text-sm">Estado</label>
-            <select name="estado" className="w-full border rounded px-3 py-2" defaultValue={c.estado}>
+            <select name="estado" className="ui-select-inline ui-select-inline ui-select" defaultValue={c.estado}>
               <option value="HABILITADO">HABILITADO</option>
               <option value="INHABILITADO">INHABILITADO</option>
             </select>
@@ -98,7 +98,7 @@ export default async function CuadrillaDetailPage(props: { params: Promise<{ id:
         <div className="grid gap-3 md:grid-cols-2">
           <div>
             <label className="text-sm">Técnicos</label>
-            <select name="tecnicosUids" multiple className="w-full border rounded px-3 py-2 h-40" defaultValue={tecnicosSelected}>
+            <select name="tecnicosUids" multiple className="ui-select-inline ui-select-inline ui-select h-40" defaultValue={tecnicosSelected}>
               {tecnicos.map((u) => (
                 <option key={u.uid} value={u.uid}>
                   {u.label}
@@ -119,38 +119,38 @@ export default async function CuadrillaDetailPage(props: { params: Promise<{ id:
         <div className="grid gap-3 md:grid-cols-3">
           <div>
             <label className="text-sm">Licencia (número)</label>
-            <input name="licenciaNumero" defaultValue={c.licenciaNumero ?? ""} className="w-full border rounded px-3 py-2" />
+            <input name="licenciaNumero" defaultValue={c.licenciaNumero ?? ""} className="ui-input-inline ui-input-inline ui-input" />
           </div>
           <div>
             <label className="text-sm">Licencia vence</label>
-            <input name="licenciaVenceAt" type="date" defaultValue={tsToYmd(c.licenciaVenceAt)} className="w-full border rounded px-3 py-2" />
+            <input name="licenciaVenceAt" type="date" defaultValue={tsToYmd(c.licenciaVenceAt)} className="ui-input-inline ui-input-inline ui-input" />
           </div>
           <div>
             <label className="text-sm">SOAT vence</label>
-            <input name="soatVenceAt" type="date" defaultValue={tsToYmd(c.soatVenceAt)} className="w-full border rounded px-3 py-2" />
+            <input name="soatVenceAt" type="date" defaultValue={tsToYmd(c.soatVenceAt)} className="ui-input-inline ui-input-inline ui-input" />
           </div>
           <div>
             <label className="text-sm">Rev. técnica vence</label>
-            <input name="revTecVenceAt" type="date" defaultValue={tsToYmd(c.revTecVenceAt)} className="w-full border rounded px-3 py-2" />
+            <input name="revTecVenceAt" type="date" defaultValue={tsToYmd(c.revTecVenceAt)} className="ui-input-inline ui-input-inline ui-input" />
           </div>
         </div>
 
         <div className="grid gap-3 md:grid-cols-2">
           <div>
             <label className="text-sm">Credencial usuario (opcional)</label>
-            <input name="credUsuario" defaultValue={c.credUsuario ?? ""} className="w-full border rounded px-3 py-2" />
+            <input name="credUsuario" defaultValue={c.credUsuario ?? ""} className="ui-input-inline ui-input-inline ui-input" />
           </div>
           <div>
             <label className="text-sm">Credencial password (opcional)</label>
-            <input name="credPassword" type="password" defaultValue={c.credPassword ?? ""} className="w-full border rounded px-3 py-2" />
+            <input name="credPassword" type="password" defaultValue={c.credPassword ?? ""} className="ui-input-inline ui-input-inline ui-input" />
           </div>
           <div>
             <label className="text-sm">Modelo (opcional)</label>
-            <input name="vehiculoModelo" defaultValue={c.vehiculoModelo ?? ""} className="w-full border rounded px-3 py-2" />
+            <input name="vehiculoModelo" defaultValue={c.vehiculoModelo ?? ""} className="ui-input-inline ui-input-inline ui-input" />
           </div>
           <div>
             <label className="text-sm">Marca (opcional)</label>
-            <input name="vehiculoMarca" defaultValue={c.vehiculoMarca ?? ""} className="w-full border rounded px-3 py-2" />
+            <input name="vehiculoMarca" defaultValue={c.vehiculoMarca ?? ""} className="ui-input-inline ui-input-inline ui-input" />
           </div>
         </div>
 
@@ -185,3 +185,5 @@ export default async function CuadrillaDetailPage(props: { params: Promise<{ id:
 }
 
 // client subcomponent moved to separate file
+
+

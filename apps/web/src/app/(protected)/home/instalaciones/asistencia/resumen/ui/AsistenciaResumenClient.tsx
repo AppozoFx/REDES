@@ -313,22 +313,22 @@ export default function AsistenciaResumenClient() {
             <div className="flex flex-col lg:flex-row gap-3 lg:items-end">
               <div className="flex items-center gap-2">
                 <label className="text-sm font-semibold">Desde:</label>
-                <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
+                <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="ui-input-inline rounded-md border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
                 <label className="text-sm font-semibold">Hasta:</label>
-                <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
+                <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="ui-input-inline rounded-md border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
               </div>
 
               <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-3">
-                <select value={filtroGestor} onChange={(e) => setFiltroGestor(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
+                <select value={filtroGestor} onChange={(e) => setFiltroGestor(e.target.value)} className="ui-select-inline rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
                   <option value="">Todos los Gestores</option>
                   {gestoresUnicos.map((g) => (<option key={g} value={g}>{g}</option>))}
                 </select>
-                <select value={filtroCoordinador} onChange={(e) => setFiltroCoordinador(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
+                <select value={filtroCoordinador} onChange={(e) => setFiltroCoordinador(e.target.value)} className="ui-select-inline rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
                   <option value="">Todos los Coordinadores</option>
                   {coordinadoresUnicos.map((c) => (<option key={c} value={c}>{c}</option>))}
                 </select>
-                <input type="text" placeholder="Buscar cuadrilla / zona / gestor..." value={filtroCuadrilla} onChange={(e) => setFiltroCuadrilla(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
-                <input type="text" placeholder="Buscar tecnico..." value={filtroTecnico} onChange={(e) => setFiltroTecnico(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
+                <input type="text" placeholder="Buscar cuadrilla / zona / gestor..." value={filtroCuadrilla} onChange={(e) => setFiltroCuadrilla(e.target.value)} className="ui-input-inline rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
+                <input type="text" placeholder="Buscar tecnico..." value={filtroTecnico} onChange={(e) => setFiltroTecnico(e.target.value)} className="ui-input-inline rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
               </div>
 
               <div className="flex items-center gap-2">
@@ -396,7 +396,7 @@ export default function AsistenciaResumenClient() {
                         <td className="p-2">{c.zonaNombre || c.zonaId || "-"}</td>
                         <td className="p-2">
                           {esEditando ? (
-                            <select value={valor.estadoAsistencia} onChange={(e) => handleEditChange(rowId, "estadoAsistencia", e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+                            <select value={valor.estadoAsistencia} onChange={(e) => handleEditChange(rowId, "estadoAsistencia", e.target.value)} className="ui-select-inline rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
                               {["asistencia","falta","suspendida","descanso","descanso medico","vacaciones","recuperacion","asistencia compensada"].map((op) => (
                                 <option key={op} value={op}>{op}</option>
                               ))}
@@ -407,7 +407,7 @@ export default function AsistenciaResumenClient() {
                         </td>
                         <td className="p-2">
                           {esEditando ? (
-                            <input value={valor.observacion || ""} onChange={(e) => handleEditChange(rowId, "observacion", e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
+                            <input value={valor.observacion || ""} onChange={(e) => handleEditChange(rowId, "observacion", e.target.value)} className="ui-input-inline rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
                           ) : (
                             c.observacion || <span className="italic text-gray-400 dark:text-slate-500">Sin observacion</span>
                           )}
@@ -462,7 +462,7 @@ export default function AsistenciaResumenClient() {
                         <td className="p-2">{t.fecha}</td>
                         <td className="p-2">
                           {esEditando ? (
-                            <select value={valor.estadoAsistencia} onChange={(e) => handleEditChange(rowId, "estadoAsistencia", e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+                            <select value={valor.estadoAsistencia} onChange={(e) => handleEditChange(rowId, "estadoAsistencia", e.target.value)} className="ui-select-inline rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
                               {["asistencia","falta","suspendida","descanso","descanso medico","vacaciones","recuperacion","asistencia compensada"].map((op) => (
                                 <option key={op} value={op}>{op}</option>
                               ))}

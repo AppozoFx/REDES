@@ -27,6 +27,54 @@ type Option = { value: string; label: string; tipo?: string };
   };
 
 export default function CuadrillasGestionClient() {
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const sync = () => setIsDark(root.classList.contains("dark") || mq.matches);
+    sync();
+    const obs = new MutationObserver(sync);
+    obs.observe(root, { attributes: true, attributeFilter: ["class"] });
+    mq.addEventListener?.("change", sync);
+    return () => {
+      obs.disconnect();
+      mq.removeEventListener?.("change", sync);
+    };
+  }, []);
+
+  const selectStyles = isDark
+    ? {
+        menuPortal: (base: any) => ({ ...base, zIndex: 9999 }),
+        control: (base: any, state: any) => ({
+          ...base,
+          backgroundColor: "#020617",
+          borderColor: state.isFocused ? "#38bdf8" : "#334155",
+          boxShadow: "none",
+        }),
+        menu: (base: any) => ({ ...base, backgroundColor: "#0f172a", color: "#e2e8f0" }),
+        option: (base: any, state: any) => ({
+          ...base,
+          backgroundColor: state.isSelected ? "#1d4ed8" : state.isFocused ? "#1e293b" : "#0f172a",
+          color: "#e2e8f0",
+        }),
+        input: (base: any) => ({ ...base, color: "#e2e8f0" }),
+        placeholder: (base: any) => ({ ...base, color: "#94a3b8" }),
+        singleValue: (base: any) => ({ ...base, color: "#e2e8f0" }),
+        multiValue: (base: any) => ({ ...base, backgroundColor: "#1e293b" }),
+        multiValueLabel: (base: any) => ({ ...base, color: "#e2e8f0" }),
+        multiValueRemove: (base: any) => ({ ...base, color: "#cbd5e1" }),
+      }
+    : {
+        menuPortal: (base: any) => ({ ...base, zIndex: 9999 }),
+      };
+
+  const selectPortalProps = {
+    menuPortalTarget: typeof document !== "undefined" ? document.body : null,
+    menuPosition: "fixed" as const,
+    styles: selectStyles,
+  };
+
   const [rows, setRows] = useState<CuadrillaRow[]>([]);
   const [zonas, setZonas] = useState<Option[]>([]);
   const [gestores, setGestores] = useState<Option[]>([]);
@@ -200,6 +248,7 @@ export default function CuadrillasGestionClient() {
             isClearable
             value={gestores.find((g) => g.value === filtroGestor) || null}
             onChange={(sel) => setFiltroGestor(sel?.value || "")}
+            {...selectPortalProps}
           />
           <Select
             classNamePrefix="coord-filter"
@@ -208,6 +257,7 @@ export default function CuadrillasGestionClient() {
             isClearable
             value={coordinadores.find((c) => c.value === filtroCoordinador) || null}
             onChange={(sel) => setFiltroCoordinador(sel?.value || "")}
+            {...selectPortalProps}
           />
         </div>
       </div>
@@ -248,6 +298,7 @@ export default function CuadrillasGestionClient() {
                           }))
                         }
                         placeholder="Seleccionar zona"
+                        {...selectPortalProps}
                       />
                     ) : (
                       zonas.find((z) => z.value === row.zonaId)?.label || row.zonaId || "-"
@@ -273,6 +324,7 @@ export default function CuadrillasGestionClient() {
                         value={gestores.find((g) => g.value === form.gestorUid) || null}
                         onChange={(sel) => setForm((p) => ({ ...p, gestorUid: sel?.value || "" }))}
                         placeholder="Seleccionar gestor"
+                        {...selectPortalProps}
                       />
                     ) : (
                       gestores.find((g) => g.value === row.gestorUid)?.label || row.gestorUid || "-"
@@ -285,6 +337,7 @@ export default function CuadrillasGestionClient() {
                         value={coordinadores.find((c) => c.value === form.coordinadorUid) || null}
                         onChange={(sel) => setForm((p) => ({ ...p, coordinadorUid: sel?.value || "" }))}
                         placeholder="Seleccionar coordinador"
+                        {...selectPortalProps}
                       />
                     ) : (
                       coordinadores.find((c) => c.value === row.coordinadorUid)?.label ||
@@ -306,6 +359,7 @@ export default function CuadrillasGestionClient() {
                           setForm((p) => ({ ...p, tecnicosUids: (sel || []).map((s) => s.value) }))
                         }
                         placeholder="Seleccionar tecnicos"
+                        {...selectPortalProps}
                       />
                     ) : (
                       (row.tecnicosUids || [])

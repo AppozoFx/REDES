@@ -22,7 +22,7 @@ export default function UsuarioOperativeForm({
         <input
           name="celular"
           defaultValue={defaults.celular}
-          className="w-full rounded border px-3 py-2 text-sm"
+          className="ui-input"
         />
       </div>
 
@@ -31,7 +31,7 @@ export default function UsuarioOperativeForm({
         <input
           name="direccion"
           defaultValue={defaults.direccion}
-          className="w-full rounded border px-3 py-2 text-sm"
+          className="ui-input"
         />
       </div>
 
@@ -51,3 +51,4 @@ export default function UsuarioOperativeForm({
     </form>
   );
 }
+

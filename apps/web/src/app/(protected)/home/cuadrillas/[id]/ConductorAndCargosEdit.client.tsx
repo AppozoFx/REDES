@@ -35,7 +35,7 @@ export default function ConductorAndCargosEdit({
     <div className="space-y-3">
       <div>
         <label className="text-sm">Conductor</label>
-        <select name="conductorUid" className="w-full border rounded px-3 py-2" value={conductor} onChange={(e) => setConductor(e.target.value)}>
+        <select name="conductorUid" className="ui-select-inline ui-select-inline ui-select" value={conductor} onChange={(e) => setConductor(e.target.value)}>
           {conductorOpts.map((u) => (
             <option key={u.uid} value={u.uid}>
               {u.label}
@@ -45,7 +45,7 @@ export default function ConductorAndCargosEdit({
       </div>
       <div>
         <label className="text-sm">Coordinador</label>
-        <select name="coordinadorUid" className="w-full border rounded px-3 py-2" defaultValue={current.coordinadorUid}>
+        <select name="coordinadorUid" className="ui-select-inline ui-select-inline ui-select" defaultValue={current.coordinadorUid}>
           {coordinadores.map((u) => (
             <option key={u.uid} value={u.uid}>
               {u.label}
@@ -55,7 +55,7 @@ export default function ConductorAndCargosEdit({
       </div>
       <div>
         <label className="text-sm">Gestor</label>
-        <select name="gestorUid" className="w-full border rounded px-3 py-2" defaultValue={current.gestorUid}>
+        <select name="gestorUid" className="ui-select-inline ui-select-inline ui-select" defaultValue={current.gestorUid}>
           {gestores.map((u) => (
             <option key={u.uid} value={u.uid}>
               {u.label}
@@ -66,4 +66,6 @@ export default function ConductorAndCargosEdit({
     </div>
   );
 }
+
+
 

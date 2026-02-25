@@ -18,22 +18,22 @@ export default function UserEditOperativeForm({
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <label className="text-sm font-medium">Nombres</label>
-          <input name="nombres" defaultValue={defaults.nombres} className="w-full rounded border px-3 py-2 text-sm" />
+          <input name="nombres" defaultValue={defaults.nombres} className="ui-input-inline ui-input-inline ui-input" />
         </div>
 
         <div className="space-y-1">
           <label className="text-sm font-medium">Apellidos</label>
-          <input name="apellidos" defaultValue={defaults.apellidos} className="w-full rounded border px-3 py-2 text-sm" />
+          <input name="apellidos" defaultValue={defaults.apellidos} className="ui-input-inline ui-input-inline ui-input" />
         </div>
 
         <div className="space-y-1">
           <label className="text-sm font-medium">Celular</label>
-          <input name="celular" defaultValue={defaults.celular} className="w-full rounded border px-3 py-2 text-sm" />
+          <input name="celular" defaultValue={defaults.celular} className="ui-input-inline ui-input-inline ui-input" />
         </div>
 
         <div className="space-y-1">
           <label className="text-sm font-medium">Dirección</label>
-          <input name="direccion" defaultValue={defaults.direccion} className="w-full rounded border px-3 py-2 text-sm" />
+          <input name="direccion" defaultValue={defaults.direccion} className="ui-input-inline ui-input-inline ui-input" />
         </div>
       </div>
 
@@ -57,3 +57,5 @@ export default function UserEditOperativeForm({
     </form>
   );
 }
+
+

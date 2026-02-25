@@ -21,7 +21,7 @@ export default function PerfilForm({
         <input
           name="celular"
           defaultValue={defaults.celular}
-          className="w-full rounded border px-3 py-2 text-sm"
+          className="ui-input"
           placeholder="Ej: 999999999"
         />
       </div>
@@ -31,7 +31,7 @@ export default function PerfilForm({
         <input
           name="direccion"
           defaultValue={defaults.direccion}
-          className="w-full rounded border px-3 py-2 text-sm"
+          className="ui-input"
           placeholder="Ej: Av. ..."
         />
       </div>
@@ -56,3 +56,4 @@ export default function PerfilForm({
     </form>
   );
 }
+

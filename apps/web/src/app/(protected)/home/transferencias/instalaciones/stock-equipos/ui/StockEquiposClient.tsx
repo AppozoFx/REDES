@@ -487,9 +487,9 @@ export default function StockEquiposClient() {
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
             placeholder="Buscar cuadrilla"
-            className="rounded border px-3 py-2 text-sm lg:col-span-1"
+            className="ui-input-inline lg:col-span-1"
           />
-          <select value={equipoFiltro} onChange={(e) => setEquipoFiltro(e.target.value)} className="rounded border px-3 py-2 text-sm lg:col-span-1">
+          <select value={equipoFiltro} onChange={(e) => setEquipoFiltro(e.target.value)} className="ui-select-inline ui-select-inline lg:col-span-1">
             <option value="todos">Todos los equipos</option>
             {TIPOS.map((t) => (
               <option key={t} value={t}>{t}</option>
@@ -554,13 +554,13 @@ export default function StockEquiposClient() {
               </div>
             )}
           </div>
-          <select value={tipoCuadrilla} onChange={(e) => setTipoCuadrilla(e.target.value)} className="rounded border px-3 py-2 text-sm lg:col-span-1">
+          <select value={tipoCuadrilla} onChange={(e) => setTipoCuadrilla(e.target.value)} className="ui-select-inline ui-select-inline lg:col-span-1">
             <option value="todas">Todas</option>
             <option value="residencial">Residencial</option>
             <option value="condominio">Condominio</option>
           </select>
           {viewerScope === "all" && (
-            <select value={coordinadorFiltro} onChange={(e) => setCoordinadorFiltro(e.target.value)} className="rounded border px-3 py-2 text-sm lg:col-span-1">
+            <select value={coordinadorFiltro} onChange={(e) => setCoordinadorFiltro(e.target.value)} className="ui-select-inline ui-select-inline lg:col-span-1">
               {coordinadoresOptions.map((opt) => (
                 <option key={opt} value={opt}>{opt === "todos" ? "Todos los coordinadores" : opt}</option>
               ))}
@@ -721,7 +721,7 @@ export default function StockEquiposClient() {
               value={busquedaSerie}
               onChange={(e) => setBusquedaSerie(e.target.value)}
               placeholder="Buscar por SN / guia / descripcion"
-              className="w-full rounded border px-3 py-2 text-sm md:w-96"
+              className="ui-input md:w-96"
             />
           </div>
           <div className="overflow-auto">
@@ -756,6 +756,7 @@ export default function StockEquiposClient() {
     </div>
   );
 }
+
 
 
 

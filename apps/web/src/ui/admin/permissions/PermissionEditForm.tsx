@@ -37,7 +37,7 @@ export function PermissionEditForm({ permission }: { permission: any }) {
           <input
             name="modulo"
             defaultValue={permission.modulo}
-            className="w-full rounded border p-2"
+            className="ui-input"
           />
         </div>
 
@@ -46,7 +46,7 @@ export function PermissionEditForm({ permission }: { permission: any }) {
           <input
             name="nombre"
             defaultValue={permission.nombre}
-            className="w-full rounded border p-2"
+            className="ui-input"
           />
         </div>
 
@@ -55,7 +55,7 @@ export function PermissionEditForm({ permission }: { permission: any }) {
           <textarea
             name="descripcion"
             defaultValue={permission.descripcion ?? ""}
-            className="w-full rounded border p-2"
+            className="ui-textarea"
             rows={3}
           />
         </div>
@@ -78,3 +78,4 @@ export function PermissionEditForm({ permission }: { permission: any }) {
     </div>
   );
 }
+

@@ -17,7 +17,7 @@ export default function ZonaTipoDependent({ zonas }: { zonas: any[] }) {
     <div className="grid gap-3 md:grid-cols-3">
       <div>
         <label className="text-sm">Zona</label>
-        <select name="zonaId" className="w-full border rounded px-3 py-2" value={zonaId} onChange={(e) => setZonaId(e.target.value)}>
+        <select name="zonaId" className="ui-select-inline ui-select-inline ui-select" value={zonaId} onChange={(e) => setZonaId(e.target.value)}>
           {zonas.map((z: any) => (
             <option key={z.id} value={z.id}>
               {z.id}
@@ -32,3 +32,5 @@ export default function ZonaTipoDependent({ zonas }: { zonas: any[] }) {
     </div>
   );
 }
+
+

@@ -76,6 +76,7 @@ export default function AsistenciaClient() {
   const [filtroEstadoGestor, setFiltroEstadoGestor] = useState<string>("");
   const [assignedAll, setAssignedAll] = useState<string[]>([]);
   const [tecnicos, setTecnicos] = useState<Option[]>([]);
+  const [isDark, setIsDark] = useState(false);
 
   const cargarTecnicos = async () => {
     const res = await fetch("/api/usuarios/by-role?role=TECNICO", { cache: "no-store" });
@@ -136,6 +137,52 @@ export default function AsistenciaClient() {
     cargarDrafts();
     cargar();
   }, [fecha]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const sync = () => setIsDark(root.classList.contains("dark") || mq.matches);
+    sync();
+    const obs = new MutationObserver(sync);
+    obs.observe(root, { attributes: true, attributeFilter: ["class"] });
+    mq.addEventListener?.("change", sync);
+    return () => {
+      obs.disconnect();
+      mq.removeEventListener?.("change", sync);
+    };
+  }, []);
+
+  const selectStyles = isDark
+    ? {
+        menuPortal: (base: any) => ({ ...base, zIndex: 9999 }),
+        control: (base: any, state: any) => ({
+          ...base,
+          backgroundColor: "#020617",
+          borderColor: state.isFocused ? "#38bdf8" : "#334155",
+          boxShadow: "none",
+        }),
+        menu: (base: any) => ({ ...base, backgroundColor: "#0f172a", color: "#e2e8f0" }),
+        option: (base: any, state: any) => ({
+          ...base,
+          backgroundColor: state.isSelected ? "#1d4ed8" : state.isFocused ? "#1e293b" : "#0f172a",
+          color: "#e2e8f0",
+        }),
+        input: (base: any) => ({ ...base, color: "#e2e8f0" }),
+        placeholder: (base: any) => ({ ...base, color: "#94a3b8" }),
+        singleValue: (base: any) => ({ ...base, color: "#e2e8f0" }),
+        multiValue: (base: any) => ({ ...base, backgroundColor: "#1e293b" }),
+        multiValueLabel: (base: any) => ({ ...base, color: "#e2e8f0" }),
+        multiValueRemove: (base: any) => ({ ...base, color: "#cbd5e1" }),
+      }
+    : {
+        menuPortal: (base: any) => ({ ...base, zIndex: 9999 }),
+      };
+
+  const selectPortalProps = {
+    menuPortalTarget: typeof document !== "undefined" ? document.body : null,
+    menuPosition: "fixed" as const,
+    styles: selectStyles,
+  };
 
   const draftsMap = useMemo(() => {
     const map = new Map<string, GestorDraft>();
@@ -448,6 +495,7 @@ export default function AsistenciaClient() {
                       onChange={(sel) => updateRow(r.id, { tecnicosIds: (sel || []).map((s) => s.value) })}
                       isDisabled={disabled}
                       placeholder="Seleccionar técnicos"
+                      {...selectPortalProps}
                     />
                   </td>
                   <td className="p-2">

@@ -273,9 +273,9 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{fecha} - {filtered.length} resultados</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900" />
-          <input type="text" placeholder="Buscar cuadrilla..." value={fCuadrilla} onChange={(e) => setFCuadrilla(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900" />
-          <select value={fEstado} onChange={(e) => setFEstado(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900">
+          <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="ui-input-inline rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900" />
+          <input type="text" placeholder="Buscar cuadrilla..." value={fCuadrilla} onChange={(e) => setFCuadrilla(e.target.value)} className="ui-input-inline rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900" />
+          <select value={fEstado} onChange={(e) => setFEstado(e.target.value)} className="ui-select-inline rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900">
             <option value="">Todos los estados</option>
             <option value="Finalizada">Finalizada</option>
             <option value="Cancelada">Cancelada</option>
@@ -382,7 +382,7 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
       <div ref={outerRef} className="relative min-h-0 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900" style={{ height: mapHeight }}>
         <div className="absolute right-3 top-3 z-[1000] flex items-center gap-2 bg-white/90 backdrop-blur px-2 py-1 rounded border text-[12px]">
           <span>Mapa:</span>
-          <select value={base} onChange={(e) => setBase(e.target.value)} className="bg-transparent outline-none">
+          <select value={base} onChange={(e) => setBase(e.target.value)} className="ui-select-inline bg-transparent outline-none">
             <option value="osm">OpenStreetMap</option>
             <option value="voyager">Carto Voyager</option>
             <option value="dark">Carto Dark</option>

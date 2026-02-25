@@ -36,7 +36,7 @@ export default async function ModuleDetailPage({
 
         <div>
           <label className="text-sm">Key</label>
-          <input name="key" defaultValue={m.key} className="w-full border rounded px-3 py-2" />
+          <input name="key" defaultValue={m.key} className="ui-input-inline ui-input-inline ui-input" />
         </div>
 
         <div>
@@ -44,7 +44,7 @@ export default async function ModuleDetailPage({
           <input
             name="nombre"
             defaultValue={m.nombre}
-            className="w-full border rounded px-3 py-2"
+            className="ui-input"
           />
         </div>
 
@@ -53,7 +53,7 @@ export default async function ModuleDetailPage({
           <input
             name="descripcion"
             defaultValue={m.descripcion}
-            className="w-full border rounded px-3 py-2"
+            className="ui-input"
           />
         </div>
 
@@ -63,7 +63,7 @@ export default async function ModuleDetailPage({
             name="orden"
             type="number"
             defaultValue={m.orden}
-            className="w-full border rounded px-3 py-2"
+            className="ui-input"
           />
         </div>
 
@@ -82,7 +82,7 @@ export default async function ModuleDetailPage({
 
           <div>
             <label className="text-sm">Motivo de baja</label>
-            <input name="motivoBaja" className="w-full border rounded px-3 py-2" required />
+            <input name="motivoBaja" className="ui-input-inline ui-input-inline ui-input" required />
           </div>
 
           <button className="rounded border border-red-400 px-3 py-2 text-red-700 hover:bg-red-50">
@@ -111,3 +111,5 @@ export default async function ModuleDetailPage({
     </div>
   );
 }
+
+

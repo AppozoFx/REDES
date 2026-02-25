@@ -295,30 +295,30 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
       ) : null}
 
       <div className="flex flex-wrap gap-2 justify-center">
-        <input type="date" value={ymd} onChange={(e) => setYmd(e.target.value)} className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+        <input type="date" value={ymd} onChange={(e) => setYmd(e.target.value)} className="ui-input-inline rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
 
-        <select value={filters.gestor} onChange={(e) => setFilters((f) => ({ ...f, gestor: e.target.value }))} className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+        <select value={filters.gestor} onChange={(e) => setFilters((f) => ({ ...f, gestor: e.target.value }))} className="ui-select-inline rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
           <option value="">Todos los gestores</option>
           {gestores.map((g) => (
             <option key={g.uid} value={g.uid}>{g.nombre}</option>
           ))}
         </select>
 
-        <select value={filters.coordinador} onChange={(e) => setFilters((f) => ({ ...f, coordinador: e.target.value }))} className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+        <select value={filters.coordinador} onChange={(e) => setFilters((f) => ({ ...f, coordinador: e.target.value }))} className="ui-select-inline rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
           <option value="">Todos los coordinadores</option>
           {coordinadores.map((c) => (
             <option key={c.uid} value={c.uid}>{c.nombre}</option>
           ))}
         </select>
 
-        <select value={filters.tramo} onChange={(e) => setFilters((f) => ({ ...f, tramo: e.target.value }))} className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+        <select value={filters.tramo} onChange={(e) => setFilters((f) => ({ ...f, tramo: e.target.value }))} className="ui-select-inline rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
           <option value="">Todos los tramos</option>
           <option value="Primer Tramo">Primer Tramo</option>
           <option value="Segundo Tramo">Segundo Tramo</option>
           <option value="Tercer Tramo">Tercer Tramo</option>
         </select>
 
-        <select value={filters.estado} onChange={(e) => setFilters((f) => ({ ...f, estado: e.target.value }))} className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+        <select value={filters.estado} onChange={(e) => setFilters((f) => ({ ...f, estado: e.target.value }))} className="ui-select-inline rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
           <option value="">Todos los estados</option>
           <option value="Agendada">Agendada</option>
           <option value="En camino">En camino</option>
@@ -330,7 +330,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
           <option value="Regestión">Regestion (con tilde)</option>
         </select>
 
-        <select value={filters.estadoLlamada} onChange={(e) => setFilters((f) => ({ ...f, estadoLlamada: e.target.value }))} className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+        <select value={filters.estadoLlamada} onChange={(e) => setFilters((f) => ({ ...f, estadoLlamada: e.target.value }))} className="ui-select-inline rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
           <option value="">Todos los estados llamada</option>
           <option value="Contesto">Contesto</option>
           <option value="No Contesto">No Contesto</option>
@@ -338,13 +338,13 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
           <option value="noLlamo">No se llamo</option>
         </select>
 
-        <select value={filters.acciones} onChange={(e) => setFilters((f) => ({ ...f, acciones: e.target.value as any }))} className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+        <select value={filters.acciones} onChange={(e) => setFilters((f) => ({ ...f, acciones: e.target.value as any }))} className="ui-select-inline rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
           <option value="">Acciones: Todas</option>
           <option value="con">Acciones: Con llamadas</option>
           <option value="sin">Acciones: Sin llamadas</option>
         </select>
 
-        <select value={filters.alerta} onChange={(e) => setFilters((f) => ({ ...f, alerta: e.target.value }))} className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+        <select value={filters.alerta} onChange={(e) => setFilters((f) => ({ ...f, alerta: e.target.value }))} className="ui-select-inline rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
           <option value="">Todas las alertas</option>
           <option value="tolerancia">Fuera de tolerancia</option>
           <option value="sinaction">Sin gestion</option>

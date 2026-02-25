@@ -52,7 +52,7 @@ export default async function RoleDetailPage({
           <input
             name="nombre"
             defaultValue={role.nombre}
-            className="w-full border rounded px-3 py-2"
+            className="ui-input"
           />
         </div>
 
@@ -61,7 +61,7 @@ export default async function RoleDetailPage({
           <input
             name="descripcion"
             defaultValue={role.descripcion}
-            className="w-full border rounded px-3 py-2"
+            className="ui-input"
           />
         </div>
 
@@ -90,7 +90,7 @@ export default async function RoleDetailPage({
             <label className="text-sm">Motivo de baja</label>
             <input
               name="motivoBaja"
-              className="w-full border rounded px-3 py-2"
+              className="ui-input"
               required
             />
           </div>
@@ -120,3 +120,4 @@ export default async function RoleDetailPage({
     </div>
   );
 }
+

@@ -126,6 +126,15 @@ export default function InstalacionesClient() {
     };
   }, []);
 
+  const selectPortalStyles = {
+    menuPortal: (base: any) => ({ ...base, zIndex: 9999 }),
+  };
+
+  const selectPortalProps = {
+    menuPortalTarget: typeof document !== "undefined" ? document.body : null,
+    menuPosition: "fixed" as const,
+  };
+
   /* ===== Sticky offsets / mediciones ===== */
   const kpiRef = useRef<HTMLDivElement | null>(null);
   const theadRef = useRef<HTMLTableSectionElement | null>(null);
@@ -623,9 +632,11 @@ export default function InstalacionesClient() {
             placeholder="Seleccionar..."
             value={opcionesTipoCuadrilla.filter((opt) => filtros.tipoCuadrilla.includes(opt.value))}
             onChange={(sel) => setFiltros((p) => ({ ...p, tipoCuadrilla: (sel || []).map((s) => s.value) }))}
+            {...selectPortalProps}
             styles={
               isDark
                 ? {
+                    ...selectPortalStyles,
                     control: (base: any, state: any) => ({
                       ...base,
                       backgroundColor: "#020617",
@@ -643,7 +654,7 @@ export default function InstalacionesClient() {
                     multiValue: (base: any) => ({ ...base, backgroundColor: "#1e293b" }),
                     multiValueLabel: (base: any) => ({ ...base, color: "#e2e8f0" }),
                   }
-                : undefined
+                : selectPortalStyles
             }
           />
         </div>

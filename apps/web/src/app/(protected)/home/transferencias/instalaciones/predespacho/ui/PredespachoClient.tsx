@@ -394,7 +394,7 @@ export default function PredespachoClient() {
         <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-8">
           <div className="lg:col-span-1">
             <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Fecha base</label>
-            <input type="date" value={anchor} onChange={(e) => setAnchor(e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm" />
+            <input type="date" value={anchor} onChange={(e) => setAnchor(e.target.value)} className="ui-input-inline w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm" />
           </div>
           <div className="lg:col-span-2">
             <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Buscar cuadrilla</label>
@@ -480,7 +480,7 @@ export default function PredespachoClient() {
           )}
           <div className="lg:col-span-1">
             <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Estado</label>
-            <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value as EstadoFiltro)} className="w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm">
+            <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value as EstadoFiltro)} className="ui-select-inline w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm">
               <option value="todas">Todas</option>
               <option value="guardadas">Guardadas</option>
               <option value="pendientes">Pendientes</option>
@@ -489,7 +489,7 @@ export default function PredespachoClient() {
           </div>
           <div className="lg:col-span-1">
             <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Modelo (ONT/MESH)</label>
-            <select value={modeloFiltro} onChange={(e) => setModeloFiltro(e.target.value as ModeloFiltro)} className="w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm">
+            <select value={modeloFiltro} onChange={(e) => setModeloFiltro(e.target.value as ModeloFiltro)} className="ui-select-inline w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm">
               <option value="all">Todos</option>
               <option value="huawei">Huawei</option>
               <option value="zte">ZTE</option>
@@ -497,7 +497,7 @@ export default function PredespachoClient() {
           </div>
           <div className="lg:col-span-1">
             <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Lote</label>
-            <select value={selectedBatch} onChange={(e) => setSelectedBatch(e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm" disabled={estadoFiltro !== "lote"}>
+            <select value={selectedBatch} onChange={(e) => setSelectedBatch(e.target.value)} className="ui-select-inline w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm" disabled={estadoFiltro !== "lote"}>
               <option value="">Seleccionar</option>
               {batchIds.map((b) => <option key={b} value={b}>{b.slice(0, 16).replace("T", " ")}</option>)}
             </select>
@@ -575,7 +575,7 @@ export default function PredespachoClient() {
           {EQUIPOS.map((k) => (
             <div key={`obj-${k}`}>
               <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">{k}</label>
-              <input type="number" min={0} value={objetivo[k]} disabled={readOnly} onChange={(e) => setObjetivo((p) => ({ ...p, [k]: n(e.target.value) }))} className="w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-right text-sm" />
+              <input type="number" min={0} value={objetivo[k]} disabled={readOnly} onChange={(e) => setObjetivo((p) => ({ ...p, [k]: n(e.target.value) }))} className="ui-input-inline w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-right text-sm" />
             </div>
           ))}
         </div>
@@ -712,7 +712,7 @@ export default function PredespachoClient() {
                     </td>
                     <td className="p-2"><input type="checkbox" checked={!!omitidas[c.id]} disabled={readOnly} onChange={(e) => setOmitidas((p) => ({ ...p, [c.id]: e.target.checked }))} /></td>
                     <td className="p-2">
-                      <input type="number" min={0} value={bobinaResi[c.id] ?? 0} disabled={readOnly} onChange={(e) => setBobinaResi((p) => ({ ...p, [c.id]: n(e.target.value) }))} className="w-16 rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1 text-right text-xs" />
+                      <input type="number" min={0} value={bobinaResi[c.id] ?? 0} disabled={readOnly} onChange={(e) => setBobinaResi((p) => ({ ...p, [c.id]: n(e.target.value) }))} className="ui-input-inline w-16 rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1 text-right text-xs" />
                     </td>
                     <td className="p-2"><input type="checkbox" checked={!!rolloCondo[c.id]} disabled={readOnly} onChange={(e) => setRolloCondo((p) => ({ ...p, [c.id]: e.target.checked }))} /></td>
                     <td className="p-2 text-xs text-slate-600 dark:text-slate-300">

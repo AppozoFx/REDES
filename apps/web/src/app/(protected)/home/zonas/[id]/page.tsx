@@ -40,7 +40,7 @@ export default async function ZonaDetailPage(props: { params: Promise<{ id: stri
 
         <div>
           <label className="text-sm">Tipo</label>
-          <select name="tipo" className="w-full border rounded px-3 py-2" defaultValue={z.tipo}>
+          <select name="tipo" className="ui-select-inline ui-select-inline ui-select" defaultValue={z.tipo}>
             <option value="REGULAR">REGULAR</option>
             <option value="ALTO_VALOR">ALTO_VALOR</option>
           </select>
@@ -48,7 +48,7 @@ export default async function ZonaDetailPage(props: { params: Promise<{ id: stri
 
         <div>
           <label className="text-sm">Estado</label>
-          <select name="estado" className="w-full border rounded px-3 py-2" defaultValue={z.estado}>
+          <select name="estado" className="ui-select-inline ui-select-inline ui-select" defaultValue={z.estado}>
             <option value="HABILITADO">HABILITADO</option>
             <option value="INHABILITADO">INHABILITADO</option>
           </select>
@@ -59,7 +59,7 @@ export default async function ZonaDetailPage(props: { params: Promise<{ id: stri
           <textarea
             name="distritos"
             defaultValue={(z.distritos ?? []).join(", ")}
-            className="w-full border rounded px-3 py-2"
+            className="ui-textarea"
             rows={3}
           />
         </div>
@@ -95,3 +95,5 @@ export default async function ZonaDetailPage(props: { params: Promise<{ id: stri
     </div>
   );
 }
+
+

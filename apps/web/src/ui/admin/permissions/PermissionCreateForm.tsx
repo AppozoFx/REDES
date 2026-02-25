@@ -28,23 +28,23 @@ export function PermissionCreateForm() {
     >
       <div className="space-y-1">
         <label className="text-sm font-medium">ID (ej: USERS_EDIT)</label>
-        <input name="id" className="w-full rounded border p-2 font-mono" placeholder="USERS_EDIT" />
+        <input name="id" className="ui-input-inline ui-input-inline ui-input font-mono" placeholder="USERS_EDIT" />
         <p className="text-xs opacity-70">Solo A-Z, 0-9 y _</p>
       </div>
 
       <div className="space-y-1">
         <label className="text-sm font-medium">Módulo</label>
-        <input name="modulo" className="w-full rounded border p-2" placeholder="USUARIOS" />
+        <input name="modulo" className="ui-input-inline ui-input-inline ui-input" placeholder="USUARIOS" />
       </div>
 
       <div className="space-y-1">
         <label className="text-sm font-medium">Nombre</label>
-        <input name="nombre" className="w-full rounded border p-2" placeholder="Editar usuarios" />
+        <input name="nombre" className="ui-input-inline ui-input-inline ui-input" placeholder="Editar usuarios" />
       </div>
 
       <div className="space-y-1">
         <label className="text-sm font-medium">Descripción</label>
-        <textarea name="descripcion" className="w-full rounded border p-2" rows={3} />
+        <textarea name="descripcion" className="ui-textarea-inline ui-textarea-inline ui-textarea" rows={3} />
       </div>
 
       {error && <div className="text-sm text-red-600">{error}</div>}
@@ -53,3 +53,5 @@ export function PermissionCreateForm() {
     </form>
   );
 }
+
+

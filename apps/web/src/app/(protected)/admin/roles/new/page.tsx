@@ -17,17 +17,17 @@ export default async function NewRolePage() {
       >
         <div>
           <label className="text-sm">ID (ej: ADMIN)</label>
-          <input name="id" className="w-full border rounded px-3 py-2" />
+          <input name="id" className="ui-input-inline ui-input-inline ui-input" />
         </div>
 
         <div>
           <label className="text-sm">Nombre</label>
-          <input name="nombre" className="w-full border rounded px-3 py-2" />
+          <input name="nombre" className="ui-input-inline ui-input-inline ui-input" />
         </div>
 
         <div>
           <label className="text-sm">Descripción</label>
-          <input name="descripcion" className="w-full border rounded px-3 py-2" />
+          <input name="descripcion" className="ui-input-inline ui-input-inline ui-input" />
         </div>
 
         <button className="rounded border px-3 py-2 hover:bg-black/5">Crear</button>
@@ -35,3 +35,5 @@ export default async function NewRolePage() {
     </div>
   );
 }
+
+

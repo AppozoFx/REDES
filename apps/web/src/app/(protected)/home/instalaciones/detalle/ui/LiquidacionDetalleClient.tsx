@@ -71,6 +71,15 @@ export default function LiquidacionDetalleClient() {
     };
   }, []);
 
+  const selectPortalStyles = {
+    menuPortal: (base: any) => ({ ...base, zIndex: 9999 }),
+  };
+
+  const selectPortalProps = {
+    menuPortalTarget: typeof document !== "undefined" ? document.body : null,
+    menuPosition: "fixed" as const,
+  };
+
   const cargar = async (silent = false) => {
     if (!silent) setCargando(true);
     try {
@@ -251,9 +260,11 @@ export default function LiquidacionDetalleClient() {
               }
               placeholder="Seleccionar coordinador"
               isClearable
+              {...selectPortalProps}
               styles={
                 isDark
                   ? {
+                      ...selectPortalStyles,
                       control: (base: any, state: any) => ({
                         ...base,
                         backgroundColor: "#020617",
@@ -270,7 +281,7 @@ export default function LiquidacionDetalleClient() {
                       placeholder: (base: any) => ({ ...base, color: "#94a3b8" }),
                       singleValue: (base: any) => ({ ...base, color: "#e2e8f0" }),
                     }
-                  : undefined
+                  : selectPortalStyles
               }
             />
           </div>
@@ -347,9 +358,11 @@ export default function LiquidacionDetalleClient() {
                       options={coordinadores}
                       placeholder="Seleccionar coordinador"
                       isClearable
+                      {...selectPortalProps}
                       styles={
                         isDark
                           ? {
+                              ...selectPortalStyles,
                               control: (base: any, state: any) => ({
                                 ...base,
                                 backgroundColor: "#020617",
@@ -366,7 +379,7 @@ export default function LiquidacionDetalleClient() {
                               placeholder: (base: any) => ({ ...base, color: "#94a3b8" }),
                               singleValue: (base: any) => ({ ...base, color: "#e2e8f0" }),
                             }
-                          : undefined
+                          : selectPortalStyles
                       }
                     />
                     </td>

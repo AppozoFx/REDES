@@ -170,7 +170,7 @@ function Field(props: {
         type={props.type ?? "text"}
         required={props.required}
         defaultValue={props.defaultValue}
-        className="w-full rounded border px-3 py-2 text-sm"
+        className="ui-input"
       />
       {props.error ? <div className="text-xs text-red-600">{props.error}</div> : null}
     </div>
@@ -190,7 +190,7 @@ function Select(props: {
       <select
         name={props.name}
         required={props.required}
-        className="w-full rounded border px-3 py-2 text-sm"
+        className="ui-select"
         defaultValue={props.options[0]?.value ?? ""}
       >
         {props.options.map((o) => (
@@ -219,7 +219,7 @@ function MultiSelect(props: {
         name={props.name}
         multiple
         required={props.required}
-        className="w-full rounded border px-3 py-2 text-sm"
+        className="ui-select"
       >
         {props.options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -232,3 +232,4 @@ function MultiSelect(props: {
     </div>
   );
 }
+

@@ -97,7 +97,7 @@ export default async function UsuarioDetailPage({
             <input
               name="nombres"
               defaultValue={profile.nombres ?? ""}
-              className="w-full border rounded px-3 py-2"
+              className="ui-input"
             />
           </div>
 
@@ -106,7 +106,7 @@ export default async function UsuarioDetailPage({
             <input
               name="apellidos"
               defaultValue={profile.apellidos ?? ""}
-              className="w-full border rounded px-3 py-2"
+              className="ui-input"
             />
           </div>
 
@@ -115,7 +115,7 @@ export default async function UsuarioDetailPage({
             <select
               name="tipoDoc"
               defaultValue={profile.tipoDoc ?? "DNI"}
-              className="w-full border rounded px-3 py-2"
+              className="ui-select"
             >
               <option value="DNI">DNI</option>
               <option value="CE">CE</option>
@@ -127,7 +127,7 @@ export default async function UsuarioDetailPage({
             <input
               name="nroDoc"
               defaultValue={profile.nroDoc ?? ""}
-              className="w-full border rounded px-3 py-2"
+              className="ui-input"
             />
           </div>
 
@@ -136,7 +136,7 @@ export default async function UsuarioDetailPage({
             <input
               name="celular"
               defaultValue={profile.celular ?? ""}
-              className="w-full border rounded px-3 py-2"
+              className="ui-input"
             />
           </div>
 
@@ -145,7 +145,7 @@ export default async function UsuarioDetailPage({
             <input
               name="direccion"
               defaultValue={profile.direccion ?? ""}
-              className="w-full border rounded px-3 py-2"
+              className="ui-input"
             />
           </div>
 
@@ -154,7 +154,7 @@ export default async function UsuarioDetailPage({
             <select
               name="genero"
               defaultValue={profile.genero ?? "NO_ESPECIFICA"}
-              className="w-full border rounded px-3 py-2"
+              className="ui-select"
             >
               <option value="NO_ESPECIFICA">No especifica</option>
               <option value="M">Masculino</option>
@@ -168,7 +168,7 @@ export default async function UsuarioDetailPage({
             <input
               name="nacionalidad"
               defaultValue={profile.nacionalidad ?? ""}
-              className="w-full border rounded px-3 py-2"
+              className="ui-input"
             />
           </div>
 
@@ -178,7 +178,7 @@ export default async function UsuarioDetailPage({
               name="fIngreso"
               type="date"
               defaultValue={tsToYmd(profile.fIngreso)}
-              className="w-full border rounded px-3 py-2"
+              className="ui-input"
             />
           </div>
 
@@ -188,7 +188,7 @@ export default async function UsuarioDetailPage({
               name="fNacimiento"
               type="date"
               defaultValue={tsToYmd(profile.fNacimiento)}
-              className="w-full border rounded px-3 py-2"
+              className="ui-input"
             />
           </div>
 
@@ -197,7 +197,7 @@ export default async function UsuarioDetailPage({
             <select
               name="estadoPerfil"
               defaultValue={profile.estadoPerfil ?? "ACTIVO"}
-              className="w-full border rounded px-3 py-2"
+              className="ui-select"
             >
               <option value="ACTIVO">ACTIVO</option>
               <option value="INACTIVO">INACTIVO</option>
@@ -212,7 +212,7 @@ export default async function UsuarioDetailPage({
             <input
               name="sede"
               defaultValue={profile.sede ?? ""}
-              className="w-full border rounded px-3 py-2"
+              className="ui-input"
             />
           </div>
           <div>
@@ -220,7 +220,7 @@ export default async function UsuarioDetailPage({
             <input
               name="cargo"
               defaultValue={profile.cargo ?? ""}
-              className="w-full border rounded px-3 py-2"
+              className="ui-input"
             />
           </div>
           <div>
@@ -228,7 +228,7 @@ export default async function UsuarioDetailPage({
             <input
               name="cuadrillaId"
               defaultValue={profile.cuadrillaId ?? ""}
-              className="w-full border rounded px-3 py-2"
+              className="ui-input"
             />
           </div>
           <div>
@@ -236,7 +236,7 @@ export default async function UsuarioDetailPage({
             <input
               name="supervisorUid"
               defaultValue={profile.supervisorUid ?? ""}
-              className="w-full border rounded px-3 py-2"
+              className="ui-input"
             />
           </div>
         </div>
@@ -261,7 +261,7 @@ export default async function UsuarioDetailPage({
           <select
             name="estadoAcceso"
             defaultValue={access.estadoAcceso}
-            className="w-full border rounded px-3 py-2"
+            className="ui-select"
           >
             <option value="HABILITADO">HABILITADO</option>
             <option value="INHABILITADO">INHABILITADO</option>
@@ -321,7 +321,7 @@ export default async function UsuarioDetailPage({
           <div className="font-medium text-red-700">Deshabilitar usuario</div>
           <input
             name="motivoBaja"
-            className="w-full border rounded px-3 py-2"
+            className="ui-input"
             placeholder="Motivo..."
             required
           />
@@ -348,3 +348,4 @@ export default async function UsuarioDetailPage({
     </div>
   );
 }
+

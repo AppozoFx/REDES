@@ -38,14 +38,14 @@ export function FormCreateUsuario({ roles, areas }: { roles: string[]; areas: st
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
           <label className="text-sm">Email</label>
-          <input name="email" className="w-full border rounded px-3 py-2" required />
+          <input name="email" className="ui-input-inline ui-input-inline ui-input" required />
         </div>
         <div>
           <label className="text-sm">Password</label>
           <input
             name="password"
             type="password"
-            className="w-full border rounded px-3 py-2"
+            className="ui-input"
             required
           />
         </div>
@@ -55,39 +55,39 @@ export function FormCreateUsuario({ roles, areas }: { roles: string[]; areas: st
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
           <label className="text-sm">Nombres</label>
-          <input name="nombres" className="w-full border rounded px-3 py-2" required />
+          <input name="nombres" className="ui-input-inline ui-input-inline ui-input" required />
         </div>
         <div>
           <label className="text-sm">Apellidos</label>
-          <input name="apellidos" className="w-full border rounded px-3 py-2" required />
+          <input name="apellidos" className="ui-input-inline ui-input-inline ui-input" required />
         </div>
 
         <div>
           <label className="text-sm">Tipo doc</label>
-          <select name="tipoDoc" className="w-full border rounded px-3 py-2" defaultValue="DNI">
+          <select name="tipoDoc" className="ui-select-inline ui-select-inline ui-select" defaultValue="DNI">
             <option value="DNI">DNI</option>
             <option value="CE">CE</option>
           </select>
         </div>
         <div>
           <label className="text-sm">Nro doc</label>
-          <input name="nroDoc" className="w-full border rounded px-3 py-2" required />
+          <input name="nroDoc" className="ui-input-inline ui-input-inline ui-input" required />
         </div>
 
         <div>
           <label className="text-sm">Celular</label>
-          <input name="celular" className="w-full border rounded px-3 py-2" required />
+          <input name="celular" className="ui-input-inline ui-input-inline ui-input" required />
         </div>
         <div>
           <label className="text-sm">Dirección</label>
-          <input name="direccion" className="w-full border rounded px-3 py-2" required />
+          <input name="direccion" className="ui-input-inline ui-input-inline ui-input" required />
         </div>
 
         <div>
           <label className="text-sm">Género</label>
           <select
             name="genero"
-            className="w-full border rounded px-3 py-2"
+            className="ui-select"
             defaultValue="NO_ESPECIFICA"
           >
             <option value="NO_ESPECIFICA">No especifica</option>
@@ -101,28 +101,28 @@ export function FormCreateUsuario({ roles, areas }: { roles: string[]; areas: st
           <input
             name="nacionalidad"
             defaultValue="PERUANA"
-            className="w-full border rounded px-3 py-2"
+            className="ui-input"
             required
           />
         </div>
 
         <div>
           <label className="text-sm">F. ingreso</label>
-          <input name="fIngreso" type="date" className="w-full border rounded px-3 py-2" required />
+          <input name="fIngreso" type="date" className="ui-input-inline ui-input-inline ui-input" required />
         </div>
         <div>
           <label className="text-sm">F. nacimiento</label>
           <input
             name="fNacimiento"
             type="date"
-            className="w-full border rounded px-3 py-2"
+            className="ui-input"
             required
           />
         </div>
 
         <div>
           <label className="text-sm">Estado perfil</label>
-          <select name="estadoPerfil" className="w-full border rounded px-3 py-2" defaultValue="ACTIVO">
+          <select name="estadoPerfil" className="ui-select-inline ui-select-inline ui-select" defaultValue="ACTIVO">
             <option value="ACTIVO">ACTIVO</option>
             <option value="INACTIVO">INACTIVO</option>
           </select>
@@ -133,19 +133,19 @@ export function FormCreateUsuario({ roles, areas }: { roles: string[]; areas: st
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border-t pt-4">
         <div>
           <label className="text-sm">Sede (opcional)</label>
-          <input name="sede" className="w-full border rounded px-3 py-2" />
+          <input name="sede" className="ui-input-inline ui-input-inline ui-input" />
         </div>
         <div>
           <label className="text-sm">Cargo (opcional)</label>
-          <input name="cargo" className="w-full border rounded px-3 py-2" />
+          <input name="cargo" className="ui-input-inline ui-input-inline ui-input" />
         </div>
         <div>
           <label className="text-sm">CuadrillaId (opcional)</label>
-          <input name="cuadrillaId" className="w-full border rounded px-3 py-2" />
+          <input name="cuadrillaId" className="ui-input-inline ui-input-inline ui-input" />
         </div>
         <div>
           <label className="text-sm">Supervisor (opcional)</label>
-          <input name="supervisorUid" className="w-full border rounded px-3 py-2" />
+          <input name="supervisorUid" className="ui-input-inline ui-input-inline ui-input" />
         </div>
       </div>
 
@@ -198,3 +198,5 @@ export function FormCreateUsuario({ roles, areas }: { roles: string[]; areas: st
     </form>
   );
 }
+
+

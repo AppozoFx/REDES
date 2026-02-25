@@ -33,7 +33,7 @@ export default function ConductorAndCargos({
         <label className="text-sm">Conductor</label>
         <select
           name="conductorUid"
-          className="w-full border rounded px-3 py-2"
+          className="ui-select"
           value={conductor}
           onChange={(e) => setConductor(e.target.value)}
         >
@@ -46,7 +46,7 @@ export default function ConductorAndCargos({
       </div>
       <div>
         <label className="text-sm">Coordinador</label>
-        <select name="coordinadorUid" className="w-full border rounded px-3 py-2">
+        <select name="coordinadorUid" className="ui-select-inline ui-select-inline ui-select">
           {coordinadores.map((u) => (
             <option key={u.uid} value={u.uid}>
               {u.label}
@@ -56,7 +56,7 @@ export default function ConductorAndCargos({
       </div>
       <div>
         <label className="text-sm">Gestor</label>
-        <select name="gestorUid" className="w-full border rounded px-3 py-2">
+        <select name="gestorUid" className="ui-select-inline ui-select-inline ui-select">
           {gestores.map((u) => (
             <option key={u.uid} value={u.uid}>
               {u.label}
@@ -67,3 +67,5 @@ export default function ConductorAndCargos({
     </div>
   );
 }
+
+

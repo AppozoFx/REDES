@@ -115,15 +115,15 @@ export function LiquidacionClient({ initialYmd }: { initialYmd?: string }) {
             <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
               <div>
                 <label className="mb-1 block text-sm">Fecha (Lima)</label>
-                <input type="date" value={ymd} onChange={(e) => setYmd(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
+                <input type="date" value={ymd} onChange={(e) => setYmd(e.target.value)} className="ui-input-inline rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
               </div>
               <div className="min-w-60">
                 <label className="mb-1 block text-sm">Buscar</label>
-                <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Orden, cliente, codigo, cuadrilla" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
+                <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Orden, cliente, codigo, cuadrilla" className="ui-input-inline w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
               </div>
               <div className="min-w-60">
                 <label className="mb-1 block text-sm">Coordinador</label>
-                <select value={coordinador} onChange={(e) => setCoordinador(e.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
+                <select value={coordinador} onChange={(e) => setCoordinador(e.target.value)} className="ui-select-inline w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
                   <option value="">Todos</option>
                   {coordinadores.map((c) => (
                     <option key={c} value={c}>

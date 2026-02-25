@@ -17,12 +17,12 @@ export default async function NuevaZonaPage() {
       >
         <div>
           <label className="text-sm">Zona (ej: NORTE)</label>
-          <input name="zona" className="w-full border rounded px-3 py-2" required />
+          <input name="zona" className="ui-input-inline ui-input-inline ui-input" required />
         </div>
 
         <div>
           <label className="text-sm">Tipo</label>
-          <select name="tipo" className="w-full border rounded px-3 py-2" defaultValue="REGULAR">
+          <select name="tipo" className="ui-select-inline ui-select-inline ui-select" defaultValue="REGULAR">
             <option value="REGULAR">REGULAR</option>
             <option value="ALTO_VALOR">ALTO_VALOR</option>
           </select>
@@ -30,7 +30,7 @@ export default async function NuevaZonaPage() {
 
         <div>
           <label className="text-sm">Estado</label>
-          <select name="estado" className="w-full border rounded px-3 py-2" defaultValue="HABILITADO">
+          <select name="estado" className="ui-select-inline ui-select-inline ui-select" defaultValue="HABILITADO">
             <option value="HABILITADO">HABILITADO</option>
             <option value="INHABILITADO">INHABILITADO</option>
           </select>
@@ -38,7 +38,7 @@ export default async function NuevaZonaPage() {
 
         <div>
           <label className="text-sm">Distritos (separados por coma o salto de línea)</label>
-          <textarea name="distritos" className="w-full border rounded px-3 py-2" rows={3} />
+          <textarea name="distritos" className="ui-textarea-inline ui-textarea-inline ui-textarea" rows={3} />
         </div>
 
         <button className="rounded border px-3 py-2 hover:bg-black/5">Crear</button>
@@ -46,3 +46,5 @@ export default async function NuevaZonaPage() {
     </div>
   );
 }
+
+

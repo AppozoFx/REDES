@@ -631,7 +631,7 @@ export default function TecnicosMaterialesClient() {
                           onChange={(e) =>
                             setItems((prev) => prev.map((p) => p.materialId === it.materialId ? { ...p, estadoDevolucion: e.target.value as any } : p))
                           }
-                          className="rounded border px-2 py-1 text-sm"
+                          className="ui-select-inline-sm"
                         >
                           <option value="BUENO">BUENO</option>
                           <option value="MALO">MALO</option>
@@ -740,6 +740,7 @@ export default function TecnicosMaterialesClient() {
     </div>
   );
 }
+
 
 
 

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React from "react";
 import { useActionState, useEffect, useRef, useState, startTransition } from "react";
@@ -84,11 +84,11 @@ export default function EditClient({ initial }: { initial: any }) {
         <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">ID</label>
-            <input value={initial.id} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 font-mono text-xs dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200" readOnly />
+            <input value={initial.id} className="ui-input-inline ui-input-inline mt-1 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 font-mono text-xs dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200" readOnly />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Unidad</label>
-            <input value={unidadTipo} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200" readOnly />
+            <input value={unidadTipo} className="ui-input-inline ui-input-inline mt-1 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200" readOnly />
           </div>
         </div>
       </section>
@@ -217,3 +217,4 @@ export default function EditClient({ initial }: { initial: any }) {
     </div>
   );
 }
+

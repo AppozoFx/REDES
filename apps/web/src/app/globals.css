@@ -78,15 +78,74 @@ body {
     color: #94a3b8;
   }
 
+  @media (prefers-color-scheme: dark) {
+    input,
+    select,
+    textarea {
+      color: #e2e8f0;
+    }
+
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+    select,
+    textarea {
+      background-color: #0f172a !important;
+      border-color: #334155 !important;
+      color: #e2e8f0 !important;
+      caret-color: #e2e8f0;
+    }
+
+    select option,
+    select optgroup {
+      background-color: #0f172a;
+      color: #e2e8f0;
+    }
+
+    input:-webkit-autofill,
+    textarea:-webkit-autofill,
+    select:-webkit-autofill {
+      -webkit-text-fill-color: #e2e8f0;
+      box-shadow: 0 0 0 1000px #0f172a inset;
+      transition: background-color 9999s ease-in-out 0s;
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+      color: #94a3b8;
+    }
+  }
+
   .dark input,
   .dark select,
   .dark textarea {
     color: #e2e8f0;
   }
 
+  .dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+  .dark select,
+  .dark textarea {
+    background-color: #0f172a !important;
+    border-color: #334155 !important;
+    color: #e2e8f0 !important;
+    caret-color: #e2e8f0;
+  }
+
+  .dark select option,
+  .dark select optgroup {
+    background-color: #0f172a;
+    color: #e2e8f0;
+  }
+
+  .dark input:-webkit-autofill,
+  .dark textarea:-webkit-autofill,
+  .dark select:-webkit-autofill {
+    -webkit-text-fill-color: #e2e8f0;
+    box-shadow: 0 0 0 1000px #0f172a inset;
+    transition: background-color 9999s ease-in-out 0s;
+  }
+
   .dark input::placeholder,
   .dark textarea::placeholder {
-    color: #64748b;
+    color: #94a3b8;
   }
 
   input:focus-visible,
@@ -96,9 +155,58 @@ body {
     outline-offset: 1px;
   }
 
+  @media (prefers-color-scheme: dark) {
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible {
+      outline-color: rgba(96, 165, 250, 0.45);
+    }
+  }
+
   .dark input:focus-visible,
   .dark select:focus-visible,
   .dark textarea:focus-visible {
     outline-color: rgba(96, 165, 250, 0.45);
+  }
+}
+
+@layer components {
+  .ui-input,
+  .ui-select,
+  .ui-textarea {
+    @apply w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition;
+  }
+
+  .ui-input-sm,
+  .ui-select-sm,
+  .ui-textarea-sm {
+    @apply w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none transition;
+  }
+
+  .ui-input-inline,
+  .ui-select-inline,
+  .ui-textarea-inline {
+    @apply rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition;
+  }
+
+  .ui-input-inline-sm,
+  .ui-select-inline-sm,
+  .ui-textarea-inline-sm {
+    @apply rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 outline-none transition;
+  }
+
+  .ui-thead {
+    @apply bg-slate-100 text-slate-700;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .ui-thead {
+      background-color: #1f2937;
+      color: #e2e8f0;
+    }
+  }
+
+  .dark .ui-thead {
+    @apply bg-slate-800 text-slate-200;
   }
 }

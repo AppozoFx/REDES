@@ -282,15 +282,15 @@ export function LlamadasClient({
               <div className="flex flex-wrap items-end gap-2">
                 <div>
                   <label className="mb-1 block text-xs">Fecha</label>
-                  <input type="date" value={ymd} onChange={(e) => setYmd(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
+                  <input type="date" value={ymd} onChange={(e) => setYmd(e.target.value)} className="ui-input-inline rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs">Cliente</label>
-                  <input value={filters.cliente} onChange={(e) => setFilters((f) => ({ ...f, cliente: e.target.value }))} placeholder="Nombre o codigo" className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
+                  <input value={filters.cliente} onChange={(e) => setFilters((f) => ({ ...f, cliente: e.target.value }))} placeholder="Nombre o codigo" className="ui-input-inline rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs">Tramo</label>
-                  <select value={filters.tramoBase} onChange={(e) => setFilters((f) => ({ ...f, tramoBase: e.target.value }))} className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
+                  <select value={filters.tramoBase} onChange={(e) => setFilters((f) => ({ ...f, tramoBase: e.target.value }))} className="ui-select-inline rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
                     <option value="">Todos</option>
                     <option value="08:00">Primer Tramo</option>
                     <option value="12:00">Segundo Tramo</option>
@@ -299,7 +299,7 @@ export function LlamadasClient({
                 </div>
                 <div>
                   <label className="mb-1 block text-xs">Coordinador</label>
-                  <select value={filters.coordinadorUid} onChange={(e) => setFilters((f) => ({ ...f, coordinadorUid: e.target.value }))} className="min-w-48 rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
+                  <select value={filters.coordinadorUid} onChange={(e) => setFilters((f) => ({ ...f, coordinadorUid: e.target.value }))} className="ui-select-inline min-w-48 rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
                     <option value="">Todos</option>
                     {coordinadores.map((c) => (
                       <option key={c.uid} value={c.uid}>
@@ -310,7 +310,7 @@ export function LlamadasClient({
                 </div>
                 <div>
                   <label className="mb-1 block text-xs">Gestor</label>
-                  <select value={filters.gestorUid} onChange={(e) => setFilters((f) => ({ ...f, gestorUid: e.target.value }))} className="min-w-48 rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
+                  <select value={filters.gestorUid} onChange={(e) => setFilters((f) => ({ ...f, gestorUid: e.target.value }))} className="ui-select-inline min-w-48 rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
                     <option value="">Todos</option>
                     {gestores.map((g) => (
                       <option key={g.uid} value={g.uid}>
@@ -321,7 +321,7 @@ export function LlamadasClient({
                 </div>
                 <div>
                   <label className="mb-1 block text-xs">Estado orden</label>
-                  <select value={filters.estado} onChange={(e) => setFilters((f) => ({ ...f, estado: e.target.value }))} className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
+                  <select value={filters.estado} onChange={(e) => setFilters((f) => ({ ...f, estado: e.target.value }))} className="ui-select-inline rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
                     <option value="">Todos</option>
                     <option value="Agendada">Agendada</option>
                     <option value="En camino">En camino</option>
@@ -334,11 +334,11 @@ export function LlamadasClient({
                 </div>
                 <div>
                   <label className="mb-1 block text-xs">Cuadrilla</label>
-                  <input value={filters.cuadrilla} onChange={(e) => setFilters((f) => ({ ...f, cuadrilla: e.target.value }))} placeholder="K1 RESIDENCIAL" className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
+                  <input value={filters.cuadrilla} onChange={(e) => setFilters((f) => ({ ...f, cuadrilla: e.target.value }))} placeholder="K1 RESIDENCIAL" className="ui-input-inline rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs">Estado llamada</label>
-                  <select value={filters.estadoLlamada} onChange={(e) => setFilters((f) => ({ ...f, estadoLlamada: e.target.value }))} className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
+                  <select value={filters.estadoLlamada} onChange={(e) => setFilters((f) => ({ ...f, estadoLlamada: e.target.value }))} className="ui-select-inline rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
                     <option value="">Todos</option>
                     <option value="Contesto">Contesto</option>
                     <option value="No Contesto">No Contesto</option>
@@ -400,7 +400,7 @@ export function LlamadasClient({
                       <td className="max-w-96 px-2 py-2">{r.direccion || "-"}</td>
                       <td className="px-2 py-2">
                         {isEditing ? (
-                          <input value={editForm.telefono} onChange={(e) => setEditForm((f) => ({ ...f, telefono: e.target.value }))} className="w-36 rounded-lg border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900" />
+                          <input value={editForm.telefono} onChange={(e) => setEditForm((f) => ({ ...f, telefono: e.target.value }))} className="ui-input-inline w-36 rounded-lg border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900" />
                         ) : (
                           r.telefono || "-"
                         )}
@@ -415,21 +415,21 @@ export function LlamadasClient({
                       </td>
                       <td className="px-2 py-2">
                         {isEditing ? (
-                          <input type="time" value={editForm.horaInicioLlamada} onChange={(e) => setEditForm((f) => ({ ...f, horaInicioLlamada: e.target.value }))} className="w-28 rounded-lg border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900" />
+                          <input type="time" value={editForm.horaInicioLlamada} onChange={(e) => setEditForm((f) => ({ ...f, horaInicioLlamada: e.target.value }))} className="ui-input-inline w-28 rounded-lg border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900" />
                         ) : (
                           r.horaInicioLlamada || "-"
                         )}
                       </td>
                       <td className="px-2 py-2">
                         {isEditing ? (
-                          <input type="time" value={editForm.horaFinLlamada} onChange={(e) => setEditForm((f) => ({ ...f, horaFinLlamada: e.target.value }))} className="w-28 rounded-lg border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900" />
+                          <input type="time" value={editForm.horaFinLlamada} onChange={(e) => setEditForm((f) => ({ ...f, horaFinLlamada: e.target.value }))} className="ui-input-inline w-28 rounded-lg border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900" />
                         ) : (
                           r.horaFinLlamada || "-"
                         )}
                       </td>
                       <td className="px-2 py-2">
                         {isEditing ? (
-                          <select value={editForm.estadoLlamada} onChange={(e) => setEditForm((f) => ({ ...f, estadoLlamada: e.target.value }))} className="w-36 rounded-lg border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900">
+                          <select value={editForm.estadoLlamada} onChange={(e) => setEditForm((f) => ({ ...f, estadoLlamada: e.target.value }))} className="ui-select-inline w-36 rounded-lg border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900">
                             <option value="">--</option>
                             <option value="Contesto">Contesto</option>
                             <option value="No Contesto">No Contesto</option>
@@ -441,7 +441,7 @@ export function LlamadasClient({
                       </td>
                       <td className="px-2 py-2">
                         {isEditing ? (
-                          <input value={editForm.observacionLlamada} onChange={(e) => setEditForm((f) => ({ ...f, observacionLlamada: e.target.value }))} className="w-64 rounded-lg border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900" />
+                          <input value={editForm.observacionLlamada} onChange={(e) => setEditForm((f) => ({ ...f, observacionLlamada: e.target.value }))} className="ui-input-inline w-64 rounded-lg border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900" />
                         ) : (
                           r.observacionLlamada || "-"
                         )}

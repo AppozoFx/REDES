@@ -1375,7 +1375,7 @@ export default function DevolucionesClient() {
             {equipos.length > 0 && (
               <div className="mt-3 overflow-x-auto">
                 <table className="min-w-full text-sm">
-                  <thead className="bg-slate-100 text-slate-700 dark:text-slate-200">
+                  <thead className="ui-thead">
                     <tr>
                       <th className="text-left px-3 py-2">SN</th>
                       <th className="text-left px-3 py-2">Equipo</th>

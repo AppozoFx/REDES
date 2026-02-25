@@ -17,22 +17,22 @@ export default async function NewModulePage() {
       >
         <div>
           <label className="text-sm">ID (ej: INSTALACIONES)</label>
-          <input name="id" className="w-full border rounded px-3 py-2" />
+          <input name="id" className="ui-input-inline ui-input-inline ui-input" />
         </div>
 
         <div>
           <label className="text-sm">Key (ej: INSTALACIONES)</label>
-          <input name="key" className="w-full border rounded px-3 py-2" />
+          <input name="key" className="ui-input-inline ui-input-inline ui-input" />
         </div>
 
         <div>
           <label className="text-sm">Nombre</label>
-          <input name="nombre" className="w-full border rounded px-3 py-2" />
+          <input name="nombre" className="ui-input-inline ui-input-inline ui-input" />
         </div>
 
         <div>
           <label className="text-sm">Descripción</label>
-          <input name="descripcion" className="w-full border rounded px-3 py-2" />
+          <input name="descripcion" className="ui-input-inline ui-input-inline ui-input" />
         </div>
 
         <div>
@@ -41,7 +41,7 @@ export default async function NewModulePage() {
             name="orden"
             type="number"
             defaultValue={0}
-            className="w-full border rounded px-3 py-2"
+            className="ui-input"
           />
         </div>
 
@@ -50,3 +50,5 @@ export default async function NewModulePage() {
     </div>
   );
 }
+
+

@@ -260,6 +260,12 @@ export default function RecepcionActasClient() {
     [isDark]
   );
 
+  const selectPortalProps = {
+    menuPortalTarget: typeof document !== "undefined" ? document.body : null,
+    menuPosition: "fixed" as const,
+    styles: { ...(selectStyles || {}), menuPortal: (base: any) => ({ ...base, zIndex: 9999 }) },
+  };
+
   const agregarActa = (code: string, silent = false) => {
     const clean = normalizeActa(code);
     if (!clean) return false;
@@ -448,7 +454,7 @@ export default function RecepcionActasClient() {
                 onChange={(sel) => setCoordinadorUid(sel?.value || "")}
                 placeholder="Seleccionar coordinador"
                 isClearable
-                styles={selectStyles}
+                {...selectPortalProps}
               />
             </div>
             <div>
@@ -460,7 +466,7 @@ export default function RecepcionActasClient() {
                 placeholder={coordinadorUid ? "Seleccionar cuadrilla" : "Selecciona coordinador primero"}
                 isClearable
                 isDisabled={!coordinadorUid}
-                styles={selectStyles}
+                {...selectPortalProps}
               />
             </div>
           </div>

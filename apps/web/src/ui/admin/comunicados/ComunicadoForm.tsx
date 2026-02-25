@@ -143,7 +143,7 @@ export default function ComunicadoForm({
               name="titulo"
               value={titulo}
               onChange={(e) => setTitulo(e.target.value)}
-              className="w-full rounded-lg border px-3 py-2 text-sm"
+              className="ui-input"
               placeholder="Ej: Cambio de horario por feriado"
               required
               minLength={3}
@@ -173,7 +173,7 @@ export default function ComunicadoForm({
                 name="estado"
                 value={estado}
                 onChange={(e) => setEstado(e.target.value as Estado)}
-                className="w-full rounded-lg border px-3 py-2 text-sm"
+                className="ui-select"
               >
                 <option value="ACTIVO">ACTIVO</option>
                 <option value="INACTIVO">INACTIVO</option>
@@ -186,7 +186,7 @@ export default function ComunicadoForm({
                 name="target"
                 value={target}
                 onChange={(e) => setTarget(e.target.value as Target)}
-                className="w-full rounded-lg border px-3 py-2 text-sm"
+                className="ui-select"
               >
                 <option value="ALL">Todos</option>
                 <option value="ROLES">Por roles</option>
@@ -204,7 +204,7 @@ export default function ComunicadoForm({
               name="persistencia"
               value={persistencia}
               onChange={(e) => setPersistencia(e.target.value as Persistencia)}
-              className="w-full rounded-lg border px-3 py-2 text-sm"
+              className="ui-select"
             >
               <option value="ONCE">ONCE (si lo leyó, ya no vuelve a salir)</option>
               <option value="ALWAYS">ALWAYS (siempre visible)</option>
@@ -294,7 +294,7 @@ export default function ComunicadoForm({
               <input
                 value={uidsText}
                 onChange={(e) => setUidsText(e.target.value)}
-                className="w-full rounded-lg border px-3 py-2 text-sm"
+                className="ui-input"
                 placeholder="uid1, uid2, uid3"
               />
             </div>
@@ -309,7 +309,7 @@ export default function ComunicadoForm({
                 type="date"
                 value={visibleDesde}
                 onChange={(e) => setVisibleDesde(e.target.value)}
-                className="w-full rounded-lg border px-3 py-2 text-sm"
+                className="ui-input"
               />
               <p className="text-xs text-muted-foreground">Opcional.</p>
             </div>
@@ -320,7 +320,7 @@ export default function ComunicadoForm({
                 type="date"
                 value={visibleHasta}
                 onChange={(e) => setVisibleHasta(e.target.value)}
-                className="w-full rounded-lg border px-3 py-2 text-sm"
+                className="ui-input"
               />
               <p className="text-xs text-muted-foreground">Opcional.</p>
             </div>
@@ -335,7 +335,7 @@ export default function ComunicadoForm({
                 type="number"
                 value={prioridad}
                 onChange={(e) => setPrioridad(Number(e.target.value))}
-                className="w-full rounded-lg border px-3 py-2 text-sm"
+                className="ui-input"
               />
               <p className="text-xs text-muted-foreground">Menor = aparece primero</p>
             </div>
@@ -362,7 +362,7 @@ export default function ComunicadoForm({
                 name="linkUrl"
                 value={linkUrl}
                 onChange={(e) => setLinkUrl(e.target.value)}
-                className="w-full rounded-lg border px-3 py-2 text-sm"
+                className="ui-input"
                 placeholder="https://..."
               />
             </div>
@@ -372,7 +372,7 @@ export default function ComunicadoForm({
                 name="linkLabel"
                 value={linkLabel}
                 onChange={(e) => setLinkLabel(e.target.value)}
-                className="w-full rounded-lg border px-3 py-2 text-sm"
+                className="ui-input"
                 placeholder="Ej: Ver detalle"
               />
             </div>
@@ -384,7 +384,7 @@ export default function ComunicadoForm({
               name="imageUrl"
               value={imageUrl}
               onChange={(e) => setImageUrl(e.target.value)}
-              className="w-full rounded-lg border px-3 py-2 text-sm"
+              className="ui-input"
               placeholder="https://..."
             />
           </div>
@@ -447,3 +447,4 @@ export default function ComunicadoForm({
     </div>
   );
 }
+

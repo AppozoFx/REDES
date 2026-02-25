@@ -248,8 +248,8 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
         </div>
 
         <div className="mt-3 flex flex-wrap items-end gap-2">
-          <input type="month" value={ym} onChange={(e) => setYm(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900" />
-          <input type="date" value={filtroFecha} onChange={(e) => setFiltroFecha(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900" />
+          <input type="month" value={ym} onChange={(e) => setYm(e.target.value)} className="ui-input-inline rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900" />
+          <input type="date" value={filtroFecha} onChange={(e) => setFiltroFecha(e.target.value)} className="ui-input-inline rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900" />
           <input
             value={filtroCliente}
             onChange={(e) => setFiltroCliente(e.target.value)}
@@ -262,7 +262,7 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
             placeholder="Buscar cuadrilla"
             className="w-48 rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900"
           />
-          <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900">
+          <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className="ui-select-inline rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900">
             <option value="">Todos los estados</option>
             <option value="Agendada">Agendada</option>
             <option value="En camino">En camino</option>
@@ -273,7 +273,7 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
             <option value="Regestion">Regestion</option>
             <option value="Regestión">Regestion (tilde)</option>
           </select>
-          <select value={filtroCoord} onChange={(e) => setFiltroCoord(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900">
+          <select value={filtroCoord} onChange={(e) => setFiltroCoord(e.target.value)} className="ui-select-inline rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900">
             <option value="">Todos los coordinadores</option>
             {coords.map((c) => (
               <option key={c.uid} value={c.uid}>{c.nombre}</option>
@@ -348,28 +348,28 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
                   <td className="p-2">{r.estado || "-"}</td>
                   <td className="p-2">
                     {editing ? (
-                      <input className="w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.motivoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, motivoGarantia: e.target.value }))} />
+                      <input className="ui-input-inline ui-input-inline w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.motivoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, motivoGarantia: e.target.value }))} />
                     ) : (
                       r.motivoGarantia || "-"
                     )}
                   </td>
                   <td className="p-2">
                     {editing ? (
-                      <input className="w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.diagnosticoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, diagnosticoGarantia: e.target.value }))} />
+                      <input className="ui-input-inline ui-input-inline w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.diagnosticoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, diagnosticoGarantia: e.target.value }))} />
                     ) : (
                       r.diagnosticoGarantia || "-"
                     )}
                   </td>
                   <td className="p-2">
                     {editing ? (
-                      <input className="w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.solucionGarantia} onChange={(e) => setEditForm((f) => ({ ...f, solucionGarantia: e.target.value }))} />
+                      <input className="ui-input-inline ui-input-inline w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.solucionGarantia} onChange={(e) => setEditForm((f) => ({ ...f, solucionGarantia: e.target.value }))} />
                     ) : (
                       r.solucionGarantia || "-"
                     )}
                   </td>
                   <td className="p-2">
                     {editing ? (
-                      <select className="w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.responsableGarantia} onChange={(e) => setEditForm((f) => ({ ...f, responsableGarantia: e.target.value }))}>
+                      <select className="ui-select-inline ui-select-inline w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.responsableGarantia} onChange={(e) => setEditForm((f) => ({ ...f, responsableGarantia: e.target.value }))}>
                         <option value="">--</option>
                         {OPC_RESPONSABLE.map((x) => <option key={x} value={x}>{x}</option>)}
                       </select>
@@ -379,7 +379,7 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
                   </td>
                   <td className="p-2">
                     {editing ? (
-                      <select className="w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.casoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, casoGarantia: e.target.value }))}>
+                      <select className="ui-select-inline ui-select-inline w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.casoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, casoGarantia: e.target.value }))}>
                         <option value="">--</option>
                         {OPC_CASO.map((x) => <option key={x} value={x}>{x}</option>)}
                       </select>
@@ -389,7 +389,7 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
                   </td>
                   <td className="p-2">
                     {editing ? (
-                      <select className="w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.imputadoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, imputadoGarantia: e.target.value }))}>
+                      <select className="ui-select-inline ui-select-inline w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.imputadoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, imputadoGarantia: e.target.value }))}>
                         <option value="">--</option>
                         {OPC_IMPUTADO.map((x) => <option key={x} value={x}>{x}</option>)}
                       </select>
@@ -447,3 +447,4 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
     </div>
   );
 }
+

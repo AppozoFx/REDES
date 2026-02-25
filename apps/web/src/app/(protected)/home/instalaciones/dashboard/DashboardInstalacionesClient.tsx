@@ -951,7 +951,7 @@ export default function DashboardInstalacionesClient() {
               <>
                 <div className="mb-3 flex items-center justify-between text-xs">
                   <span className="text-slate-600 dark:text-slate-300">Total: {data.detail.total}</span>
-                  <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }} className="rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900">
+                  <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }} className="ui-select-inline rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900">
                     {[25, 50, 100, 200].map((n) => <option key={n} value={n}>{n}/pag</option>)}
                   </select>
                 </div>

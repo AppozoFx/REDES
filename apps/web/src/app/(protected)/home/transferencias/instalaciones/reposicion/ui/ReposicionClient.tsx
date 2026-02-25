@@ -635,7 +635,7 @@ export default function ReposicionClient() {
 
         <div className="overflow-x-auto rounded border">
           <table className="min-w-full border-collapse text-sm">
-            <thead className="bg-slate-100 text-slate-700 dark:text-slate-200">
+            <thead className="ui-thead">
               <tr>
                 <th className="border p-2 text-left">Material</th>
                 <th className="border p-2 text-left">Cantidad</th>
@@ -748,7 +748,7 @@ export default function ReposicionClient() {
         {cuadrillaId && (
           <div className="mt-3 overflow-x-auto rounded border">
             <table className="min-w-full border-collapse text-sm">
-              <thead className="bg-slate-100 text-slate-700 dark:text-slate-200">
+              <thead className="ui-thead">
                 <tr>
                   <th className="border p-2 text-left">Fecha</th>
                   <th className="border p-2 text-left">Guia</th>

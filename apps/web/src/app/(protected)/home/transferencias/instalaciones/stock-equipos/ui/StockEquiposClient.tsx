@@ -29,9 +29,18 @@ function shortName(full: string, fallback = "") {
   return v || fallback;
 }
 
+function formatYmdToDmy(ymd: any) {
+  const s = String(ymd || "").trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return "";
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
 function toDateStr(v: any) {
   if (!v) return "";
   if (typeof v === "string") {
+    const ymd = formatYmdToDmy(v);
+    if (ymd) return ymd;
     const d = new Date(v);
     if (!Number.isNaN(d.getTime())) return d.toLocaleDateString("es-PE");
     return v;
@@ -409,11 +418,14 @@ export default function StockEquiposClient() {
       )
       .map((eq) => {
         const guia = extractGuiaId(eq.guia_despacho) || extractGuiaId(eq.guiaDespacho) || extractGuiaId(eq.guia);
+        const fechaBase = formatYmdToDmy(eq.f_despachoYmd) || toDateStr(eq.f_despacho);
+        const hm = String(eq.f_despachoHm || "").trim();
+        const fechaDespacho = hm ? `${fechaBase} ${hm}`.trim() : fechaBase;
         return {
           id: eq.id,
           SN: eq.SN || eq.id || "",
           equipo: String(eq.equipo || "").toUpperCase(),
-          fechaDespacho: toDateStr(eq.f_despacho || eq.f_despachoYmd),
+          fechaDespacho,
           guiaDespacho: guia,
           tecnico: tecnicoDeEquipo(eq, meta, usuariosIdx),
           descripcion: String(eq.descripcion || ""),

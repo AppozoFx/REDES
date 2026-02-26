@@ -46,6 +46,15 @@ const MATS_INST = [
 type Segmento = "RESIDENCIAL" | "CONDOMINIO";
 type Tipo = "REGULAR" | "ALTO_VALOR";
 
+const EXCLUDE_MATS_CONDOMINIO = new Set([
+  "TEMPLADOR",
+  "ANCLAJE_P",
+  "CLEVI",
+  "HEBILLA_1_2",
+  "CINTA_BANDI_1_2",
+]);
+const CINTA_BANDI_METROS_POR_UND = 30;
+
 type CuadrillaListItem = {
   id: string;
   nombre: string;
@@ -449,7 +458,7 @@ export default function DespachoClient() {
   // Paso 2 - Bobinas / Materiales
   const [bobinaInput, setBobinaInput] = useState("");
   const [bobinaCodes, setBobinaCodes] = useState<string[]>([]);
-  const [bobinaCondominioMetros, setBobinaCondominioMetros] = useState<string>("300");
+  const [bobinaCondominioMetros, setBobinaCondominioMetros] = useState<string>("");
   const [matUnd, setMatUnd] = useState<Record<string, string>>({});
   const [matMetros, setMatMetros] = useState<Record<string, string>>({});
 
@@ -557,7 +566,7 @@ export default function DespachoClient() {
     setEquipos([]);
     setBobinaInput("");
     setBobinaCodes([]);
-    setBobinaCondominioMetros("300");
+    setBobinaCondominioMetros("");
     setMatUnd({});
     setMatMetros({});
     setObservacion("");
@@ -966,17 +975,24 @@ export default function DespachoClient() {
 
     for (const id of MATS_INST) {
       if (id === "BOBINA") continue;
-
+      if (segmento === "CONDOMINIO" && EXCLUDE_MATS_CONDOMINIO.has(id)) continue;
 
       const und = Math.max(0, Math.trunc(numOr0(matUnd[id] || "0")));
       const m = Math.max(0, numOr0(matMetros[id] || "0"));
 
-      if (und > 0) materiales.push({ materialId: id, und });
-      else if (m > 0) materiales.push({ materialId: id, metros: m });
+      if (id === "CINTA_BANDI_1_2" && segmento === "RESIDENCIAL") {
+        if (und > 0) materiales.push({ materialId: id, metros: und * CINTA_BANDI_METROS_POR_UND });
+      } else if (und > 0) {
+        materiales.push({ materialId: id, und });
+      } else if (m > 0) {
+        materiales.push({ materialId: id, metros: m });
+      }
     }
     // TARUGOS_P siempre acompaï¿½a a ANCLAJE_P (1:1), interno
     const anclajeUnd = Math.max(0, Math.trunc(numOr0(matUnd.ANCLAJE_P || "0")));
-    if (anclajeUnd > 0) materiales.push({ materialId: "TARUGOS_P", und: anclajeUnd });
+    if (segmento !== "CONDOMINIO" && anclajeUnd > 0) {
+      materiales.push({ materialId: "TARUGOS_P", und: anclajeUnd });
+    }
 
     if (segmento === "RESIDENCIAL") {
       const codes = bobinaCodes;
@@ -1412,7 +1428,9 @@ export default function DespachoClient() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {MATS_INST.map((id) => {
                 if (id === "BOBINA" && segmento === "RESIDENCIAL") return null;
+                if (segmento === "CONDOMINIO" && EXCLUDE_MATS_CONDOMINIO.has(id)) return null;
                 const unidad = materialUnits[id];
+                const fuerzaUnd = id === "CINTA_BANDI_1_2" && segmento === "RESIDENCIAL";
                 return (
                   <div key={id} className="rounded-xl border border-slate-200 bg-slate-50 dark:bg-slate-800/60 p-2">
                     <div className="text-sm font-medium">{id}</div>
@@ -1427,7 +1445,7 @@ export default function DespachoClient() {
                           inputMode="decimal"
                         />
                       </div>
-                    ) : unidad === "UND" ? (
+                    ) : fuerzaUnd || unidad === "UND" ? (
                       <div className="mt-2 text-xs">
                         <label className="block">UND</label>
                         <input
@@ -1437,6 +1455,12 @@ export default function DespachoClient() {
                           inputMode="numeric"
                           pattern="[0-9]*"
                         />
+                        {fuerzaUnd && (
+                          <div className="mt-1 text-[11px] text-slate-500">
+                            1 UND = {CINTA_BANDI_METROS_POR_UND} m
+                            {matUnd[id] ? ` | ${matUnd[id]} UND = ${Number(matUnd[id]) * CINTA_BANDI_METROS_POR_UND} m` : ""}
+                          </div>
+                        )}
                       </div>
                     ) : unidad === "METROS" ? (
                       <div className="mt-2 text-xs">

@@ -82,6 +82,7 @@ export async function GET() {
           "user_uid",
           "f_despacho",
           "f_despachoYmd",
+          "f_despachoHm",
           "f_ingreso",
           "f_ingresoYmd",
           "guia_despacho",

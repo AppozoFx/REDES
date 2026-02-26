@@ -3,7 +3,7 @@ import { z } from "zod";
 export const UnidadTipoEnum = z.enum(["UND", "METROS"]);
 export type UnidadTipo = z.infer<typeof UnidadTipoEnum>;
 
-export const AreaEnum = z.enum(["INSTALACIONES", "AVERIAS"]);
+export const AreaEnum = z.enum(["INSTALACIONES", "MANTENIMIENTO"]);
 export type Area = z.infer<typeof AreaEnum>;
 
 export const MaterialCreateInputSchema = z.object({
@@ -77,3 +77,4 @@ export const MaterialUpdateInputSchema = z.object({
 });
 
 export type MaterialUpdateInput = z.infer<typeof MaterialUpdateInputSchema>;
+

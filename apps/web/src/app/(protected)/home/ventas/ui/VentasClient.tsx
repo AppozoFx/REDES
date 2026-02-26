@@ -6,7 +6,7 @@ import { actualizarCuotasVentaAction, registrarPagoVentaAction, anularVentaActio
 
 type VentaDoc = {
   id: string;
-  area: "INSTALACIONES" | "AVERIAS";
+  area: "INSTALACIONES" | "MANTENIMIENTO";
   cuadrillaId: string;
   cuadrillaNombre?: string;
   coordinadorUid: string;
@@ -63,7 +63,7 @@ export default function VentasClient({
   canAnular: boolean;
   canViewAll: boolean;
 }) {
-  const [areaFilter, setAreaFilter] = useState<"ALL" | "INSTALACIONES" | "AVERIAS">("ALL");
+  const [areaFilter, setAreaFilter] = useState<"ALL" | "INSTALACIONES" | "MANTENIMIENTO">("ALL");
   const [coordFilter, setCoordFilter] = useState("");
   const [coordinadores, setCoordinadores] = useState<Array<{ uid: string; label: string }>>([]);
   const [onlyPending, setOnlyPending] = useState(true);
@@ -267,7 +267,7 @@ export default function VentasClient({
         >
           <option value="ALL">Todas</option>
           <option value="INSTALACIONES">Instalaciones</option>
-          <option value="AVERIAS">AVERIAS</option>
+          <option value="MANTENIMIENTO">MANTENIMIENTO</option>
         </select>
         {canViewAll && (
           <>
@@ -573,5 +573,6 @@ export default function VentasClient({
     </div>
   );
 }
+
 
 

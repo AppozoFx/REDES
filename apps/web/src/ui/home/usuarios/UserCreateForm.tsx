@@ -116,7 +116,7 @@ export default function UserCreateForm({ rolesAllowed }: Props) {
           options={[
             { value: "COMUNICADOS", label: "COMUNICADOS" },
             { value: "INSTALACIONES", label: "INSTALACIONES" },
-            { value: "AVERIAS", label: "AVERIAS" },
+            { value: "MANTENIMIENTO", label: "MANTENIMIENTO" },
           ]}
           error={firstErr(fe.areas)}
         />
@@ -232,4 +232,5 @@ function MultiSelect(props: {
     </div>
   );
 }
+
 

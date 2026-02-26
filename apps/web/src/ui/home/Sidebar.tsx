@@ -10,23 +10,23 @@ import { buildHomeNav } from "@/core/rbac/buildHomeNav";
 
 type GroupKey =
   | "INSTALACIONES"
+  | "MANTENIMIENTO"
   | "ORDENES"
   | "INCONCERT"
   | "GESTION"
   | "GERENCIA"
   | "ADMINISTRACION"
-  | "ALMACEN"
-  | "OTROS";
+  | "ALMACEN";
 
 const GROUP_ORDER: GroupKey[] = [
   "INSTALACIONES",
+  "MANTENIMIENTO",
   "ORDENES",
   "INCONCERT",
   "GESTION",
   "GERENCIA",
   "ADMINISTRACION",
   "ALMACEN",
-  "OTROS",
 ];
 
 const SIDEBAR_SPRING = { type: "spring", stiffness: 260, damping: 28, mass: 0.8 } as const;
@@ -54,6 +54,9 @@ function getGroup(href: string): GroupKey {
   }
   if (href.startsWith("/home/ordenes/")) return "ORDENES";
   if (href.startsWith("/home/inconcert/")) return "INCONCERT";
+  if (href === "/home/mantenimiento" || href.startsWith("/home/mantenimiento/")) {
+    return "MANTENIMIENTO";
+  }
   if (
     href === "/home/gerencia/coordinadores" ||
     href === "/home/gerencia/orden-compra" ||
@@ -91,18 +94,22 @@ function getGroup(href: string): GroupKey {
   ) {
     return "ALMACEN";
   }
-  return "OTROS";
+  if (href.startsWith("/home/transferencias/mantenimiento/") || href.startsWith("/home/ventas/mantenimiento/")) {
+    return "MANTENIMIENTO";
+  }
+  return "MANTENIMIENTO";
 }
 
 function groupBadge(group: GroupKey) {
   if (group === "INSTALACIONES") return "IN";
+  if (group === "MANTENIMIENTO") return "MA";
   if (group === "ORDENES") return "OR";
   if (group === "INCONCERT") return "IC";
   if (group === "GESTION") return "GE";
   if (group === "GERENCIA") return "GR";
   if (group === "ADMINISTRACION") return "AD";
   if (group === "ALMACEN") return "AL";
-  return "OT";
+  return "MA";
 }
 
 function isPathActive(pathname: string, href: string) {
@@ -136,20 +143,9 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
     };
   }, [session.uid]);
 
-  const hasInstArea = (session.access.areas || []).includes("INSTALACIONES");
-
   const items = useMemo(() => {
-    return itemsRaw.filter((it) => {
-      if (it.href === "/home/perfil") return false;
-      if (
-        hasInstArea &&
-        (it.href === "/home/averias" || it.href === "/home/ventas/averias/despacho")
-      ) {
-        return false;
-      }
-      return true;
-    });
-  }, [itemsRaw, hasInstArea]);
+    return itemsRaw.filter((it) => it.href !== "/home/perfil");
+  }, [itemsRaw]);
 
   const fixedTop = useMemo(() => {
     return items.filter((it) => it.href === "/home" || it.href === "/home/comunicados");
@@ -448,3 +444,4 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
     </motion.aside>
   );
 }
+

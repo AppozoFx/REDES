@@ -9,7 +9,7 @@ export const ZonaTipoSchema = z.enum(["ALTO_VALOR", "REGULAR"]);
 export const CuadrillaDocSchema = z.object({
   id: z.string(), // K{n}_MOTO | K{n}_RESIDENCIAL
   nombre: z.string(), // K{n} MOTO | K{n} RESIDENCIAL
-  area: z.literal("INSTALACIONES"),
+  area: z.enum(["INSTALACIONES", "MANTENIMIENTO"]),
   categoria: CuadrillaCategoriaSchema,
   r_c: CuadrillaCategoriaSchema, // mismo valor que categoria
   numeroCuadrilla: z.number().int().positive(),
@@ -100,3 +100,14 @@ export const CuadrillaUpdateSchema = z.object({
 
 export const CuadrillaCreateInputSchema = CuadrillaCreateSchema;
 export const CuadrillaUpdateInputSchema = CuadrillaUpdateSchema;
+
+export const CuadrillaMantTurnoSchema = z.enum(["", "MANANA", "TARDE"]);
+
+export const CuadrillaMantCreateSchema = z.object({
+  zona: z.string().min(1),
+  turno: CuadrillaMantTurnoSchema.default(""),
+  estado: CuadrillaEstadoSchema.default("HABILITADO"),
+  tecnicosUids: z.array(z.string().min(1)).default([]),
+  coordinadorUid: z.string().min(1).optional(),
+  gestorUid: z.string().min(1).optional(),
+});

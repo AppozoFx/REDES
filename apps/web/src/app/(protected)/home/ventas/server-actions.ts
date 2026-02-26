@@ -202,7 +202,7 @@ async function applyStockMovementsTx(
 export async function crearVentaAction(raw: any) {
   const input = VentaCreateInputSchema.parse(raw) as VentaCreateInput;
 
-  const perm = input.area === "INSTALACIONES" ? "VENTAS_DESPACHO_INST" : "VENTAS_DESPACHO_AVER";
+  const perm = input.area === "INSTALACIONES" ? "VENTAS_DESPACHO_INST" : "VENTAS_DESPACHO_MANT";
   const session = await requireServerPermission(perm);
 
   const canEditPrecio = session.permissions.includes("VENTAS_EDIT") || session.isAdmin;
@@ -313,7 +313,7 @@ export async function crearVentaAction(raw: any) {
     }
   }
 
-  const ventaId = await nextVentaId(input.area === "INSTALACIONES" ? "VTAI" : "VTAA");
+  const ventaId = await nextVentaId(input.area === "INSTALACIONES" ? "VTAI" : "VTAM");
   const ventaRef = db.collection("ventas").doc(ventaId);
   const cuotasRef = ventaRef.collection("cuotas").doc("1");
 
@@ -373,7 +373,7 @@ export async function crearVentaAction(raw: any) {
   // Ledger simple
   await db.collection("movimientos_inventario").doc(ventaId).set({
     area: input.area,
-    tipo: input.area === "INSTALACIONES" ? "VENTA_INST" : "VENTA_AVER",
+    tipo: input.area === "INSTALACIONES" ? "VENTA_INST" : "VENTA_MANT",
     origen: { type: "ALMACEN", id: "ALMACEN" },
     destino: destinoType === "CUADRILLA" ? { type: "CUADRILLA", id: input.cuadrillaId } : { type: "COORDINADOR", id: input.coordinadorUid },
     itemsMateriales: items.map((i) => ({
@@ -626,5 +626,6 @@ export async function anularVentaAction(raw: any) {
 
   return { ok: true } as const;
 }
+
 
 

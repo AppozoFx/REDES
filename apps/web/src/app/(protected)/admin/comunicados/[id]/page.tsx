@@ -91,7 +91,7 @@ export default async function ComunicadoEditPage({
     nombre: String(r.nombre ?? r.id),
   }));
 
-  const areasCatalog = ["INSTALACIONES", "AVERIAS", "ADMIN_COMUNICADOS"];
+  const areasCatalog = ["INSTALACIONES", "MANTENIMIENTO", "ADMIN_COMUNICADOS"];
 
   const defaults = toPlainDefaults(c);
   const currentEstado = defaults.estado;
@@ -152,3 +152,4 @@ export default async function ComunicadoEditPage({
     </div>
   );
 }
+

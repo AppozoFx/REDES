@@ -20,7 +20,7 @@ export async function GET(req: Request) {
       session.permissions.includes("MATERIALES_TRANSFER_SERVICIO") ||
       session.permissions.includes("MATERIALES_DEVOLUCION") ||
       session.permissions.includes("VENTAS_DESPACHO_INST") ||
-      session.permissions.includes("VENTAS_DESPACHO_AVER") ||
+      session.permissions.includes("VENTAS_DESPACHO_MANT") ||
       session.permissions.includes("VENTAS_EDIT") ||
       session.permissions.includes("VENTAS_VER") ||
       session.permissions.includes("VENTAS_VER_ALL") ||
@@ -127,5 +127,6 @@ export async function GET(req: Request) {
     );
   }
 }
+
 
 

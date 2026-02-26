@@ -89,7 +89,7 @@ export default function ListClient() {
           <select value={area} onChange={(e) => setArea(e.target.value)} className={fieldClass}>
             <option value="">Area: todas</option>
             <option value="INSTALACIONES">INSTALACIONES</option>
-            <option value="AVERIAS">AVERIAS</option>
+            <option value="MANTENIMIENTO">MANTENIMIENTO</option>
           </select>
           <select value={vendible} onChange={(e) => setVendible(e.target.value)} className={fieldClass}>
             <option value="">Vendible: todos</option>
@@ -140,5 +140,6 @@ export default function ListClient() {
     </div>
   );
 }
+
 
 

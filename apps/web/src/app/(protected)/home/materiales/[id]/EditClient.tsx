@@ -124,7 +124,7 @@ export default function EditClient({ initial }: { initial: any }) {
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Areas</label>
             <div className="flex flex-wrap gap-3 text-sm">
-              {[{ key: "INSTALACIONES", label: "INSTALACIONES" }, { key: "AVERIAS", label: "AVERIAS" }].map((a) => (
+              {[{ key: "INSTALACIONES", label: "INSTALACIONES" }, { key: "MANTENIMIENTO", label: "MANTENIMIENTO" }].map((a) => (
                 <label key={a.key} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700 dark:text-slate-200">
                   <input
                     type="checkbox"
@@ -217,4 +217,5 @@ export default function EditClient({ initial }: { initial: any }) {
     </div>
   );
 }
+
 

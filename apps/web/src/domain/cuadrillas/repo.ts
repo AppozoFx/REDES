@@ -2,6 +2,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import {
   CuadrillaCreateSchema,
+  CuadrillaMantCreateSchema,
   CuadrillaUpdateSchema,
   ZonaTipoSchema,
 } from "./schemas";
@@ -73,11 +74,31 @@ function assertRole(access: any | null, role: string, label: string) {
   }
 }
 
+function hasArea(access: any | null, area: string) {
+  if (!access || !Array.isArray(access.areas)) return false;
+  return access.areas.includes(area);
+}
+
 async function assertTecnicosNoAsignados(tecnicos: string[], exceptId?: string) {
   const db = adminDb();
   for (const uid of tecnicos) {
     const qs = await db
       .collection(CUADRILLAS_COL)
+      .where("tecnicosUids", "array-contains", uid)
+      .get();
+    const conflict = qs.docs.find((d) => (exceptId ? d.id !== exceptId : true));
+    if (conflict) {
+      throw new Error("TECNICO_OCUPADO");
+    }
+  }
+}
+
+async function assertTecnicosNoAsignadosInArea(tecnicos: string[], area: string, exceptId?: string) {
+  const db = adminDb();
+  for (const uid of tecnicos) {
+    const qs = await db
+      .collection(CUADRILLAS_COL)
+      .where("area", "==", area)
       .where("tecnicosUids", "array-contains", uid)
       .get();
     const conflict = qs.docs.find((d) => (exceptId ? d.id !== exceptId : true));
@@ -116,7 +137,13 @@ export async function createCuadrilla(input: unknown, actorUid: string): Promise
     ...(conductor ? [conductor] : []),
   ];
   const accessMap = await getUsuariosAccessByUids(allUids);
-  if (tecnicos.length) tecnicos.forEach((uid) => assertRole(accessMap.get(uid), "TECNICO", "TECNICO"));
+  if (tecnicos.length) {
+    tecnicos.forEach((uid) => {
+      const access = accessMap.get(uid);
+      assertRole(access, "TECNICO", "TECNICO");
+      if (!hasArea(access, "INSTALACIONES")) throw new Error("TECNICO_AREA_INVALIDA");
+    });
+  }
   if (coordinador) assertRole(accessMap.get(coordinador), "COORDINADOR", "COORDINADOR");
   if (gestor) assertRole(accessMap.get(gestor), "GESTOR", "GESTOR");
   if (conductor) assertRole(accessMap.get(conductor), "TECNICO", "CONDUCTOR");
@@ -199,7 +226,97 @@ export async function createCuadrilla(input: unknown, actorUid: string): Promise
 
     tx.set(docRef, data);
     return { id };
-  });  return result;
+  });
+  return result;
+}
+
+export async function createCuadrillaMantenimiento(input: unknown, actorUid: string): Promise<{ id: string }> {
+  const parsed = CuadrillaMantCreateSchema.parse(input);
+  const zona = normalizeUpper(parsed.zona);
+  const turno = normalizeUpper(parsed.turno || "");
+  const estado = parsed.estado ?? "HABILITADO";
+
+  const turnoLabel = turno === "MANANA" ? "MAÑANA" : turno;
+  const baseNombre = `MANTENIMIENTO ${zona}${turnoLabel ? ` ${turnoLabel}` : ""}`;
+  const baseIdSource = `MANTENIMIENTO ${zona}${turno ? ` ${turno}` : ""}`;
+  const baseId = baseIdSource.replace(/\s+/g, "_");
+
+  const tecnicos = Array.isArray(parsed.tecnicosUids) ? parsed.tecnicosUids : [];
+  const coordinador = parsed.coordinadorUid ?? undefined;
+  const gestor = parsed.gestorUid ?? undefined;
+
+  const allUids: string[] = [
+    ...tecnicos,
+    ...(coordinador ? [coordinador] : []),
+    ...(gestor ? [gestor] : []),
+  ];
+  const accessMap = await getUsuariosAccessByUids(allUids);
+  if (tecnicos.length) {
+    tecnicos.forEach((uid) => {
+      const access = accessMap.get(uid);
+      assertRole(access, "TECNICO", "TECNICO");
+      if (!hasArea(access, "MANTENIMIENTO")) {
+        throw new Error("TECNICO_AREA_INVALIDA");
+      }
+    });
+  }
+  if (coordinador) {
+    const access = accessMap.get(coordinador);
+    assertRole(access, "COORDINADOR", "COORDINADOR");
+    if (!hasArea(access, "MANTENIMIENTO")) throw new Error("COORDINADOR_AREA_INVALIDA");
+  }
+  if (gestor) {
+    const access = accessMap.get(gestor);
+    assertRole(access, "GESTOR", "GESTOR");
+    if (!hasArea(access, "MANTENIMIENTO")) throw new Error("GESTOR_AREA_INVALIDA");
+  }
+
+  if (tecnicos.length) {
+    await assertTecnicosNoAsignadosInArea(tecnicos, "MANTENIMIENTO");
+  }
+
+  const db = adminDb();
+
+  const result = await db.runTransaction(async (tx) => {
+    let suffix = 0;
+    let id = baseId;
+    let nombre = baseNombre;
+    while (suffix < 25) {
+      const docRef = cuadrillasCol().doc(id);
+      const docSnap = await tx.get(docRef);
+      if (!docSnap.exists) break;
+      suffix += 1;
+      id = `${baseId}_${suffix + 1}`;
+      nombre = `${baseNombre} ${suffix + 1}`;
+    }
+
+    const docRef = cuadrillasCol().doc(id);
+    const docSnap = await tx.get(docRef);
+    if (docSnap.exists) throw new Error("CUADRILLA_ID_CONFLICT");
+
+    const data: Record<string, any> = {
+      nombre,
+      area: "MANTENIMIENTO",
+      zona,
+      turno,
+      estado,
+      audit: {
+        createdAt: FieldValue.serverTimestamp(),
+        createdBy: actorUid,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: actorUid,
+      },
+    };
+
+    if (tecnicos.length) data.tecnicosUids = tecnicos;
+    if (coordinador) data.coordinadorUid = coordinador;
+    if (gestor) data.gestorUid = gestor;
+
+    tx.set(docRef, data);
+    return { id };
+  });
+
+  return result;
 }
 
 export async function updateCuadrilla(id: string, patchInput: unknown, actorUid: string) {
@@ -249,9 +366,39 @@ export async function updateCuadrilla(id: string, patchInput: unknown, actorUid:
 
   if (!tecnicos.includes(cond)) throw new Error("CONDUCTOR_NO_EN_TECNICOS");
   const accessMap = await getUsuariosAccessByUids([...(tecnicos ?? []), coord, gest, cond]);
-  tecnicos.forEach((uid) => assertRole(accessMap.get(uid), "TECNICO", "TECNICO"));
-  assertRole(accessMap.get(coord), "COORDINADOR", "COORDINADOR");
-  assertRole(accessMap.get(gest), "GESTOR", "GESTOR");
+  tecnicos.forEach((uid) => {
+    const access = accessMap.get(uid);
+    assertRole(access, "TECNICO", "TECNICO");
+    const area = String(curr.area || "").toUpperCase();
+    if (area === "INSTALACIONES" && !hasArea(access, "INSTALACIONES")) {
+      throw new Error("TECNICO_AREA_INVALIDA");
+    }
+    if (area === "MANTENIMIENTO" && !hasArea(access, "MANTENIMIENTO")) {
+      throw new Error("TECNICO_AREA_INVALIDA");
+    }
+  });
+  if (coord) {
+    const access = accessMap.get(coord);
+    assertRole(access, "COORDINADOR", "COORDINADOR");
+    const area = String(curr.area || "").toUpperCase();
+    if (area === "INSTALACIONES" && !hasArea(access, "INSTALACIONES")) {
+      throw new Error("COORDINADOR_AREA_INVALIDA");
+    }
+    if (area === "MANTENIMIENTO" && !hasArea(access, "MANTENIMIENTO")) {
+      throw new Error("COORDINADOR_AREA_INVALIDA");
+    }
+  }
+  if (gest) {
+    const access = accessMap.get(gest);
+    assertRole(access, "GESTOR", "GESTOR");
+    const area = String(curr.area || "").toUpperCase();
+    if (area === "INSTALACIONES" && !hasArea(access, "INSTALACIONES")) {
+      throw new Error("GESTOR_AREA_INVALIDA");
+    }
+    if (area === "MANTENIMIENTO" && !hasArea(access, "MANTENIMIENTO")) {
+      throw new Error("GESTOR_AREA_INVALIDA");
+    }
+  }
   assertRole(accessMap.get(cond), "TECNICO", "CONDUCTOR");
 
   // Evitar asignar técnicos ya ocupados en otras cuadrillas (excepto esta misma)

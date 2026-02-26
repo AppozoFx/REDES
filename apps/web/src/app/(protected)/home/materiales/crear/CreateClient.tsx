@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React from "react";
 import { useEffect, useMemo, useRef, useState, useActionState, startTransition } from "react";
@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { createMaterialAction } from "./actions";
 
 function stripDiacritics(input: string): string {
-  return input.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ñ/gi, (m) => (m === "ñ" ? "n" : "N"));
+  return input.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/�/gi, (m) => (m === "�" ? "n" : "N"));
 }
 
 function toId(nombre: string): string {
@@ -115,7 +115,7 @@ export default function CreateMaterialClient() {
               <input value={nombre} onChange={(e) => setNombre(e.target.value.toUpperCase())} className={fieldClass} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Código generado</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">C�digo generado</label>
               <div className="mt-1 flex h-10 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 font-mono text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200">
                 {matId || "(vacio)"}
               </div>
@@ -138,7 +138,7 @@ export default function CreateMaterialClient() {
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Areas</label>
               <div className="flex flex-wrap gap-3 text-sm">
-                {[{ key: "INSTALACIONES", label: "INSTALACIONES" }, { key: "AVERIAS", label: "AVERIAS" }].map((a) => (
+                {[{ key: "INSTALACIONES", label: "INSTALACIONES" }, { key: "MANTENIMIENTO", label: "MANTENIMIENTO" }].map((a) => (
                   <label key={a.key} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700 dark:text-slate-200">
                     <input
                       type="checkbox"
@@ -264,3 +264,4 @@ function PreviewMinimo({ metrosPorUnd, und, sueltos }: { metrosPorUnd: string; u
   if (!mpo || total <= 0) return null;
   return <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">Se guardara como {total} metros</div>;
 }
+

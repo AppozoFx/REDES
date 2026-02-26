@@ -34,6 +34,12 @@ function mapErrorMsg(e: unknown): string {
       return "El conductor debe estar entre los tecnicos seleccionados.";
     case "TECNICO_ROL_INVALIDO":
       return "Uno o mas tecnicos no tienen rol TECNICO.";
+    case "TECNICO_AREA_INVALIDA":
+      return "Uno o mas tecnicos no pertenecen al area requerida.";
+    case "COORDINADOR_AREA_INVALIDA":
+      return "El coordinador no pertenece al area requerida.";
+    case "GESTOR_AREA_INVALIDA":
+      return "El gestor no pertenece al area requerida.";
     case "COORDINADOR_ROL_INVALIDO":
       return "El coordinador no tiene rol COORDINADOR.";
     case "GESTOR_ROL_INVALIDO":

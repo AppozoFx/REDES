@@ -13,7 +13,7 @@ export default async function ComunicadoCreatePage() {
     nombre: String(r.nombre ?? r.id),
   }));
 
-  const areasCatalog = ["INSTALACIONES", "AVERIAS", "ADMIN_COMUNICADOS"];
+  const areasCatalog = ["INSTALACIONES", "MANTENIMIENTO", "ADMIN_COMUNICADOS"];
 
   return (
     <ComunicadoCreateFormClient
@@ -23,3 +23,4 @@ export default async function ComunicadoCreatePage() {
     />
   );
 }
+

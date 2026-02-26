@@ -24,7 +24,7 @@ function toDateStr(v: any) {
   return "";
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const session = await getServerSession();
     if (!session) return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
@@ -32,12 +32,20 @@ export async function GET() {
       return NextResponse.json({ ok: false, error: "ACCESS_DISABLED" }, { status: 403 });
     }
     const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
+    const areas = (session.access.areas || []).map((a) => String(a || "").toUpperCase());
     const canUse =
       session.isAdmin ||
       session.permissions.includes("CUADRILLAS_MANAGE") ||
-      ((session.access.areas || []).includes("INSTALACIONES") &&
+      session.permissions.includes("MATERIALES_TRANSFER_SERVICIO") ||
+      session.permissions.includes("MATERIALES_DEVOLUCION") ||
+      (areas.includes("INSTALACIONES") &&
+        (roles.includes("GESTOR") || roles.includes("ALMACEN") || roles.includes("COORDINADOR"))) ||
+      (areas.includes("MANTENIMIENTO") &&
         (roles.includes("GESTOR") || roles.includes("ALMACEN") || roles.includes("COORDINADOR")));
     if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
+
+    const { searchParams } = new URL(req.url);
+    const area = String(searchParams.get("area") || "").trim().toUpperCase();
 
     const isGestor = roles.includes("GESTOR");
     const isCoord = roles.includes("COORDINADOR");
@@ -63,11 +71,22 @@ export async function GET() {
       .limit(2000)
       .get();
 
-    const uids = accessSnap.docs.map((d) => d.id);
+    const uids = accessSnap.docs
+      .map((d) => ({ id: d.id, data: d.data() as any }))
+      .filter((r) => {
+        if (!area) return true;
+        const areasArr = Array.isArray(r.data?.areas) ? r.data.areas : [];
+        return areasArr.map((a: any) => String(a || "").toUpperCase()).includes(area);
+      })
+      .map((r) => r.id);
     const userRefs = uids.map((uid) => adminDb().collection("usuarios").doc(uid));
     const userSnaps = uids.length ? await adminDb().getAll(...userRefs) : [];
 
-    const cuadrillasSnap = await adminDb().collection("cuadrillas").get();
+    let cuadQuery = adminDb().collection("cuadrillas") as FirebaseFirestore.Query;
+    if (area) {
+      cuadQuery = cuadQuery.where("area", "==", area);
+    }
+    const cuadrillasSnap = await cuadQuery.get();
     const tecnicoToCuadrilla = new Map<string, { id: string; nombre: string }>();
     cuadrillasSnap.docs.forEach((d) => {
       const data = d.data() as any;

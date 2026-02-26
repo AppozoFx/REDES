@@ -125,10 +125,6 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     });
   }
 
-  if (hasArea(session, "AVERIAS") && !hasInstArea) {
-    items.push({ key: "AVERIAS", label: "Averias", href: "/home/averias" });
-  }
-
   if (hasPerm(session, "USERS_LIST")) {
     items.push({ key: "USUARIOS", label: "Usuarios", href: "/home/usuarios" });
   }
@@ -160,6 +156,9 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
 
   if (hasPerm(session, "CUADRILLAS_MANAGE")) {
     items.push({ key: "CUADRILLAS", label: "Cuadrillas", href: "/home/cuadrillas" });
+  }
+  if (hasPerm(session, "CUADRILLAS_MANAGE") && hasArea(session, "MANTENIMIENTO")) {
+    items.push({ key: "CUADRILLAS_MANT", label: "Cuadrillas (Mant)", href: "/home/mantenimiento/cuadrillas" });
   }
 
   if (hasPerm(session, "ORDENES_IMPORT")) {
@@ -203,6 +202,26 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     items.push({ key: "TR_INST_REP", label: "Reposicion (Inst)", href: "/home/transferencias/instalaciones/reposicion" });
     items.push({ key: "TR_INST_TEC_MAT", label: "Materiales Tecnicos (Inst)", href: "/home/transferencias/instalaciones/tecnicos-materiales" });
   }
+  if (
+    hasArea(session, "MANTENIMIENTO") &&
+    (hasPerm(session, "MATERIALES_TRANSFER_SERVICIO") || hasPerm(session, "MATERIALES_DEVOLUCION") || hasPerm(session, "MATERIALES_VIEW"))
+  ) {
+    items.push({
+      key: "TR_MANT_DESP",
+      label: "Despacho (Mant)",
+      href: "/home/transferencias/mantenimiento/despacho",
+    });
+    items.push({
+      key: "TR_MANT_STOCK",
+      label: "Stock Cuadrillas (Mant)",
+      href: "/home/transferencias/mantenimiento/stock-cuadrillas",
+    });
+    items.push({
+      key: "TR_MANT_TEC_MAT",
+      label: "Materiales Tecnicos (Mant)",
+      href: "/home/transferencias/mantenimiento/tecnicos-materiales",
+    });
+  }
   if (hasPerm(session, "EQUIPOS_VIEW") || hasPerm(session, "EQUIPOS_EDIT")) {
     items.push({ key: "TR_INST_EQ", label: "Equipos (Inst)", href: "/home/transferencias/instalaciones/equipos" });
   }
@@ -222,9 +241,11 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
   if (hasPerm(session, "VENTAS_DESPACHO_INST")) {
     items.push({ key: "VENTAS_INST", label: "Ventas: Despacho (Inst)", href: "/home/ventas/instalaciones/despacho" });
   }
-  if (hasPerm(session, "VENTAS_DESPACHO_AVER") && !hasInstArea) {
-    items.push({ key: "VENTAS_AVER", label: "Ventas: Despacho (AVERIAS)", href: "/home/ventas/averias/despacho" });
+  if (hasPerm(session, "VENTAS_DESPACHO_MANT")) {
+    items.push({ key: "VENTAS_MANT", label: "Ventas: Despacho (Mantenimiento)", href: "/home/ventas/mantenimiento/despacho" });
   }
 
   return items;
 }
+
+

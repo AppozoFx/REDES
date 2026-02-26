@@ -166,7 +166,7 @@ export function NotificationsBell({ uid }: { uid: string }) {
                         )}
                       </div>
                       <div className="text-xs text-gray-700 dark:text-white/80">{n.message}</div>
-                      {(n.entityType === "DESPACHO" || n.entityType === "DEVOLUCION" || n.entityType === "VENTA" || n.entityType === "ACTAS_RECEPCION") && n.entityId && (
+                      {(n.entityType === "DESPACHO" || n.entityType === "DEVOLUCION" || n.entityType === "VENTA" || n.entityType === "ACTAS_RECEPCION" || n.entityType === "DESPACHO_MANT") && n.entityId && (
                         <div className="mt-2">
                           <button
                             type="button"
@@ -178,10 +178,12 @@ export function NotificationsBell({ uid }: { uid: string }) {
                                   n.entityType === "VENTA" ? "ventas" :
                                   n.entityType === "ACTAS_RECEPCION" ? "actas" :
                                   "despacho";
+                                const base =
+                                  n.entityType === "DESPACHO_MANT"
+                                    ? "/api/transferencias/mantenimiento/guia/url"
+                                    : "/api/transferencias/instalaciones/guia/url";
                                 const res = await fetch(
-                                  `/api/transferencias/instalaciones/guia/url?guiaId=${encodeURIComponent(
-                                    n.entityId
-                                  )}&tipo=${tipo}`,
+                                  `${base}?guiaId=${encodeURIComponent(n.entityId)}&tipo=${tipo}`,
                                   { cache: "no-store" }
                                 );
                                 if (!res.ok) throw new Error("URL_FAIL");

@@ -4,16 +4,35 @@ import { adminDb } from "@/lib/firebase/admin";
 import { disableCuadrillaAction, enableCuadrillaAction, updateCuadrillaAction } from "../actions";
 import ConductorAndCargosEdit from "./ConductorAndCargosEdit.client";
 
-async function fetchUsersByRole(role: string) {
+async function fetchUsersByRole(role: string, allowedAreas: string[]) {
   const qs = await adminDb().collection("usuarios_access").where("roles", "array-contains", role).get();
-  const rows = qs.docs.map((d) => ({ uid: d.id, ...(d.data() as any) }));
+  const rows = qs.docs
+    .map((d) => ({ uid: d.id, ...(d.data() as any) }))
+    .filter((r) => {
+      if (!allowedAreas.length) return true;
+      const areas = Array.isArray(r.areas) ? r.areas : [];
+      return areas.some((a: string) => allowedAreas.includes(String(a || "").toUpperCase()));
+    });
   const refs = rows.map((r) => adminDb().collection("usuarios").doc(r.uid));
   const snaps = refs.length ? await adminDb().getAll(...refs) : [];
   const profileByUid = new Map(snaps.map((s) => [s.id, s.exists ? (s.data() as any) : {}]));
+  const shortName = (full: string, fallback: string) => {
+    const parts = String(full || "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    const first = parts[0] || "";
+    const firstLast = parts.length >= 4 ? parts[2] || "" : parts[1] || "";
+    return `${first} ${firstLast}`.trim() || fallback;
+  };
+
   return rows.map((r) => {
     const p = profileByUid.get(r.uid) ?? {};
-    const dn = p.displayName || `${p.nombres ?? ""} ${p.apellidos ?? ""}`.trim() || r.uid;
-    return { uid: r.uid, label: `${dn} (${r.uid})` };
+    const nombres = String(p.nombres || "").trim();
+    const apellidos = String(p.apellidos || "").trim();
+    const full = p.displayName || `${nombres} ${apellidos}`.trim() || r.uid;
+    const label = shortName(full, r.uid);
+    return { uid: r.uid, label: `${label} (${r.uid})` };
   });
 }
 
@@ -47,10 +66,11 @@ export default async function CuadrillaDetailPage(props: { params: Promise<{ id:
     return set;
   }
 
+  const allowedAreas = [String(c.area || "").toUpperCase()].filter(Boolean);
   const [tecnicosAll, coordinadores, gestores, assignedSet] = await Promise.all([
-    fetchUsersByRole("TECNICO"),
-    fetchUsersByRole("COORDINADOR"),
-    fetchUsersByRole("GESTOR"),
+    fetchUsersByRole("TECNICO", allowedAreas),
+    fetchUsersByRole("COORDINADOR", allowedAreas),
+    fetchUsersByRole("GESTOR", allowedAreas),
     fetchAssignedTecnicosUidsExcept(id),
   ]);
 
@@ -59,20 +79,20 @@ export default async function CuadrillaDetailPage(props: { params: Promise<{ id:
 
   return (
     <div className="max-w-3xl space-y-6">
-      <h1 className="text-2xl font-semibold">Cuadrilla: {id}</h1>
+            <h1 className="text-2xl font-semibold">Cuadrilla: {id}</h1>
 
       <div className="rounded border p-4 text-sm space-y-1">
-        <div><b>Área:</b> {c.area}</div>
-        <div><b>Categoría:</b> {c.categoria}</div>
-        <div><b>N°:</b> {c.numeroCuadrilla}</div>
+        <div><b>Area:</b> {c.area}</div>
+        <div><b>Categoria:</b> {c.categoria}</div>
+        <div><b>Nro:</b> {c.numeroCuadrilla}</div>
         <div><b>Nombre:</b> {c.nombre}</div>
         <div><b>Zona:</b> {c.zonaId}</div>
         <div><b>Tipo zona:</b> {c.tipoZona}</div>
-        <div><b>Vehículo:</b> {c.vehiculo}</div>
+        <div><b>Vehiculo:</b> {c.vehiculo}</div>
       </div>
 
       <form
-        key={`${c.estado}|${c.placa}|${(c.tecnicosUids ?? []).join(',')}|${c.coordinadorUid}|${c.gestorUid}|${c.conductorUid}|${tsToYmd(c.licenciaVenceAt)}|${tsToYmd(c.soatVenceAt)}|${tsToYmd(c.revTecVenceAt)}`}
+        key={`${c.estado}|${c.placa}|${(Array.isArray(c.tecnicosUids) ? c.tecnicosUids : []).join(',')}|${c.coordinadorUid}|${c.gestorUid}|${c.conductorUid}|${tsToYmd(c.licenciaVenceAt)}|${tsToYmd(c.soatVenceAt)}|${tsToYmd(c.revTecVenceAt)}`}
         action={async (formData) => {
           "use server";
           await updateCuadrillaAction(id, formData);
@@ -107,7 +127,7 @@ export default async function CuadrillaDetailPage(props: { params: Promise<{ id:
             </select>
           </div>
 
-  <ConductorAndCargosEdit
+          <ConductorAndCargosEdit
             tecnicos={tecnicos}
             tecnicosSelected={tecnicosSelected}
             coordinadores={coordinadores}

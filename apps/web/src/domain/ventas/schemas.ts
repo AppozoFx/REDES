@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const VentaAreaEnum = z.enum(["INSTALACIONES", "AVERIAS"]);
+export const VentaAreaEnum = z.enum(["INSTALACIONES", "MANTENIMIENTO"]);
 export type VentaArea = z.infer<typeof VentaAreaEnum>;
 
 export const VentaItemInputSchema = z.object({
@@ -42,3 +42,4 @@ export const VentaAnularInputSchema = z.object({
   ventaId: z.string().min(1),
 });
 export type VentaAnularInput = z.infer<typeof VentaAnularInputSchema>;
+

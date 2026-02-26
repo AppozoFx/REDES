@@ -28,7 +28,7 @@ export const bootstrapAdmin = onRequest(async (req, res) => {
     await ref.set(
       {
         roles: ["ADMIN"],
-        areas: ["INSTALACIONES", "AVERIAS"],
+        areas: ["INSTALACIONES", "MANTENIMIENTO"],
         estadoAcceso: "HABILITADO",
         audit: {
           createdAt: FieldValue.serverTimestamp(),
@@ -56,3 +56,4 @@ export const bootstrapAdmin = onRequest(async (req, res) => {
     return;
   }
 });
+

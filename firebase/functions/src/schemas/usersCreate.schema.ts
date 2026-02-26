@@ -14,13 +14,14 @@ export const UsersCreateSchema = z.object({
   nacionalidad: z.string().optional(),
 
   rol: z.string().min(1),
-  area: z.enum(["INSTALACIONES", "AVERIAS"]),
+  area: z.enum(["INSTALACIONES", "MANTENIMIENTO"]),
 
   roles: z.array(z.string()).default([]),
-  areas: z.array(z.enum(["INSTALACIONES", "AVERIAS"])).default([]),
+  areas: z.array(z.enum(["INSTALACIONES", "MANTENIMIENTO"])).default([]),
 
   estado: z.enum(["ACTIVO", "INACTIVO"]).default("ACTIVO"),
   estadoAcceso: z.enum(["HABILITADO", "INHABILITADO"]).default("HABILITADO"),
 });
 
 export type UsersCreateInput = z.infer<typeof UsersCreateSchema>;
+

@@ -13,16 +13,20 @@ export async function GET(req: Request) {
       session.isAdmin ||
       session.permissions.includes("VENTAS_EDIT") ||
       session.permissions.includes("VENTAS_DESPACHO_INST") ||
-      session.permissions.includes("VENTAS_DESPACHO_AVER") ||
+      session.permissions.includes("VENTAS_DESPACHO_MANT") ||
+      session.permissions.includes("MATERIALES_TRANSFER_SERVICIO") ||
+      session.permissions.includes("MATERIALES_DEVOLUCION") ||
       session.permissions.includes("CUADRILLAS_MANAGE") ||
       session.permissions.includes("ORDENES_LIQUIDAR") ||
       (session.access.areas || []).includes("INSTALACIONES") ||
+      (session.access.areas || []).includes("MANTENIMIENTO") ||
       (session.access.roles || []).includes("GESTOR") ||
       (session.access.roles || []).includes("COORDINADOR");
     if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const { searchParams } = new URL(req.url);
     const role = String(searchParams.get("role") || "").trim().toUpperCase();
+    const area = String(searchParams.get("area") || "").trim().toUpperCase();
     if (!role) return NextResponse.json({ ok: false, error: "MISSING_ROLE" }, { status: 400 });
 
     const accessSnap = await adminDb()
@@ -31,7 +35,14 @@ export async function GET(req: Request) {
       .limit(500)
       .get();
 
-    const uids = accessSnap.docs.map((d) => d.id);
+    const uids = accessSnap.docs
+      .map((d) => ({ id: d.id, data: d.data() as any }))
+      .filter((r) => {
+        if (!area) return true;
+        const areas = Array.isArray(r.data?.areas) ? r.data.areas : [];
+        return areas.map((a: any) => String(a || "").toUpperCase()).includes(area);
+      })
+      .map((r) => r.id);
     const userRefs = uids.map((uid) => adminDb().collection("usuarios").doc(uid));
     const userSnaps = uids.length ? await adminDb().getAll(...userRefs) : [];
     const shortName = (full: string, fallback: string) => {
@@ -61,3 +72,4 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }
 }
+

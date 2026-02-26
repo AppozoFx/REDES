@@ -5,7 +5,7 @@ import { crearVentaAction } from "../server-actions";
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
 
-type Area = "INSTALACIONES" | "AVERIAS";
+type Area = "INSTALACIONES" | "MANTENIMIENTO";
 
 type CuadrillaListItem = {
   id: string;
@@ -279,7 +279,7 @@ export default function DespachoVentasClient({
   const [coordinadores, setCoordinadores] = useState<Array<{ uid: string; label: string }>>([]);
 
   const [materiales, setMateriales] = useState<MaterialItem[]>([]);
-  const [materialFilterArea, setMaterialFilterArea] = useState<"ALL" | "INSTALACIONES" | "AVERIAS">("ALL");
+  const [materialFilterArea, setMaterialFilterArea] = useState<"ALL" | "INSTALACIONES" | "MANTENIMIENTO">("ALL");
   const [selectedMaterialId, setSelectedMaterialId] = useState("");
   const [items, setItems] = useState<ItemState[]>([]);
   const materialInputRef = useRef<HTMLInputElement | null>(null);
@@ -338,7 +338,7 @@ export default function DespachoVentasClient({
     if (!canEditCoordinador) return;
     (async () => {
       try {
-        const res = await fetch("/api/usuarios/by-role?role=COORDINADOR", { cache: "no-store" });
+        const res = await fetch(`/api/usuarios/by-role?role=COORDINADOR&area=${encodeURIComponent(area)}`, { cache: "no-store" });
         if (!res.ok) return;
         const data = await res.json();
         setCoordinadores(Array.isArray(data?.items) ? data.items : []);
@@ -681,7 +681,7 @@ export default function DespachoVentasClient({
             >
               <option value="ALL">Todos</option>
               <option value="INSTALACIONES">Instalaciones</option>
-              <option value="AVERIAS">AVERIAS</option>
+              <option value="MANTENIMIENTO">MANTENIMIENTO</option>
             </select>
           </div>
         </div>
@@ -839,6 +839,7 @@ export default function DespachoVentasClient({
     </div>
   );
 }
+
 
 
 

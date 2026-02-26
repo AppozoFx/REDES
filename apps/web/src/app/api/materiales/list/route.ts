@@ -24,20 +24,30 @@ export async function GET(req: Request) {
     const area = searchParams.get("area");
 
     let q: FirebaseFirestore.Query = adminDb().collection("materiales");
-    if (area) q = q.where("areas", "array-contains", area);
     q = q.where("estado", "==", "ACTIVO");
 
-    const snap = await q.select("unidadTipo", "nombre", "fotoUrl", "imagenUrl", "imageUrl").limit(500).get();
-    const items = snap.docs.map((d) => ({
-      id: d.id,
-      unidadTipo: (d.data() as any)?.unidadTipo ?? null,
-      nombre: (d.data() as any)?.nombre ?? "",
-      fotoUrl:
-        (d.data() as any)?.fotoUrl ??
-        (d.data() as any)?.imagenUrl ??
-        (d.data() as any)?.imageUrl ??
-        "",
-    }));
+    const snap = await q
+      .select("unidadTipo", "nombre", "fotoUrl", "imagenUrl", "imageUrl", "vendible", "areas")
+      .limit(500)
+      .get();
+    const items = snap.docs
+      .map((d) => ({
+        id: d.id,
+        unidadTipo: (d.data() as any)?.unidadTipo ?? null,
+        nombre: (d.data() as any)?.nombre ?? "",
+        vendible: Boolean((d.data() as any)?.vendible),
+        areas: Array.isArray((d.data() as any)?.areas) ? (d.data() as any)?.areas : [],
+        fotoUrl:
+          (d.data() as any)?.fotoUrl ??
+          (d.data() as any)?.imagenUrl ??
+          (d.data() as any)?.imageUrl ??
+          "",
+      }))
+      .filter((it) => {
+        if (!area) return true;
+        if (!it.areas || it.areas.length === 0) return true;
+        return it.areas.includes(area);
+      });
 
     return NextResponse.json({ ok: true, items });
   } catch (e: any) {

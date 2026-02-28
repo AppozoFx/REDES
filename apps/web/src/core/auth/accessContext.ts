@@ -22,7 +22,21 @@ function asStringArray(v: unknown): string[] {
 }
 
 export async function getUserAccessContext(uid: string): Promise<AccessContext | null> {
-  const snap = await adminDb().collection("usuarios_access").doc(uid).get();
+  let snap;
+  try {
+    snap = await adminDb().collection("usuarios_access").doc(uid).get();
+  } catch (e: any) {
+    try {
+      // eslint-disable-next-line no-console
+      console.error("[access] usuarios_access read failed", {
+        uid,
+        message: String(e?.message || e || "ERROR"),
+        code: String(e?.code || ""),
+        stack: e?.stack,
+      });
+    } catch {}
+    return null;
+  }
   if (!snap.exists) return null;
 
   const data = snap.data() ?? {};
@@ -38,7 +52,21 @@ export async function getUserAccessContext(uid: string): Promise<AccessContext |
       : "INHABILITADO";
 
   // permisos por roles (reusa tu repo)
-  const rolesDocs = await getRolesByIds(roles);
+  let rolesDocs: any[] = [];
+  try {
+    rolesDocs = await getRolesByIds(roles);
+  } catch (e: any) {
+    try {
+      // eslint-disable-next-line no-console
+      console.error("[access] getRolesByIds failed", {
+        uid,
+        message: String(e?.message || e || "ERROR"),
+        code: String(e?.code || ""),
+        stack: e?.stack,
+      });
+    } catch {}
+    rolesDocs = [];
+  }
 
   // opcional: ignorar roles inactivos si tu doc tiene `estado`
   const rolePermissions = rolesDocs.flatMap((r: any) => {

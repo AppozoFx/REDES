@@ -34,8 +34,28 @@ export async function POST(req: Request) {
       console.log("[session/api] admin projectId", (auth.app?.options as any)?.projectId);
     } catch {}
 
-    const decoded = await auth.verifyIdToken(idToken, true);
+    let decoded: any;
+    try {
+      decoded = await auth.verifyIdToken(idToken, true);
+    } catch (e: any) {
+      try {
+        // eslint-disable-next-line no-console
+        console.error("[session/api] verifyIdToken failed", {
+          message: String(e?.message || e || "ERROR"),
+          code: String(e?.code || ""),
+        });
+      } catch {}
+      throw e;
+    }
     const uid = decoded?.uid || "";
+    try {
+      // eslint-disable-next-line no-console
+      console.log("[session/api] token decoded", {
+        uid,
+        aud: decoded?.aud,
+        iss: decoded?.iss,
+      });
+    } catch {}
 
     // Maximo permitido por Firebase para session cookies: 14 dias.
     // El cierre al cerrar todas las pestanas lo controla TabSessionGuard.
@@ -51,6 +71,14 @@ export async function POST(req: Request) {
       sameSite: "lax",
       path: "/",
     });
+    try {
+      // eslint-disable-next-line no-console
+      console.log("[session/api] set-cookie", {
+        cookieName: COOKIE_NAME,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+      });
+    } catch {}
 
     // Presencia global (usuarios_presencia) al iniciar sesion
     try {

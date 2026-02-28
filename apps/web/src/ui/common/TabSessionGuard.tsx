@@ -14,6 +14,18 @@ function safeNow() {
   return Date.now();
 }
 
+function storageAvailable(kind: "localStorage" | "sessionStorage") {
+  try {
+    const storage = window[kind];
+    const k = "__storage_test__";
+    storage.setItem(k, "1");
+    storage.removeItem(k);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function readTabs(): TabsMap {
   try {
     const raw = localStorage.getItem(KEY_TABS);
@@ -53,6 +65,10 @@ function getTabInfo() {
 
 export default function TabSessionGuard() {
   useEffect(() => {
+    const canUseLocal = storageAvailable("localStorage");
+    const canUseSession = storageAvailable("sessionStorage");
+    if (!canUseLocal || !canUseSession) return;
+
     const now = safeNow();
     const { tabId, hadTabId } = getTabInfo();
 

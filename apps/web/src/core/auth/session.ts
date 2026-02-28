@@ -31,11 +31,54 @@ function toMillis(v: any): number {
 
 export async function getServerSession(): Promise<ServerSession | null> {
   try {
-    const cookieStore = await cookies();
-    const cookie = cookieStore.get(COOKIE_NAME)?.value;
-    if (!cookie) return null;
+    let cookieStore: ReturnType<typeof cookies>;
+    try {
+      cookieStore = await cookies();
+    } catch (e: any) {
+      try {
+        // eslint-disable-next-line no-console
+        console.error("[session] cookies() failed", {
+          message: String(e?.message || e || "ERROR"),
+          code: String(e?.code || ""),
+          stack: e?.stack,
+        });
+      } catch {}
+      return null;
+    }
 
-    const decoded = await adminAuth().verifySessionCookie(cookie, true);
+    const cookie = cookieStore.get(COOKIE_NAME)?.value;
+    try {
+      // eslint-disable-next-line no-console
+      console.log("[session] cookie read", {
+        present: Boolean(cookie),
+        len: cookie ? cookie.length : 0,
+      });
+    } catch {}
+    if (!cookie) {
+      try {
+        // eslint-disable-next-line no-console
+        console.warn("[session] missing cookie", {
+          cookieName: COOKIE_NAME,
+          nodeEnv: process.env.NODE_ENV,
+        });
+      } catch {}
+      return null;
+    }
+
+    let decoded: any;
+    try {
+      decoded = await adminAuth().verifySessionCookie(cookie, true);
+    } catch (e: any) {
+      try {
+        // eslint-disable-next-line no-console
+        console.error("[session] verifySessionCookie failed", {
+          message: String(e?.message || e || "ERROR"),
+          code: String(e?.code || ""),
+          nodeEnv: process.env.NODE_ENV,
+        });
+      } catch {}
+      return null;
+    }
     const uid = decoded.uid;
 
     // Invalida por inactividad (sin heartbeat/focus) mayor a 2h.
@@ -44,16 +87,44 @@ export async function getServerSession(): Promise<ServerSession | null> {
       if (pSnap.exists) {
         const p = pSnap.data() as any;
         const lastSeenMs = toMillis(p?.lastSeenAt) || toMillis(p?.updatedAt);
+        try {
+          // eslint-disable-next-line no-console
+          console.log("[session] presence lastSeen", {
+            uid,
+            lastSeenMs,
+            ageMs: lastSeenMs ? Date.now() - lastSeenMs : null,
+          });
+        } catch {}
         if (lastSeenMs > 0 && Date.now() - lastSeenMs > INACTIVITY_MS) return null;
       }
     } catch {}
 
-    const ctx = await getUserAccessContextCached(uid);
-    if (!ctx) return null;
+    let ctx: Awaited<ReturnType<typeof getUserAccessContextCached>> | null = null;
+    try {
+      ctx = await getUserAccessContextCached(uid);
+    } catch (e: any) {
+      try {
+        // eslint-disable-next-line no-console
+        console.error("[session] access context error", {
+          uid,
+          message: String(e?.message || e || "ERROR"),
+          code: String(e?.code || ""),
+          stack: e?.stack,
+        });
+      } catch {}
+      return null;
+    }
+    if (!ctx) {
+      try {
+        // eslint-disable-next-line no-console
+        console.warn("[session] access context missing", { uid });
+      } catch {}
+      return null;
+    }
 
     const isAdmin = ctx.roles.includes("ADMIN");
 
-    return {
+    const session = {
       uid,
       access: {
         roles: ctx.roles,
@@ -64,7 +135,27 @@ export async function getServerSession(): Promise<ServerSession | null> {
       isAdmin,
       permissions: ctx.effectivePermissions,
     };
-  } catch {
+    try {
+      // eslint-disable-next-line no-console
+      console.log("[session] ok", {
+        uid,
+        isAdmin,
+        roles: session.access.roles?.length || 0,
+        areas: session.access.areas?.length || 0,
+        perms: session.permissions?.length || 0,
+      });
+    } catch {}
+    return session;
+  } catch (e: any) {
+    try {
+      // eslint-disable-next-line no-console
+      console.error("[session] unexpected error", {
+        nodeEnv: process.env.NODE_ENV,
+        message: String(e?.message || e || "ERROR"),
+        code: String(e?.code || ""),
+        stack: e?.stack,
+      });
+    } catch {}
     return null;
   }
 }

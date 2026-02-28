@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { getServerSession } from "@/core/auth/session";
-import { getAsignacionData, resolveGestorVisible, todayLimaYmd } from "@/lib/gestorAsignacion";
+import { getAsignacionData } from "@/lib/gestorAsignacion";
 
 export const runtime = "nodejs";
 
@@ -62,21 +62,25 @@ export async function GET(req: Request) {
       .get();
 
     let docs = baseSnap.docs;
+    const resolveGestorIdsStrict = (uid: string, data: any) => {
+      const day = data?.day || {};
+      const base = data?.base || {};
+      if (Array.isArray(day[uid]) && day[uid].length) return day[uid];
+      if (Array.isArray(base[uid]) && base[uid].length) return base[uid];
+      return [];
+    };
+
     if (canGestor && !canAdmin) {
       const data = await getAsignacionData(fecha);
-      const visible = resolveGestorVisible(gestorUid, data);
-      if (!visible.all) {
-        const setIds = new Set((visible.ids || []).map((x) => String(x || "").trim()));
-        docs = docs.filter((d) => setIds.has(d.id));
-      }
+      const ids = resolveGestorIdsStrict(gestorUid, data);
+      const setIds = new Set(ids.map((x: any) => String(x || "").trim()));
+      docs = docs.filter((d) => setIds.has(d.id));
     }
     if (canAdmin && gestorUidParam) {
       const data = await getAsignacionData(fecha);
-      const visible = resolveGestorVisible(gestorUidParam, data);
-      if (!visible.all) {
-        const setIds = new Set((visible.ids || []).map((x) => String(x || "").trim()));
-        docs = docs.filter((d) => setIds.has(d.id));
-      }
+      const ids = resolveGestorIdsStrict(gestorUidParam, data);
+      const setIds = new Set(ids.map((x: any) => String(x || "").trim()));
+      docs = docs.filter((d) => setIds.has(d.id));
     }
 
     const cuadrillas = docs.map((d: any) => {

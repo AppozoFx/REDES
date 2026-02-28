@@ -65,7 +65,8 @@ if (!res.ok) throw new Error(`session (${res.status}): ${text}`);
         localStorage.setItem("redes_last_login_at", String(Date.now()));
       } catch {}
       setSuccess(true);
-      setTimeout(() => router.push("/admin"), 700);
+      // Forzar recarga completa para asegurar que el servidor lea la cookie __session
+      setTimeout(() => window.location.replace("/"), 700);
     } catch (err: any) {
       setError(err?.message ?? "Error de login");
     } finally {

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { getServerSession } from "@/core/auth/session";
-import { getAsignacionData, resolveGestorVisible, todayLimaYmd } from "@/lib/gestorAsignacion";
 
 export const runtime = "nodejs";
 
@@ -47,16 +46,10 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const area = String(searchParams.get("area") || "").trim().toUpperCase();
 
-    const isGestor = roles.includes("GESTOR");
     const isCoord = roles.includes("COORDINADOR");
     const isPriv = session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
 
     let visibleSet: Set<string> | null = null;
-    if (isGestor && !isPriv) {
-      const data = await getAsignacionData(todayLimaYmd());
-      const visible = resolveGestorVisible(session.uid, data);
-      if (!visible.all) visibleSet = new Set((visible.ids || []).map((x) => String(x || "").trim()));
-    }
     if (isCoord && !isPriv && !session.isAdmin && !isGestor) {
       const coordSnap = await adminDb()
         .collection("cuadrillas")

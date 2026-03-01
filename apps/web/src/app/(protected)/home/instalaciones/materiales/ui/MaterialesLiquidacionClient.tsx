@@ -346,19 +346,19 @@ export default function MaterialesLiquidacionClient() {
   }, [sorted]);
 
   const exportXlsx = () => {
-    const headers = ["Estado", "Fecha", "Cuadrilla", "CodigoCliente", "Cliente", "ACTA"];
+    const headers = ["Estado", "Fecha", "Coordinador", "Cuadrilla", "CodigoCliente", "Cliente", "ACTA"];
     const rows = sorted.map((r) => {
       const estado = isLiquidado(r) ? "Liquidado" : "Pendiente";
       const fecha = formatearFecha(r.fechaInstalacion);
       const acta = getExisting(r).acta || "";
-      return [estado, fecha, r.cuadrillaNombre || "", r.codigoCliente || "", r.cliente || "", acta];
+      return [estado, fecha, r.coordinador || "", r.cuadrillaNombre || "", r.codigoCliente || "", r.cliente || "", acta];
     });
 
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Materiales");
     const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-    saveAs(new Blob([wbout], { type: "application/octet-stream" }), `materiales_${dayjs().format("YYYYMMDD_HHmmss")}.xlsx`);
+    saveAs(new Blob([wbout], { type: "application/octet-stream" }), `Materiales_${dayjs().format("YYYYMMDD_HHmmss")}.xlsx`);
   };
 
   return (
@@ -441,12 +441,22 @@ export default function MaterialesLiquidacionClient() {
           </select>
         </div>
               </div>
-              <button
-                onClick={exportXlsx}
-                className="rounded-xl bg-[#30518c] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-95"
-              >
-                Exportar XLSX
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => cargar()}
+                  disabled={cargando}
+                  className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 disabled:opacity-60"
+                  title="Recargar datos sin perder filtros"
+                >
+                  {cargando ? "Actualizando..." : "Refrescar tabla"}
+                </button>
+                <button
+                  onClick={exportXlsx}
+                  className="rounded-xl bg-[#30518c] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-95"
+                >
+                  Exportar XLSX
+                </button>
+              </div>
             </div>
           </div>
           <div className="p-4">
@@ -711,4 +721,3 @@ export default function MaterialesLiquidacionClient() {
     </div>
   );
 }
-

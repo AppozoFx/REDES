@@ -92,11 +92,15 @@ export async function GET(req: Request) {
       const data = d.data() as any;
       const orden = data.orden || {};
       const liquidacion = data.liquidacion || {};
-      const serviciosRaw = data.servicios || {};
-      const servicios =
-        serviciosRaw && typeof serviciosRaw === "object" && Object.keys(serviciosRaw).length > 0
-          ? serviciosRaw
-          : (liquidacion.servicios || {});
+      const serviciosRaw =
+        data.servicios && typeof data.servicios === "object" && !Array.isArray(data.servicios)
+          ? data.servicios
+          : {};
+      const liquidacionServicios =
+        liquidacion.servicios && typeof liquidacion.servicios === "object" && !Array.isArray(liquidacion.servicios)
+          ? liquidacion.servicios
+          : {};
+      const servicios = { ...liquidacionServicios, ...serviciosRaw };
       const equipos = Array.isArray(data.equiposInstalados) ? data.equiposInstalados : [];
 
       const byTipo = (tipo: string) =>

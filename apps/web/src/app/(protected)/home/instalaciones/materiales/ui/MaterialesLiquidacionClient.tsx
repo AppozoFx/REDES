@@ -289,7 +289,11 @@ export default function MaterialesLiquidacionClient() {
         delete cp[row.id];
         return cp;
       });
-      void cargar(true);
+      // Evita parpadeo con filtro "pendiente": la recarga inmediata puede traer un snapshot atrasado.
+      const estadoFiltro = String(filtros.estado || "").toLowerCase().trim();
+      if (estadoFiltro !== "pendiente") {
+        void cargar(true);
+      }
     } catch (e: any) {
       const msg = String(e?.message || "");
       if (msg.includes("ACTA_YA_LIQUIDADA")) {
@@ -444,7 +448,7 @@ export default function MaterialesLiquidacionClient() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => cargar()}
-                  disabled={cargando}
+                  disabled={cargando || !!guardandoId}
                   className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 disabled:opacity-60"
                   title="Recargar datos sin perder filtros"
                 >

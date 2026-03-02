@@ -10,11 +10,6 @@ import { toast } from "sonner";
 dayjs.extend(customParseFormat);
 dayjs.locale("es");
 
-const parseIntSafe = (v: unknown) => {
-  const n = parseInt(String(v), 10);
-  return Number.isNaN(n) ? 0 : n;
-};
-
 const formatearFecha = (f: any) => (f ? dayjs(f).format("DD/MM/YYYY") : "-");
 
 type Row = {
@@ -29,6 +24,12 @@ type Row = {
   coordinadorUid?: string;
   coordinador?: string;
   coordinadorNombre?: string;
+  tipoCuadrilla?: string;
+  orden?: {
+    tipoCuadirlla?: string;
+    tipoCuadrilla?: string;
+    tipoOrden?: string;
+  };
 };
 
 type EditMap = Record<
@@ -39,6 +40,22 @@ type EditMap = Record<
     observacion?: string;
   }
 >;
+
+type SelectOption = {
+  value: string;
+  label: string;
+};
+
+const CUADRILLA_SEGMENTOS = ["MOTO", "RESIDENCIAL"] as const;
+
+const getCuadrillaSegmento = (row: Row): string => {
+  const raw = `${row.cuadrillaNombre || ""} ${row.tipoCuadrilla || ""} ${row.orden?.tipoCuadirlla || row.orden?.tipoCuadrilla || ""}`
+    .toUpperCase()
+    .trim();
+  if (raw.includes("MOTO")) return "MOTO";
+  if (raw.includes("RESIDENCIAL")) return "RESIDENCIAL";
+  return "";
+};
 
 export default function LiquidacionDetalleClient() {
   const [isDark, setIsDark] = useState(false);
@@ -55,6 +72,8 @@ export default function LiquidacionDetalleClient() {
     busqueda: "",
     cuadrilla: "",
     coordinadorCuadrilla: "",
+    ordenTipoCuadrilla: "",
+    ordenTipoOrden: "",
   });
 
   useEffect(() => {
@@ -70,15 +89,6 @@ export default function LiquidacionDetalleClient() {
       mq.removeEventListener?.("change", sync);
     };
   }, []);
-
-  const selectPortalStyles = {
-    menuPortal: (base: any) => ({ ...base, zIndex: 9999 }),
-  };
-
-  const selectPortalProps = {
-    menuPortalTarget: typeof document !== "undefined" ? document.body : null,
-    menuPosition: "fixed" as const,
-  };
 
   const cargar = async (silent = false) => {
     if (!silent) setCargando(true);
@@ -99,45 +109,109 @@ export default function LiquidacionDetalleClient() {
   };
 
   useEffect(() => {
-    cargar();
+    void cargar();
   }, [filtros.mes, filtros.dia]);
 
-  const coordinadores = useMemo(() => {
+  const coordinadores = useMemo<SelectOption[]>(() => {
     const opts = Array.from(
       new Map(
         items
           .filter((x) => x.coordinadorUid)
           .map((x) => [
             x.coordinadorUid as string,
-            { value: x.coordinadorUid as string, label: x.coordinadorNombre || x.coordinador || x.coordinadorUid || "" },
+            {
+              value: x.coordinadorUid as string,
+              label: x.coordinadorNombre || x.coordinador || x.coordinadorUid || "",
+            },
           ])
       ).values()
     );
     return opts.sort((a, b) => a.label.localeCompare(b.label, "es", { sensitivity: "base" }));
   }, [items]);
 
+  const ordenTipoCuadrillaOptions = useMemo(() => {
+    return [...CUADRILLA_SEGMENTOS];
+  }, []);
+
+  const ordenTipoOrdenOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        items
+          .map((x) => String(x.orden?.tipoOrden || x.tipoOrden || "").trim())
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
+  }, [items]);
+
   const filtered = useMemo(() => {
     const q = filtros.busqueda.toLowerCase().trim();
     const cuad = filtros.cuadrilla.toLowerCase().trim();
     const coord = filtros.coordinadorCuadrilla.toLowerCase().trim();
+    const ordenTipoCuadrilla = filtros.ordenTipoCuadrilla.toLowerCase().trim();
+    const ordenTipoOrden = filtros.ordenTipoOrden.toLowerCase().trim();
     return items.filter((x) => {
       const hay = `${x.codigoCliente || ""} ${x.orderId || ""} ${x.cliente || ""} ${x.cuadrillaNombre || ""} ${x.id || ""}`.toLowerCase();
       const okQ = q ? hay.includes(q) : true;
       const okCuad = cuad ? String(x.cuadrillaNombre || "").toLowerCase().includes(cuad) : true;
       const okCoord = coord ? String(x.coordinadorUid || "").toLowerCase().includes(coord) : true;
-      return okQ && okCuad && okCoord;
+      const rowOrdenTipoCuadrilla = getCuadrillaSegmento(x).toLowerCase().trim();
+      const rowOrdenTipoOrden = String(x.orden?.tipoOrden || x.tipoOrden || "").toLowerCase().trim();
+      const okOrdenTipoCuadrilla = ordenTipoCuadrilla ? rowOrdenTipoCuadrilla === ordenTipoCuadrilla : true;
+      const okOrdenTipoOrden = ordenTipoOrden ? rowOrdenTipoOrden === ordenTipoOrden : true;
+      return okQ && okCuad && okCoord && okOrdenTipoCuadrilla && okOrdenTipoOrden;
     });
-  }, [items, filtros.busqueda, filtros.cuadrilla, filtros.coordinadorCuadrilla]);
+  }, [
+    items,
+    filtros.busqueda,
+    filtros.cuadrilla,
+    filtros.coordinadorCuadrilla,
+    filtros.ordenTipoCuadrilla,
+    filtros.ordenTipoOrden,
+  ]);
 
   const pageData = useMemo(() => {
     const start = (page - 1) * pageSize;
     return filtered.slice(start, start + pageSize);
   }, [filtered, page]);
 
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(filtered.length / pageSize)), [filtered.length]);
+  const pendingChanges = Object.keys(ediciones).length;
+
   useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
     if (page > totalPages) setPage(totalPages);
-  }, [filtered.length, page]);
+  }, [page, totalPages]);
+
+  const selectPortalProps = {
+    menuPortalTarget: typeof document !== "undefined" ? document.body : undefined,
+    menuPosition: "fixed" as const,
+  };
+
+  const selectStyles = useMemo(() => {
+    const base = {
+      menuPortal: (style: any) => ({ ...style, zIndex: 9999 }),
+    };
+
+    if (!isDark) return base;
+
+    return {
+      ...base,
+      control: (style: any, state: any) => ({
+        ...style,
+        backgroundColor: "#0f172a",
+        borderColor: state.isFocused ? "#3b82f6" : "#334155",
+        boxShadow: "none",
+      }),
+      menu: (style: any) => ({ ...style, backgroundColor: "#0f172a", color: "#e2e8f0" }),
+      option: (style: any, state: any) => ({
+        ...style,
+        backgroundColor: state.isSelected ? "#1d4ed8" : state.isFocused ? "#1e293b" : "#0f172a",
+        color: "#e2e8f0",
+      }),
+      input: (style: any) => ({ ...style, color: "#e2e8f0" }),
+      placeholder: (style: any) => ({ ...style, color: "#94a3b8" }),
+      singleValue: (style: any) => ({ ...style, color: "#e2e8f0" }),
+    };
+  }, [isDark]);
 
   const setEdit = (id: string, patch: Partial<EditMap[string]>) => {
     setEdiciones((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
@@ -210,31 +284,81 @@ export default function LiquidacionDetalleClient() {
   };
 
   return (
-    <div className="space-y-3 text-slate-900 dark:text-slate-100">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="grid gap-3 md:grid-cols-5 flex-1 min-w-[520px]">
-          <div className="flex flex-col">
-            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Mes</label>
+    <div className="space-y-4 text-slate-900 dark:text-slate-100">
+      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-r from-[#f8fbff] via-[#eef5ff] to-[#f2f9ff] shadow-sm dark:border-slate-700 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950">
+        <div className="flex flex-wrap items-start justify-between gap-4 p-5">
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Liquidacion detalle</h1>
+            <p className="max-w-2xl text-sm text-slate-600 dark:text-slate-300">
+              Gestiona tipo de orden, coordinador y observacion de instalaciones desde una sola vista.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void cargar()}
+              disabled={cargando}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              {cargando ? "Actualizando..." : "Actualizar"}
+            </button>
+            <button
+              type="button"
+              onClick={guardarCambios}
+              disabled={!pendingChanges || guardando}
+              className="rounded-xl bg-[#30518c] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-95 disabled:opacity-50"
+            >
+              {guardando ? "Guardando..." : `Guardar cambios${pendingChanges ? ` (${pendingChanges})` : ""}`}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Filtros</h2>
+          <button
+            type="button"
+            onClick={() =>
+              setFiltros((prev) => ({
+                ...prev,
+                dia: "",
+                busqueda: "",
+                cuadrilla: "",
+                coordinadorCuadrilla: "",
+                ordenTipoCuadrilla: "",
+                ordenTipoOrden: "",
+              }))
+            }
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            Limpiar filtros
+          </button>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Mes</label>
             <input
               type="month"
               name="mes"
               value={filtros.mes}
               onChange={(e) => setFiltros((p) => ({ ...p, mes: e.target.value }))}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
             />
           </div>
-          <div className="flex flex-col">
-            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Dia</label>
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Dia</label>
             <input
               type="date"
               name="dia"
               value={filtros.dia}
               onChange={(e) => setFiltros((p) => ({ ...p, dia: e.target.value }))}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
             />
           </div>
-          <div className="flex flex-col">
-            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Cuadrilla</label>
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Cuadrilla</label>
             <input
               type="text"
               name="cuadrilla"
@@ -242,11 +366,11 @@ export default function LiquidacionDetalleClient() {
               onChange={(e) => setFiltros((p) => ({ ...p, cuadrilla: e.target.value }))}
               placeholder="Buscar cuadrilla"
               autoComplete="off"
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
             />
           </div>
-          <div className="flex flex-col">
-            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Coordinador</label>
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Coordinador</label>
             <Select
               classNamePrefix="coord-filter"
               options={coordinadores}
@@ -255,192 +379,180 @@ export default function LiquidacionDetalleClient() {
                   ? coordinadores.find((c) => c.value === filtros.coordinadorCuadrilla) || null
                   : null
               }
-              onChange={(sel) =>
-                setFiltros((p) => ({ ...p, coordinadorCuadrilla: sel?.value || "" }))
-              }
+              onChange={(sel) => setFiltros((p) => ({ ...p, coordinadorCuadrilla: sel?.value || "" }))}
               placeholder="Seleccionar coordinador"
               isClearable
               {...selectPortalProps}
-              styles={
-                isDark
-                  ? {
-                      ...selectPortalStyles,
-                      control: (base: any, state: any) => ({
-                        ...base,
-                        backgroundColor: "#020617",
-                        borderColor: state.isFocused ? "#38bdf8" : "#334155",
-                        boxShadow: "none",
-                      }),
-                      menu: (base: any) => ({ ...base, backgroundColor: "#0f172a", color: "#e2e8f0" }),
-                      option: (base: any, state: any) => ({
-                        ...base,
-                        backgroundColor: state.isSelected ? "#1d4ed8" : state.isFocused ? "#1e293b" : "#0f172a",
-                        color: "#e2e8f0",
-                      }),
-                      input: (base: any) => ({ ...base, color: "#e2e8f0" }),
-                      placeholder: (base: any) => ({ ...base, color: "#94a3b8" }),
-                      singleValue: (base: any) => ({ ...base, color: "#e2e8f0" }),
-                    }
-                  : selectPortalStyles
-              }
+              styles={selectStyles}
             />
           </div>
-          <div className="flex flex-col">
-            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Codigo o Cliente</label>
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Codigo o cliente</label>
             <input
               type="text"
               name="busqueda"
               value={filtros.busqueda}
               onChange={(e) => setFiltros((p) => ({ ...p, busqueda: e.target.value }))}
               placeholder="Orden, codigo o cliente"
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
             />
           </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Segmento cuadrilla</label>
+            <select
+              name="ordenTipoCuadrilla"
+              value={filtros.ordenTipoCuadrilla}
+              onChange={(e) => setFiltros((p) => ({ ...p, ordenTipoCuadrilla: e.target.value }))}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+            >
+              <option value="">Todos</option>
+              {ordenTipoCuadrillaOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">orden.tipoOrden</label>
+            <select
+              name="ordenTipoOrden"
+              value={filtros.ordenTipoOrden}
+              onChange={(e) => setFiltros((p) => ({ ...p, ordenTipoOrden: e.target.value }))}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+            >
+              <option value="">Todos</option>
+              {ordenTipoOrdenOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-        <button
-          onClick={guardarCambios}
-          disabled={!Object.keys(ediciones).length || guardando}
-          className="px-3 py-2 rounded text-sm bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60"
-        >
-          {guardando ? "Guardando..." : `Guardar cambios${Object.keys(ediciones).length ? ` (${Object.keys(ediciones).length})` : ""}`}
-        </button>
-      </div>
+      </section>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
-        <table className="min-w-full text-sm">
-          <thead className="bg-gray-100 dark:bg-slate-800">
-            <tr className="text-center font-semibold text-gray-700 dark:text-slate-200">
-              <th className="p-2 border w-32">Fecha</th>
-              <th className="p-2 border w-44">Cuadrilla</th>
-              <th className="p-2 border w-56">Coordinador</th>
-              <th className="p-2 border w-28">Codigo</th>
-              <th className="p-2 border w-56">Cliente</th>
-              <th className="p-2 border w-36">Tipo Orden</th>
-              <th className="p-2 border min-w-[220px]">Observacion</th>
-            </tr>
-          </thead>
-          <tbody>
-            {cargando ? (
-              <tr>
-                <td colSpan={7} className="p-6 text-center text-gray-500 dark:text-slate-400">
-                  Cargando...
-                </td>
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="overflow-x-auto">
+          <table className="min-w-[1080px] w-full text-sm">
+            <thead className="ui-thead sticky top-0 z-10">
+              <tr className="text-left text-xs uppercase tracking-wide">
+                <th className="w-32 px-3 py-3">Fecha</th>
+                <th className="w-48 px-3 py-3">Cuadrilla</th>
+                <th className="w-64 px-3 py-3">Coordinador</th>
+                <th className="w-36 px-3 py-3">Codigo</th>
+                <th className="w-72 px-3 py-3">Cliente</th>
+                <th className="w-44 px-3 py-3">Tipo orden</th>
+                <th className="min-w-[260px] px-3 py-3">Observacion</th>
               </tr>
-            ) : pageData.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="p-6 text-center text-gray-500 dark:text-slate-400">
-                  No hay registros
-                </td>
-              </tr>
-            ) : (
-              pageData.map((row) => {
-                const coordUid = row.coordinadorUid || "";
-                const coordLabel = row.coordinadorNombre || row.coordinador || "";
-                return (
-                  <tr key={row.id} className="text-center hover:bg-gray-50 dark:hover:bg-slate-800/70">
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">{formatearFecha(row.fechaInstalacion)}</td>
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">{row.cuadrillaNombre || "-"}</td>
-                  <td className="min-w-[220px] border border-slate-200 p-2 dark:border-slate-700">
-                    <Select
-                      classNamePrefix="coord"
-                      value={
-                          (ediciones[row.id]?.coordinadorCuadrilla || coordUid)
-                            ? {
-                                value: ediciones[row.id]?.coordinadorCuadrilla || coordUid,
-                                label:
-                                  coordinadores.find(
-                                    (c) => c.value === (ediciones[row.id]?.coordinadorCuadrilla || coordUid)
-                                  )?.label || coordLabel || coordUid,
-                              }
-                            : null
-                      }
-                        onChange={(sel) => setEdit(row.id, { coordinadorCuadrilla: sel?.value || "" })}
-                      options={coordinadores}
-                      placeholder="Seleccionar coordinador"
-                      isClearable
-                      {...selectPortalProps}
-                      styles={
-                        isDark
-                          ? {
-                              ...selectPortalStyles,
-                              control: (base: any, state: any) => ({
-                                ...base,
-                                backgroundColor: "#020617",
-                                borderColor: state.isFocused ? "#38bdf8" : "#334155",
-                                boxShadow: "none",
-                              }),
-                              menu: (base: any) => ({ ...base, backgroundColor: "#0f172a", color: "#e2e8f0" }),
-                              option: (base: any, state: any) => ({
-                                ...base,
-                                backgroundColor: state.isSelected ? "#1d4ed8" : state.isFocused ? "#1e293b" : "#0f172a",
-                                color: "#e2e8f0",
-                              }),
-                              input: (base: any) => ({ ...base, color: "#e2e8f0" }),
-                              placeholder: (base: any) => ({ ...base, color: "#94a3b8" }),
-                              singleValue: (base: any) => ({ ...base, color: "#e2e8f0" }),
-                            }
-                          : selectPortalStyles
-                      }
-                    />
-                    </td>
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">{row.codigoCliente || "-"}</td>
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">{row.cliente || "-"}</td>
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">
-                      <select
-                        className="rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                        value={ediciones[row.id]?.tipoOrden ?? row.tipoOrden ?? ""}
-                        onChange={(e) => setEdit(row.id, { tipoOrden: e.target.value })}
-                      >
-                        <option value="">-- Seleccionar --</option>
-                        <option value="RESIDENCIAL">RESIDENCIAL</option>
-                        <option value="CONDOMINIO">CONDOMINIO</option>
-                      </select>
-                    </td>
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">
-                      <input
-                        type="text"
-                        className="w-full rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                        value={ediciones[row.id]?.observacion ?? row.observacion ?? ""}
-                        onChange={(e) => setEdit(row.id, { observacion: e.target.value })}
-                      />
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {cargando ? (
+                <tr>
+                  <td colSpan={7} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
+                    Cargando...
+                  </td>
+                </tr>
+              ) : pageData.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
+                    No hay registros para los filtros seleccionados
+                  </td>
+                </tr>
+              ) : (
+                pageData.map((row) => {
+                  const coordUid = row.coordinadorUid || "";
+                  const coordLabel = row.coordinadorNombre || row.coordinador || "";
+                  const hasPendingRow = Boolean(ediciones[row.id]);
+                  return (
+                    <tr
+                      key={row.id}
+                      className={`border-t border-slate-200 align-top dark:border-slate-700 ${
+                        hasPendingRow
+                          ? "bg-amber-50/60 dark:bg-amber-900/10"
+                          : "odd:bg-white even:bg-slate-50/60 dark:odd:bg-slate-900 dark:even:bg-slate-800/30"
+                      }`}
+                    >
+                      <td className="px-3 py-2.5 font-medium text-slate-700 dark:text-slate-300">{formatearFecha(row.fechaInstalacion)}</td>
+                      <td className="px-3 py-2.5">{row.cuadrillaNombre || "-"}</td>
+                      <td className="px-3 py-2.5">
+                        <Select
+                          classNamePrefix="coord"
+                          value={
+                            (ediciones[row.id]?.coordinadorCuadrilla || coordUid)
+                              ? {
+                                  value: ediciones[row.id]?.coordinadorCuadrilla || coordUid,
+                                  label:
+                                    coordinadores.find(
+                                      (c) => c.value === (ediciones[row.id]?.coordinadorCuadrilla || coordUid)
+                                    )?.label || coordLabel || coordUid,
+                                }
+                              : null
+                          }
+                          onChange={(sel) => setEdit(row.id, { coordinadorCuadrilla: sel?.value || "" })}
+                          options={coordinadores}
+                          placeholder="Seleccionar coordinador"
+                          isClearable
+                          {...selectPortalProps}
+                          styles={selectStyles}
+                        />
+                      </td>
+                      <td className="px-3 py-2.5 font-medium">{row.codigoCliente || "-"}</td>
+                      <td className="px-3 py-2.5">{row.cliente || "-"}</td>
+                      <td className="px-3 py-2.5">
+                        <select
+                          className="w-full rounded-lg border border-slate-300 px-2.5 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                          value={ediciones[row.id]?.tipoOrden ?? row.tipoOrden ?? ""}
+                          onChange={(e) => setEdit(row.id, { tipoOrden: e.target.value })}
+                        >
+                          <option value="">-- Seleccionar --</option>
+                          <option value="RESIDENCIAL">RESIDENCIAL</option>
+                          <option value="CONDOMINIO">CONDOMINIO</option>
+                        </select>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <input
+                          type="text"
+                          className="w-full rounded-lg border border-slate-300 px-2.5 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                          value={ediciones[row.id]?.observacion ?? row.observacion ?? ""}
+                          onChange={(e) => setEdit(row.id, { observacion: e.target.value })}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
-      <div className="mt-3 flex items-center justify-between">
-        <div className="text-sm text-gray-600 dark:text-slate-400">
-          Mostrando{" "}
-          <strong>
-            {pageData.length > 0 ? (page - 1) * pageSize + 1 : 0}-{(page - 1) * pageSize + pageData.length}
-          </strong>{" "}
-          de <strong>{filtered.length}</strong>
+      <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="text-sm text-slate-600 dark:text-slate-400">
+          Mostrando <strong>{pageData.length > 0 ? (page - 1) * pageSize + 1 : 0}-{(page - 1) * pageSize + pageData.length}</strong> de <strong>{filtered.length}</strong>
         </div>
         <div className="flex items-center gap-2">
           <button
-            className="rounded border border-slate-300 bg-white px-3 py-1 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            type="button"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page === 1}
           >
-            {"<"}
+            Anterior
           </button>
-          <span className="text-sm">
-            Pagina <strong>{page}</strong> / {Math.max(1, Math.ceil(filtered.length / pageSize))}
+          <span className="text-sm text-slate-700 dark:text-slate-300">
+            Pagina <strong>{page}</strong> / {totalPages}
           </span>
           <button
-            className="rounded border border-slate-300 bg-white px-3 py-1 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-            onClick={() => setPage((p) => Math.min(Math.max(1, Math.ceil(filtered.length / pageSize)), p + 1))}
-            disabled={page >= Math.max(1, Math.ceil(filtered.length / pageSize))}
+            type="button"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
           >
-            {">"}
+            Siguiente
           </button>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
-

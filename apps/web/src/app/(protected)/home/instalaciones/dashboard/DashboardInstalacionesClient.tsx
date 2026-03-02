@@ -320,7 +320,13 @@ export default function DashboardInstalacionesClient() {
         });
       }
     }
-    return Array.from(acc.values());
+    return Array.from(acc.values()).sort((a, b) => {
+      if ((b.finalizadas || 0) !== (a.finalizadas || 0)) return (b.finalizadas || 0) - (a.finalizadas || 0);
+      if ((b.canceladas || 0) !== (a.canceladas || 0)) return (b.canceladas || 0) - (a.canceladas || 0);
+      return String(a.cuadrillaLabel || "").localeCompare(String(b.cuadrillaLabel || ""), "es", {
+        sensitivity: "base",
+      });
+    });
   }, [data]);
   const chartCuadrillas = useMemo(() => {
     const labels = cuadrillasCategories.map((x) => x.cuadrillaLabel);

@@ -48,7 +48,8 @@ function getGroup(href: string): GroupKey {
     href === "/home/instalaciones" ||
     href === "/home/instalaciones/dashboard" ||
     href === "/home/instalaciones/materiales" ||
-    href === "/home/instalaciones/detalle"
+    href === "/home/instalaciones/detalle" ||
+    href === "/home/instalaciones/actas-dia"
   ) {
     return "INSTALACIONES";
   }

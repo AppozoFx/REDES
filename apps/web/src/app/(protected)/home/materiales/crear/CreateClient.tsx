@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { createMaterialAction } from "./actions";
 
 function stripDiacritics(input: string): string {
-  return input.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/�/gi, (m) => (m === "�" ? "n" : "N"));
+  return input.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
 function toId(nombre: string): string {
@@ -19,19 +19,23 @@ function toId(nombre: string): string {
 
 export default function CreateMaterialClient() {
   const router = useRouter();
+  const defaultAreas = ["INSTALACIONES", "MANTENIMIENTO"];
   const [nombre, setNombre] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [unidadTipo, setUnidadTipo] = useState<"UND" | "METROS">("UND");
-  const [areas, setAreas] = useState<string[]>([]);
+  const [areas, setAreas] = useState<string[]>(defaultAreas);
   const [vendible, setVendible] = useState(false);
 
   const [metrosPorUnd, setMetrosPorUnd] = useState<string>("");
+  const [precioUndMetros, setPrecioUndMetros] = useState<string>("");
   const [precioPorMetro, setPrecioPorMetro] = useState<string>("");
   const [minUndUi, setMinUndUi] = useState<string>("");
   const [minMetrosSueltosUi, setMinMetrosSueltosUi] = useState<string>("");
 
   const [precioUnd, setPrecioUnd] = useState<string>("");
   const [minStockUnd, setMinStockUnd] = useState<string>("");
+  const [stockInicialUnd, setStockInicialUnd] = useState<string>("");
+  const [stockInicialUndMetros, setStockInicialUndMetros] = useState<string>("");
 
   const matId = useMemo(() => toId(nombre), [nombre]);
 
@@ -44,14 +48,34 @@ export default function CreateMaterialClient() {
     setDescripcion("");
     setVendible(false);
     setPrecioUnd("");
+    setPrecioUndMetros("");
     setPrecioPorMetro("");
     setMinStockUnd("");
     setMinUndUi("");
     setMinMetrosSueltosUi("");
     setMetrosPorUnd("");
-    setAreas([]);
+    setStockInicialUnd("");
+    setStockInicialUndMetros("");
+    setAreas(defaultAreas);
     setUnidadTipo("UND");
   };
+
+  useEffect(() => {
+    const toNum = (v: string) => Number(String(v ?? "").replace(",", "."));
+    const roundUpHalfStep = (v: number) => Math.ceil(v * 2) / 2;
+    if (unidadTipo !== "METROS" || !vendible) {
+      setPrecioPorMetro("");
+      return;
+    }
+    const und = toNum(precioUndMetros || "0");
+    const mpo = toNum(metrosPorUnd || "0");
+    if (und > 0 && mpo > 0) {
+      const calc = und / mpo;
+      setPrecioPorMetro(roundUpHalfStep(calc).toFixed(2));
+    } else {
+      setPrecioPorMetro("");
+    }
+  }, [unidadTipo, vendible, precioUndMetros, metrosPorUnd]);
 
   useEffect(() => {
     if (!result) return;
@@ -83,14 +107,18 @@ export default function CreateMaterialClient() {
     if (unidadTipo === "UND") {
       if (precioUnd) fd.set("precioUnd", String(Number(precioUnd)));
       if (minStockUnd) fd.set("minStockUnd", String(Number(minStockUnd)));
+      if (stockInicialUnd) fd.set("stockInicialUnd", String(Math.max(0, Math.floor(Number(stockInicialUnd)))));
     } else {
       const toNum = (v: string) => Number(String(v ?? "").replace(",", "."));
       if (metrosPorUnd) fd.set("metrosPorUnd", String(toNum(metrosPorUnd)));
       if (precioPorMetro) fd.set("precioPorMetro", String(toNum(precioPorMetro)));
-      const und = Math.max(0, Math.floor(Number(minUndUi || "0")));
+      const stockUndInit = Math.max(0, toNum(stockInicialUndMetros || "0"));
       const mpo = toNum(metrosPorUnd || "0");
+      if (stockUndInit > 0 && mpo > 0) fd.set("stockInicialMetros", String(stockUndInit * mpo));
+      const und = Math.max(0, Math.floor(Number(minUndUi || "0")));
+      const mpoMin = toNum(metrosPorUnd || "0");
       const sueltos = Math.max(0, toNum(minMetrosSueltosUi || "0"));
-      const totalMetros = und * mpo + sueltos;
+      const totalMetros = und * mpoMin + sueltos;
       if (totalMetros > 0) fd.set("minStockMetros", String(totalMetros));
     }
     startTransition(() => (action as any)(fd));
@@ -115,7 +143,7 @@ export default function CreateMaterialClient() {
               <input value={nombre} onChange={(e) => setNombre(e.target.value.toUpperCase())} className={fieldClass} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">C�digo generado</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Codigo generado</label>
               <div className="mt-1 flex h-10 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 font-mono text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200">
                 {matId || "(vacio)"}
               </div>
@@ -179,14 +207,25 @@ export default function CreateMaterialClient() {
             <div className="space-y-3">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">1 UND = (metros)</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Equivalencia (metros por UND)</label>
                   <input value={metrosPorUnd} onChange={(e) => setMetrosPorUnd(e.target.value)} className={fieldClass} inputMode="decimal" />
+                  <p className="mt-1 text-xs text-slate-500">Ejemplo: si 1 UND equivale a 2.5 metros, escribe 2.5</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Stock inicial (UND)</label>
+                  <input value={stockInicialUndMetros} onChange={(e) => setStockInicialUndMetros(e.target.value)} className={fieldClass} inputMode="decimal" />
                 </div>
                 {vendible && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Precio por metro</label>
-                    <input value={precioPorMetro} onChange={(e) => setPrecioPorMetro(e.target.value)} className={fieldClass} inputMode="decimal" />
-                  </div>
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Precio por UND</label>
+                      <input value={precioUndMetros} onChange={(e) => setPrecioUndMetros(e.target.value)} className={fieldClass} inputMode="decimal" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Precio por metro (auto)</label>
+                      <input value={precioPorMetro} readOnly className={`${fieldClass} bg-slate-50 dark:bg-slate-800/60`} inputMode="decimal" />
+                    </div>
+                  </>
                 )}
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -213,7 +252,7 @@ export default function CreateMaterialClient() {
           )}
 
           {unidadTipo === "UND" && (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               {vendible && (
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Precio por UND</label>
@@ -223,6 +262,10 @@ export default function CreateMaterialClient() {
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Minimo (UND)</label>
                 <input value={minStockUnd} onChange={(e) => setMinStockUnd(e.target.value)} className={fieldClass} inputMode="numeric" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Stock inicial (UND)</label>
+                <input value={stockInicialUnd} onChange={(e) => setStockInicialUnd(e.target.value)} className={fieldClass} inputMode="numeric" />
               </div>
             </div>
           )}

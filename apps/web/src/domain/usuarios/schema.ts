@@ -88,6 +88,7 @@ export const UserDisableSchema = z.object({
  * ✅ Update perfil (para siguiente paso /admin/usuarios/[uid])
  */
 export const UserPerfilUpdateSchema = z.object({
+  email: z.string().email().optional(),
   nombres: z.string().min(2).max(80).trim().optional(),
   apellidos: z.string().min(2).max(80).trim().optional(),
   tipoDoc: TipoDocSchema.optional(),

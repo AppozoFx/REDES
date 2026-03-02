@@ -8,7 +8,7 @@ export function PermissionCreateForm() {
 
   return (
     <form
-      className="space-y-3 max-w-lg"
+      className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900"
       action={async (fd) => {
         setError(null);
 
@@ -28,30 +28,28 @@ export function PermissionCreateForm() {
     >
       <div className="space-y-1">
         <label className="text-sm font-medium">ID (ej: USERS_EDIT)</label>
-        <input name="id" className="ui-input-inline ui-input-inline ui-input font-mono" placeholder="USERS_EDIT" />
-        <p className="text-xs opacity-70">Solo A-Z, 0-9 y _</p>
+        <input name="id" className="ui-input font-mono" placeholder="USERS_EDIT" />
+        <p className="text-xs text-slate-500 dark:text-slate-400">Solo A-Z, 0-9 y _</p>
       </div>
 
       <div className="space-y-1">
-        <label className="text-sm font-medium">Módulo</label>
-        <input name="modulo" className="ui-input-inline ui-input-inline ui-input" placeholder="USUARIOS" />
+        <label className="text-sm font-medium">Modulo</label>
+        <input name="modulo" className="ui-input" placeholder="USUARIOS" />
       </div>
 
       <div className="space-y-1">
         <label className="text-sm font-medium">Nombre</label>
-        <input name="nombre" className="ui-input-inline ui-input-inline ui-input" placeholder="Editar usuarios" />
+        <input name="nombre" className="ui-input" placeholder="Editar usuarios" />
       </div>
 
       <div className="space-y-1">
-        <label className="text-sm font-medium">Descripción</label>
-        <textarea name="descripcion" className="ui-textarea-inline ui-textarea-inline ui-textarea" rows={3} />
+        <label className="text-sm font-medium">Descripcion</label>
+        <textarea name="descripcion" className="ui-textarea" rows={3} />
       </div>
 
-      {error && <div className="text-sm text-red-600">{error}</div>}
+      {error && <div className="text-sm text-rose-600 dark:text-rose-300">{error}</div>}
 
-      <button className="rounded border px-3 py-2">Crear</button>
+      <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700">Crear</button>
     </form>
   );
 }
-
-

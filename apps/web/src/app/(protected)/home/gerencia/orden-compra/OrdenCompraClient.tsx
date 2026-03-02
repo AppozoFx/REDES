@@ -402,12 +402,20 @@ export default function OrdenCompraClient() {
     [coordinadores, coordinadorUid]
   );
 
+  const cleanItems = useMemo(
+    () =>
+      items.filter(
+        (x) => String(x.codigo || "").trim() && String(x.descripcion || "").trim() && Number(x.cantidad || 0) > 0
+      ),
+    [items]
+  );
+
   const totals = useMemo(() => {
-    const subtotal = Number(items.reduce((acc, it) => acc + Number(it.total || 0), 0).toFixed(2));
+    const subtotal = Number(cleanItems.reduce((acc, it) => acc + Number(it.total || 0), 0).toFixed(2));
     const igv = Number((subtotal * 0.18).toFixed(2));
     const total = Number((subtotal + igv).toFixed(2));
     return { subtotal, igv, total };
-  }, [items]);
+  }, [cleanItems]);
 
   const loadInstalaciones = async () => {
     if (!coordinadorUid) {
@@ -455,6 +463,10 @@ export default function OrdenCompraClient() {
     ]);
   };
 
+  const eliminarItem = (idx: number) => {
+    setItems((prev) => prev.filter((_, i) => i !== idx));
+  };
+
   const nuevaOrden = () => {
     setCoordinadorUid("");
     setPeriodo(defaultPeriodo());
@@ -473,16 +485,15 @@ export default function OrdenCompraClient() {
       return;
     }
     if (!selected.razonSocial || !selected.ruc) {
-      toast.error("El coordinador debe tener razón social y RUC actualizados");
+      toast.error("El coordinador debe tener razon social y RUC actualizados");
       return;
     }
     if (!/^\d{11}$/.test(String(selected.ruc || "").replace(/\D/g, ""))) {
-      toast.error("RUC inválido");
+      toast.error("RUC invalido");
       return;
     }
-    const cleanItems = items.filter((x) => x.codigo && x.descripcion && x.cantidad > 0);
     if (!cleanItems.length) {
-      toast.error("Agrega al menos un ítem");
+      toast.error("Agrega al menos un item");
       return;
     }
 
@@ -608,7 +619,7 @@ export default function OrdenCompraClient() {
             onClick={agregarItem}
             className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
           >
-            Agregar ítem
+            Agregar item
           </button>
         </div>
       </section>
@@ -617,7 +628,7 @@ export default function OrdenCompraClient() {
         <h2 className="mb-2 text-sm font-semibold">Proveedor (desde Coordinadores)</h2>
         <div className="grid gap-3 md:grid-cols-3">
           <div className="rounded border bg-slate-50 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
-            <div className="text-xs text-slate-500">Razón social</div>
+            <div className="text-xs text-slate-500">Razon social</div>
             <div className="font-medium">{selected?.razonSocial || "-"}</div>
           </div>
           <div className="rounded border bg-slate-50 p-2 text-sm dark:border-slate-700 dark:bg-slate-800">
@@ -678,23 +689,24 @@ export default function OrdenCompraClient() {
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">
-        <h2 className="mb-2 text-sm font-semibold">Ítems de Orden de Compra</h2>
+        <h2 className="mb-2 text-sm font-semibold">Items de Orden de Compra</h2>
         <div className="overflow-x-auto">
           <table className="min-w-full border-collapse text-sm">
             <thead className="bg-slate-100 dark:bg-slate-800 dark:text-slate-200">
               <tr>
-                <th className="border p-2">Código</th>
-                <th className="border p-2 text-left">Descripción</th>
+                <th className="border p-2">Codigo</th>
+                <th className="border p-2 text-left">Descripcion</th>
                 <th className="border p-2">Cantidad</th>
                 <th className="border p-2">Precio</th>
                 <th className="border p-2">Total</th>
+                <th className="border p-2">Accion</th>
               </tr>
             </thead>
             <tbody>
               {!items.length && (
                 <tr>
-                  <td className="border p-3 text-center text-slate-500 dark:border-slate-700 dark:text-slate-300" colSpan={5}>
-                    Sin ítems
+                  <td className="border p-3 text-center text-slate-500 dark:border-slate-700 dark:text-slate-300" colSpan={6}>
+                    Sin items
                   </td>
                 </tr>
               )}
@@ -731,6 +743,15 @@ export default function OrdenCompraClient() {
                     />
                   </td>
                   <td className="border p-2 text-right">{money(it.total)}</td>
+                  <td className="border p-2 text-center">
+                    <button
+                      type="button"
+                      onClick={() => eliminarItem(idx)}
+                      className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-700 dark:bg-rose-900/30 dark:text-rose-300"
+                    >
+                      Eliminar
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -759,7 +780,7 @@ export default function OrdenCompraClient() {
             >
               {saving ? "Generando..." : "Guardar + Generar PDF"}
             </button>
-            {lastCode && <div className="mt-2 text-xs text-slate-600 dark:text-slate-300">Última OC: {lastCode}</div>}
+            {lastCode && <div className="mt-2 text-xs text-slate-600 dark:text-slate-300">Ultima OC: {lastCode}</div>}
           </div>
         </div>
       </section>

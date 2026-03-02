@@ -1,13 +1,12 @@
 "use server";
 
 import { requireServerPermission } from "@/core/auth/require";
-import { z } from "zod";
 import {
   createMaterial,
-  moneyToCents,
   metersToCm,
 } from "@/domain/materiales/repo";
 import { MaterialCreateInputSchema } from "@/domain/materiales/schemas";
+import { adminDb } from "@/lib/firebase/admin";
 
 const PERM = "MATERIALES_CREATE";
 
@@ -35,10 +34,34 @@ export async function createMaterialAction(arg1: any, arg2?: any): Promise<
       minStockMetros: form.get("minStockMetros") ? Number(form.get("minStockMetros")) : undefined,
       precioUnd: form.get("precioUnd") ? Number(form.get("precioUnd")) : undefined,
       minStockUnd: form.get("minStockUnd") ? Number(form.get("minStockUnd")) : undefined,
+      stockInicialUnd: form.get("stockInicialUnd") ? Number(form.get("stockInicialUnd")) : undefined,
+      stockInicialMetros: form.get("stockInicialMetros") ? Number(form.get("stockInicialMetros")) : undefined,
     } as any;
 
     const parsed = MaterialCreateInputSchema.parse(raw);
     const { id } = await createMaterial(parsed, session.uid);
+    const stockRef = adminDb().collection("almacen_stock").doc(id);
+    if (parsed.unidadTipo === "UND") {
+      const stockInicialUnd = Math.max(0, Math.floor(Number(raw.stockInicialUnd || 0)));
+      await stockRef.set(
+        {
+          materialId: id,
+          unidadTipo: "UND",
+          stockUnd: stockInicialUnd,
+        },
+        { merge: true }
+      );
+    } else {
+      const stockInicialMetros = Math.max(0, Number(raw.stockInicialMetros || 0));
+      await stockRef.set(
+        {
+          materialId: id,
+          unidadTipo: "METROS",
+          stockCm: metersToCm(stockInicialMetros),
+        },
+        { merge: true }
+      );
+    }
     return { ok: true, id };
   } catch (e: any) {
     const code = String(e?.message ?? "ERROR");
@@ -64,4 +87,3 @@ export async function createMaterialAction(arg1: any, arg2?: any): Promise<
     return { ok: false, error: { formErrors: [code] } };
   }
 }
-

@@ -12,7 +12,7 @@ function SubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className="rounded border px-3 py-2 hover:bg-black/5 disabled:opacity-60"
+      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
     >
       {pending ? "Creando..." : "Crear usuario"}
     </button>
@@ -20,7 +20,6 @@ function SubmitButton() {
 }
 
 export function FormCreateUsuario({ roles, areas }: { roles: string[]; areas: string[] }) {
-  // ✅ React 19 / Next 16: useActionState (no useFormState)
   const [state, formAction] = React.useActionState(createUsuario as any, undefined as any);
 
   React.useEffect(() => {
@@ -33,126 +32,112 @@ export function FormCreateUsuario({ roles, areas }: { roles: string[]; areas: st
   }, [state]);
 
   return (
-    <form action={formAction} className="space-y-4 rounded border p-4">
-      {/* Auth */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div>
-          <label className="text-sm">Email</label>
-          <input name="email" className="ui-input-inline ui-input-inline ui-input" required />
+    <form action={formAction} className="space-y-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Credenciales</h2>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div>
+            <label className="text-sm">Email</label>
+            <input name="email" className="ui-input mt-1" required />
+          </div>
+          <div>
+            <label className="text-sm">Password</label>
+            <input name="password" type="password" className="ui-input mt-1" required />
+          </div>
         </div>
-        <div>
-          <label className="text-sm">Password</label>
-          <input
-            name="password"
-            type="password"
-            className="ui-input"
-            required
-          />
-        </div>
-      </div>
+      </section>
 
-      {/* Perfil requerido */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div>
-          <label className="text-sm">Nombres</label>
-          <input name="nombres" className="ui-input-inline ui-input-inline ui-input" required />
-        </div>
-        <div>
-          <label className="text-sm">Apellidos</label>
-          <input name="apellidos" className="ui-input-inline ui-input-inline ui-input" required />
-        </div>
+      <section className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-700">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Perfil</h2>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div>
+            <label className="text-sm">Nombres</label>
+            <input name="nombres" className="ui-input mt-1" required />
+          </div>
+          <div>
+            <label className="text-sm">Apellidos</label>
+            <input name="apellidos" className="ui-input mt-1" required />
+          </div>
 
-        <div>
-          <label className="text-sm">Tipo doc</label>
-          <select name="tipoDoc" className="ui-select-inline ui-select-inline ui-select" defaultValue="DNI">
-            <option value="DNI">DNI</option>
-            <option value="CE">CE</option>
-          </select>
-        </div>
-        <div>
-          <label className="text-sm">Nro doc</label>
-          <input name="nroDoc" className="ui-input-inline ui-input-inline ui-input" required />
-        </div>
+          <div>
+            <label className="text-sm">Tipo doc</label>
+            <select name="tipoDoc" className="ui-select mt-1" defaultValue="DNI">
+              <option value="DNI">DNI</option>
+              <option value="CE">CE</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-sm">Nro doc</label>
+            <input name="nroDoc" className="ui-input mt-1" required />
+          </div>
 
-        <div>
-          <label className="text-sm">Celular</label>
-          <input name="celular" className="ui-input-inline ui-input-inline ui-input" required />
-        </div>
-        <div>
-          <label className="text-sm">Dirección</label>
-          <input name="direccion" className="ui-input-inline ui-input-inline ui-input" required />
-        </div>
+          <div>
+            <label className="text-sm">Celular</label>
+            <input name="celular" className="ui-input mt-1" required />
+          </div>
+          <div>
+            <label className="text-sm">Direccion</label>
+            <input name="direccion" className="ui-input mt-1" required />
+          </div>
 
-        <div>
-          <label className="text-sm">Género</label>
-          <select
-            name="genero"
-            className="ui-select"
-            defaultValue="NO_ESPECIFICA"
-          >
-            <option value="NO_ESPECIFICA">No especifica</option>
-            <option value="M">Masculino</option>
-            <option value="F">Femenino</option>
-            <option value="OTRO">Otro</option>
-          </select>
-        </div>
-        <div>
-          <label className="text-sm">Nacionalidad</label>
-          <input
-            name="nacionalidad"
-            defaultValue="PERUANA"
-            className="ui-input"
-            required
-          />
-        </div>
+          <div>
+            <label className="text-sm">Genero</label>
+            <select name="genero" className="ui-select mt-1" defaultValue="NO_ESPECIFICA">
+              <option value="NO_ESPECIFICA">No especifica</option>
+              <option value="M">Masculino</option>
+              <option value="F">Femenino</option>
+              <option value="OTRO">Otro</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-sm">Nacionalidad</label>
+            <input name="nacionalidad" defaultValue="PERUANA" className="ui-input mt-1" required />
+          </div>
 
-        <div>
-          <label className="text-sm">F. ingreso</label>
-          <input name="fIngreso" type="date" className="ui-input-inline ui-input-inline ui-input" required />
-        </div>
-        <div>
-          <label className="text-sm">F. nacimiento</label>
-          <input
-            name="fNacimiento"
-            type="date"
-            className="ui-input"
-            required
-          />
-        </div>
+          <div>
+            <label className="text-sm">F. ingreso</label>
+            <input name="fIngreso" type="date" className="ui-input mt-1" required />
+          </div>
+          <div>
+            <label className="text-sm">F. nacimiento</label>
+            <input name="fNacimiento" type="date" className="ui-input mt-1" required />
+          </div>
 
-        <div>
-          <label className="text-sm">Estado perfil</label>
-          <select name="estadoPerfil" className="ui-select-inline ui-select-inline ui-select" defaultValue="ACTIVO">
-            <option value="ACTIVO">ACTIVO</option>
-            <option value="INACTIVO">INACTIVO</option>
-          </select>
+          <div>
+            <label className="text-sm">Estado perfil</label>
+            <select name="estadoPerfil" className="ui-select mt-1" defaultValue="ACTIVO">
+              <option value="ACTIVO">ACTIVO</option>
+              <option value="INACTIVO">INACTIVO</option>
+            </select>
+          </div>
         </div>
-      </div>
+      </section>
 
-      {/* Recomendados (opcionales) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border-t pt-4">
-        <div>
-          <label className="text-sm">Sede (opcional)</label>
-          <input name="sede" className="ui-input-inline ui-input-inline ui-input" />
+      <section className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-700">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Asignaciones opcionales</h2>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div>
+            <label className="text-sm">Sede</label>
+            <input name="sede" className="ui-input mt-1" />
+          </div>
+          <div>
+            <label className="text-sm">Cargo</label>
+            <input name="cargo" className="ui-input mt-1" />
+          </div>
+          <div>
+            <label className="text-sm">CuadrillaId</label>
+            <input name="cuadrillaId" className="ui-input mt-1" />
+          </div>
+          <div>
+            <label className="text-sm">Supervisor UID</label>
+            <input name="supervisorUid" className="ui-input mt-1" />
+          </div>
         </div>
-        <div>
-          <label className="text-sm">Cargo (opcional)</label>
-          <input name="cargo" className="ui-input-inline ui-input-inline ui-input" />
-        </div>
-        <div>
-          <label className="text-sm">CuadrillaId (opcional)</label>
-          <input name="cuadrillaId" className="ui-input-inline ui-input-inline ui-input" />
-        </div>
-        <div>
-          <label className="text-sm">Supervisor (opcional)</label>
-          <input name="supervisorUid" className="ui-input-inline ui-input-inline ui-input" />
-        </div>
-      </div>
+      </section>
 
-      {/* Roles / Áreas */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4">
-        <div className="rounded border p-3">
-          <div className="font-medium mb-2">Roles</div>
+      <section className="grid grid-cols-1 gap-4 border-t border-slate-200 pt-4 md:grid-cols-2 dark:border-slate-700">
+        <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+          <div className="mb-2 font-medium">Roles</div>
           <div className="space-y-2">
             {roles.map((r) => (
               <label key={r} className="flex items-center gap-2 text-sm">
@@ -160,12 +145,12 @@ export function FormCreateUsuario({ roles, areas }: { roles: string[]; areas: st
                 {r}
               </label>
             ))}
-            {roles.length === 0 && <div className="text-sm opacity-70">No hay roles activos.</div>}
+            {roles.length === 0 && <div className="text-sm text-slate-500 dark:text-slate-400">No hay roles activos.</div>}
           </div>
         </div>
 
-        <div className="rounded border p-3">
-          <div className="font-medium mb-2">Áreas</div>
+        <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+          <div className="mb-2 font-medium">Areas</div>
           <div className="space-y-2">
             {areas.map((a) => (
               <label key={a} className="flex items-center gap-2 text-sm">
@@ -173,19 +158,18 @@ export function FormCreateUsuario({ roles, areas }: { roles: string[]; areas: st
                 {a}
               </label>
             ))}
-            {areas.length === 0 && <div className="text-sm opacity-70">No hay áreas activas.</div>}
+            {areas.length === 0 && <div className="text-sm text-slate-500 dark:text-slate-400">No hay areas activas.</div>}
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Result / Errors */}
       {state && (
-        <div className="rounded border p-3 bg-black/5 text-sm">
-          <div>Resultado:</div>
-          <pre className="whitespace-pre-wrap break-words">{JSON.stringify(state, null, 2)}</pre>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/50">
+          <div className="font-medium">Resultado</div>
+          <pre className="mt-1 whitespace-pre-wrap break-words">{JSON.stringify(state, null, 2)}</pre>
 
           {state?.ok === false && state?.error?.formErrors?.length > 0 && (
-            <ul className="list-disc ml-5 mt-2">
+            <ul className="mt-2 list-disc pl-5">
               {state.error.formErrors.map((e: string, i: number) => (
                 <li key={i}>{e}</li>
               ))}
@@ -198,5 +182,3 @@ export function FormCreateUsuario({ roles, areas }: { roles: string[]; areas: st
     </form>
   );
 }
-
-

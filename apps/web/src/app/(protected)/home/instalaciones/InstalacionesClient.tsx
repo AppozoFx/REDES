@@ -102,6 +102,8 @@ export default function InstalacionesClient() {
     dia: "",
     cuadrilla: "",
     tipoCuadrilla: [] as string[],
+    coordinador: "",
+    tipoOrden: "",
     busqueda: "",
     filtrarPlanGamer: false,
     filtrarKitWifiPro: false,
@@ -209,6 +211,16 @@ export default function InstalacionesClient() {
     }));
   }, [instalaciones]);
 
+  const opcionesCoordinador = useMemo(() => {
+    const valores = new Map<string, string>();
+    for (const row of instalaciones) {
+      const label = String(row?.coordinadorNombre || row?.coordinador || row?.coordinadorUid || "").trim();
+      if (!label) continue;
+      valores.set(label, label);
+    }
+    return Array.from(valores.values()).sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
+  }, [instalaciones]);
+
   /* =========================
      Filtro + Orden
   ========================= */
@@ -223,6 +235,10 @@ export default function InstalacionesClient() {
 
       const coincideTipoCuadrilla =
         filtros.tipoCuadrilla.length > 0 ? filtros.tipoCuadrilla.includes(l.tipoCuadrilla) : true;
+      const valorCoordinador = String(l.coordinadorNombre || l.coordinador || l.coordinadorUid || "").trim();
+      const coincideCoordinador = filtros.coordinador ? valorCoordinador === filtros.coordinador : true;
+      const valorTipoOrden = String(l.tipoOrden || "").trim().toUpperCase();
+      const coincideTipoOrden = filtros.tipoOrden ? valorTipoOrden === filtros.tipoOrden : true;
 
       const coincideBusqueda = deb
         ? (l.codigoCliente || "").toString().toLowerCase().includes(deb) ||
@@ -252,6 +268,8 @@ export default function InstalacionesClient() {
       return (
         coincideCuadrilla &&
         coincideTipoCuadrilla &&
+        coincideCoordinador &&
+        coincideTipoOrden &&
         coincideBusqueda &&
         cumpleGrupoAddons &&
         cumpleCat5e &&
@@ -362,6 +380,8 @@ export default function InstalacionesClient() {
       dia: "",
       cuadrilla: "",
       tipoCuadrilla: [],
+      coordinador: "",
+      tipoOrden: "",
       busqueda: "",
       filtrarPlanGamer: false,
       filtrarKitWifiPro: false,
@@ -597,7 +617,7 @@ export default function InstalacionesClient() {
       </div>
 
       {/* Filtros */}
-      <div className="mb-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+      <div className="mb-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
         <div className="flex flex-col">
           <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Mes</label>
           <input
@@ -670,6 +690,37 @@ export default function InstalacionesClient() {
             autoComplete="off"
             className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
           />
+        </div>
+
+        <div className="flex flex-col">
+          <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Coordinador</label>
+          <select
+            name="coordinador"
+            value={filtros.coordinador}
+            onChange={handleFiltroInput}
+            className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+          >
+            <option value="">Todos</option>
+            {opcionesCoordinador.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex flex-col">
+          <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Tipo orden</label>
+          <select
+            name="tipoOrden"
+            value={filtros.tipoOrden}
+            onChange={handleFiltroInput}
+            className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+          >
+            <option value="">Todos</option>
+            <option value="CONDOMINIO">CONDOMINIO</option>
+            <option value="RESIDENCIAL">RESIDENCIAL</option>
+          </select>
         </div>
 
         <div className="flex flex-col">

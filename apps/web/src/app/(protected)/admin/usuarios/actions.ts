@@ -502,6 +502,7 @@ export async function updateUsuarioPerfil(uid: string, formData: FormData) {
   }
 
   const parsed = UserPerfilUpdateSchema.safeParse({
+    email: String(formData.get("email") ?? "").trim() || undefined,
     nombres: String(formData.get("nombres") ?? "").trim() || undefined,
     apellidos: String(formData.get("apellidos") ?? "").trim() || undefined,
     tipoDoc: String(formData.get("tipoDoc") ?? "").trim() || undefined,
@@ -524,6 +525,30 @@ export async function updateUsuarioPerfil(uid: string, formData: FormData) {
 
   const now = new Date();
   const patch: Record<string, any> = stripUndefined({ ...parsed.data });
+  const newEmail =
+    typeof parsed.data.email === "string" ? parsed.data.email.trim().toLowerCase() : undefined;
+
+  const targetAuthUser = await adminAuth().getUser(uid);
+  const currentAuthEmail =
+    typeof targetAuthUser.email === "string" ? targetAuthUser.email.trim().toLowerCase() : "";
+
+  if (newEmail) {
+    if (newEmail !== currentAuthEmail) {
+      try {
+        await adminAuth().updateUser(uid, { email: newEmail });
+      } catch (e: any) {
+        const code = String(e?.code ?? e?.errorInfo?.code ?? "");
+        if (code.includes("email-already-exists")) {
+          return {
+            ok: false as const,
+            error: { formErrors: ["El correo ya esta en uso por otro usuario."] },
+          };
+        }
+        throw e;
+      }
+    }
+    patch.email = newEmail;
+  }
 
   if (patch.fIngreso) patch.fIngreso = ymdToTimestamp(patch.fIngreso);
   if (patch.fNacimiento) patch.fNacimiento = ymdToTimestamp(patch.fNacimiento);

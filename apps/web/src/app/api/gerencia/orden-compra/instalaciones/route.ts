@@ -26,24 +26,16 @@ function normalizeDateYmd(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "";
 }
 
+function tipoOrdenOf(doc: any) {
+  return toStr(doc?.orden?.tipoOrden).toUpperCase();
+}
+
 function isResidencial(doc: any) {
-  const tipoOrden = toStr(doc?.orden?.tipoOrden).toLowerCase();
-  const a = toStr(doc?.residencialCondominio).toLowerCase();
-  const b = toStr(doc?.r_c).toLowerCase();
-  const c = toStr(doc?.tipo).toLowerCase();
-  const d = toStr(doc?.orden?.residencialCondominio).toLowerCase();
-  const v = `${tipoOrden} ${a} ${b} ${c} ${d}`;
-  return v.includes("resid");
+  return tipoOrdenOf(doc) === "RESIDENCIAL";
 }
 
 function isCondominio(doc: any) {
-  const tipoOrden = toStr(doc?.orden?.tipoOrden).toLowerCase();
-  const a = toStr(doc?.residencialCondominio).toLowerCase();
-  const b = toStr(doc?.r_c).toLowerCase();
-  const c = toStr(doc?.tipo).toLowerCase();
-  const d = toStr(doc?.orden?.residencialCondominio).toLowerCase();
-  const v = `${tipoOrden} ${a} ${b} ${c} ${d}`;
-  return v.includes("condo");
+  return tipoOrdenOf(doc) === "CONDOMINIO";
 }
 
 function qtyCat5e(doc: any) {

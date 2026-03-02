@@ -147,8 +147,9 @@ export default function EditClient({ initial }: { initial: any }) {
             <div className="space-y-3">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">1 UND = (metros)</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Equivalencia (metros por UND)</label>
                   <input value={metrosPorUnd} onChange={(e) => setMetrosPorUnd(e.target.value)} className={fieldClass} inputMode="decimal" />
+                  <p className="mt-1 text-xs text-slate-500">Ejemplo: si 1 UND equivale a 2.5 metros, escribe 2.5</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Stock actual (metros)</label>

@@ -161,6 +161,10 @@ function parseGeoRaw(raw: any): { lat: number | null; lng: number | null } {
   return { lat: a, lng: b };
 }
 
+function normalizeTipoOrden(raw: any): string {
+  return String(raw || "").trim().toUpperCase();
+}
+
 function diffDaysExclusive(fromYmd: string, toYmdExclusive: string) {
   const from = dateFromYmd(fromYmd).getTime();
   const to = dateFromYmd(toYmdExclusive).getTime();
@@ -397,6 +401,8 @@ export async function GET(req: Request) {
         .filter((x) => !x.isGarantia)
         .map((x) => {
           const inst = x.codiSeguiClien ? instMap.get(x.codiSeguiClien) : null;
+          const tipoOrdenFromInst = normalizeTipoOrden(inst?.orden?.tipoOrden || inst?.tipoOrden);
+          const tipoOrdenResolved = tipoOrdenFromInst || normalizeTipoOrden(x.tipoOrden);
           const liqEstado = String(inst?.liquidacion?.estado || "").toUpperCase();
           const liqAt = toIso(inst?.liquidacion?.at);
           const correccionPendiente = !!(inst?.correccionPendiente || inst?.corregido);
@@ -414,7 +420,7 @@ export async function GET(req: Request) {
             cuadrillaId: x.cuadrillaId,
             cuadrillaNombre: x.cuadrillaNombre,
             estado: x.estado,
-            tipoOrden: x.tipoOrden,
+            tipoOrden: tipoOrdenResolved,
             tipoTraba: x.tipoTraba,
             gestorUid: x.gestorUid,
             gestorNombre: x.gestorUid ? uidName.get(x.gestorUid) || x.gestorUid : "",
@@ -452,7 +458,6 @@ export async function GET(req: Request) {
       if (soloNoLiquidadas && x.liquidado) return false;
       return true;
     };
-    const filteredMeta = enriched.filter((x) => matchesFilters(x, false));
     const filtered = enriched.filter((x) => matchesFilters(x, true));
     const filteredPrev = enrichedPrev.filter((x) => matchesFilters(x, true));
     const kpi = computeKpi(filtered);
@@ -541,7 +546,7 @@ export async function GET(req: Request) {
 
     const gestoresMeta = Array.from(
       new Map(
-        filteredMeta
+        enriched
           .filter((x) => x.gestorUid)
           .map((x) => [x.gestorUid, { uid: x.gestorUid, nombre: x.gestorNombre || x.gestorUid }])
       ).values()
@@ -549,7 +554,7 @@ export async function GET(req: Request) {
 
     const coordinadoresMeta = Array.from(
       new Map(
-        filteredMeta
+        enriched
           .filter((x) => x.coordinadorUid)
           .map((x) => [x.coordinadorUid, { uid: x.coordinadorUid, nombre: x.coordinadorNombre || x.coordinadorUid }])
       ).values()
@@ -557,18 +562,18 @@ export async function GET(req: Request) {
 
     const cuadrillasMeta = Array.from(
       new Map(
-        filteredMeta
+        enriched
           .filter((x) => x.cuadrillaId || x.cuadrillaNombre)
           .map((x) => [x.cuadrillaId || x.cuadrillaNombre, { id: x.cuadrillaId || x.cuadrillaNombre, nombre: x.cuadrillaNombre || x.cuadrillaId }])
       ).values()
     ).sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
 
-    const tiposOrdenMeta = Array.from(new Set(filteredMeta.map((x) => x.tipoOrden).filter(Boolean))).sort();
-    const estadosMeta = Array.from(new Set(filteredMeta.map((x) => x.estado).filter(Boolean))).sort();
-    const regionesOrdenesMeta = Array.from(new Set(filteredMeta.map((x) => x.regionOrden).filter(Boolean))).sort((a, b) =>
+    const tiposOrdenMeta = Array.from(new Set(enriched.map((x) => x.tipoOrden).filter(Boolean))).sort();
+    const estadosMeta = Array.from(new Set(enriched.map((x) => x.estado).filter(Boolean))).sort();
+    const regionesOrdenesMeta = Array.from(new Set(enriched.map((x) => x.regionOrden).filter(Boolean))).sort((a, b) =>
       a.localeCompare(b, "es", { sensitivity: "base" })
     );
-    const distritosOrdenesMeta = Array.from(new Set(filteredMeta.map((x) => x.distritoOrden).filter(Boolean))).sort((a, b) =>
+    const distritosOrdenesMeta = Array.from(new Set(enriched.map((x) => x.distritoOrden).filter(Boolean))).sort((a, b) =>
       a.localeCompare(b, "es", { sensitivity: "base" })
     );
 

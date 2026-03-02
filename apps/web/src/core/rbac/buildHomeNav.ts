@@ -81,6 +81,11 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
         href: "/home/instalaciones/detalle",
       });
       items.push({
+        key: "INSTALACIONES_ACTAS_DIA",
+        label: "Instalaciones: Actas por dia",
+        href: "/home/instalaciones/actas-dia",
+      });
+      items.push({
         key: "INSTALACIONES_ACTAS",
         label: "Recepcion de Actas",
         href: "/home/instalaciones/actas",

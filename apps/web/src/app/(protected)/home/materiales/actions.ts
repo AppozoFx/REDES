@@ -8,15 +8,78 @@ import { adminDb } from "@/lib/firebase/admin";
 
 export async function listMaterialesAction(params: { q?: string; unidadTipo?: string; area?: string; vendible?: string }) {
   await requireServerPermission("MATERIALES_VIEW");
-  const unidadTipo = params.unidadTipo === "UND" || params.unidadTipo === "METROS" ? (params.unidadTipo as any) : undefined;
-  const vendible = params.vendible === "true" ? true : params.vendible === "false" ? false : undefined;
-  const items = await listMateriales({ q: params.q, unidadTipo, area: params.area, vendible, limit: 500 });
+  const arg = (params && typeof params === "object" && "q" in params ? params : {}) as {
+    q?: string;
+    unidadTipo?: string;
+    area?: string;
+    vendible?: string;
+  };
+  const unidadTipo = arg.unidadTipo === "UND" || arg.unidadTipo === "METROS" ? (arg.unidadTipo as any) : undefined;
+  const vendible = arg.vendible === "true" ? true : arg.vendible === "false" ? false : undefined;
+  const items = await listMateriales({ q: arg.q, unidadTipo, area: arg.area, vendible, limit: 500 });
+  const ids = items.map((m) => String(m.id || "")).filter(Boolean);
+  const stockMap = new Map<string, any>();
+  if (ids.length) {
+    const refs = ids.map((id) => adminDb().collection("almacen_stock").doc(id));
+    const snaps = await adminDb().getAll(...refs);
+    snaps.forEach((s) => {
+      if (s.exists) stockMap.set(s.id, s.data() || {});
+    });
+  }
   // Sanitizar para cliente: remover campos con tipos no serializables (ej. Timestamp)
   const safe = items.map((m: any) => {
     const { audit, ...rest } = m || {};
-    return rest;
+    const stock = stockMap.get(String(rest?.id || "")) || {};
+    const stockUnd = Number(stock?.stockUnd || 0);
+    const stockCm = Number(stock?.stockCm || 0);
+    const stockMetros = Number((stockCm / 100).toFixed(2));
+    return {
+      ...rest,
+      stockUnd,
+      stockMetros,
+    };
   });
   return { ok: true, items: safe } as const;
+}
+
+export async function listMaterialesActionWithPrev(
+  _prev: any,
+  params: { q?: string; unidadTipo?: string; area?: string; vendible?: string }
+) {
+  return listMaterialesAction(params || {});
+}
+
+export async function updateMaterialStockAction(input: { id?: string; unidadTipo?: string; stock?: number | string }) {
+  await requireServerPermission("MATERIALES_EDIT");
+  const id = String(input?.id || "").trim();
+  const unidadTipo = String(input?.unidadTipo || "").trim().toUpperCase();
+  const parsedStock = Number(String(input?.stock ?? "").replace(",", "."));
+  if (!id) return { ok: false, error: "MATERIAL_REQUIRED" } as const;
+  if (unidadTipo !== "UND" && unidadTipo !== "METROS") return { ok: false, error: "UNIDAD_INVALIDA" } as const;
+  if (!Number.isFinite(parsedStock) || parsedStock < 0) return { ok: false, error: "STOCK_INVALIDO" } as const;
+
+  const stockRef = adminDb().collection("almacen_stock").doc(id);
+  if (unidadTipo === "UND") {
+    await stockRef.set(
+      {
+        materialId: id,
+        unidadTipo: "UND",
+        stockUnd: Math.max(0, Math.floor(parsedStock)),
+      },
+      { merge: true }
+    );
+  } else {
+    await stockRef.set(
+      {
+        materialId: id,
+        unidadTipo: "METROS",
+        stockCm: metersToCm(Math.max(0, parsedStock)),
+      },
+      { merge: true }
+    );
+  }
+  revalidatePath("/home/materiales");
+  return { ok: true } as const;
 }
 
 export async function getMaterialAction(id: string) {

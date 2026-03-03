@@ -258,12 +258,11 @@ export function GerenciaHomeClient() {
                 <tr key={r.uid} className="border border-slate-200 dark:border-slate-700">
                   <td className="border p-2">
                     <div className="font-medium">{r.nombre}</div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">{r.uid}</div>
                     <div
                       className={`mt-1 inline-flex rounded border px-2 py-0.5 text-xs ${
                         r.online
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                          : "border-slate-200 bg-slate-100 text-slate-600"
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200"
+                          : "border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-700 dark:bg-rose-900/30 dark:text-rose-200"
                       }`}
                     >
                       {r.online ? "Online" : "Offline"}

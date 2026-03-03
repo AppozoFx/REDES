@@ -5,7 +5,7 @@ const ROLE_HOME: Record<string, string> = {
   RRHH: "/home/rrhh",
   GERENCIA: "/home/gerencia",
   GESTOR: "/home/gestor",
-  COORDINADOR: "/home/instalaciones/asistencia-programada",
+  COORDINADOR: "/home/coordinador",
   TECNICO: "/home/tecnico",
 };
 

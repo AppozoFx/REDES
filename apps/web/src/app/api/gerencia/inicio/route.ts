@@ -24,6 +24,19 @@ function tsToIso(v: any): string | null {
   return typeof v === "string" ? v : null;
 }
 
+function toMillis(v: any): number {
+  if (!v) return 0;
+  if (typeof v?.toMillis === "function") return Number(v.toMillis() || 0);
+  if (typeof v?.toDate === "function") {
+    const d = v.toDate();
+    return d instanceof Date ? d.getTime() : 0;
+  }
+  if (typeof v?.seconds === "number") return Number(v.seconds) * 1000;
+  if (typeof v?._seconds === "number") return Number(v._seconds) * 1000;
+  if (v instanceof Date) return v.getTime();
+  return 0;
+}
+
 function normalizeOrderState(raw: string): "AGENDADA" | "INICIADA" | "FINALIZADA" | "OTROS" {
   const s = String(raw || "").toUpperCase();
   if (s.includes("FINAL")) return "FINALIZADA";
@@ -58,7 +71,7 @@ export async function GET() {
 
     const gestorUids = accessSnap.docs.map((d) => d.id);
     const userRefs = gestorUids.map((uid) => db.collection("usuarios").doc(uid));
-    const presenciaRefs = gestorUids.map((uid) => db.collection("gestor_presencia").doc(uid));
+    const presenciaRefs = gestorUids.map((uid) => db.collection("usuarios_presencia").doc(uid));
     const [userSnaps, presenciaSnaps] = await Promise.all([
       gestorUids.length ? db.getAll(...userRefs) : Promise.resolve([] as any[]),
       gestorUids.length ? db.getAll(...presenciaRefs) : Promise.resolve([] as any[]),
@@ -72,12 +85,16 @@ export async function GET() {
       userMap.set(u.id, `${nombres} ${apellidos}`.trim() || String(data?.displayName || u.id));
     }
 
+    const onlineGraceMs = 2 * 60 * 1000;
+    const now = Date.now();
     const presenciaMap = new Map<string, { online: boolean; lastSeenAt: string | null }>();
     for (const p of presenciaSnaps as any[]) {
       const data = (p.data?.() || {}) as any;
+      const lastSeenMs = toMillis(data?.lastSeenAt) || toMillis(data?.updatedAt);
+      const online = !!data?.online && lastSeenMs > 0 && now - lastSeenMs <= onlineGraceMs;
       presenciaMap.set(p.id, {
-        online: !!data?.online,
-        lastSeenAt: tsToIso(data?.lastSeenAt),
+        online,
+        lastSeenAt: lastSeenMs > 0 ? new Date(lastSeenMs).toISOString() : null,
       });
     }
 

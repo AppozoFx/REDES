@@ -87,8 +87,7 @@ async function cleanupOldPredespacho(db: FirebaseFirestore.Firestore) {
   };
 
   try {
-    await runDeleteByField("endYmd");
-    await runDeleteByField("curYmd");
+    await Promise.all([runDeleteByField("endYmd"), runDeleteByField("curYmd")]);
   } catch {
     // no bloquear dashboard por limpieza
   }
@@ -291,7 +290,29 @@ export async function GET(req: Request) {
     await cleanupOldPredespacho(db);
     const preconIds = ["PRECON_50", "PRECON_100", "PRECON_150", "PRECON_200"];
     const [cqSnap, usSnap, eqSnap, instSnap, savedSnap, preconDocs] = await Promise.all([
-      db.collection("cuadrillas").where("area", "==", "INSTALACIONES").limit(2500).get(),
+      db.collection("cuadrillas")
+        .where("area", "==", "INSTALACIONES")
+        .select(
+          "nombre",
+          "numeroCuadrilla",
+          "r_c",
+          "tipo",
+          "categoria",
+          "estado",
+          "coordinadorUid",
+          "coordinadoraUid",
+          "coordinadorId",
+          "coordinadoraId",
+          "coordinador",
+          "coordinadorNombre",
+          "coordinadora",
+          "coordinadoraNombre",
+          "tecnicosUids",
+          "tecnicosIds",
+          "tecnicos"
+        )
+        .limit(2500)
+        .get(),
       db.collection("usuarios").select("nombres", "nombre", "apellidos", "uid").limit(4000).get(),
       db
         .collection("equipos")
@@ -302,9 +323,56 @@ export async function GET(req: Request) {
       db.collection("instalaciones")
         .where("fechaOrdenYmd", ">=", period.startYmd)
         .where("fechaOrdenYmd", "<=", period.endYmd)
+        .select(
+          "liquidacion",
+          "liquidadoAt",
+          "snONT",
+          "proidONT",
+          "proid",
+          "snONTs",
+          "snMESH",
+          "snMESHs",
+          "snBOX",
+          "snBOXs",
+          "snFONO",
+          "snFONOs",
+          "equiposInstalados",
+          "cantMESHwin",
+          "cantMeshwin",
+          "cantidadMesh",
+          "cantMesh",
+          "kitWifiPro",
+          "plan",
+          "cantBOXwin",
+          "cantidadBox",
+          "cantBox",
+          "cantFONOwin",
+          "cantidadFono",
+          "cantFono",
+          "cuadrillaId",
+          "cuadrillaNombre",
+          "cuadrilla",
+          "orden"
+        )
         .limit(20000)
         .get(),
-      db.collection("instalaciones_predespacho").where("periodKey", "==", period.periodKey).limit(5000).get(),
+      db.collection("instalaciones_predespacho")
+        .where("periodKey", "==", period.periodKey)
+        .select(
+          "cuadrillaId",
+          "updatedAt",
+          "updatedByName",
+          "saveBatchId",
+          "omitida",
+          "bobinaResi",
+          "rolloCondo",
+          "precon",
+          "manual",
+          "final",
+          "sugerido"
+        )
+        .limit(5000)
+        .get(),
       db.getAll(...preconIds.map((id) => db.collection("almacen_stock").doc(id))),
     ]);
 
@@ -403,10 +471,17 @@ export async function GET(req: Request) {
       }
       const sns = Array.from(snKeys);
       const chunkSize = 300;
+      const snChunks: string[][] = [];
       for (let i = 0; i < sns.length; i += chunkSize) {
-        const part = sns.slice(i, i + chunkSize);
-        const refs = part.map((sn) => db.collection("equipos").doc(sn));
-        const snaps = await db.getAll(...refs);
+        snChunks.push(sns.slice(i, i + chunkSize));
+      }
+      const snChunkSnaps = await Promise.all(
+        snChunks.map((part) => {
+          const refs = part.map((sn) => db.collection("equipos").doc(sn));
+          return refs.length ? db.getAll(...refs) : Promise.resolve([] as any[]);
+        })
+      );
+      for (const snaps of snChunkSnaps) {
         for (const s of snaps) {
           if (!s.exists) continue;
           const data = s.data() as any;

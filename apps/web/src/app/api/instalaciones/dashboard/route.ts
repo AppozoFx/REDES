@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { getServerSession } from "@/core/auth/session";
-import { FieldPath } from "firebase-admin/firestore";
+import { FieldPath, FieldValue } from "firebase-admin/firestore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,9 +51,49 @@ type CachedDataset = {
   enrichedPrev: DetailItem[];
 };
 
+const ORDENES_SELECT_FIELDS = [
+  "codiSeguiClien",
+  "fechaFinVisiYmd",
+  "fSoliYmd",
+  "fechaFinVisiHm",
+  "fSoliHm",
+  "ordenId",
+  "cliente",
+  "cuadrillaId",
+  "cuadrillaNombre",
+  "region",
+  "regionNombre",
+  "zonaDistrito",
+  "distrito",
+  "estado",
+  "tipoOrden",
+  "tipo",
+  "tipoTraba",
+  "idenServi",
+  "gestorCuadrilla",
+  "coordinadorCuadrilla",
+  "coordinador",
+  "lat",
+  "lng",
+  "georeferenciaRaw",
+] as const;
+
 const DATASET_CACHE_TTL_MS = 5 * 60 * 1000;
 const DATASET_CACHE_MAX_ENTRIES = 6;
 const datasetCache = new Map<string, CachedDataset>();
+const MATERIALIZED_KPI_ENABLED = process.env.DASHBOARD_KPI_MATERIALIZED !== "false";
+const MATERIALIZED_COLLECTION = "kpi_daily_instalaciones";
+const MATERIALIZED_KEY = "dashboardInstalaciones";
+
+type DailyKpiAgg = {
+  total: number;
+  finalizadas: number;
+  agendadas: number;
+  iniciadas: number;
+  liquidadas: number;
+  pendientesLiquidar: number;
+  correccionPendiente: number;
+};
 
 function norm(v: any) {
   return String(v || "")
@@ -172,15 +212,30 @@ function diffDaysExclusive(fromYmd: string, toYmdExclusive: string) {
 }
 
 function computeKpi(rows: DetailItem[]): Kpi {
-  const total = rows.length;
-  const finalizadas = rows.filter((x) => normalizeOrderState(x.estado) === "FINALIZADA").length;
-  const agendadas = rows.filter((x) => normalizeOrderState(x.estado) === "AGENDADA").length;
-  const iniciadas = rows.filter((x) => normalizeOrderState(x.estado) === "INICIADA").length;
+  let total = 0;
+  let finalizadas = 0;
+  let agendadas = 0;
+  let iniciadas = 0;
+  let liquidadas = 0;
+  let pendientesLiquidar = 0;
+  let correccionPendiente = 0;
+
+  for (const row of rows) {
+    total += 1;
+    const st = normalizeOrderState(row.estado);
+    if (st === "FINALIZADA") {
+      finalizadas += 1;
+      if (row.liquidado) liquidadas += 1;
+      else pendientesLiquidar += 1;
+    } else if (st === "AGENDADA") {
+      agendadas += 1;
+    } else if (st === "INICIADA") {
+      iniciadas += 1;
+    }
+    if (row.correccionPendiente) correccionPendiente += 1;
+  }
+
   const pendientes = agendadas + iniciadas;
-  const finalizadasRows = rows.filter((x) => normalizeOrderState(x.estado) === "FINALIZADA");
-  const liquidadas = finalizadasRows.filter((x) => x.liquidado).length;
-  const pendientesLiquidar = finalizadasRows.filter((x) => !x.liquidado).length;
-  const correccionPendiente = rows.filter((x) => x.correccionPendiente).length;
   const efectividadPct = total > 0 ? Number(((finalizadas / total) * 100).toFixed(2)) : 0;
   return {
     total,
@@ -193,6 +248,140 @@ function computeKpi(rows: DetailItem[]): Kpi {
     pendientesLiquidar,
     correccionPendiente,
   };
+}
+
+function emptyDailyKpiAgg(): DailyKpiAgg {
+  return {
+    total: 0,
+    finalizadas: 0,
+    agendadas: 0,
+    iniciadas: 0,
+    liquidadas: 0,
+    pendientesLiquidar: 0,
+    correccionPendiente: 0,
+  };
+}
+
+function addRowToDailyKpiAgg(agg: DailyKpiAgg, row: DetailItem) {
+  agg.total += 1;
+  const st = normalizeOrderState(row.estado);
+  if (st === "FINALIZADA") {
+    agg.finalizadas += 1;
+    if (row.liquidado) agg.liquidadas += 1;
+    else agg.pendientesLiquidar += 1;
+  } else if (st === "AGENDADA") {
+    agg.agendadas += 1;
+  } else if (st === "INICIADA") {
+    agg.iniciadas += 1;
+  }
+  if (row.correccionPendiente) agg.correccionPendiente += 1;
+}
+
+function toKpiFromAgg(agg: DailyKpiAgg): Kpi {
+  const pendientes = agg.agendadas + agg.iniciadas;
+  return {
+    total: agg.total,
+    finalizadas: agg.finalizadas,
+    agendadas: agg.agendadas,
+    iniciadas: agg.iniciadas,
+    pendientes,
+    efectividadPct: agg.total > 0 ? Number(((agg.finalizadas / agg.total) * 100).toFixed(2)) : 0,
+    liquidadas: agg.liquidadas,
+    pendientesLiquidar: agg.pendientesLiquidar,
+    correccionPendiente: agg.correccionPendiente,
+  };
+}
+
+function enumerateYmdRange(fromYmd: string, toYmdExclusive: string): string[] {
+  const out: string[] = [];
+  let cur = fromYmd;
+  while (cur < toYmdExclusive) {
+    out.push(cur);
+    cur = addDays(cur, 1);
+  }
+  return out;
+}
+
+function aggregateDailyKpiMap(map: Map<string, DailyKpiAgg>, ymds: string[]): DailyKpiAgg {
+  const out = emptyDailyKpiAgg();
+  for (const ymd of ymds) {
+    const item = map.get(ymd);
+    if (!item) continue;
+    out.total += item.total;
+    out.finalizadas += item.finalizadas;
+    out.agendadas += item.agendadas;
+    out.iniciadas += item.iniciadas;
+    out.liquidadas += item.liquidadas;
+    out.pendientesLiquidar += item.pendientesLiquidar;
+    out.correccionPendiente += item.correccionPendiente;
+  }
+  return out;
+}
+
+function buildDailyKpiMap(rows: DetailItem[]): Map<string, DailyKpiAgg> {
+  const out = new Map<string, DailyKpiAgg>();
+  for (const row of rows) {
+    const key = row.ymd;
+    if (!key) continue;
+    const agg = out.get(key) || emptyDailyKpiAgg();
+    addRowToDailyKpiAgg(agg, row);
+    out.set(key, agg);
+  }
+  return out;
+}
+
+async function readMaterializedKpiRange(
+  fromYmd: string,
+  toYmdExclusive: string
+): Promise<Map<string, DailyKpiAgg> | null> {
+  if (!MATERIALIZED_KPI_ENABLED) return null;
+  const ymds = enumerateYmdRange(fromYmd, toYmdExclusive);
+  if (!ymds.length) return new Map();
+  const db = adminDb();
+  const refs = ymds.map((ymd) => db.collection(MATERIALIZED_COLLECTION).doc(ymd));
+  const snaps = await db.getAll(...refs);
+  const out = new Map<string, DailyKpiAgg>();
+
+  for (const snap of snaps) {
+    if (!snap.exists) return null;
+    const data = (snap.data() || {}) as any;
+    const k = data?.[MATERIALIZED_KEY]?.kpi;
+    if (!k || typeof k !== "object") return null;
+    out.set(snap.id, {
+      total: Number(k.total || 0),
+      finalizadas: Number(k.finalizadas || 0),
+      agendadas: Number(k.agendadas || 0),
+      iniciadas: Number(k.iniciadas || 0),
+      liquidadas: Number(k.liquidadas || 0),
+      pendientesLiquidar: Number(k.pendientesLiquidar || 0),
+      correccionPendiente: Number(k.correccionPendiente || 0),
+    });
+  }
+  return out;
+}
+
+async function writeMaterializedKpiMap(map: Map<string, DailyKpiAgg>) {
+  if (!MATERIALIZED_KPI_ENABLED || !map.size) return;
+  const db = adminDb();
+  const entries = Array.from(map.entries());
+  for (let i = 0; i < entries.length; i += 400) {
+    const batch = db.batch();
+    for (const [ymd, kpi] of entries.slice(i, i + 400)) {
+      const ref = db.collection(MATERIALIZED_COLLECTION).doc(ymd);
+      batch.set(
+        ref,
+        {
+          ymd,
+          [MATERIALIZED_KEY]: {
+            kpi,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+        },
+        { merge: true }
+      );
+    }
+    await batch.commit();
+  }
 }
 
 function chunkArray<T>(items: T[], size: number): T[][] {
@@ -236,6 +425,7 @@ async function fetchAllOrdenesByRange(fromYmd: string, toYmdExclusive: string) {
       .collection("ordenes")
       .where("fSoliYmd", ">=", fromYmd)
       .where("fSoliYmd", "<", toYmdExclusive)
+      .select(...ORDENES_SELECT_FIELDS)
       .orderBy("fSoliYmd", "asc")
       .orderBy(FieldPath.documentId(), "asc")
       .limit(pageSize);
@@ -281,6 +471,16 @@ export async function GET(req: Request) {
     const fEstado = String(searchParams.get("estado") || "").trim().toUpperCase();
     const fTipoOrden = String(searchParams.get("tipoOrden") || "").trim().toUpperCase();
     const soloNoLiquidadas = String(searchParams.get("soloNoLiquidadas") || "0") === "1";
+    const hasAdvancedFilters =
+      !!fCuadrilla ||
+      !!fSearch ||
+      !!fRegionOrden ||
+      !!fDistritoOrden ||
+      !!fGestorUid ||
+      !!fCoordinadorUid ||
+      !!fEstado ||
+      !!fTipoOrden ||
+      soloNoLiquidadas;
 
     let fromYmd = ymd;
     let toYmdExclusive = addDays(ymd, 1);
@@ -316,6 +516,11 @@ export async function GET(req: Request) {
     }
     const prevToYmdInclusive = addDays(prevToYmdExclusive, -1);
     const periodPrevLabel = `${prevFromYmd} - ${prevToYmdInclusive}`;
+    const canUseMaterializedPrev = MATERIALIZED_KPI_ENABLED && !hasAdvancedFilters;
+    const prevMaterializedMap = canUseMaterializedPrev
+      ? await readMaterializedKpiRange(prevFromYmd, prevToYmdExclusive)
+      : null;
+    const shouldFetchPrevOrders = !prevMaterializedMap;
 
     const datasetCacheKey = `${fromYmd}|${toYmdExclusive}|${prevFromYmd}|${prevToYmdExclusive}`;
     let cached = getCachedDataset(datasetCacheKey);
@@ -328,7 +533,7 @@ export async function GET(req: Request) {
     } else {
       const [orderDocs, prevOrderDocs] = await Promise.all([
         fetchAllOrdenesByRange(fromYmd, toYmdExclusive),
-        fetchAllOrdenesByRange(prevFromYmd, prevToYmdExclusive),
+        shouldFetchPrevOrders ? fetchAllOrdenesByRange(prevFromYmd, prevToYmdExclusive) : Promise.resolve([]),
       ]);
       const toBase = (docs: any[]) => docs.map((d) => {
         const x = d.data() as any;
@@ -438,19 +643,32 @@ export async function GET(req: Request) {
       enriched = toEnriched(base);
       enrichedPrev = toEnriched(basePrev);
       setCachedDataset(datasetCacheKey, { enriched, enrichedPrev });
+
+      try {
+        const writes: Promise<void>[] = [writeMaterializedKpiMap(buildDailyKpiMap(enriched))];
+        if (enrichedPrev.length) writes.push(writeMaterializedKpiMap(buildDailyKpiMap(enrichedPrev)));
+        await Promise.all(writes);
+      } catch (materializedWriteError) {
+        console.warn("dashboard materialized kpi write skipped", materializedWriteError);
+      }
     }
+
+    const fSearchNorm = fSearch ? norm(fSearch) : "";
+    const fCuadrillaNorm = fCuadrilla ? norm(fCuadrilla) : "";
+    const fRegionNorm = fRegionOrden ? norm(fRegionOrden) : "";
+    const fDistritoNorm = fDistritoOrden ? norm(fDistritoOrden) : "";
 
     const matchesFilters = (x: DetailItem, includeDistrito: boolean) => {
       if (fSearch) {
         const hay = `${x.ordenId || ""} ${x.codiSeguiClien || ""} ${x.cliente || ""} ${x.cuadrillaNombre || ""} ${x.cuadrillaId || ""}`;
-        if (!norm(hay).includes(norm(fSearch))) return false;
+        if (!norm(hay).includes(fSearchNorm)) return false;
       }
       if (fCuadrilla) {
         const cuadrillaFull = `${x.cuadrillaNombre || ""} ${x.cuadrillaId || ""}`;
-        if (!norm(cuadrillaFull).includes(norm(fCuadrilla))) return false;
+        if (!norm(cuadrillaFull).includes(fCuadrillaNorm)) return false;
       }
-      if (fRegionOrden && norm(x.regionOrden) !== norm(fRegionOrden)) return false;
-      if (includeDistrito && fDistritoOrden && norm(x.distritoOrden) !== norm(fDistritoOrden)) return false;
+      if (fRegionOrden && norm(x.regionOrden) !== fRegionNorm) return false;
+      if (includeDistrito && fDistritoOrden && norm(x.distritoOrden) !== fDistritoNorm) return false;
       if (fGestorUid && x.gestorUid !== fGestorUid) return false;
       if (fCoordinadorUid && x.coordinadorUid !== fCoordinadorUid) return false;
       if (fEstado && x.estado !== fEstado) return false;
@@ -459,9 +677,11 @@ export async function GET(req: Request) {
       return true;
     };
     const filtered = enriched.filter((x) => matchesFilters(x, true));
-    const filteredPrev = enrichedPrev.filter((x) => matchesFilters(x, true));
     const kpi = computeKpi(filtered);
-    const kpiPrev = computeKpi(filteredPrev);
+    const kpiPrev =
+      prevMaterializedMap && !hasAdvancedFilters
+        ? toKpiFromAgg(aggregateDailyKpiMap(prevMaterializedMap, enumerateYmdRange(prevFromYmd, prevToYmdExclusive)))
+        : computeKpi(enrichedPrev.filter((x) => matchesFilters(x, true)));
 
     const byDayMap = new Map<string, { total: number; finalizadas: number; liquidadas: number }>();
     filtered.forEach((x) => {
@@ -544,36 +764,49 @@ export async function GET(req: Request) {
         ymd: x.ymd,
       }));
 
-    const gestoresMeta = Array.from(
-      new Map(
-        enriched
-          .filter((x) => x.gestorUid)
-          .map((x) => [x.gestorUid, { uid: x.gestorUid, nombre: x.gestorNombre || x.gestorUid }])
-      ).values()
-    ).sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
+    const gestoresMap = new Map<string, { uid: string; nombre: string }>();
+    const coordinadoresMap = new Map<string, { uid: string; nombre: string }>();
+    const cuadrillasMap = new Map<string, { id: string; nombre: string }>();
+    const tiposSet = new Set<string>();
+    const estadosSet = new Set<string>();
+    const regionesSet = new Set<string>();
+    const distritosSet = new Set<string>();
 
-    const coordinadoresMeta = Array.from(
-      new Map(
-        enriched
-          .filter((x) => x.coordinadorUid)
-          .map((x) => [x.coordinadorUid, { uid: x.coordinadorUid, nombre: x.coordinadorNombre || x.coordinadorUid }])
-      ).values()
-    ).sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
+    for (const row of enriched) {
+      if (row.gestorUid && !gestoresMap.has(row.gestorUid)) {
+        gestoresMap.set(row.gestorUid, { uid: row.gestorUid, nombre: row.gestorNombre || row.gestorUid });
+      }
+      if (row.coordinadorUid && !coordinadoresMap.has(row.coordinadorUid)) {
+        coordinadoresMap.set(row.coordinadorUid, {
+          uid: row.coordinadorUid,
+          nombre: row.coordinadorNombre || row.coordinadorUid,
+        });
+      }
+      const cuadrillaKey = row.cuadrillaId || row.cuadrillaNombre;
+      if (cuadrillaKey && !cuadrillasMap.has(cuadrillaKey)) {
+        cuadrillasMap.set(cuadrillaKey, { id: cuadrillaKey, nombre: row.cuadrillaNombre || row.cuadrillaId });
+      }
+      if (row.tipoOrden) tiposSet.add(row.tipoOrden);
+      if (row.estado) estadosSet.add(row.estado);
+      if (row.regionOrden) regionesSet.add(row.regionOrden);
+      if (row.distritoOrden) distritosSet.add(row.distritoOrden);
+    }
 
-    const cuadrillasMeta = Array.from(
-      new Map(
-        enriched
-          .filter((x) => x.cuadrillaId || x.cuadrillaNombre)
-          .map((x) => [x.cuadrillaId || x.cuadrillaNombre, { id: x.cuadrillaId || x.cuadrillaNombre, nombre: x.cuadrillaNombre || x.cuadrillaId }])
-      ).values()
-    ).sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
-
-    const tiposOrdenMeta = Array.from(new Set(enriched.map((x) => x.tipoOrden).filter(Boolean))).sort();
-    const estadosMeta = Array.from(new Set(enriched.map((x) => x.estado).filter(Boolean))).sort();
-    const regionesOrdenesMeta = Array.from(new Set(enriched.map((x) => x.regionOrden).filter(Boolean))).sort((a, b) =>
+    const gestoresMeta = Array.from(gestoresMap.values()).sort((a, b) =>
+      a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" })
+    );
+    const coordinadoresMeta = Array.from(coordinadoresMap.values()).sort((a, b) =>
+      a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" })
+    );
+    const cuadrillasMeta = Array.from(cuadrillasMap.values()).sort((a, b) =>
+      a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" })
+    );
+    const tiposOrdenMeta = Array.from(tiposSet).sort();
+    const estadosMeta = Array.from(estadosSet).sort();
+    const regionesOrdenesMeta = Array.from(regionesSet).sort((a, b) =>
       a.localeCompare(b, "es", { sensitivity: "base" })
     );
-    const distritosOrdenesMeta = Array.from(new Set(enriched.map((x) => x.distritoOrden).filter(Boolean))).sort((a, b) =>
+    const distritosOrdenesMeta = Array.from(distritosSet).sort((a, b) =>
       a.localeCompare(b, "es", { sensitivity: "base" })
     );
 

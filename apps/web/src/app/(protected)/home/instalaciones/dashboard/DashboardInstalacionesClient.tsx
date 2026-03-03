@@ -268,11 +268,12 @@ function CustomizedXAxisTick({
 }
 
 export default function DashboardInstalacionesClient() {
-  const [mode, setMode] = useState<Mode>("month");
+  const [mode, setMode] = useState<Mode>("day");
   const [ymd, setYmd] = useState(todayLimaYmd());
   const [ym, setYm] = useState(todayLimaYm());
   const [from, setFrom] = useState(todayLimaYmd());
   const [to, setTo] = useState(todayLimaYmd());
+  const [rangeInitialized, setRangeInitialized] = useState(false);
 
   const [fCuadrilla, setFCuadrilla] = useState("");
   const [debouncedFCuadrilla, setDebouncedFCuadrilla] = useState("");
@@ -480,6 +481,19 @@ export default function DashboardInstalacionesClient() {
   }, [fBusqueda]);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const rangeParam = (params.get("range") || "").toLowerCase();
+    if (rangeParam === "day" || rangeParam === "week" || rangeParam === "month" || rangeParam === "range") {
+      setMode(rangeParam as Mode);
+    } else {
+      params.set("range", "day");
+      const next = `${window.location.pathname}?${params.toString()}${window.location.hash || ""}`;
+      window.history.replaceState(null, "", next);
+    }
+    setRangeInitialized(true);
+  }, []);
+
+  useEffect(() => {
     if (process.env.NODE_ENV !== "development") return;
     const { labels, finalizadas, canceladas, data } = chartCuadrillas;
     if (!(labels.length === finalizadas.length && labels.length === canceladas.length)) {
@@ -507,6 +521,7 @@ export default function DashboardInstalacionesClient() {
     setError("");
     try {
       const qs = new URLSearchParams();
+      qs.set("range", mode);
       qs.set("mode", mode);
       qs.set("ymd", ymd);
       qs.set("ym", ym);
@@ -544,8 +559,9 @@ export default function DashboardInstalacionesClient() {
   };
 
   useEffect(() => {
+    if (!rangeInitialized) return;
     fetchData();
-  }, [mode, ymd, ym, from, to, debouncedFBusqueda, debouncedFCuadrilla, fRegionOrden, fDistritoOrden, gestorUid, coordinadorUid, tipoOrden, soloNoLiquidadas, page, pageSize]);
+  }, [rangeInitialized, mode, ymd, ym, from, to, debouncedFBusqueda, debouncedFCuadrilla, fRegionOrden, fDistritoOrden, gestorUid, coordinadorUid, tipoOrden, soloNoLiquidadas, page, pageSize]);
 
   useEffect(() => {
     return () => {

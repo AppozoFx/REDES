@@ -47,6 +47,7 @@ export async function GET(req: Request) {
     const area = String(searchParams.get("area") || "").trim().toUpperCase();
 
     const isCoord = roles.includes("COORDINADOR");
+    const isGestor = roles.includes("GESTOR");
     const isPriv = session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
 
     let visibleSet: Set<string> | null = null;

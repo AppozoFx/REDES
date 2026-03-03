@@ -38,9 +38,11 @@ export async function GET(req: Request) {
     if (session.access.estadoAcceso !== "HABILITADO") {
       return NextResponse.json({ ok: false, error: "ACCESS_DISABLED" }, { status: 403 });
     }
+    const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
     const canView =
       session.isAdmin ||
-      session.permissions.includes(PERM_VIEW);
+      session.permissions.includes(PERM_VIEW) ||
+      roles.includes("COORDINADOR");
     if (!canView) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const { searchParams } = new URL(req.url);

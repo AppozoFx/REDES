@@ -16,9 +16,11 @@ function todayLimaYmd() {
 
 export default async function Page() {
   const session = await requireAuth();
+  const roles = (session.access.roles ?? []).map((r) => String(r || "").toUpperCase());
   const canView =
     session.isAdmin ||
-    session.permissions.includes("ORDENES_MAPA_VIEW");
+    session.permissions.includes("ORDENES_MAPA_VIEW") ||
+    roles.includes("COORDINADOR");
   if (!canView) redirect("/admin");
 
   return (

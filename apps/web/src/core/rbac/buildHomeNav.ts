@@ -40,7 +40,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     if (hasPerm(session, "ORDENES_LLAMADAS_VIEW") || hasPerm(session, "ORDENES_LLAMADAS_EDIT")) {
       items.push({ key: "ORDENES_CALLS", label: "Ordenes: Llamadas", href: "/home/ordenes/llamadas" });
     }
-    if (hasPerm(session, "ORDENES_MAPA_VIEW")) {
+    if (hasPerm(session, "ORDENES_MAPA_VIEW") || roles.includes("COORDINADOR")) {
       items.push({ key: "ORDENES_MAPA", label: "Ordenes: Mapa", href: "/home/ordenes/mapa" });
     }
     if (hasPerm(session, "ORDENES_GARANTIAS_VIEW") || hasPerm(session, "ORDENES_GARANTIAS_EDIT")) {
@@ -55,14 +55,15 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     { key: "COMUNICADOS", label: "Comunicados", href: "/home/comunicados" },
   ];
 
-  if (hasArea(session, "INSTALACIONES")) {
+  if (hasArea(session, "INSTALACIONES") || isCoord) {
     const roles = (session.access.roles ?? []).map((r) => String(r || "").toUpperCase());
     const canAsistenciaResumen =
       session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
     const coordOnly = isCoord && !isPriv && !session.isAdmin && !isGestor;
 
+    items.push({ key: "INSTALACIONES", label: "Instalaciones", href: "/home/instalaciones" });
+
     if (!coordOnly) {
-      items.push({ key: "INSTALACIONES", label: "Instalaciones", href: "/home/instalaciones" });
       if (session.isAdmin || roles.includes("GERENCIA") || hasPerm(session, "ORDENES_LIQUIDAR")) {
         items.push({
           key: "INSTALACIONES_DASHBOARD",
@@ -175,7 +176,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
   if (hasPerm(session, "ORDENES_LIQUIDAR")) {
     items.push({ key: "ORDENES_LIQ", label: "Ordenes: Liquidacion", href: "/home/ordenes/liquidacion" });
   }
-  if (hasPerm(session, "ORDENES_MAPA_VIEW")) {
+  if (hasPerm(session, "ORDENES_MAPA_VIEW") || roles.includes("COORDINADOR")) {
     items.push({ key: "ORDENES_MAPA", label: "Ordenes: Mapa", href: "/home/ordenes/mapa" });
   }
   if (hasPerm(session, "ORDENES_GARANTIAS_VIEW") || hasPerm(session, "ORDENES_GARANTIAS_EDIT")) {

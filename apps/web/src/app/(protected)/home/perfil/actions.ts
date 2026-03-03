@@ -6,6 +6,7 @@ import { UserSelfUpdateSchema } from "@/domain/usuarios/schema";
 import { updateUsuarioSelfProfile } from "@/domain/usuarios/repo";
 
 export type PerfilUpdateState =
+  | null
   | { ok: true }
   | { ok: false; error: string };
 
@@ -18,6 +19,9 @@ export async function updateMyProfileAction(
   const raw = {
     celular: String(formData.get("celular") ?? "").trim(),
     direccion: String(formData.get("direccion") ?? "").trim(),
+    fNacimiento: String(formData.get("fNacimiento") ?? "").trim(),
+    tipoDoc: String(formData.get("tipoDoc") ?? "").trim(),
+    nroDoc: String(formData.get("nroDoc") ?? "").trim(),
   };
 
   const parsed = UserSelfUpdateSchema.safeParse(raw);

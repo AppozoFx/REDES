@@ -26,6 +26,10 @@ function asStr(v: any) {
   return String(v || "").trim();
 }
 
+function norm(v: any) {
+  return asStr(v).toUpperCase();
+}
+
 function canUse(session: any) {
   const roles = (session.access.roles || []).map((r: any) => String(r || "").toUpperCase());
   return (
@@ -50,6 +54,9 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const mode = String(searchParams.get("mode") || "campo").toLowerCase() === "instalados" ? "instalados" : "campo";
 
+    const roles = (session.access.roles || []).map((r: any) => String(r || "").toUpperCase());
+    const isCoordOnly = roles.includes("COORDINADOR") && !session.isAdmin;
+
     const db = adminDb();
     const eqSnap = await db
       .collection("equipos")
@@ -62,6 +69,21 @@ export async function GET(req: Request) {
     const isInstalado = (e: any) => toUpper(e?.estado) === "INSTALADO";
 
     let rows = rowsBase.filter((e: any) => (mode === "instalados" ? isInstalado(e) : !isInstalado(e)));
+
+    if (isCoordOnly) {
+      const cuadSnap = await db
+        .collection("cuadrillas")
+        .where("area", "==", "INSTALACIONES")
+        .where("coordinadorUid", "==", session.uid)
+        .limit(500)
+        .get();
+      const cuadSet = new Set(
+        cuadSnap.docs
+          .map((d) => norm((d.data() as any)?.nombre || d.id))
+          .filter(Boolean)
+      );
+      rows = rows.filter((e: any) => cuadSet.has(norm(e?.ubicacion)));
+    }
 
     if (mode === "instalados") {
       const clientes = Array.from(
@@ -95,4 +117,3 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }
 }
-

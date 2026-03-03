@@ -5,6 +5,7 @@ const ROLE_HOME: Record<string, string> = {
   RRHH: "/home/rrhh",
   GERENCIA: "/home/gerencia",
   GESTOR: "/home/gestor",
+  COORDINADOR: "/home/instalaciones/asistencia-programada",
   TECNICO: "/home/tecnico",
 };
 
@@ -13,6 +14,7 @@ const ROLE_PRIORITY: string[] = [
   "RRHH",
   "GERENCIA",
   "GESTOR",
+  "COORDINADOR",
   "TECNICO",
 ];
 

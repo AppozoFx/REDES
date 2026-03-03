@@ -88,6 +88,7 @@ const toArray = (v: unknown) => {
 ========================= */
 export default function InstalacionesClient() {
   const [isDark, setIsDark] = useState(false);
+  const [coordReadOnly, setCoordReadOnly] = useState(false);
   const [instalaciones, setInstalaciones] = useState<any[]>([]);
   const [cargando, setCargando] = useState(false);
   const [ediciones, setEdiciones] = useState<Record<string, any>>({});
@@ -125,6 +126,28 @@ export default function InstalacionesClient() {
     return () => {
       obs.disconnect();
       mq.removeEventListener?.("change", sync);
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadMe = async () => {
+      try {
+        const res = await fetch("/api/auth/me", { cache: "no-store" });
+        const json = await res.json();
+        if (!res.ok || !mounted) return;
+        const roles = Array.isArray(json?.roles)
+          ? json.roles.map((r: any) => String(r || "").toUpperCase())
+          : [];
+        const isCoord = roles.includes("COORDINADOR");
+        setCoordReadOnly(Boolean(isCoord && !json?.isAdmin));
+      } catch {
+        if (mounted) setCoordReadOnly(false);
+      }
+    };
+    loadMe();
+    return () => {
+      mounted = false;
     };
   }, []);
 
@@ -568,7 +591,14 @@ export default function InstalacionesClient() {
     <div className="p-4 text-slate-900 dark:text-slate-100">
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Instalaciones</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold">Instalaciones</h1>
+          {coordReadOnly && (
+            <span className="rounded-full border border-amber-300 bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+              Solo lectura (Coordinador)
+            </span>
+          )}
+        </div>
         <div className="flex gap-2">
           <button
             onClick={handleExportarExcel}
@@ -698,9 +728,10 @@ export default function InstalacionesClient() {
             name="coordinador"
             value={filtros.coordinador}
             onChange={handleFiltroInput}
+            disabled={coordReadOnly}
             className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
           >
-            <option value="">Todos</option>
+            <option value="">{coordReadOnly ? "Mi coordinacion" : "Todos"}</option>
             {opcionesCoordinador.map((c) => (
               <option key={c} value={c}>
                 {c}
@@ -929,86 +960,108 @@ export default function InstalacionesClient() {
                     <td className="border border-slate-200 p-2 dark:border-slate-700">{l.snFONO || "-"}</td>
 
                     <td className="border border-slate-200 p-2 dark:border-slate-700">
-                      <input
-                        type="checkbox"
-                        className="scale-110"
-                        checked={(ediciones[l.id]?.planGamer ?? l.planGamer ?? "") !== ""}
-                        onChange={(e) => {
-                          const checked = e.target.checked;
-                          handleEdicionChange(l.id, "planGamer", checked ? "GAMER" : "");
-                          if (!checked) handleEdicionChange(l.id, "cat6", 0);
-                        }}
-                      />
+                      {coordReadOnly ? (
+                        (ediciones[l.id]?.planGamer ?? l.planGamer ?? "") !== "" ? "Si" : "No"
+                      ) : (
+                        <input
+                          type="checkbox"
+                          className="scale-110"
+                          checked={(ediciones[l.id]?.planGamer ?? l.planGamer ?? "") !== ""}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            handleEdicionChange(l.id, "planGamer", checked ? "GAMER" : "");
+                            if (!checked) handleEdicionChange(l.id, "cat6", 0);
+                          }}
+                        />
+                      )}
                     </td>
 
                     <td className="border border-slate-200 p-2 dark:border-slate-700">
-                      <input
-                        type="checkbox"
-                        className="scale-110"
-                        checked={(ediciones[l.id]?.kitWifiPro ?? l.kitWifiPro ?? "") !== ""}
-                        onChange={(e) =>
-                          handleEdicionChange(
-                            l.id,
-                            "kitWifiPro",
-                            e.target.checked ? "KIT WIFI PRO (EN VENTA)" : ""
-                          )
-                        }
-                      />
+                      {coordReadOnly ? (
+                        (ediciones[l.id]?.kitWifiPro ?? l.kitWifiPro ?? "") !== "" ? "Si" : "No"
+                      ) : (
+                        <input
+                          type="checkbox"
+                          className="scale-110"
+                          checked={(ediciones[l.id]?.kitWifiPro ?? l.kitWifiPro ?? "") !== ""}
+                          onChange={(e) =>
+                            handleEdicionChange(
+                              l.id,
+                              "kitWifiPro",
+                              e.target.checked ? "KIT WIFI PRO (EN VENTA)" : ""
+                            )
+                          }
+                        />
+                      )}
                     </td>
 
                     <td className="border border-slate-200 p-2 dark:border-slate-700">
-                      <input
-                        type="checkbox"
-                        className="scale-110"
-                        checked={(ediciones[l.id]?.servicioCableadoMesh ?? l.servicioCableadoMesh ?? "") !== ""}
-                        onChange={(e) => {
-                          const checked = e.target.checked;
-                          handleEdicionChange(
-                            l.id,
-                            "servicioCableadoMesh",
-                            checked ? "SERVICIO CABLEADO DE MESH" : ""
-                          );
-                          if (!checked) handleEdicionChange(l.id, "cat5e", 0);
-                        }}
-                      />
+                      {coordReadOnly ? (
+                        (ediciones[l.id]?.servicioCableadoMesh ?? l.servicioCableadoMesh ?? "") !== "" ? "Si" : "No"
+                      ) : (
+                        <input
+                          type="checkbox"
+                          className="scale-110"
+                          checked={(ediciones[l.id]?.servicioCableadoMesh ?? l.servicioCableadoMesh ?? "") !== ""}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            handleEdicionChange(
+                              l.id,
+                              "servicioCableadoMesh",
+                              checked ? "SERVICIO CABLEADO DE MESH" : ""
+                            );
+                            if (!checked) handleEdicionChange(l.id, "cat5e", 0);
+                          }}
+                        />
+                      )}
                     </td>
 
                     <td className="border border-slate-200 p-1 dark:border-slate-700">
-                      <input
-                        type="number"
-                        min={0}
-                        step={1}
-                        disabled={!cableadoChecked}
-                        value={ediciones[l.id]?.cat5e ?? l.cat5e ?? 0}
-                        className="w-20 rounded border border-slate-300 px-2 py-1 text-center disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:disabled:bg-slate-800"
-                        onChange={(e) => handleEdicionChange(l.id, "cat5e", Math.max(0, parseIntSafe(e.target.value)))}
-                      />
+                      {coordReadOnly ? (
+                        <span>{ediciones[l.id]?.cat5e ?? l.cat5e ?? 0}</span>
+                      ) : (
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          disabled={!cableadoChecked}
+                          value={ediciones[l.id]?.cat5e ?? l.cat5e ?? 0}
+                          className="w-20 rounded border border-slate-300 px-2 py-1 text-center disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:disabled:bg-slate-800"
+                          onChange={(e) => handleEdicionChange(l.id, "cat5e", Math.max(0, parseIntSafe(e.target.value)))}
+                        />
+                      )}
                     </td>
 
                     <td className="border border-slate-200 p-2 dark:border-slate-700">{cat6}</td>
                     <td className="border border-slate-200 p-2 dark:border-slate-700">{puntos}</td>
 
                     <td className="border border-slate-200 p-1 dark:border-slate-700">
-                      <input
-                        type="text"
-                        value={ediciones[l.id]?.observacion ?? l.observacion ?? ""}
-                        className="w-full rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                        onChange={(e) => handleEdicionChange(l.id, "observacion", e.target.value)}
-                      />
+                      {coordReadOnly ? (
+                        <span className="block text-left">{ediciones[l.id]?.observacion ?? l.observacion ?? "-"}</span>
+                      ) : (
+                        <input
+                          type="text"
+                          value={ediciones[l.id]?.observacion ?? l.observacion ?? ""}
+                          className="w-full rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                          onChange={(e) => handleEdicionChange(l.id, "observacion", e.target.value)}
+                        />
+                      )}
                     </td>
 
                     <td className="border border-slate-200 p-2 dark:border-slate-700">
                       <div className="flex items-center justify-center gap-2">
-                        <button
-                          className={cls(
-                            "px-3 py-1 rounded text-xs text-white",
-                            guardandoFila === l.id ? "bg-slate-400" : "bg-blue-600 hover:bg-blue-700"
-                          )}
-                          disabled={guardandoFila === l.id}
-                          onClick={() => guardarFila(l)}
-                        >
-                          {guardandoFila === l.id ? "Guardando..." : "Guardar"}
-                        </button>
+                        {!coordReadOnly && (
+                          <button
+                            className={cls(
+                              "px-3 py-1 rounded text-xs text-white",
+                              guardandoFila === l.id ? "bg-slate-400" : "bg-blue-600 hover:bg-blue-700"
+                            )}
+                            disabled={guardandoFila === l.id}
+                            onClick={() => guardarFila(l)}
+                          >
+                            {guardandoFila === l.id ? "Guardando..." : "Guardar"}
+                          </button>
+                        )}
                         <button
                           className="px-3 py-1 rounded text-xs text-white bg-slate-700 hover:bg-slate-800"
                           onClick={() => abrirDetalle(l)}
@@ -1105,10 +1158,26 @@ export default function InstalacionesClient() {
               </div>
 
               <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                <div className="text-sm font-semibold mb-2">Acta</div>
+                <div className="text-sm">{detalleItem?.acta || "-"}</div>
+              </div>
+
+              <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
                 <div className="text-sm font-semibold mb-2">Equipos</div>
                 <div className="space-y-2">
                   {(() => {
-                    const equipos = toArray(detalleItem?.equiposInstalados || detalleItem?.equipos || []);
+                    const equiposBase = toArray(detalleItem?.equiposInstalados || detalleItem?.equipos || []);
+                    const equiposSn = [
+                      detalleItem?.snONT ? { tipo: "ONT", sn: detalleItem.snONT } : null,
+                      ...(Array.isArray(detalleItem?.snMESH)
+                        ? detalleItem.snMESH.filter(Boolean).map((sn: string) => ({ tipo: "MESH", sn }))
+                        : []),
+                      ...(Array.isArray(detalleItem?.snBOX)
+                        ? detalleItem.snBOX.filter(Boolean).map((sn: string) => ({ tipo: "BOX", sn }))
+                        : []),
+                      detalleItem?.snFONO ? { tipo: "FONO", sn: detalleItem.snFONO } : null,
+                    ].filter(Boolean) as any[];
+                    const equipos = equiposBase.length ? equiposBase : equiposSn;
                     if (!equipos.length) return <div className="text-sm text-slate-500 dark:text-slate-400">Sin equipos</div>;
                     return equipos.map((e: any, i: number) => (
                       <div key={i} className="text-sm border rounded px-2 py-1">

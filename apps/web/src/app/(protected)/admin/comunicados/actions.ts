@@ -6,6 +6,7 @@ import { requirePermission } from "@/core/auth/guards";
 import { adminDb } from "@/lib/firebase/admin";
 import {
   createComunicado,
+  syncBirthdayComunicadoToday,
   updateComunicado,
   setComunicadoEstado,
 } from "@/domain/comunicados/repo";
@@ -147,4 +148,11 @@ export async function comunicadosToggleByIdAction(id: string) {
   revalidatePath("/admin/comunicados");
   revalidatePath(`/admin/comunicados/${id}`);
   return { ok: true, estado: nextEstado };
+}
+
+export async function syncBirthdayComunicadoAction() {
+  const session = await requirePermission(PERM);
+  const result = await syncBirthdayComunicadoToday(session.uid);
+  revalidatePath("/admin/comunicados");
+  return { ok: true, ...result };
 }

@@ -1,8 +1,6 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { listUsuariosAccess } from "@/domain/usuarios/service";
-import type { UserSelfUpdateInput, UserOperativePerfilUpdateInput } from "./schema";
-
-
+import type { UserOperativePerfilUpdateInput, UserSelfUpdateInput } from "./schema";
 
 export async function getUsuarioProfileByUid(uid: string) {
   const ref = adminDb().collection("usuarios").doc(uid);
@@ -29,16 +27,12 @@ export async function listUsuariosForHome(limit = 50) {
       areas: a.areas ?? [],
       estadoAcceso: a.estadoAcceso ?? "INHABILITADO",
       permissions: a.permissions ?? [],
-
       nombres: p.nombres ?? "",
       apellidos: p.apellidos ?? "",
       celular: p.celular ?? "",
       direccion: p.direccion ?? "",
-
-      // timestamps
       fIngreso: p.fIngreso ?? null,
       fNacimiento: p.fNacimiento ?? null,
-
       audit: p.audit ?? {},
     };
   });
@@ -46,23 +40,35 @@ export async function listUsuariosForHome(limit = 50) {
 
 export async function updateUsuarioSelfProfile(
   uid: string,
-patch: UserSelfUpdateInput,
+  patch: UserSelfUpdateInput,
   actorUid: string
 ) {
   const ref = adminDb().collection("usuarios").doc(uid);
 
-  // normaliza strings vacíos a "" (o null si prefieres)
   const clean: any = {};
   if ("celular" in patch) clean.celular = patch.celular ?? "";
   if ("direccion" in patch) clean.direccion = patch.direccion ?? "";
+  if ("fNacimiento" in patch) {
+    const raw = String((patch as any).fNacimiento ?? "").trim();
+    if (raw) {
+      const [y, m, d] = raw.split("-").map((n) => Number(n));
+      clean.fNacimiento = new Date(y, m - 1, d, 0, 0, 0, 0);
+    }
+  }
+  if ("tipoDoc" in patch) {
+    const tipoDoc = String((patch as any).tipoDoc ?? "").trim();
+    if (tipoDoc) clean.tipoDoc = tipoDoc;
+  }
+  if ("nroDoc" in patch) {
+    const nroDoc = String((patch as any).nroDoc ?? "").trim();
+    if (nroDoc) clean.nroDoc = nroDoc;
+  }
 
-  // auditoría server-only
   clean["audit.updatedAt"] = new Date();
   clean["audit.updatedBy"] = actorUid;
 
   await ref.set(clean, { merge: true });
 }
-
 
 export async function listUsuariosProfiles(limit = 50) {
   const snap = await adminDb()

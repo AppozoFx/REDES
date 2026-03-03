@@ -81,6 +81,7 @@ export default function CuadrillasGestionClient() {
   const [coordinadores, setCoordinadores] = useState<Option[]>([]);
   const [tecnicos, setTecnicos] = useState<Option[]>([]);
   const [assignedAll, setAssignedAll] = useState<Set<string>>(new Set());
+  const [coordReadOnly, setCoordReadOnly] = useState(false);
 
   const [filtroNombre, setFiltroNombre] = useState("");
   const [filtroGestor, setFiltroGestor] = useState("");
@@ -89,6 +90,20 @@ export default function CuadrillasGestionClient() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<EditState>({});
   const [savingId, setSavingId] = useState<string | null>(null);
+
+  const cargarContexto = async () => {
+    const res = await fetch("/api/auth/me", { cache: "no-store" });
+    const data = await res.json();
+    if (!res.ok || !data?.ok) throw new Error(data?.error || "ERROR");
+    const roles = Array.isArray(data.roles)
+      ? data.roles.map((r: any) => String(r || "").toUpperCase())
+      : [];
+    const isAdmin = Boolean(data.isAdmin);
+    const isCoord = roles.includes("COORDINADOR");
+    const isPriv = roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
+    const isGestor = roles.includes("GESTOR");
+    setCoordReadOnly(isCoord && !isAdmin && !isPriv && !isGestor);
+  };
 
   const cargarBase = async () => {
     const res = await fetch("/api/cuadrillas/list?area=INSTALACIONES&includeAll=true", { cache: "no-store" });
@@ -130,7 +145,7 @@ export default function CuadrillasGestionClient() {
   useEffect(() => {
     (async () => {
       try {
-        await Promise.all([cargarBase(), cargarZonas(), cargarUsuarios()]);
+        await Promise.all([cargarContexto(), cargarBase(), cargarZonas(), cargarUsuarios()]);
       } catch (e: any) {
         toast.error(e?.message || "Error cargando datos");
       }
@@ -172,6 +187,7 @@ export default function CuadrillasGestionClient() {
   }, [rows, filtroNombre, filtroGestor, filtroCoordinador]);
 
   const startEdit = (row: CuadrillaRow) => {
+    if (coordReadOnly) return;
     setEditingId(row.id);
     setForm({
       zonaId: row.zonaId || "",
@@ -188,6 +204,7 @@ export default function CuadrillasGestionClient() {
   };
 
   const saveEdit = async (row: CuadrillaRow) => {
+    if (coordReadOnly) return;
     if (!editingId) return;
     const payload = {
       id: row.id,
@@ -250,15 +267,21 @@ export default function CuadrillasGestionClient() {
             onChange={(sel) => setFiltroGestor(sel?.value || "")}
             {...selectPortalProps}
           />
-          <Select
-            classNamePrefix="coord-filter"
-            placeholder="Filtrar por coordinador"
-            options={coordinadores}
-            isClearable
-            value={coordinadores.find((c) => c.value === filtroCoordinador) || null}
-            onChange={(sel) => setFiltroCoordinador(sel?.value || "")}
-            {...selectPortalProps}
-          />
+          {!coordReadOnly ? (
+            <Select
+              classNamePrefix="coord-filter"
+              placeholder="Filtrar por coordinador"
+              options={coordinadores}
+              isClearable
+              value={coordinadores.find((c) => c.value === filtroCoordinador) || null}
+              onChange={(sel) => setFiltroCoordinador(sel?.value || "")}
+              {...selectPortalProps}
+            />
+          ) : (
+            <div className="rounded border border-slate-300 px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:text-slate-300">
+              Modo coordinador: solo lectura
+            </div>
+          )}
         </div>
       </div>
 
@@ -384,6 +407,8 @@ export default function CuadrillasGestionClient() {
                           Cancelar
                         </button>
                       </div>
+                    ) : coordReadOnly ? (
+                      <span className="text-xs text-slate-500 dark:text-slate-400">Solo lectura</span>
                     ) : (
                       <button
                         className="px-3 py-1 rounded bg-slate-800 text-white hover:bg-slate-900"

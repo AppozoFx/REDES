@@ -126,6 +126,11 @@ export const UserSelfUpdateSchema = z.object({
     .or(z.literal("")),
 
   direccion: z.string().min(3).max(160).trim().optional().or(z.literal("")),
+
+  fNacimiento: DateYmdSchema.optional().or(z.literal("")),
+
+  tipoDoc: TipoDocSchema.optional().or(z.literal("")),
+  nroDoc: z.string().min(6).max(15).trim().optional().or(z.literal("")),
 });
 
 export type UserSelfUpdateInput = z.infer<typeof UserSelfUpdateSchema>;

@@ -15,7 +15,14 @@ export async function GET() {
     const apellidos = String(data?.apellidos || "").trim();
     const nombre = `${nombres} ${apellidos}`.trim() || session.uid;
 
-    return NextResponse.json({ ok: true, uid: session.uid, nombre });
+    return NextResponse.json({
+      ok: true,
+      uid: session.uid,
+      nombre,
+      isAdmin: session.isAdmin,
+      roles: session.access.roles || [],
+      areas: session.access.areas || [],
+    });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }

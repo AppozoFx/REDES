@@ -52,6 +52,17 @@ function toNum(raw: string) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function estadoBadgeClass(estadoRaw: string) {
+  const e = String(estadoRaw || "").toUpperCase();
+  if (e === "PAGADO") {
+    return "border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300";
+  }
+  if (e === "ANULADO" || e === "ANULADA") {
+    return "border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300";
+  }
+  return "border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300";
+}
+
 export default function VentasClient({
   canEdit,
   canPagar,
@@ -63,6 +74,10 @@ export default function VentasClient({
   canAnular: boolean;
   canViewAll: boolean;
 }) {
+  const [viewerUid, setViewerUid] = useState("");
+  const [viewerNombre, setViewerNombre] = useState("");
+  const [isCoordViewer, setIsCoordViewer] = useState(false);
+  const [viewerAreas, setViewerAreas] = useState<Array<"INSTALACIONES" | "MANTENIMIENTO">>([]);
   const [areaFilter, setAreaFilter] = useState<"ALL" | "INSTALACIONES" | "MANTENIMIENTO">("ALL");
   const [coordFilter, setCoordFilter] = useState("");
   const [coordinadores, setCoordinadores] = useState<Array<{ uid: string; label: string }>>([]);
@@ -133,35 +148,90 @@ export default function VentasClient({
   }
 
   useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/me", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => ({}));
+        const uid = String(data?.uid || "");
+        const nombre = String(data?.nombre || "");
+        const roles = Array.isArray(data?.roles) ? data.roles.map((r: any) => String(r || "").toUpperCase()) : [];
+        const areasRaw = Array.isArray(data?.areas) ? data.areas.map((a: any) => String(a || "").toUpperCase()) : [];
+        const areas = areasRaw.filter((a: string) => a === "INSTALACIONES" || a === "MANTENIMIENTO") as Array<
+          "INSTALACIONES" | "MANTENIMIENTO"
+        >;
+        const isCoord = roles.includes("COORDINADOR") && !Boolean(data?.isAdmin);
+        setViewerUid(uid);
+        setViewerNombre(nombre);
+        setIsCoordViewer(isCoord);
+        setViewerAreas(areas);
+        if (isCoord && uid) {
+          setCoordFilter(uid);
+          if (areas.length === 1) setAreaFilter(areas[0]);
+        }
+      } catch {}
+    })();
+  }, []);
+
+  useEffect(() => {
     setPageInfo({ hasMore: false, lastId: "", lastCreatedAtMs: 0 });
     loadVentas(true);
   }, [yearFilter, monthFilter]);
 
+  const areaOptions = useMemo(() => {
+    if (!isCoordViewer) return ["INSTALACIONES", "MANTENIMIENTO"] as const;
+    const opts = viewerAreas.filter((a) => a === "INSTALACIONES" || a === "MANTENIMIENTO");
+    return (opts.length ? opts : ["INSTALACIONES"]) as readonly ("INSTALACIONES" | "MANTENIMIENTO")[];
+  }, [isCoordViewer, viewerAreas]);
+
+  useEffect(() => {
+    if (!isCoordViewer) return;
+    if (!areaOptions.length) return;
+    if (areaFilter === "ALL" || !areaOptions.includes(areaFilter)) {
+      setAreaFilter(areaOptions[0]);
+    }
+  }, [isCoordViewer, areaFilter, areaOptions]);
+
   const ventasView = useMemo(() => {
     let list = ventas;
+    if (isCoordViewer && viewerUid) {
+      list = list.filter((v: any) => String(v?.coordinadorUid || "") === viewerUid);
+    }
     if (areaFilter !== "ALL") {
       list = list.filter((v: any) => String(v?.area || "") === areaFilter);
     }
-    if (canViewAll && coordFilter) {
+    if ((canViewAll || isCoordViewer) && coordFilter) {
       list = list.filter((v: any) => String(v?.coordinadorUid || "") === coordFilter);
     }
     if (onlyPending) {
       list = list.filter((v: any) => String(v?.estado || "") !== "PAGADO");
     }
     return list;
-  }, [ventas, areaFilter, coordFilter, onlyPending, canViewAll]);
+  }, [ventas, areaFilter, coordFilter, onlyPending, canViewAll, isCoordViewer, viewerUid]);
 
   useEffect(() => {
-    if (!canViewAll) return;
+    if (!canViewAll && !isCoordViewer) return;
     (async () => {
       try {
         const res = await fetch("/api/usuarios/by-role?role=COORDINADOR", { cache: "no-store" });
         if (!res.ok) return;
         const data = await res.json();
-        setCoordinadores(Array.isArray(data?.items) ? data.items : []);
+        const items = Array.isArray(data?.items) ? data.items : [];
+        if (isCoordViewer) {
+          const mine = items.filter((c: any) => String(c?.uid || "") === viewerUid);
+          if (mine.length) {
+            setCoordinadores(mine);
+          } else if (viewerUid) {
+            setCoordinadores([{ uid: viewerUid, label: viewerNombre || viewerUid }]);
+          } else {
+            setCoordinadores([]);
+          }
+        } else {
+          setCoordinadores(items);
+        }
       } catch {}
     })();
-  }, [canViewAll]);
+  }, [canViewAll, isCoordViewer, viewerUid, viewerNombre]);
 
   const totalCentsDraft = useMemo(() => {
     return cuotasDraft.reduce((acc, c) => acc + moneyToCents(toNum(c.monto)), 0);
@@ -263,21 +333,23 @@ export default function VentasClient({
         <select
           value={areaFilter}
           onChange={(e) => setAreaFilter(e.target.value as any)}
+          disabled={isCoordViewer && areaOptions.length <= 1}
           className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
         >
-          <option value="ALL">Todas</option>
-          <option value="INSTALACIONES">Instalaciones</option>
-          <option value="MANTENIMIENTO">MANTENIMIENTO</option>
+          {!isCoordViewer && <option value="ALL">Todas</option>}
+          {areaOptions.includes("INSTALACIONES") && <option value="INSTALACIONES">Instalaciones</option>}
+          {areaOptions.includes("MANTENIMIENTO") && <option value="MANTENIMIENTO">Mantenimiento</option>}
         </select>
-        {canViewAll && (
+        {(canViewAll || isCoordViewer) && (
           <>
             <label className="text-sm ml-2">Coordinador</label>
             <select
               value={coordFilter}
               onChange={(e) => setCoordFilter(e.target.value)}
+              disabled={isCoordViewer}
               className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             >
-              <option value="">Todos</option>
+              {!isCoordViewer && <option value="">Todos</option>}
               {coordinadores.map((c) => (
                 <option key={c.uid} value={c.uid}>
                   {c.label}
@@ -368,7 +440,11 @@ export default function VentasClient({
                 <td className="px-3 py-2">{v.cuadrillaNombre || v.cuadrillaId || "-"}</td>
                 <td className="px-3 py-2">{centsToMoney(v.totalCents)}</td>
                 <td className="px-3 py-2">{centsToMoney(v.saldoPendienteCents)}</td>
-                <td className="px-3 py-2">{v.estado}</td>
+                <td className="px-3 py-2">
+                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${estadoBadgeClass(v.estado)}`}>
+                    {v.estado || "-"}
+                  </span>
+                </td>
                 <td className="px-3 py-2">{v.createdAtStr || "-"}</td>
                 <td className="px-3 py-2 text-right">
                   <button
@@ -405,11 +481,28 @@ export default function VentasClient({
       )}
 
       {selectedVenta && (
-        <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="font-medium">Detalle venta: {selectedVenta.id}</div>
-            <div className="text-sm">Estado: {selectedVenta.estado}</div>
-          </div>
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setSelectedVenta(null)} />
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="font-medium">Detalle venta: {selectedVenta.id}</div>
+                <div className="flex items-center gap-3">
+                  <div className="text-sm">
+                    Estado:{" "}
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${estadoBadgeClass(selectedVenta.estado)}`}>
+                      {selectedVenta.estado || "-"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedVenta(null)}
+                    className="rounded-lg border border-slate-300 px-3 py-1 text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
 
           <div className="text-sm">
             Total: {centsToMoney(selectedVenta.totalCents)} | Pagado:{" "}
@@ -530,7 +623,10 @@ export default function VentasClient({
               return (
                 <div key={c.id} className="flex flex-col gap-2 rounded border border-slate-200 p-2 dark:border-slate-700 md:flex-row md:items-center md:justify-between">
                   <div className="text-sm">
-                    Cuota {c.n} | Monto: {centsToMoney(c.montoCents)} | Pagado: {centsToMoney(pagado)} | Pendiente: {centsToMoney(pendiente)} | Estado: {c.estado || "-"}
+                    Cuota {c.n} | Monto: {centsToMoney(c.montoCents)} | Pagado: {centsToMoney(pagado)} | Pendiente: {centsToMoney(pendiente)} | Estado:{" "}
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${estadoBadgeClass(c.estado || (pendiente <= 0 ? "PAGADO" : "PENDIENTE"))}`}>
+                      {c.estado || (pendiente <= 0 ? "PAGADO" : "PENDIENTE")}
+                    </span>
                   </div>
                   {canPagar && pendiente > 0 && (
                     <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
@@ -568,6 +664,8 @@ export default function VentasClient({
               Anular venta (devuelve stock)
             </button>
           )}
+            </div>
+          </div>
         </div>
       )}
     </div>

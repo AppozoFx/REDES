@@ -30,6 +30,7 @@ export async function GET(req: Request) {
     if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
+    const isGestor = roles.includes("GESTOR");
     const isCoord = roles.includes("COORDINADOR");
     const isPriv = session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
 

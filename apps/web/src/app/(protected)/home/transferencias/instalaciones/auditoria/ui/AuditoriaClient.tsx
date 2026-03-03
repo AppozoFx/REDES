@@ -109,6 +109,8 @@ function addHyperlinksToColumn(ws: XLSX.WorkSheet, headerText: string) {
 }
 
 export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
+  const [viewerUid, setViewerUid] = useState("");
+  const [isCoordViewer, setIsCoordViewer] = useState(false);
   const [modo, setModo] = useState<"campo" | "instalados">("campo");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -176,14 +178,28 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
   useEffect(() => {
     (async () => {
       try {
-        const [resCoord, resCuad] = await Promise.all([
+        const [resMe, resCoord, resCuad] = await Promise.all([
+          fetch("/api/auth/me", { cache: "no-store" }),
           fetch("/api/usuarios/by-role?role=COORDINADOR", { cache: "no-store" }),
           fetch("/api/cuadrillas/list?area=INSTALACIONES", { cache: "no-store" }),
         ]);
+        const bMe = await resMe.json().catch(() => ({}));
         const bCoord = await resCoord.json().catch(() => ({}));
         const bCuad = await resCuad.json().catch(() => ({}));
-        setCoordinadores(Array.isArray(bCoord?.items) ? bCoord.items : []);
+        const uid = asStr(bMe?.uid);
+        const roles = Array.isArray(bMe?.roles) ? bMe.roles.map((r: any) => asStr(r).toUpperCase()) : [];
+        const isCoord = roles.includes("COORDINADOR") && !Boolean(bMe?.isAdmin);
+        setViewerUid(uid);
+        setIsCoordViewer(isCoord);
+
+        const allCoords = Array.isArray(bCoord?.items) ? bCoord.items : [];
+        const scopedCoords = isCoord ? allCoords.filter((c: any) => asStr(c?.uid) === uid) : allCoords;
+        setCoordinadores(scopedCoords);
         setCuadrillas(Array.isArray(bCuad?.items) ? bCuad.items : []);
+
+        if (isCoord && uid) {
+          setFiltroCoordinadorUid(uid);
+        }
       } catch {
         // noop
       }
@@ -785,8 +801,13 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
           </div>
           <div>
             <label className="mb-1 block text-xs text-slate-500">Coordinador</label>
-            <select className={fieldClass} value={filtroCoordinadorUid} onChange={(e) => setFiltroCoordinadorUid(e.target.value)}>
-              <option value="">Todos</option>
+            <select
+              className={fieldClass}
+              value={filtroCoordinadorUid}
+              onChange={(e) => setFiltroCoordinadorUid(e.target.value)}
+              disabled={isCoordViewer}
+            >
+              {!isCoordViewer && <option value="">Todos</option>}
               {coordinadores.map((c) => (
                 <option key={c.uid} value={c.uid}>
                   {c.label}
@@ -808,7 +829,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
                 setFiltroEstadoAud("todos");
                 setFiltroEstadoGeneral("todos");
                 setFiltroUbicacion("todas");
-                setFiltroCoordinadorUid("");
+                setFiltroCoordinadorUid(isCoordViewer ? viewerUid : "");
                 setBusqueda("");
               }}
               disabled={!hasFiltros}

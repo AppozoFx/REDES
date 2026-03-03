@@ -29,6 +29,17 @@ function parseSnList(v: any): string[] {
   return [];
 }
 
+function normalizeCalls(raw: any): any[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "object") {
+    const vals = Object.values(raw);
+    if (vals.length && vals.every((x) => x && typeof x === "object")) return vals;
+    return [raw];
+  }
+  return [];
+}
+
 function todayLimaYm() {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Lima",
@@ -58,6 +69,10 @@ export async function GET(req: Request) {
       session.permissions.includes("ORDENES_LIQUIDAR") ||
       (session.access.areas || []).includes("INSTALACIONES");
     if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
+    const roles = Array.isArray(session.access.roles)
+      ? session.access.roles.map((r) => String(r || "").toUpperCase())
+      : [];
+    const isCoordinatorScoped = !session.isAdmin && roles.includes("COORDINADOR");
 
     const { searchParams } = new URL(req.url);
     const ymd = String(searchParams.get("ymd") || "").trim();
@@ -101,7 +116,19 @@ export async function GET(req: Request) {
           ? liquidacion.servicios
           : {};
       const servicios = { ...liquidacionServicios, ...serviciosRaw };
-      const equipos = Array.isArray(data.equiposInstalados) ? data.equiposInstalados : [];
+      const equiposRaw =
+        (Array.isArray(data.equiposInstalados) && data.equiposInstalados) ||
+        (Array.isArray(liquidacion.equiposInstalados) && liquidacion.equiposInstalados) ||
+        (Array.isArray((orden as any)?.equiposInstalados) && (orden as any).equiposInstalados) ||
+        [];
+      const equipos = equiposRaw
+        .map((e: any) => ({
+          sn: String(e?.sn || e?.SN || "").trim(),
+          tipo: String(e?.tipo || e?.kind || "").trim(),
+          proid: String(e?.proid || e?.PROID || "").trim(),
+          descripcion: String(e?.descripcion || "").trim(),
+        }))
+        .filter((e: any) => e.sn || e.tipo || e.proid || e.descripcion);
 
       const byTipo = (tipo: string) =>
         equipos.filter((e: any) => String(e?.tipo || "").toUpperCase().includes(tipo));
@@ -121,12 +148,19 @@ export async function GET(req: Request) {
       const fechaInstalacionAt =
         fechaOrdenAt || toIso(data.fechaInstalacionAt) || toIso(liquidacion.at) || toIso(data.updatedAt) || null;
 
-      const llamadasRaw = data.llamadas || orden.llamadas || null;
-      const llamadasArr = Array.isArray(llamadasRaw)
-        ? llamadasRaw
-        : llamadasRaw && typeof llamadasRaw === "object"
-          ? [llamadasRaw]
-          : [];
+      const llamadasRaw =
+        data.llamadas ||
+        liquidacion.llamadas ||
+        orden.llamadas ||
+        (orden.estadoLlamada || orden.horaInicioLlamada || orden.horaFinLlamada || orden.observacionLlamada
+          ? {
+              estadoLlamada: orden.estadoLlamada,
+              horaInicioLlamada: orden.horaInicioLlamada,
+              horaFinLlamada: orden.horaFinLlamada,
+              observacionLlamada: orden.observacionLlamada,
+            }
+          : null);
+      const llamadasArr = normalizeCalls(llamadasRaw);
       const llamadas = llamadasArr.map((ll: any) => ({
         estadoLlamada: ll?.estadoLlamada,
         horaInicioLlamada: ll?.horaInicioLlamada,
@@ -139,16 +173,25 @@ export async function GET(req: Request) {
         fecha: ll?.fecha || null,
       }));
 
-      const materiales = Array.isArray(data.materialesConsumidos)
-        ? data.materialesConsumidos.map((m: any) => ({
-            materialId: m?.materialId,
-            nombre: m?.nombre || m?.materialId,
-            tipo: m?.tipo,
-            cantidad: m?.und ?? m?.cantidad ?? 0,
-            metros: m?.metros ?? 0,
-            status: m?.status,
-          }))
-        : [];
+      const materialesArr =
+        (Array.isArray(data.materialesConsumidos) && data.materialesConsumidos) ||
+        (Array.isArray(liquidacion.materialesConsumidos) && liquidacion.materialesConsumidos) ||
+        [];
+      const materialesFromResumen =
+        !materialesArr.length && data.materialesLiquidacion && typeof data.materialesLiquidacion === "object"
+          ? Object.entries(data.materialesLiquidacion)
+              .filter(([k, v]) => k !== "acta" && k !== "bobinaMetros" && Number(v) > 0)
+              .map(([k, v]) => ({ materialId: k, nombre: k, cantidad: Number(v), metros: 0, status: "OK" }))
+          : [];
+      const materialesBase = materialesArr.length ? materialesArr : materialesFromResumen;
+      const materiales = materialesBase.map((m: any) => ({
+        materialId: m?.materialId || m?.id || "",
+        nombre: m?.nombre || m?.materialId || m?.id || "",
+        tipo: m?.tipo || "",
+        cantidad: m?.und ?? m?.cantidad ?? 0,
+        metros: m?.metros ?? 0,
+        status: m?.status,
+      }));
 
       const coordinadorUid = String(
         orden.coordinadorCuadrilla || orden.coordinador || orden.gestorCuadrilla || ""
@@ -197,6 +240,7 @@ export async function GET(req: Request) {
         corregidoAt: toIso(data.corregidaAt || data.correccionAt) || null,
         corregidoBy: data.corregidaBy || data.correccionBy || null,
         llamadas,
+        equiposInstalados: equipos,
         materialesConsumidos: materiales,
         snONT,
         snMESH,
@@ -205,9 +249,13 @@ export async function GET(req: Request) {
       };
     });
 
+    const scopedItems = isCoordinatorScoped
+      ? baseItems.filter((i) => String(i.coordinadorUid || "").trim() === session.uid)
+      : baseItems;
+
     const uids = Array.from(
       new Set(
-        baseItems
+        scopedItems
           .map((i) => [i.liquidadoBy, i.corregidoBy])
           .flat()
           .filter((v) => typeof v === "string" && v.length > 0)
@@ -227,7 +275,9 @@ export async function GET(req: Request) {
       );
     }
 
-    const coordUids = Array.from(new Set(baseItems.map((i) => String(i.coordinadorUid || "").trim()).filter(Boolean)));
+    const coordUids = Array.from(
+      new Set(scopedItems.map((i) => String(i.coordinadorUid || "").trim()).filter(Boolean))
+    );
     const coordRefs = coordUids.map((uid) => adminDb().collection("usuarios").doc(uid));
     const coordSnaps = coordUids.length ? await adminDb().getAll(...coordRefs) : [];
     const coordMap = new Map(
@@ -242,7 +292,7 @@ export async function GET(req: Request) {
       })
     );
 
-    const items = baseItems.map((i) => ({
+    const items = scopedItems.map((i) => ({
       ...i,
       liquidadoBy: i.liquidadoBy ? uidToName[i.liquidadoBy] || i.liquidadoBy : null,
       corregidoBy: i.corregidoBy ? uidToName[i.corregidoBy] || i.corregidoBy : null,

@@ -30,6 +30,12 @@ export async function POST(req: Request) {
       session.permissions.includes("ORDENES_LIQUIDAR") ||
       (session.access.areas || []).includes("INSTALACIONES");
     if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
+    const roles = Array.isArray(session.access.roles)
+      ? session.access.roles.map((r) => String(r || "").toUpperCase())
+      : [];
+    if (!session.isAdmin && roles.includes("COORDINADOR")) {
+      return NextResponse.json({ ok: false, error: "READ_ONLY_ROLE" }, { status: 403 });
+    }
 
     const raw = await req.json();
     const merged = raw && typeof raw === "object" && raw.changes ? { ...raw, ...raw.changes } : raw;

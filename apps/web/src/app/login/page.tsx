@@ -6,13 +6,6 @@ import { signInWithEmailAndPassword, setPersistence, browserSessionPersistence }
 import { AnimatePresence, motion } from "framer-motion";
 import { getFirebaseAuth } from "../../lib/firebase/client";
 
-// Debug import/forma de la exportación
-try {
-  // eslint-disable-next-line no-console
-  console.log("[login] typeof getFirebaseAuth", typeof getFirebaseAuth, { ts: Date.now() });
-  // eslint-disable-next-line no-console
-  console.log("[login] getFirebaseAuth.name", (getFirebaseAuth as any)?.name);
-} catch {}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -31,9 +24,6 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // Verificar nuevamente antes de invocar
-      // eslint-disable-next-line no-console
-      console.log("[login] calling getFirebaseAuth, typeof:", typeof getFirebaseAuth);
       const auth = getFirebaseAuth();
       // Garantiza que currentUser persista tras refresh
       await setPersistence(auth, browserSessionPersistence);
@@ -48,11 +38,6 @@ const res = await fetch("/api/auth/session", {
   body: JSON.stringify({ idToken }),
 
 });
-const payload = JSON.parse(atob(idToken.split(".")[1]));
-console.log("TOKEN iss:", payload.iss);
-console.log("TOKEN aud:", payload.aud);
-// Log del projectId del cliente para comparar con aud
-try { console.log("APP projectId:", (auth.app.options as any)?.projectId); } catch {}
 
 const text = await res.text();
 if (!res.ok) throw new Error(`session (${res.status}): ${text}`);

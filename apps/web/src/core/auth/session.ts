@@ -17,6 +17,15 @@ export type ServerSession = {
 
 const COOKIE_NAME = "__session";
 const INACTIVITY_MS = 2 * 60 * 60 * 1000; // 2 horas
+const AUTH_DEBUG = process.env.NODE_ENV !== "production";
+
+function debugLog(level: "log" | "warn" | "error", message: string, meta?: Record<string, unknown>) {
+  if (!AUTH_DEBUG) return;
+  try {
+    // eslint-disable-next-line no-console
+    console[level](message, meta || {});
+  } catch {}
+}
 
 function toMillis(v: any): number {
   if (!v) return 0;
@@ -29,39 +38,31 @@ function toMillis(v: any): number {
   return 0;
 }
 
-export async function getServerSession(): Promise<ServerSession | null> {
+export async function getServerSession(options?: {
+  forceAccessRefresh?: boolean;
+}): Promise<ServerSession | null> {
   try {
-    let cookieStore: ReturnType<typeof cookies>;
+    let cookieStore: Awaited<ReturnType<typeof cookies>>;
     try {
       cookieStore = await cookies();
     } catch (e: any) {
-      try {
-        // eslint-disable-next-line no-console
-        console.error("[session] cookies() failed", {
-          message: String(e?.message || e || "ERROR"),
-          code: String(e?.code || ""),
-          stack: e?.stack,
-        });
-      } catch {}
+      debugLog("error", "[session] cookies() failed", {
+        message: String(e?.message || e || "ERROR"),
+        code: String(e?.code || ""),
+      });
       return null;
     }
 
     const cookie = cookieStore.get(COOKIE_NAME)?.value;
-    try {
-      // eslint-disable-next-line no-console
-      console.log("[session] cookie read", {
-        present: Boolean(cookie),
-        len: cookie ? cookie.length : 0,
-      });
-    } catch {}
+    debugLog("log", "[session] cookie read", {
+      present: Boolean(cookie),
+      len: cookie ? cookie.length : 0,
+    });
     if (!cookie) {
-      try {
-        // eslint-disable-next-line no-console
-        console.warn("[session] missing cookie", {
-          cookieName: COOKIE_NAME,
-          nodeEnv: process.env.NODE_ENV,
-        });
-      } catch {}
+      debugLog("warn", "[session] missing cookie", {
+        cookieName: COOKIE_NAME,
+        nodeEnv: process.env.NODE_ENV,
+      });
       return null;
     }
 
@@ -69,14 +70,11 @@ export async function getServerSession(): Promise<ServerSession | null> {
     try {
       decoded = await adminAuth().verifySessionCookie(cookie, true);
     } catch (e: any) {
-      try {
-        // eslint-disable-next-line no-console
-        console.error("[session] verifySessionCookie failed", {
-          message: String(e?.message || e || "ERROR"),
-          code: String(e?.code || ""),
-          nodeEnv: process.env.NODE_ENV,
-        });
-      } catch {}
+      debugLog("error", "[session] verifySessionCookie failed", {
+        message: String(e?.message || e || "ERROR"),
+        code: String(e?.code || ""),
+        nodeEnv: process.env.NODE_ENV,
+      });
       return null;
     }
     const uid = decoded.uid;
@@ -87,38 +85,30 @@ export async function getServerSession(): Promise<ServerSession | null> {
       if (pSnap.exists) {
         const p = pSnap.data() as any;
         const lastSeenMs = toMillis(p?.lastSeenAt) || toMillis(p?.updatedAt);
-        try {
-          // eslint-disable-next-line no-console
-          console.log("[session] presence lastSeen", {
-            uid,
-            lastSeenMs,
-            ageMs: lastSeenMs ? Date.now() - lastSeenMs : null,
-          });
-        } catch {}
+        debugLog("log", "[session] presence lastSeen", {
+          uid,
+          lastSeenMs,
+          ageMs: lastSeenMs ? Date.now() - lastSeenMs : null,
+        });
         if (lastSeenMs > 0 && Date.now() - lastSeenMs > INACTIVITY_MS) return null;
       }
     } catch {}
 
     let ctx: Awaited<ReturnType<typeof getUserAccessContextCached>> | null = null;
     try {
-      ctx = await getUserAccessContextCached(uid);
+      ctx = await getUserAccessContextCached(uid, {
+        forceRefresh: options?.forceAccessRefresh === true,
+      });
     } catch (e: any) {
-      try {
-        // eslint-disable-next-line no-console
-        console.error("[session] access context error", {
-          uid,
-          message: String(e?.message || e || "ERROR"),
-          code: String(e?.code || ""),
-          stack: e?.stack,
-        });
-      } catch {}
+      debugLog("error", "[session] access context error", {
+        uid,
+        message: String(e?.message || e || "ERROR"),
+        code: String(e?.code || ""),
+      });
       return null;
     }
     if (!ctx) {
-      try {
-        // eslint-disable-next-line no-console
-        console.warn("[session] access context missing", { uid });
-      } catch {}
+      debugLog("warn", "[session] access context missing", { uid });
       return null;
     }
 
@@ -135,27 +125,20 @@ export async function getServerSession(): Promise<ServerSession | null> {
       isAdmin,
       permissions: ctx.effectivePermissions,
     };
-    try {
-      // eslint-disable-next-line no-console
-      console.log("[session] ok", {
-        uid,
-        isAdmin,
-        roles: session.access.roles?.length || 0,
-        areas: session.access.areas?.length || 0,
-        perms: session.permissions?.length || 0,
-      });
-    } catch {}
+    debugLog("log", "[session] ok", {
+      uid,
+      isAdmin,
+      roles: session.access.roles?.length || 0,
+      areas: session.access.areas?.length || 0,
+      perms: session.permissions?.length || 0,
+    });
     return session;
   } catch (e: any) {
-    try {
-      // eslint-disable-next-line no-console
-      console.error("[session] unexpected error", {
-        nodeEnv: process.env.NODE_ENV,
-        message: String(e?.message || e || "ERROR"),
-        code: String(e?.code || ""),
-        stack: e?.stack,
-      });
-    } catch {}
+    debugLog("error", "[session] unexpected error", {
+      nodeEnv: process.env.NODE_ENV,
+      message: String(e?.message || e || "ERROR"),
+      code: String(e?.code || ""),
+    });
     return null;
   }
 }

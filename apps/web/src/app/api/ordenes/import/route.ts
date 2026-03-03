@@ -45,6 +45,7 @@ export async function POST(req: Request) {
     }
     const allowed = session.isAdmin || session.permissions.includes("ORDENES_IMPORT");
     if (!allowed) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
+    const actorUid = session.uid;
 
     const formData = await req.formData();
     const file = formData.get("file");
@@ -103,7 +104,7 @@ export async function POST(req: Request) {
         const idx = cursor++;
         if (idx >= payloads.length) return;
         try {
-          const res = await upsertOrden(payloads[idx], session.uid);
+          const res = await upsertOrden(payloads[idx], actorUid);
           if (res === "CREATED") nuevos++;
           else if (res === "UPDATED") actualizados++;
           else duplicadosSinCambios++;
@@ -124,7 +125,7 @@ export async function POST(req: Request) {
       message: `nuevos: ${nuevos}, actualizados: ${actualizados}, duplicados: ${duplicadosSinCambios}`,
       type: "success",
       scope: "ALL",
-      createdBy: session.uid,
+      createdBy: actorUid,
       entityType: "ORDENES",
       entityId: `import:${Date.now()}`,
       action: "CREATE",

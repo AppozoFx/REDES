@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+const AUTH_DEBUG = process.env.NODE_ENV !== "production";
 
 const COOKIE_NAME = "__session";
 const LOGIN_NOTIFY_WINDOW_MS = 5 * 60 * 1000;
@@ -15,6 +16,14 @@ function shortName(nombres: string, apellidos: string, fallback: string) {
   const firstLast = a[0] || "";
   const out = `${first} ${firstLast}`.trim();
   return out || fallback;
+}
+
+function debugLog(level: "log" | "warn" | "error", message: string, meta?: Record<string, unknown>) {
+  if (!AUTH_DEBUG) return;
+  try {
+    // eslint-disable-next-line no-console
+    console[level](message, meta || {});
+  } catch {}
 }
 
 
@@ -29,33 +38,22 @@ export async function POST(req: Request) {
 
     // ✅ valida token real (detecta mismatch emulador/real)
     const auth = adminAuth();
-    try {
-      // eslint-disable-next-line no-console
-      console.log("[session/api] admin projectId", (auth.app?.options as any)?.projectId);
-    } catch {}
+    debugLog("log", "[session/api] admin projectId", {
+      projectId: (auth.app?.options as any)?.projectId,
+    });
 
     let decoded: any;
     try {
       decoded = await auth.verifyIdToken(idToken, true);
     } catch (e: any) {
-      try {
-        // eslint-disable-next-line no-console
-        console.error("[session/api] verifyIdToken failed", {
-          message: String(e?.message || e || "ERROR"),
-          code: String(e?.code || ""),
-        });
-      } catch {}
+      debugLog("error", "[session/api] verifyIdToken failed", {
+        message: String(e?.message || e || "ERROR"),
+        code: String(e?.code || ""),
+      });
       throw e;
     }
     const uid = decoded?.uid || "";
-    try {
-      // eslint-disable-next-line no-console
-      console.log("[session/api] token decoded", {
-        uid,
-        aud: decoded?.aud,
-        iss: decoded?.iss,
-      });
-    } catch {}
+    debugLog("log", "[session/api] token decoded", { uid });
 
     // Maximo permitido por Firebase para session cookies: 14 dias.
     // El cierre al cerrar todas las pestanas lo controla TabSessionGuard.
@@ -71,14 +69,11 @@ export async function POST(req: Request) {
       sameSite: "lax",
       path: "/",
     });
-    try {
-      // eslint-disable-next-line no-console
-      console.log("[session/api] set-cookie", {
-        cookieName: COOKIE_NAME,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-      });
-    } catch {}
+    debugLog("log", "[session/api] set-cookie", {
+      cookieName: COOKIE_NAME,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+    });
 
     // Presencia global (usuarios_presencia) al iniciar sesion
     try {
@@ -135,8 +130,9 @@ export async function POST(req: Request) {
         );
       }
     } catch (notifErr) {
-      // eslint-disable-next-line no-console
-      console.warn("[session/api] login notification failed", notifErr);
+      debugLog("warn", "[session/api] login notification failed", {
+        message: String((notifErr as any)?.message || notifErr || "ERROR"),
+      });
     }
 
     return res;
@@ -148,10 +144,7 @@ export async function POST(req: Request) {
       message.toUpperCase().includes("TOKEN")
         ? 401
         : 500;
-    try {
-      // eslint-disable-next-line no-console
-      console.error("[session/api] POST error", { code, message, stack: e?.stack });
-    } catch {}
+    debugLog("error", "[session/api] POST error", { code, message });
     return NextResponse.json(
       { ok: false, error: "SESSION_CREATE_FAILED", code, message },
       { status }

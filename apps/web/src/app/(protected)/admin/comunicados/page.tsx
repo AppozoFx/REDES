@@ -45,7 +45,12 @@ export default async function ComunicadosAdminListPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <form action={syncBirthdayComunicadoAction}>
+            <form
+              action={async () => {
+                "use server";
+                await syncBirthdayComunicadoAction();
+              }}
+            >
               <button
                 className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700"
                 type="submit"

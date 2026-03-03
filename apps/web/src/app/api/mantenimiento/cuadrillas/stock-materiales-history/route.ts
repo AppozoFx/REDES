@@ -1,23 +1,26 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { getServerSession } from "@/core/auth/session";
+import { requireAreaScope, requirePermission } from "@/core/auth/apiGuards";
 
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession({ forceAccessRefresh: true });
     if (!session) return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
-    if (session.access.estadoAcceso !== "HABILITADO") {
-      return NextResponse.json({ ok: false, error: "ACCESS_DISABLED" }, { status: 403 });
+    if (!session.isAdmin) {
+      let hasPermission = false;
+      for (const perm of ["MATERIALES_VIEW", "MATERIALES_TRANSFER_SERVICIO", "MATERIALES_DEVOLUCION"]) {
+        try {
+          requirePermission(session, perm);
+          hasPermission = true;
+          break;
+        } catch {}
+      }
+      if (!hasPermission) throw new Error("FORBIDDEN");
+      requireAreaScope(session, ["MANTENIMIENTO"]);
     }
-
-    const canUse =
-      session.isAdmin ||
-      session.permissions.includes("MATERIALES_VIEW") ||
-      session.permissions.includes("MATERIALES_TRANSFER_SERVICIO") ||
-      session.permissions.includes("MATERIALES_DEVOLUCION");
-    if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const { searchParams } = new URL(req.url);
     const cuadrillaId = String(searchParams.get("cuadrillaId") || "").trim();
@@ -60,6 +63,16 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ ok: true, items });
   } catch (e: any) {
+    const msg = String(e?.message || "");
+    if (msg === "UNAUTHENTICATED") {
+      return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
+    }
+    if (msg === "ACCESS_DISABLED") {
+      return NextResponse.json({ ok: false, error: "ACCESS_DISABLED" }, { status: 403 });
+    }
+    if (msg === "FORBIDDEN" || msg === "AREA_FORBIDDEN") {
+      return NextResponse.json({ ok: false, error: msg === "AREA_FORBIDDEN" ? "AREA_FORBIDDEN" : "FORBIDDEN" }, { status: 403 });
+    }
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }
 }

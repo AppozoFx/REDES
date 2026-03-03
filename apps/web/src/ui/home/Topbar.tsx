@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ServerSession } from "@/core/auth/session";
 import { NotificationsBell } from "@/ui/common/NotificationsBell";
+import { useUserIdentity } from "@/ui/common/UserProvider";
 
 function shortName(full: string, fallback: string) {
   const parts = String(full || "").trim().split(/\s+/).filter(Boolean);
@@ -26,27 +27,9 @@ function initialsFromName(full: string, fallback: string) {
 }
 
 export default function HomeTopbar({ session }: { session: ServerSession }) {
-  const [nombreCorto, setNombreCorto] = useState<string>("");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const res = await fetch("/api/auth/me", { cache: "no-store" });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok || !body?.ok) return;
-        const nombre = shortName(String(body?.nombre || ""), session.uid);
-        if (mounted) setNombreCorto(nombre);
-      } catch {
-        // fallback silencioso al uid
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [session.uid]);
+  const { user } = useUserIdentity();
 
   useEffect(() => {
     const onDown = (ev: MouseEvent) => {
@@ -64,7 +47,10 @@ export default function HomeTopbar({ session }: { session: ServerSession }) {
     };
   }, []);
 
-  const identidad = useMemo(() => nombreCorto || session.uid, [nombreCorto, session.uid]);
+  const identidad = useMemo(
+    () => shortName(String(user?.nombre || ""), session.uid) || session.uid,
+    [user?.nombre, session.uid]
+  );
   const initials = useMemo(() => initialsFromName(identidad, session.uid), [identidad, session.uid]);
 
   return (

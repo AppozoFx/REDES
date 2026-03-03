@@ -98,6 +98,18 @@ function shortName(name: string) {
   return `${first} ${firstLast}`.trim() || first;
 }
 
+function monthRange(monthRaw: string): { start: string; end: string } | null {
+  const m = String(monthRaw || "").trim().match(/^(\d{4})-(\d{2})$/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(y) || !Number.isFinite(mm) || mm < 1 || mm > 12) return null;
+  const start = `${String(y).padStart(4, "0")}-${String(mm).padStart(2, "0")}-01`;
+  const lastDay = new Date(y, mm, 0).getDate();
+  const end = `${String(y).padStart(4, "0")}-${String(mm).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  return { start, end };
+}
+
 export async function GET(req: Request) {
   try {
     const session = await getServerSession();
@@ -108,13 +120,24 @@ export async function GET(req: Request) {
     if (!allowed) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const { searchParams } = new URL(req.url);
-    const ymd = String(searchParams.get("ymd") || todayLimaYmd());
+    const ymd = String(searchParams.get("ymd") || "").trim();
+    const month = String(searchParams.get("month") || "").trim();
+    const monthParsed = monthRange(month);
 
-    const snap = await adminDb()
-      .collection("ordenes")
-      .where("fechaFinVisiYmd", "==", ymd)
-      .limit(400)
-      .get();
+    const q = adminDb().collection("ordenes");
+    let snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>;
+    if (ymd) {
+      snap = await q.where("fechaFinVisiYmd", "==", ymd).limit(3000).get();
+    } else if (monthParsed) {
+      snap = await q
+        .where("fechaFinVisiYmd", ">=", monthParsed.start)
+        .where("fechaFinVisiYmd", "<=", monthParsed.end)
+        .limit(5000)
+        .get();
+    } else {
+      const today = todayLimaYmd();
+      snap = await q.where("fechaFinVisiYmd", "==", today).limit(3000).get();
+    }
 
     const allRowsBase: Row[] = snap.docs
       .map((d) => {

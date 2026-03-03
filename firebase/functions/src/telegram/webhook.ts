@@ -6,6 +6,7 @@ import * as logger from "firebase-functions/logger";
 import { db, FieldValue } from "../lib/admin";
 import { writeAudit } from "../lib/audit";
 import { parseTelegramTemplate } from "./parser";
+import { parseTelegramTemplateWithAI } from "./aiParser";
 import {
   answerTelegramCallbackQuery,
   sendTelegramMessage,
@@ -19,11 +20,18 @@ const TELEGRAM_ALLOWED_CHAT_IDS = defineString("TELEGRAM_ALLOWED_CHAT_IDS", {
 const TELEGRAM_ALLOWED_USER_IDS = defineString("TELEGRAM_ALLOWED_USER_IDS", {
   default: "",
 });
+const OPENAI_API_KEY_PRELIQUIDACION = defineSecret("OPENAI_API_KEY_PRELIQUIDACION");
+const OPENAI_PRELIQ_MODEL = defineString("OPENAI_PRELIQ_MODEL", {
+  default: "gpt-4.1-mini",
+});
 
 const UPDATES_COLLECTION = "telegram_updates";
 const PRELIQ_COLLECTION = "telegram_preliquidaciones";
+const PRELIQ_RETRY_COLLECTION = "telegram_preliquidacion_retries";
 const ORDENES_COLLECTION = "ordenes";
 const FOUND_GUARDS_COLLECTION = "telegram_found_guards";
+const PRELIQ_RETRY_MAX_ATTEMPTS = 5;
+const PRELIQ_RETRY_INTERVAL_MS = 60 * 60 * 1000;
 
 type TelegramChat = { id?: number | string };
 type TelegramFrom = { id?: number | string };
@@ -156,6 +164,10 @@ function cleanSeriesList(values: unknown, maxItems = 4): string[] {
 function preliqDocId(pedido: string, ymd: string): string {
   const cleanPedido = cleanValue(pedido).replace(/[\/\\\s]+/g, "_");
   return `${cleanPedido}_${ymd}`;
+}
+
+function preliqRetryDocId(pedido: string): string {
+  return cleanValue(pedido).replace(/[\/\\\s]+/g, "_");
 }
 
 function todayLimaYmd(): string {
@@ -730,10 +742,9 @@ async function upsertPreliquidacion(params: {
   ymd: string;
   orderDocId: string;
   orderMeta: OrdenResumen;
-  parsed: ReturnType<typeof parseTelegramTemplate>;
+  parsed: NonNullable<ReturnType<typeof parseTelegramTemplate>>;
 }) {
   const parsed = params.parsed;
-  if (!parsed) return;
 
   const docId = preliqDocId(params.pedido, params.ymd);
   const ref = db.collection(PRELIQ_COLLECTION).doc(docId);
@@ -764,6 +775,68 @@ async function upsertPreliquidacion(params: {
     },
     { merge: true }
   );
+}
+
+function parsedFromRecord(record: Record<string, unknown>): ReturnType<typeof parseTelegramTemplate> | null {
+  const pedido = cleanValue(record.pedido || "").replace(/\D/g, "");
+  if (!pedido) return null;
+  return {
+    pedido,
+    ctoNap: cleanValue(record.ctoNap || "") || undefined,
+    puerto: cleanValue(record.puerto || "") || undefined,
+    potenciaCtoNapDbm: cleanValue(record.potenciaCtoNapDbm || "") || undefined,
+    snOnt: cleanValue(record.snOnt || "") || undefined,
+    meshes: cleanSeriesList(record.meshes, 4),
+    boxes: cleanSeriesList(record.boxes, 4),
+    snFono: cleanValue(record.snFono || "") || undefined,
+    rawText: cleanValue(record.rawText || ""),
+  };
+}
+
+async function enqueuePreliqRetry(params: {
+  pedido: string;
+  chatId: string;
+  fromId: string;
+  ymd: string;
+  parsed: NonNullable<ReturnType<typeof parseTelegramTemplate>>;
+  reason: string;
+}) {
+  const docId = preliqRetryDocId(params.pedido);
+  const ref = db.collection(PRELIQ_RETRY_COLLECTION).doc(docId);
+  const nextRetryAt = new Date(Date.now() + PRELIQ_RETRY_INTERVAL_MS);
+  await ref.set(
+    {
+      pedido: params.pedido,
+      chatId: params.chatId,
+      fromId: params.fromId || null,
+      ymd: params.ymd,
+      status: "PENDING_ORDER",
+      attempts: FieldValue.increment(1),
+      nextRetryAt,
+      lastError: params.reason,
+      parsedFields: {
+        pedido: params.parsed.pedido,
+        ctoNap: params.parsed.ctoNap || null,
+        puerto: params.parsed.puerto || null,
+        potenciaCtoNapDbm: params.parsed.potenciaCtoNapDbm || null,
+        snOnt: params.parsed.snOnt || null,
+        meshes: params.parsed.meshes || [],
+        boxes: params.parsed.boxes || [],
+        snFono: params.parsed.snFono || null,
+        rawText: params.parsed.rawText || "",
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+async function clearPreliqRetry(pedido: string) {
+  const ref = db.collection(PRELIQ_RETRY_COLLECTION).doc(preliqRetryDocId(pedido));
+  try {
+    await ref.delete();
+  } catch {}
 }
 
 async function handleCallback(update: TelegramUpdate, token: string) {
@@ -838,7 +911,7 @@ function isQueryCommandText(text: string): boolean {
 export const telegramWebhook = onRequest(
   {
     region: "us-central1",
-    secrets: [TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET],
+    secrets: [TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, OPENAI_API_KEY_PRELIQUIDACION],
   },
   async (req, res) => {
     if (req.method !== "POST") {
@@ -1027,12 +1100,35 @@ export const telegramWebhook = onRequest(
       return;
     }
 
-    const parsed = parseTelegramTemplate(text);
+    let parsed = parseTelegramTemplate(text);
+    let parseSource: "RULES" | "AI" = "RULES";
+    if (!parsed) {
+      const aiKey = String(OPENAI_API_KEY_PRELIQUIDACION.value() || "").trim();
+      if (aiKey) {
+        try {
+          const aiParsed = await parseTelegramTemplateWithAI({
+            apiKey: aiKey,
+            text,
+            model: OPENAI_PRELIQ_MODEL.value(),
+          });
+          if (aiParsed) {
+            parsed = aiParsed;
+            parseSource = "AI";
+          }
+        } catch (error) {
+          logger.error("telegram ai parser error", {
+            error: String((error as Error)?.message || error),
+            chatId,
+          });
+        }
+      }
+    }
     if (!parsed) {
       await updateRef.set(
         {
           status: "IGNORED",
           reason: "NO_TEMPLATE_OR_PEDIDO",
+          parseSource: "NONE",
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }
@@ -1054,10 +1150,19 @@ export const telegramWebhook = onRequest(
           pedido: parsed.pedido,
           status: "NOT_FOUND",
           ymd,
+          parseSource,
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }
       );
+      await enqueuePreliqRetry({
+        pedido: parsed.pedido,
+        chatId,
+        fromId,
+        ymd,
+        parsed,
+        reason: "ORDER_NOT_FOUND",
+      });
       await registerAudit({
         fromId,
         dedupeId,
@@ -1095,6 +1200,7 @@ export const telegramWebhook = onRequest(
           pedido: parsed.pedido,
           status: "ALREADY_LIQUIDATED",
           ymd: operacionYmd,
+          parseSource,
           orderDocId: orderResult.id,
           cuadrillaId: orderMeta.cuadrillaId || null,
           cuadrillaNombre: orderMeta.cuadrillaNombre || null,
@@ -1138,6 +1244,7 @@ export const telegramWebhook = onRequest(
           orderDocId: orderResult.id,
           status: "FOUND",
           ymd: operacionYmd,
+          parseSource,
           cuadrillaId: orderMeta.cuadrillaId || null,
           cuadrillaNombre: orderMeta.cuadrillaNombre || null,
           cliente: orderMeta.cliente || null,
@@ -1167,6 +1274,7 @@ export const telegramWebhook = onRequest(
           orderMeta,
           parsed,
         });
+        await clearPreliqRetry(parsed.pedido);
       } catch (error) {
         logger.error("telegram preliquidacion upsert error", {
           error: String((error as Error)?.message || error),
@@ -1198,6 +1306,7 @@ export const telegramWebhook = onRequest(
           pedido: parsed.pedido,
           status: result,
           ymd: operacionYmd,
+          parseSource,
           parsedFields: {
             pedido: parsed.pedido,
             ctoNap: parsed.ctoNap || null,
@@ -1224,6 +1333,126 @@ export const telegramWebhook = onRequest(
     });
 
     res.status(200).json({ ok: true, result });
+  }
+);
+
+export const telegramPreliqRetryWorker = onSchedule(
+  {
+    region: "us-central1",
+    schedule: "0 * * * *",
+    timeZone: "America/Lima",
+    secrets: [TELEGRAM_BOT_TOKEN],
+  },
+  async () => {
+    const now = new Date();
+    const token = TELEGRAM_BOT_TOKEN.value();
+    const snap = await db
+      .collection(PRELIQ_RETRY_COLLECTION)
+      .where("status", "==", "PENDING_ORDER")
+      .where("nextRetryAt", "<=", now)
+      .limit(50)
+      .get();
+
+    for (const docSnap of snap.docs) {
+      const row = (docSnap.data() || {}) as Record<string, unknown>;
+      const pedido = cleanValue(row.pedido || "");
+      if (!pedido) {
+        await docSnap.ref.set(
+          {
+            status: "FAILED_FINAL",
+            lastError: "PEDIDO_EMPTY",
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        continue;
+      }
+
+      const attempts = Number(row.attempts || 0);
+      if (attempts >= PRELIQ_RETRY_MAX_ATTEMPTS) {
+        await docSnap.ref.set(
+          {
+            status: "FAILED_FINAL",
+            lastError: "MAX_ATTEMPTS_REACHED",
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        continue;
+      }
+
+      const orderResult = await fetchOrdenByPedido(pedido);
+      if (!orderResult) {
+        const nextAttempts = attempts + 1;
+        const failFinal = nextAttempts >= PRELIQ_RETRY_MAX_ATTEMPTS;
+        await docSnap.ref.set(
+          {
+            attempts: nextAttempts,
+            status: failFinal ? "FAILED_FINAL" : "PENDING_ORDER",
+            lastError: "ORDER_NOT_FOUND",
+            nextRetryAt: new Date(Date.now() + PRELIQ_RETRY_INTERVAL_MS),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        continue;
+      }
+
+      const parsed = parsedFromRecord((row.parsedFields || {}) as Record<string, unknown>);
+      if (!parsed) {
+        await docSnap.ref.set(
+          {
+            status: "FAILED_FINAL",
+            lastError: "PARSED_FIELDS_INVALID",
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        continue;
+      }
+
+      const orderMeta = buildOrdenResumen(orderResult.data);
+      const operacionYmd = resolveOperacionYmdFromOrden(orderResult.data);
+      try {
+        await upsertPreliquidacion({
+          chatId: cleanValue(row.chatId || ""),
+          fromId: cleanValue(row.fromId || ""),
+          pedido,
+          ymd: operacionYmd,
+          orderDocId: orderResult.id,
+          orderMeta,
+          parsed,
+        });
+        await docSnap.ref.set(
+          {
+            status: "RESOLVED",
+            resolvedAt: FieldValue.serverTimestamp(),
+            orderDocId: orderResult.id,
+            ymdResolved: operacionYmd,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        if (token && cleanValue(row.chatId || "")) {
+          await sendTelegramMessage({
+            token,
+            chatId: cleanValue(row.chatId || ""),
+            text: `Pedido ${pedido}: PRELIQUIDACION REPROCESADA OK.`,
+          });
+        }
+      } catch (error) {
+        await docSnap.ref.set(
+          {
+            attempts: attempts + 1,
+            status: attempts + 1 >= PRELIQ_RETRY_MAX_ATTEMPTS ? "FAILED_FINAL" : "PENDING_ORDER",
+            lastError: String((error as Error)?.message || error),
+            nextRetryAt: new Date(Date.now() + PRELIQ_RETRY_INTERVAL_MS),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+    }
   }
 );
 

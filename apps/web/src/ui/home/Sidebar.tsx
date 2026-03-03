@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import type { ServerSession } from "@/core/auth/session";
 import { buildHomeNav } from "@/core/rbac/buildHomeNav";
+import { useUserIdentity } from "@/ui/common/UserProvider";
 
 type GroupKey =
   | "INSTALACIONES"
@@ -122,27 +123,8 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
   const itemsRaw = buildHomeNav(session);
   const [openGroup, setOpenGroup] = useState<GroupKey>("INSTALACIONES");
   const [collapsed, setCollapsed] = useState(true);
-  const [nombreCorto, setNombreCorto] = useState<string>("");
   const [navigatingHref, setNavigatingHref] = useState<string | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const res = await fetch("/api/auth/me", { cache: "no-store" });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok || !body?.ok) return;
-        if (mounted) {
-          setNombreCorto(shortName(String(body?.nombre || ""), session.uid));
-        }
-      } catch {
-        // noop
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [session.uid]);
+  const { user } = useUserIdentity();
 
   const items = useMemo(() => {
     return itemsRaw.filter((it) => it.href !== "/home/perfil");
@@ -163,7 +145,7 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
     return out;
   }, [items]);
 
-  const identity = nombreCorto || session.uid;
+  const identity = shortName(String(user?.nombre || ""), session.uid) || session.uid;
   const activeLabel = useMemo(() => {
     const exact = items.find((it) => pathname === it.href);
     if (exact) return exact.label;

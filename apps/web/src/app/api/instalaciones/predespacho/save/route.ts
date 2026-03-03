@@ -24,7 +24,8 @@ function addDays(d: Date, n: number) {
 function toDate(anchor: string) {
   const raw = String(anchor || "").trim();
   if (!raw) return new Date();
-  const d = new Date(`${raw}T00:00:00`);
+  // Fecha estable en zona Lima para evitar desfases por timezone del servidor.
+  const d = new Date(`${raw}T12:00:00-05:00`);
   return Number.isNaN(d.getTime()) ? new Date() : d;
 }
 

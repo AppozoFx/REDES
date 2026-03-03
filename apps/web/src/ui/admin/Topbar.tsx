@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NotificationsBell } from "@/ui/common/NotificationsBell";
+import { useUserIdentity } from "@/ui/common/UserProvider";
 
 type Props = {
   uid: string;
@@ -30,27 +31,9 @@ function initialsFromName(full: string, fallback: string) {
 }
 
 export default function Topbar({ uid }: Props) {
-  const [nombreCorto, setNombreCorto] = useState<string>("");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const res = await fetch("/api/auth/me", { cache: "no-store" });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok || !body?.ok) return;
-        const nombre = shortName(String(body?.nombre || ""), uid);
-        if (mounted) setNombreCorto(nombre);
-      } catch {
-        // fallback silencioso al uid
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [uid]);
+  const { user } = useUserIdentity();
 
   useEffect(() => {
     const onDown = (ev: MouseEvent) => {
@@ -68,7 +51,7 @@ export default function Topbar({ uid }: Props) {
     };
   }, []);
 
-  const identidad = useMemo(() => nombreCorto || uid, [nombreCorto, uid]);
+  const identidad = useMemo(() => shortName(String(user?.nombre || ""), uid) || uid, [user?.nombre, uid]);
   const initials = useMemo(() => initialsFromName(identidad, uid), [identidad, uid]);
 
   return (

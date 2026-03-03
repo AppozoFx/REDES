@@ -6,3 +6,4 @@ export { bootstrapAdmin } from "./bootstrapAdmin";
 export { usersCreate } from "./usersCreate";
 export { telegramWebhook } from "./telegram/webhook";
 export { telegramPendientesReminder } from "./telegram/webhook";
+export { telegramPreliqRetryWorker } from "./telegram/webhook";

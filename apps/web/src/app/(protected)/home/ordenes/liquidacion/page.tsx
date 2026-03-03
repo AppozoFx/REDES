@@ -12,8 +12,12 @@ function todayLimaYmd() {
   }).format(new Date());
 }
 
+function currentLimaMonth() {
+  return todayLimaYmd().slice(0, 7);
+}
+
 export default async function Page() {
   await requirePermission("ORDENES_LIQUIDAR");
 
-  return <LiquidacionClient initialYmd={todayLimaYmd()} />;
+  return <LiquidacionClient initialYmd={todayLimaYmd()} initialMonth={currentLimaMonth()} />;
 }

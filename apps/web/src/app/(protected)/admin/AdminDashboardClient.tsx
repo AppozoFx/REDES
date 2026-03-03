@@ -54,27 +54,77 @@ export default function AdminDashboardClient({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [auditUidOpen, setAuditUidOpen] = useState<string | null>(null);
+  const [liveRows, setLiveRows] = useState<Row[]>(rows);
+  const [liveGeneratedAt, setLiveGeneratedAt] = useState<string>(generatedAt);
+
+  useEffect(() => {
+    setLiveRows(rows);
+    setLiveGeneratedAt(generatedAt);
+  }, [rows, generatedAt]);
+
+  useEffect(() => {
+    if (!rows.length) return;
+    let alive = true;
+    let inFlight = false;
+    const uids = Array.from(new Set(rows.map((r) => String(r.uid || "").trim()).filter(Boolean)));
+
+    const pullPresence = async () => {
+      if (!alive || inFlight) return;
+      inFlight = true;
+      try {
+        const res = await fetch("/api/admin/presencia/snapshot", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({ uids }),
+        });
+        const json = (await res.json().catch(() => null)) as
+          | { ok?: boolean; generatedAt?: string; data?: Array<{ uid: string; online: boolean; lastSeenAt: string | null }> }
+          | null;
+        if (!alive || !res.ok || !json?.ok || !Array.isArray(json.data)) return;
+
+        const byUid = new Map(json.data.map((x) => [String(x.uid || ""), x]));
+        setLiveRows((prev) =>
+          prev.map((r) => {
+            const next = byUid.get(r.uid);
+            if (!next) return r;
+            if (r.online === next.online && r.lastSeenAt === next.lastSeenAt) return r;
+            return { ...r, online: !!next.online, lastSeenAt: next.lastSeenAt || null };
+          })
+        );
+        if (json.generatedAt) setLiveGeneratedAt(String(json.generatedAt));
+      } catch {}
+      inFlight = false;
+    };
+
+    pullPresence();
+    const timer = window.setInterval(pullPresence, 20_000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [rows]);
 
   const roleOptions = useMemo(
     () =>
-      Array.from(new Set(rows.flatMap((r) => r.roles).filter(Boolean))).sort((a, b) =>
+      Array.from(new Set(liveRows.flatMap((r) => r.roles).filter(Boolean))).sort((a, b) =>
         a.localeCompare(b, "es", { sensitivity: "base" })
       ),
-    [rows]
+    [liveRows]
   );
   const areaOptions = useMemo(
     () =>
-      Array.from(new Set(rows.flatMap((r) => r.areas).filter(Boolean))).sort((a, b) =>
+      Array.from(new Set(liveRows.flatMap((r) => r.areas).filter(Boolean))).sort((a, b) =>
         a.localeCompare(b, "es", { sensitivity: "base" })
       ),
-    [rows]
+    [liveRows]
   );
   const estadoOptions = useMemo(
     () =>
-      Array.from(new Set(rows.map((r) => String(r.estadoAcceso || "").trim()).filter(Boolean))).sort((a, b) =>
+      Array.from(new Set(liveRows.map((r) => String(r.estadoAcceso || "").trim()).filter(Boolean))).sort((a, b) =>
         a.localeCompare(b, "es", { sensitivity: "base" })
       ),
-    [rows]
+    [liveRows]
   );
 
   useEffect(() => {
@@ -83,7 +133,7 @@ export default function AdminDashboardClient({
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const base = rows.filter((r) => {
+    const base = liveRows.filter((r) => {
       if (needle) {
         const hay = `${r.nombre} ${r.email} ${r.uid}`.toLowerCase();
         if (!hay.includes(needle)) return false;
@@ -116,7 +166,7 @@ export default function AdminDashboardClient({
     });
 
     return sorted;
-  }, [rows, q, rol, area, estadoAcceso, estadoConexion, sortKey, sortDir]);
+  }, [liveRows, q, rol, area, estadoAcceso, estadoConexion, sortKey, sortDir]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const pageSafe = Math.min(page, totalPages);
@@ -146,12 +196,12 @@ export default function AdminDashboardClient({
   }
 
   const kpi = useMemo(() => {
-    const total = rows.length;
-    const conectados = rows.filter((r) => r.online).length;
+    const total = liveRows.length;
+    const conectados = liveRows.filter((r) => r.online).length;
     const desconectados = total - conectados;
-    const inhabilitados = rows.filter((r) => String(r.estadoAcceso || "").toUpperCase() === "INHABILITADO").length;
+    const inhabilitados = liveRows.filter((r) => String(r.estadoAcceso || "").toUpperCase() === "INHABILITADO").length;
     return { total, conectados, desconectados, inhabilitados };
-  }, [rows]);
+  }, [liveRows]);
 
 
   const fieldClass =
@@ -159,9 +209,9 @@ export default function AdminDashboardClient({
 
   const userNameByUid = useMemo(() => {
     const map = new Map<string, string>();
-    for (const r of rows) map.set(r.uid, r.nombre || r.uid);
+    for (const r of liveRows) map.set(r.uid, r.nombre || r.uid);
     return map;
-  }, [rows]);
+  }, [liveRows]);
 
   const selectedAudit = auditUidOpen ? auditByUser[auditUidOpen] || [] : [];
   const selectedName = auditUidOpen ? userNameByUid.get(auditUidOpen) || auditUidOpen : "";
@@ -171,7 +221,7 @@ export default function AdminDashboardClient({
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <h1 className="text-2xl font-semibold">Admin Dashboard</h1>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Estado de usuarios y conectividad. Actualizado: {asLocalDateTime(generatedAt)}
+          Estado de usuarios y conectividad. Actualizado: {asLocalDateTime(liveGeneratedAt)}
         </p>
       </section>
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { usePredespachoAiRecommendation } from "./usePredespachoAiRecommendation";
 
 const EQUIPOS = ["ONT", "MESH", "FONO", "BOX"] as const;
 const PRECONS = ["PRECON_50", "PRECON_100", "PRECON_150", "PRECON_200"] as const;
@@ -12,6 +13,17 @@ type PreconCounts = Record<PreconId, number>;
 type Scope = "all" | "coordinador" | "tecnico";
 type EstadoFiltro = "todas" | "guardadas" | "pendientes" | "lote";
 type ModeloFiltro = "all" | "huawei" | "zte";
+type GrupoDespachoFiltro = "all" | "huawei" | "zte";
+type PredespachoMode = "weekly" | "coordinator" | "squad" | "urgent";
+type ModelGroup = "HUAWEI" | "ZTE" | "NEUTRO";
+type ModelCounts = {
+  ONT_HUAWEI: number;
+  ONT_ZTE: number;
+  MESH_HUAWEI: number;
+  MESH_ZTE: number;
+  FONO: number;
+  BOX: number;
+};
 
 type Cuadrilla = {
   id: string;
@@ -26,6 +38,9 @@ function emptyCounts(): Counts {
 }
 function emptyPrecon(): PreconCounts {
   return { PRECON_50: 0, PRECON_100: 0, PRECON_150: 0, PRECON_200: 0 };
+}
+function emptyModelCounts(): ModelCounts {
+  return { ONT_HUAWEI: 0, ONT_ZTE: 0, MESH_HUAWEI: 0, MESH_ZTE: 0, FONO: 0, BOX: 0 };
 }
 function n(v: any) {
   const x = Number(v);
@@ -56,10 +71,16 @@ export default function PredespachoClient() {
   const [selectedBatch, setSelectedBatch] = useState("");
   const [estadoFiltro, setEstadoFiltro] = useState<EstadoFiltro>("todas");
   const [modeloFiltro, setModeloFiltro] = useState<ModeloFiltro>("all");
+  const [grupoDespacho, setGrupoDespacho] = useState<GrupoDespachoFiltro>("all");
+  const [predespachoMode, setPredespachoMode] = useState<PredespachoMode>("weekly");
+  const [modeConfirmed, setModeConfirmed] = useState(false);
 
   const [stockAlmacen, setStockAlmacen] = useState<Counts>(emptyCounts());
+  const [stockAlmacenModel, setStockAlmacenModel] = useState<ModelCounts>(emptyModelCounts());
   const [stockPrecon, setStockPrecon] = useState<PreconCounts>(emptyPrecon());
   const [stockCuadrilla, setStockCuadrilla] = useState<Record<string, Counts>>({});
+  const [stockCuadrillaModel, setStockCuadrillaModel] = useState<Record<string, ModelCounts>>({});
+  const [cuadrillaModelGroup, setCuadrillaModelGroup] = useState<Record<string, ModelGroup>>({});
   const [consumoCuadrilla, setConsumoCuadrilla] = useState<Record<string, Counts>>({});
   const [promedioCuadrilla, setPromedioCuadrilla] = useState<Record<string, Counts>>({});
   const [consumoTotal, setConsumoTotal] = useState<Counts>(emptyCounts());
@@ -80,6 +101,22 @@ export default function PredespachoClient() {
   const [coordQuery, setCoordQuery] = useState("");
   const [cuadOpen, setCuadOpen] = useState(false);
   const readOnly = scope !== "all";
+  const aiRecommendation = usePredespachoAiRecommendation();
+
+  const modeLabel = useMemo(() => {
+    if (predespachoMode === "weekly") return "Semanal general";
+    if (predespachoMode === "coordinator") return "Por coordinador";
+    if (predespachoMode === "squad") return "Por cuadrilla";
+    return "Reposicion por falta de stock";
+  }, [predespachoMode]);
+
+  const aiStatusLabel = useMemo(() => {
+    if (aiRecommendation.status === "ok") return "IA ACTIVA";
+    if (aiRecommendation.status === "fallback") return "IA FALLBACK";
+    if (aiRecommendation.status === "loading") return "IA ANALIZANDO";
+    if (aiRecommendation.status === "denied") return "IA SIN ACCESO";
+    return "MODO MANUAL";
+  }, [aiRecommendation.status]);
 
   async function loadData(nextAnchor = anchor, nextModelo = modeloFiltro) {
     setLoading(true);
@@ -95,8 +132,11 @@ export default function PredespachoClient() {
       setCuadrillas(Array.isArray(body.cuadrillas) ? body.cuadrillas : []);
       setCoordinadores(Array.isArray(body.coordinadores) ? body.coordinadores : []);
       setStockAlmacen(body.stockAlmacen || emptyCounts());
+      setStockAlmacenModel({ ...emptyModelCounts(), ...(body.stockAlmacenModel || {}) });
       setStockPrecon({ ...emptyPrecon(), ...(body.stockPrecon || {}) });
       setStockCuadrilla(body.stockCuadrilla || {});
+      setStockCuadrillaModel(body.stockCuadrillaModel || {});
+      setCuadrillaModelGroup(body.cuadrillaModelGroup || {});
       setConsumoCuadrilla(body.consumoPorCuadrilla || {});
       setPromedioCuadrilla(body.consumoPromedioPorCuadrilla || {});
       setConsumoTotal(body.consumoTotal || emptyCounts());
@@ -141,6 +181,30 @@ export default function PredespachoClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anchor, modeloFiltro]);
 
+  useEffect(() => {
+    if (predespachoMode === "weekly") {
+      setSelCoords([]);
+      setTextoCuadrilla("");
+      setCoordOpen(false);
+      setCuadOpen(false);
+      return;
+    }
+    if (predespachoMode === "coordinator") {
+      setTextoCuadrilla("");
+      if (scope === "all") setCoordOpen(true);
+      return;
+    }
+    if (predespachoMode === "squad") {
+      setSelCoords([]);
+      setCoordOpen(false);
+      setCuadOpen(true);
+      return;
+    }
+    if (predespachoMode === "urgent") {
+      if (scope === "all") setCoordOpen(true);
+    }
+  }, [predespachoMode, scope]);
+
   const baseRows = useMemo(() => {
     const txt = textoCuadrilla.trim().toLowerCase();
     let rows = [...cuadrillas];
@@ -149,9 +213,12 @@ export default function PredespachoClient() {
       rows = rows.filter((c) => set.has(String(c.coordinadorUid || c.coordinadorNombre || "")));
     }
     if (txt) rows = rows.filter((c) => `${c.nombre} ${c.id}`.toLowerCase().includes(txt));
+    if (predespachoMode === "coordinator" && scope === "all" && !selCoords.length) return [];
+    if (predespachoMode === "squad" && !txt) return [];
+    if (predespachoMode === "urgent" && scope === "all" && !selCoords.length && !txt) return [];
     rows.sort((a, b) => String(a.coordinadorNombre || "").localeCompare(String(b.coordinadorNombre || ""), "es", { sensitivity: "base" }));
     return rows;
-  }, [cuadrillas, scope, selCoords, textoCuadrilla]);
+  }, [cuadrillas, scope, selCoords, textoCuadrilla, predespachoMode]);
 
   const filteredCoords = useMemo(() => {
     const q = coordQuery.trim().toLowerCase();
@@ -168,7 +235,13 @@ export default function PredespachoClient() {
   }, [textoCuadrilla, cuadrillas]);
 
   const rowsByEstado = useMemo(() => {
-    return baseRows.filter((r) => {
+    const rowsByGrupo = baseRows.filter((r) => {
+      if (grupoDespacho === "all") return true;
+      const grp = (cuadrillaModelGroup[r.id] || "NEUTRO").toUpperCase();
+      if (grupoDespacho === "huawei") return grp === "HUAWEI";
+      return grp === "ZTE";
+    });
+    return rowsByGrupo.filter((r) => {
       const saved = !!savedInfo[r.id]?.updatedAt;
       const batchId = savedInfo[r.id]?.saveBatchId || "";
       if (estadoFiltro === "guardadas") return saved;
@@ -176,7 +249,7 @@ export default function PredespachoClient() {
       if (estadoFiltro === "lote") return !!selectedBatch && batchId === selectedBatch;
       return true;
     });
-  }, [baseRows, savedInfo, estadoFiltro, selectedBatch]);
+  }, [baseRows, cuadrillaModelGroup, grupoDespacho, savedInfo, estadoFiltro, selectedBatch]);
 
   const uiRows = useMemo(() => {
     if (verOmitidas) return rowsByEstado;
@@ -187,10 +260,56 @@ export default function PredespachoClient() {
   const pendientesCount = Math.max(0, totalRows - guardadasCount);
   const visiblesCount = uiRows.length;
 
+  function stockForCuadrilla(cuadrillaId: string): Counts {
+    const base = stockCuadrilla[cuadrillaId] || emptyCounts();
+    if (grupoDespacho === "all") return base;
+    const byModel = stockCuadrillaModel[cuadrillaId] || emptyModelCounts();
+    if (grupoDespacho === "huawei") {
+      return {
+        ONT: n(byModel.ONT_HUAWEI),
+        MESH: n(byModel.MESH_HUAWEI),
+        FONO: n(base.FONO),
+        BOX: n(base.BOX),
+      };
+    }
+    return {
+      ONT: n(byModel.ONT_ZTE),
+      MESH: n(byModel.MESH_ZTE),
+      FONO: n(base.FONO),
+      BOX: n(base.BOX),
+    };
+  }
+
+  const stockAlmacenActivo = useMemo<Counts>(() => {
+    if (grupoDespacho === "huawei") {
+      return {
+        ONT: n(stockAlmacenModel.ONT_HUAWEI),
+        MESH: n(stockAlmacenModel.MESH_HUAWEI),
+        FONO: n(stockAlmacen.FONO),
+        BOX: n(stockAlmacen.BOX),
+      };
+    }
+    if (grupoDespacho === "zte") {
+      return {
+        ONT: n(stockAlmacenModel.ONT_ZTE),
+        MESH: n(stockAlmacenModel.MESH_ZTE),
+        FONO: n(stockAlmacen.FONO),
+        BOX: n(stockAlmacen.BOX),
+      };
+    }
+    return stockAlmacen;
+  }, [grupoDespacho, stockAlmacen, stockAlmacenModel]);
+
   const sugerido = useMemo(() => {
     const out: Record<string, Counts> = {};
-    for (const c of baseRows) {
-      const stock = stockCuadrilla[c.id] || emptyCounts();
+    const rowsForPlan = baseRows.filter((r) => {
+      if (grupoDespacho === "all") return true;
+      const grp = (cuadrillaModelGroup[r.id] || "NEUTRO").toUpperCase();
+      if (grupoDespacho === "huawei") return grp === "HUAWEI";
+      return grp === "ZTE";
+    });
+    for (const c of rowsForPlan) {
+      const stock = stockForCuadrilla(c.id);
       // Base recomendada: objetivo operativo y consumo promedio del periodo.
       const prom = promedioCuadrilla[c.id] || emptyCounts();
       out[c.id] = {
@@ -201,10 +320,10 @@ export default function PredespachoClient() {
       };
     }
 
-    const activas = baseRows.filter((c) => !omitidas[c.id]);
+    const activas = rowsForPlan.filter((c) => !omitidas[c.id]);
     for (const k of EQUIPOS) {
       const need = activas.reduce((acc, c) => acc + n(out[c.id]?.[k]), 0);
-      const disp = n(stockAlmacen[k]);
+      const disp = n(stockAlmacenActivo[k]);
       if (!need || disp >= need) continue;
       let assigned = 0;
       for (const c of activas) {
@@ -216,14 +335,14 @@ export default function PredespachoClient() {
       let rem = disp - assigned;
       for (const c of activas) {
         if (!rem) break;
-        if (out[c.id][k] < Math.max(0, n(objetivo[k]) - n((stockCuadrilla[c.id] || emptyCounts())[k]))) {
+        if (out[c.id][k] < Math.max(0, n(objetivo[k]) - n(stockForCuadrilla(c.id)[k]))) {
           out[c.id][k] += 1;
           rem -= 1;
         }
       }
     }
     return out;
-  }, [baseRows, stockCuadrilla, promedioCuadrilla, objetivo, stockAlmacen, omitidas]);
+  }, [baseRows, cuadrillaModelGroup, grupoDespacho, promedioCuadrilla, objetivo, stockAlmacenActivo, omitidas, stockCuadrilla, stockCuadrillaModel]);
 
   const totalPreconAsignado = useMemo(() => {
     const t = emptyPrecon();
@@ -247,9 +366,41 @@ export default function PredespachoClient() {
     return { plan };
   }, [baseRows, manual, sugerido, omitidas]);
 
+  const aiSummary = useMemo(() => {
+    const recommendationTotal = aiRecommendation.data?.recommendation?.total || emptyCounts();
+    const recommendationRows = Object.keys(aiRecommendation.data?.recommendation?.byCuadrilla || {}).length;
+    const recommendationSource = aiRecommendation.data?.meta?.source || "manual";
+    const recommendationModel = aiRecommendation.data?.meta?.model || "-";
+    return {
+      recommendationTotal,
+      recommendationRows,
+      recommendationSource,
+      recommendationModel,
+    };
+  }, [aiRecommendation.data]);
+
+  const modelUsageSummary = useMemo(() => {
+    if (grupoDespacho === "huawei") {
+      return {
+        ont: `Huawei (${stockAlmacenModel.ONT_HUAWEI})`,
+        mesh: `Huawei (${stockAlmacenModel.MESH_HUAWEI})`,
+      };
+    }
+    if (grupoDespacho === "zte") {
+      return {
+        ont: `ZTE (${stockAlmacenModel.ONT_ZTE})`,
+        mesh: `ZTE (${stockAlmacenModel.MESH_ZTE})`,
+      };
+    }
+    return {
+      ont: `Mixto H:${stockAlmacenModel.ONT_HUAWEI} / Z:${stockAlmacenModel.ONT_ZTE}`,
+      mesh: `Mixto H:${stockAlmacenModel.MESH_HUAWEI} / Z:${stockAlmacenModel.MESH_ZTE}`,
+    };
+  }, [grupoDespacho, stockAlmacenModel]);
+
   function buildRowsForPersist(source: Cuadrilla[]) {
     return source.map((c) => {
-      const stock = stockCuadrilla[c.id] || emptyCounts();
+      const stock = stockForCuadrilla(c.id);
       const consumo = consumoCuadrilla[c.id] || emptyCounts();
       const prom = promedioCuadrilla[c.id] || emptyCounts();
       const sug = sugerido[c.id] || emptyCounts();
@@ -275,6 +426,77 @@ export default function PredespachoClient() {
         precon: preconAsignado[c.id] || {},
       };
     });
+  }
+
+  async function getAiSuggestion() {
+    try {
+      const rows = uiRows.map((c) => ({
+        cuadrillaId: c.id,
+        nombre: c.nombre || c.id,
+        coordinadorUid: c.coordinadorUid || "",
+        coordinadorNombre: c.coordinadorNombre || "",
+        stock: stockForCuadrilla(c.id),
+        consumo: consumoCuadrilla[c.id] || emptyCounts(),
+        promedio: promedioCuadrilla[c.id] || emptyCounts(),
+        omitida: !!omitidas[c.id],
+      }));
+      if (!rows.length) {
+        toast.error("No hay filas visibles para sugerencia IA");
+        return;
+      }
+
+      const result = await aiRecommendation.requestRecommendation({
+        anchor,
+        modelFilter: modeloFiltro,
+        objetivo,
+        stockAlmacen: stockAlmacenActivo,
+        rows,
+      });
+
+      if (!result) {
+        if (aiRecommendation.status === "denied") {
+          toast.error("Sin permiso para sugerencia IA");
+        } else {
+          toast.error(aiRecommendation.error || "No se pudo obtener sugerencia IA");
+        }
+        return;
+      }
+
+      if (result.status === "fallback") {
+        toast.message("Sugerencia IA en fallback deterministico");
+      } else {
+        toast.success("Sugerencia IA generada");
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo obtener sugerencia IA");
+    }
+  }
+
+  function applyAiSuggestion() {
+    const byCuadrilla = aiRecommendation.data?.recommendation?.byCuadrilla || {};
+    const ids = Object.keys(byCuadrilla);
+    if (!ids.length) {
+      toast.error("No hay sugerencia IA para aplicar");
+      return;
+    }
+
+    setManual((prev) => {
+      const next = { ...prev };
+      for (const c of uiRows) {
+        if (omitidas[c.id]) continue;
+        const ai = byCuadrilla[c.id];
+        if (!ai) continue;
+        next[c.id] = {
+          ...(next[c.id] || {}),
+          ONT: n(ai.ONT),
+          MESH: n(ai.MESH),
+          FONO: n(ai.FONO),
+          BOX: n(ai.BOX),
+        };
+      }
+      return next;
+    });
+    toast.success("Sugerencia IA aplicada a valores manuales");
   }
 
   async function savePredespacho() {
@@ -390,14 +612,87 @@ export default function PredespachoClient() {
 
   return (
     <div className="space-y-5">
+      <section className="rounded-2xl border border-cyan-200 bg-gradient-to-r from-cyan-50 via-white to-blue-50 dark:border-cyan-800 dark:from-cyan-950/30 dark:via-slate-900 dark:to-blue-950/30 p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-xs font-semibold tracking-wide text-cyan-700 dark:text-cyan-300">PREDESPACHO ASISTIDO</div>
+            <div className="text-sm text-slate-700 dark:text-slate-200">Modo: {modeLabel} · Ventana: {periodLabel || "sin datos"}</div>
+          </div>
+          <div className={`rounded-full px-3 py-1 text-xs font-semibold ${
+            aiRecommendation.status === "ok"
+              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200"
+              : aiRecommendation.status === "fallback"
+                ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
+                : aiRecommendation.status === "loading"
+                  ? "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-200"
+                  : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+          }`}>
+            {aiStatusLabel}
+          </div>
+        </div>
+      </section>
+
+      {!modeConfirmed ? (
+        <section className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
+          <div className="mb-3">
+            <h2 className="text-lg font-semibold">Elegir tipo de predespacho</h2>
+            <p className="text-sm text-slate-600 dark:text-slate-300">Selecciona el escenario. La IA analizara consumo y stock para sugerir cantidades.</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+            {[
+              { id: "weekly", title: "Semanal general", desc: "Cubre cuadrillas en alcance para despacho semanal." },
+              { id: "coordinator", title: "Por coordinador", desc: "Despacho dirigido para uno o varios coordinadores." },
+              { id: "squad", title: "Por cuadrilla", desc: "Despacho puntual para cuadrilla especifica." },
+              { id: "urgent", title: "Reposicion urgente", desc: "Reposicion por falta de stock sin romper balance." },
+            ].map((mode) => (
+              <button
+                key={mode.id}
+                type="button"
+                onClick={() => {
+                  setPredespachoMode(mode.id as PredespachoMode);
+                  setModeConfirmed(true);
+                }}
+                className="rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-cyan-300 hover:bg-cyan-50/60 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-cyan-700 dark:hover:bg-cyan-950/20"
+              >
+                <div className="mb-1 text-sm font-semibold text-slate-900 dark:text-slate-100">{mode.title}</div>
+                <div className="text-xs text-slate-600 dark:text-slate-300">{mode.desc}</div>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : (
+        <>
       <section className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
-        <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-8">
+        <div className="grid gap-2 md:grid-cols-4">
+          {[
+            { id: 1, label: "Elegir tipo", done: modeConfirmed },
+            { id: 2, label: "Filtrar alcance", done: !!uiRows.length || !!selCoords.length || !!textoCuadrilla.trim() },
+            { id: 3, label: "Sugerencia IA", done: aiRecommendation.status === "ok" || aiRecommendation.status === "fallback" },
+            { id: 4, label: "Guardar despacho", done: !!selectedBatch },
+          ].map((step) => (
+            <div
+              key={`step-${step.id}`}
+              className={`rounded-xl border px-3 py-2 text-sm ${
+                step.done
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"
+                  : "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300"
+              }`}
+            >
+              <div className="text-[11px] uppercase tracking-wide">Paso {step.id}</div>
+              <div className="font-medium">{step.label}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
+        <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-9">
           <div className="lg:col-span-1">
             <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Fecha base</label>
             <input type="date" value={anchor} onChange={(e) => setAnchor(e.target.value)} className="ui-input-inline w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm" />
           </div>
           <div className="lg:col-span-2">
-            <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Buscar cuadrilla</label>
+            <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Buscar cuadrilla {predespachoMode === "squad" ? "(obligatorio)" : ""}</label>
             <div className="relative">
               <input
                 value={textoCuadrilla}
@@ -406,7 +701,7 @@ export default function PredespachoClient() {
                   setCuadOpen(true);
                 }}
                 onFocus={() => setCuadOpen(true)}
-                placeholder="Nombre o código"
+                placeholder={predespachoMode === "squad" ? "Escribe nombre o codigo de cuadrilla" : "Nombre o codigo"}
                 className="w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm"
               />
               {cuadOpen && cuadrillaSuggestions.length > 0 && (
@@ -428,7 +723,7 @@ export default function PredespachoClient() {
               )}
             </div>
           </div>
-          {scope === "all" && (
+          {scope === "all" && (predespachoMode === "coordinator" || predespachoMode === "urgent") && (
             <div className="lg:col-span-2">
               <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Coordinadores</label>
               <div className="relative">
@@ -496,6 +791,14 @@ export default function PredespachoClient() {
             </select>
           </div>
           <div className="lg:col-span-1">
+            <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Grupo despacho</label>
+            <select value={grupoDespacho} onChange={(e) => setGrupoDespacho(e.target.value as GrupoDespachoFiltro)} className="ui-select-inline w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm">
+              <option value="all">Todos</option>
+              <option value="huawei">Huawei</option>
+              <option value="zte">ZTE</option>
+            </select>
+          </div>
+          <div className="lg:col-span-1">
             <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Lote</label>
             <select value={selectedBatch} onChange={(e) => setSelectedBatch(e.target.value)} className="ui-select-inline w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm" disabled={estadoFiltro !== "lote"}>
               <option value="">Seleccionar</option>
@@ -512,10 +815,61 @@ export default function PredespachoClient() {
           <span>Periodo consumo: {periodLabel}</span>
           <span>Scope: {scope}</span>
           <span>Modelo ONT/MESH: {modeloFiltro === "all" ? "Todos" : modeloFiltro === "huawei" ? "Huawei" : "ZTE"}</span>
+          <span>Grupo despacho: {grupoDespacho === "all" ? "Todos" : grupoDespacho === "huawei" ? "Huawei" : "ZTE"}</span>
           <label className="inline-flex items-center gap-2">
             <input type="checkbox" checked={verOmitidas} onChange={(e) => setVerOmitidas(e.target.checked)} />
             Ver omitidas
           </label>
+          {aiRecommendation.status !== "idle" && (
+            <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5">
+              IA: {aiRecommendation.status}
+              {aiRecommendation.data?.meta?.model ? ` (${aiRecommendation.data.meta.model})` : ""}
+            </span>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold">Resumen IA del escenario</div>
+            <div className="text-xs text-slate-500">Fuente: {aiSummary.recommendationSource} · Modelo: {aiSummary.recommendationModel}</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setModeConfirmed(false)}
+            className="rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-slate-800"
+          >
+            Cambiar tipo de predespacho
+          </button>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3">
+            <div className="text-[11px] text-slate-500">Cuadrillas analizadas</div>
+            <div className="text-lg font-semibold">{aiSummary.recommendationRows || visiblesCount}</div>
+          </div>
+          <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3">
+            <div className="text-[11px] text-slate-500">Sugerido IA ONT/MESH</div>
+            <div className="text-lg font-semibold">{aiSummary.recommendationTotal.ONT} / {aiSummary.recommendationTotal.MESH}</div>
+          </div>
+          <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3">
+            <div className="text-[11px] text-slate-500">Pool ONT H/Z</div>
+            <div className="text-lg font-semibold">{stockAlmacenModel.ONT_HUAWEI} / {stockAlmacenModel.ONT_ZTE}</div>
+          </div>
+          <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3">
+            <div className="text-[11px] text-slate-500">Pool MESH H/Z</div>
+            <div className="text-lg font-semibold">{stockAlmacenModel.MESH_HUAWEI} / {stockAlmacenModel.MESH_ZTE}</div>
+          </div>
+        </div>
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
+            <div className="text-[11px] uppercase tracking-wide">Modelo ONT usado en analisis</div>
+            <div className="font-semibold">{modelUsageSummary.ont}</div>
+          </div>
+          <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-800 dark:border-indigo-900 dark:bg-indigo-950/30 dark:text-indigo-200">
+            <div className="text-[11px] uppercase tracking-wide">Modelo MESH usado en analisis</div>
+            <div className="font-semibold">{modelUsageSummary.mesh}</div>
+          </div>
         </div>
       </section>
 
@@ -542,8 +896,14 @@ export default function PredespachoClient() {
         {EQUIPOS.map((k) => (
           <div key={`alm-${k}`} className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
             <div className="text-xs uppercase text-slate-500">{k}</div>
-            <div className="text-2xl font-semibold">{stockAlmacen[k]}</div>
+            <div className="text-2xl font-semibold">{stockAlmacenActivo[k]}</div>
             <div className="text-xs text-slate-500">Stock almacen</div>
+            {k === "ONT" && (
+              <div className="text-[11px] text-slate-500">H:{stockAlmacenModel.ONT_HUAWEI} | Z:{stockAlmacenModel.ONT_ZTE}</div>
+            )}
+            {k === "MESH" && (
+              <div className="text-[11px] text-slate-500">H:{stockAlmacenModel.MESH_HUAWEI} | Z:{stockAlmacenModel.MESH_ZTE}</div>
+            )}
           </div>
         ))}
         {EQUIPOS.map((k) => (
@@ -585,6 +945,24 @@ export default function PredespachoClient() {
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold">Predespacho por cuadrilla</h2>
           <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={getAiSuggestion}
+              className="rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+              disabled={loading || aiRecommendation.loading || !uiRows.length}
+            >
+              {aiRecommendation.loading ? "Calculando IA..." : "Obtener sugerencia IA"}
+            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={applyAiSuggestion}
+                className="rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+                disabled={!aiRecommendation.data?.recommendation || aiRecommendation.loading || !uiRows.length}
+              >
+                Aplicar sugerencia IA
+              </button>
+            )}
             <button type="button" onClick={exportExcel} className="rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">Exportar Excel</button>
             <button type="button" onClick={exportPdf} className="rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">Exportar PDF</button>
             {!readOnly && (
@@ -617,9 +995,11 @@ export default function PredespachoClient() {
               {uiRows.map((c) => {
                 const cons = consumoCuadrilla[c.id] || emptyCounts();
                 const prom = promedioCuadrilla[c.id] || emptyCounts();
-                const stock = stockCuadrilla[c.id] || emptyCounts();
+                const stock = stockForCuadrilla(c.id);
                 const sug = sugerido[c.id] || emptyCounts();
+                const aiSug = aiRecommendation.data?.recommendation?.byCuadrilla?.[c.id];
                 const man = manual[c.id] || {};
+                const hasManual = EQUIPOS.some((k) => Number.isFinite(Number(man[k])));
                 const final: Counts = {
                   ONT: Number.isFinite(Number(man.ONT)) ? n(man.ONT) : n(sug.ONT),
                   MESH: Number.isFinite(Number(man.MESH)) ? n(man.MESH) : n(sug.MESH),
@@ -657,12 +1037,16 @@ export default function PredespachoClient() {
                     <td className="p-2">
                       <div className="flex flex-wrap gap-1">
                         {EQUIPOS.map((k) => (
-                          <span
-                            key={`${c.id}-sug-${k}`}
-                            className="rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-950/40 dark:text-blue-200"
-                          >
-                            {k}: {sug[k]}
-                          </span>
+                          <div key={`${c.id}-sug-${k}`} className="flex gap-1">
+                            <span className="rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-950/40 dark:text-blue-200">
+                              {k}: {sug[k]}
+                            </span>
+                            {aiSug ? (
+                              <span className="rounded bg-violet-50 px-2 py-0.5 text-xs text-violet-700 dark:bg-violet-950/40 dark:text-violet-200">
+                                IA: {n((aiSug as any)[k])}
+                              </span>
+                            ) : null}
+                          </div>
                         ))}
                       </div>
                     </td>
@@ -692,6 +1076,11 @@ export default function PredespachoClient() {
                             {k}: {final[k]}
                           </span>
                         ))}
+                        {hasManual ? (
+                          <span className="rounded bg-amber-50 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+                            Ajuste manual
+                          </span>
+                        ) : null}
                       </div>
                     </td>
                     <td className="p-2">
@@ -741,6 +1130,8 @@ export default function PredespachoClient() {
           ))}
         </div>
       </section>
+      </>
+      )}
     </div>
   );
 }

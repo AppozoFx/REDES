@@ -6,6 +6,7 @@ export const runtime = "nodejs";
 
 type Scope = "all" | "coordinador" | "tecnico";
 type ModelFilter = "ALL" | "HUAWEI" | "ZTE";
+type ModelGroup = "HUAWEI" | "ZTE" | "NEUTRO";
 const EQUIPOS = ["ONT", "MESH", "FONO", "BOX"] as const;
 const HUAWEI_DESC_HINTS = [
   "HUAWEI",
@@ -108,6 +109,17 @@ function rollingAnchors(anchorYmd: string) {
 
 function emptyCounts() {
   return { ONT: 0, MESH: 0, FONO: 0, BOX: 0 };
+}
+
+function emptyModelCounts() {
+  return {
+    ONT_HUAWEI: 0,
+    ONT_ZTE: 0,
+    MESH_HUAWEI: 0,
+    MESH_ZTE: 0,
+    FONO: 0,
+    BOX: 0,
+  };
 }
 
 function toInt(v: any) {
@@ -425,16 +437,46 @@ export async function GET(req: Request) {
     }
 
     const stockAlmacen = emptyCounts();
+    const stockAlmacenModel = emptyModelCounts();
     const stockCuadrilla: Record<string, ReturnType<typeof emptyCounts>> = {};
+    const stockCuadrillaModel: Record<string, ReturnType<typeof emptyModelCounts>> = {};
     for (const c of cuadrillas) stockCuadrilla[c.id] = emptyCounts();
+    for (const c of cuadrillas) stockCuadrillaModel[c.id] = emptyModelCounts();
 
     for (const d of eqSnap.docs) {
       const x = d.data() as any;
       const estado = asStr(x?.estado).toUpperCase();
       const eq = asStr(x?.equipo).toUpperCase() as keyof ReturnType<typeof emptyCounts>;
       if (!EQUIPOS.includes(eq)) continue;
+
+      const model = (eq === "ONT" || eq === "MESH") ? modelFromEquipoDoc(x) : null;
+      const ubicacionId = byKey.get(keyName(x?.ubicacion || ""));
+      const canCountLocation = estado === "ALMACEN" || (estado === "CAMPO" && !!ubicacionId);
+      if (canCountLocation && !isExcludedUbicacion(x?.ubicacion)) {
+        if (estado === "ALMACEN") {
+          if (eq === "FONO" || eq === "BOX") {
+            stockAlmacenModel[eq] += 1;
+          } else if (eq === "ONT") {
+            if (model === "HUAWEI") stockAlmacenModel.ONT_HUAWEI += 1;
+            else if (model === "ZTE") stockAlmacenModel.ONT_ZTE += 1;
+          } else if (eq === "MESH") {
+            if (model === "HUAWEI") stockAlmacenModel.MESH_HUAWEI += 1;
+            else if (model === "ZTE") stockAlmacenModel.MESH_ZTE += 1;
+          }
+        } else if (estado === "CAMPO" && ubicacionId) {
+          if (eq === "FONO" || eq === "BOX") {
+            stockCuadrillaModel[ubicacionId][eq] += 1;
+          } else if (eq === "ONT") {
+            if (model === "HUAWEI") stockCuadrillaModel[ubicacionId].ONT_HUAWEI += 1;
+            else if (model === "ZTE") stockCuadrillaModel[ubicacionId].ONT_ZTE += 1;
+          } else if (eq === "MESH") {
+            if (model === "HUAWEI") stockCuadrillaModel[ubicacionId].MESH_HUAWEI += 1;
+            else if (model === "ZTE") stockCuadrillaModel[ubicacionId].MESH_ZTE += 1;
+          }
+        }
+      }
+
       if ((eq === "ONT" || eq === "MESH") && modelFilter !== "ALL") {
-        const model = modelFromEquipoDoc(x);
         if (model !== modelFilter) continue;
       }
       if (estado === "ALMACEN") {
@@ -444,6 +486,17 @@ export async function GET(req: Request) {
         if (!id) continue;
         stockCuadrilla[id][eq] += 1;
       }
+    }
+
+    const cuadrillaModelGroup: Record<string, ModelGroup> = {};
+    for (const c of cuadrillas) {
+      const modelStock = stockCuadrillaModel[c.id] || emptyModelCounts();
+      const hScore = toInt(modelStock.ONT_HUAWEI) + toInt(modelStock.MESH_HUAWEI);
+      const zScore = toInt(modelStock.ONT_ZTE) + toInt(modelStock.MESH_ZTE);
+      let group: ModelGroup = "NEUTRO";
+      if (hScore > zScore) group = "HUAWEI";
+      else if (zScore > hScore) group = "ZTE";
+      cuadrillaModelGroup[c.id] = group;
     }
 
     const consumoPorCuadrilla: Record<string, ReturnType<typeof emptyCounts>> = {};
@@ -618,8 +671,11 @@ export async function GET(req: Request) {
       cuadrillas,
       coordinadores,
       stockAlmacen,
+      stockAlmacenModel,
       stockPrecon,
       stockCuadrilla,
+      stockCuadrillaModel,
+      cuadrillaModelGroup,
       consumoPorCuadrilla,
       consumoPromedioPorCuadrilla,
       consumoTotal,

@@ -6,7 +6,6 @@ import { signInWithEmailAndPassword, setPersistence, browserSessionPersistence }
 import { AnimatePresence, motion } from "framer-motion";
 import { getFirebaseAuth } from "../../lib/firebase/client";
 
-
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -16,6 +15,43 @@ export default function LoginPage() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const year = new Date().getFullYear();
+  const hasInput = email.trim().length > 0 || password.length > 0;
+  const edgePhase = success ? "connected" : error ? "error" : loading || hasInput ? "loading" : "idle";
+  const edgeStroke =
+    edgePhase === "connected"
+      ? "rgba(74, 222, 128, 0.88)"
+      : edgePhase === "error"
+        ? "rgba(248, 113, 113, 0.84)"
+        : "rgba(96, 165, 250, 0.82)";
+  const edgeGlow =
+    edgePhase === "connected"
+      ? "drop-shadow(0 0 7px rgba(74, 222, 128, 0.24))"
+      : edgePhase === "error"
+        ? "drop-shadow(0 0 6px rgba(248, 113, 113, 0.2))"
+        : "drop-shadow(0 0 6px rgba(96, 165, 250, 0.2))";
+  const nodeTint =
+    edgePhase === "connected"
+      ? "text-emerald-300"
+      : edgePhase === "error"
+        ? "text-red-300"
+        : edgePhase === "loading"
+          ? "text-sky-200"
+          : "text-sky-300";
+  const statusLabel = success
+    ? "Conectado"
+    : error
+      ? "Error de acceso"
+      : loading
+        ? "Conectando"
+        : hasInput
+          ? "Validando"
+          : "";
+  const shortError =
+    error && (error.toLowerCase().includes("invalid") || error.toLowerCase().includes("wrong"))
+      ? "Credenciales inválidas."
+      : error
+        ? "No se pudo conectar."
+        : null;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -29,22 +65,17 @@ export default function LoginPage() {
       await setPersistence(auth, browserSessionPersistence);
       const cred = await signInWithEmailAndPassword(auth, email, password);
 
-     const idToken = await cred.user.getIdToken(true);
+      const idToken = await cred.user.getIdToken(true);
 
-const res = await fetch("/api/auth/session", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  credentials: "include",
-  body: JSON.stringify({ idToken }),
+      const res = await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ idToken }),
+      });
 
-});
-
-const text = await res.text();
-if (!res.ok) throw new Error(`session (${res.status}): ${text}`);
-
-
-
-
+      const text = await res.text();
+      if (!res.ok) throw new Error(`session (${res.status}): ${text}`);
 
       try {
         localStorage.setItem("redes_last_login_at", String(Date.now()));
@@ -60,42 +91,144 @@ if (!res.ok) throw new Error(`session (${res.status}): ${text}`);
   }
 
   return (
-    <div className="relative min-h-dvh overflow-hidden bg-gradient-to-br from-[#0f1a2e] via-[#1e3a8a] to-[#ff6413] p-6 text-gray-900">
-      <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-white/20 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-28 -right-20 h-80 w-80 rounded-full bg-[#ff6413]/35 blur-3xl" />
+    <div className="relative min-h-dvh overflow-hidden bg-gradient-to-br from-[#0b142d] via-[#1a2c58] to-[#2f2850] p-6 text-gray-900">
+      <div className="pointer-events-none absolute left-1/2 top-1/2 h-[34rem] w-[34rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#30518c]/18 blur-[130px]" />
+      <div className="pointer-events-none absolute -right-12 top-10 h-72 w-72 rounded-full bg-violet-300/10 blur-[115px]" />
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.05]"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)",
+          backgroundSize: "36px 36px",
+        }}
+      />
 
-      <div className="relative z-10 flex min-h-dvh items-center justify-center">
+      <div className="relative z-10 flex min-h-dvh items-center justify-center py-6">
         <motion.div
           initial={{ opacity: 0, y: 24, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
-          className="w-full max-w-md"
+          className="w-full max-w-[450px]"
         >
           <form
             onSubmit={onSubmit}
             aria-busy={loading}
-            className="space-y-5 rounded-2xl border border-white/15 bg-white/80 p-6 shadow-2xl backdrop-blur-xl dark:bg-white/10"
+            className="relative space-y-6 overflow-hidden rounded-[22px] border border-white/10 bg-[#11131a]/90 p-8 text-slate-100 shadow-[0_26px_80px_rgba(4,8,20,0.5)] backdrop-blur-xl"
           >
-            <header className="space-y-3 text-center">
-              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-white/60 ring-1 ring-white/50">
-                <img src="/img/logo.png" alt="Logo REDES M&D" className="h-14 w-14 object-contain" />
+            <div className="absolute left-4 top-4 z-30 inline-flex items-center gap-2.5">
+              <motion.div
+                aria-label="Nodo de red FTTH"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/25 backdrop-blur-md"
+                animate={
+                  edgePhase === "connected"
+                    ? { scale: 1, opacity: 1 }
+                    : edgePhase === "loading"
+                      ? { scale: [1, 1.08, 1], opacity: [0.88, 1, 0.88] }
+                      : { scale: [1, 1.06, 1], opacity: [0.8, 0.96, 0.8] }
+                }
+                transition={
+                  edgePhase === "connected"
+                    ? { duration: 0.25 }
+                    : edgePhase === "loading"
+                      ? { duration: 1.6, repeat: Infinity, ease: "easeInOut" }
+                      : { duration: 2.1, repeat: Infinity, ease: "easeInOut" }
+                }
+                style={{
+                  boxShadow:
+                    edgePhase === "connected"
+                      ? "0 0 0 1px rgba(74,222,128,0.28), 0 0 14px rgba(74,222,128,0.2)"
+                      : "0 0 0 1px rgba(96,165,250,0.25), 0 0 12px rgba(96,165,250,0.18)",
+                }}
+              >
+                <svg viewBox="0 0 24 24" className={`h-3.5 w-3.5 ${nodeTint}`} fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <circle cx="5" cy="12" r="2" />
+                  <circle cx="19" cy="7" r="2" />
+                  <circle cx="19" cy="17" r="2" />
+                  <path d="M7 12h6m0 0l4-5m-4 5l4 5" />
+                </svg>
+              </motion.div>
+              <AnimatePresence mode="wait">
+                {statusLabel ? (
+                  <motion.span
+                    key={statusLabel}
+                    initial={{ opacity: 0, y: -2 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -2 }}
+                    className={`text-xs font-medium ${
+                      success ? "text-emerald-300" : error ? "text-red-300" : "text-slate-300"
+                    }`}
+                  >
+                    {statusLabel}
+                  </motion.span>
+                ) : null}
+              </AnimatePresence>
+            </div>
+
+            <div aria-hidden className="pointer-events-none absolute inset-0 z-20 rounded-[22px] opacity-75 mix-blend-screen">
+              <svg className="h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <motion.rect
+                  key={edgePhase}
+                  x="0.35"
+                  y="0.35"
+                  width="99.3"
+                  height="99.3"
+                  rx="5"
+                  fill="none"
+                  stroke={edgeStroke}
+                  strokeWidth="0.34"
+                  strokeLinecap="round"
+                  pathLength={edgePhase === "connected" ? 1 : 1}
+                  strokeDasharray={
+                    edgePhase === "connected"
+                      ? undefined
+                      : edgePhase === "loading"
+                        ? "0.13 0.87"
+                        : "0.05 0.95"
+                  }
+                  initial={
+                    edgePhase === "connected"
+                      ? { pathLength: 0.04, opacity: 0.72 }
+                      : edgePhase === "idle"
+                        ? { strokeDashoffset: 0, opacity: 0.7 }
+                        : false
+                  }
+                  animate={
+                    edgePhase === "connected"
+                      ? { pathLength: 1, opacity: 1 }
+                      : edgePhase === "loading"
+                        ? { strokeDashoffset: [0, -1], opacity: [0.62, 0.96, 0.62] }
+                        : { strokeDashoffset: [0, -1, 0], opacity: [0.7, 0.98, 0.7] }
+                  }
+                  transition={
+                    edgePhase === "connected"
+                      ? { duration: 1.05, ease: "easeOut" }
+                      : edgePhase === "loading"
+                        ? { duration: 1.6, repeat: Infinity, ease: "linear" }
+                        : { duration: 2.1, repeat: Infinity, ease: "easeInOut" }
+                  }
+                  style={{ filter: edgeGlow }}
+                />
+              </svg>
+            </div>
+
+            <header className="space-y-3.5 text-center">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03]">
+                <img src="/img/logo.png" alt="Logo REDES M&D" className="h-11 w-11 object-contain" />
               </div>
-              <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-                Bienvenido a <span className="text-[#ff6413]">REDES M&amp;D</span>
+              <h1 className="text-[23px] font-semibold tracking-[-0.02em] text-white">
+                Bienvenido a <span className="text-[#90aee4]">REDES M&amp;D</span>
               </h1>
-              <p className="text-sm text-gray-600 dark:text-gray-200">
-                Ingresa tus credenciales para continuar
-              </p>
+              <p className="text-[13.5px] leading-5 text-slate-300">Ingresa tus credenciales para continuar</p>
             </header>
 
-            <div className="space-y-1.5">
-              <label htmlFor="email" className="text-sm font-medium text-gray-800 dark:text-gray-100">
+            <div className="space-y-2">
+              <label htmlFor="email" className="text-sm font-medium text-slate-200">
                 Correo
               </label>
               <input
                 id="email"
                 aria-label="Correo corporativo"
-                className="w-full rounded-xl border border-gray-300 bg-white/90 px-3 py-2.5 text-gray-900 outline-none transition focus:border-transparent focus:ring-2 focus:ring-orange-400"
+                className="h-11 w-full rounded-xl border border-white/10 bg-[#0d1017] px-3.5 text-slate-100 outline-none transition-all duration-200 placeholder:text-slate-400 focus-visible:border-[#30518c]/65 focus-visible:ring-2 focus-visible:ring-[#30518c]/35"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
@@ -103,11 +236,11 @@ if (!res.ok) throw new Error(`session (${res.status}): ${text}`);
                 required
                 disabled={loading}
               />
-              <p className="text-xs text-gray-500 dark:text-gray-200">Usa tu correo corporativo.</p>
+              <p className="text-xs text-slate-400">Usa tu correo corporativo.</p>
             </div>
 
-            <div className="space-y-1.5">
-              <label htmlFor="password" className="text-sm font-medium text-gray-800 dark:text-gray-100">
+            <div className="space-y-2">
+              <label htmlFor="password" className="text-sm font-medium text-slate-200">
                 Contraseña
               </label>
               <div className="relative">
@@ -116,7 +249,7 @@ if (!res.ok) throw new Error(`session (${res.status}): ${text}`);
                   aria-label="Contraseña"
                   aria-describedby="password-hint"
                   type={showPassword ? "text" : "password"}
-                  className="w-full rounded-xl border border-gray-300 bg-white/90 px-3 py-2.5 pr-11 text-gray-900 outline-none transition focus:border-transparent focus:ring-2 focus:ring-orange-400"
+                  className="h-11 w-full rounded-xl border border-white/10 bg-[#0d1017] px-3.5 pr-11 text-slate-100 outline-none transition-all duration-200 placeholder:text-slate-400 focus-visible:border-[#30518c]/65 focus-visible:ring-2 focus-visible:ring-[#30518c]/35"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
@@ -129,7 +262,7 @@ if (!res.ok) throw new Error(`session (${res.status}): ${text}`);
                   aria-pressed={showPassword}
                   aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute inset-y-0 right-2 my-auto inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition hover:bg-black/5 hover:text-gray-700"
+                  className="absolute inset-y-0 right-2 my-auto inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-400 transition-colors duration-200 hover:bg-white/5 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/40"
                   disabled={loading}
                 >
                   {showPassword ? (
@@ -147,21 +280,21 @@ if (!res.ok) throw new Error(`session (${res.status}): ${text}`);
                   )}
                 </button>
               </div>
-              <p id="password-hint" className="text-xs text-gray-500 dark:text-gray-200">
+              <p id="password-hint" className="text-xs text-slate-400">
                 Mínimo 8 caracteres.
               </p>
             </div>
 
-            {error && (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-900/30 dark:text-red-200">
-                {error}
+            {shortError && (
+              <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                {shortError}
               </div>
             )}
 
             <motion.button
               whileTap={{ scale: 0.98 }}
               disabled={loading}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#30518c] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#264477] disabled:cursor-not-allowed disabled:opacity-70"
+              className="relative inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-[#30518c] px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-white/30 hover:bg-[#3a5f9e] active:bg-[#264477] disabled:cursor-not-allowed disabled:opacity-65"
               type="submit"
             >
               {loading ? (
@@ -191,24 +324,10 @@ if (!res.ok) throw new Error(`session (${res.status}): ${text}`);
               )}
             </motion.button>
 
-            <AnimatePresence>
-              {success && !loading ? (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 8 }}
-                  transition={{ duration: 0.2 }}
-                  role="status"
-                  aria-live="polite"
-                  className="rounded-full bg-green-100 px-4 py-2 text-center text-sm font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300"
-                >
-                  Ingreso exitoso. Redirigiendo
-                </motion.div>
-              ) : null}
-            </AnimatePresence>
+            <AnimatePresence />
           </form>
 
-          <p className="mt-4 text-center text-xs text-white/85">
+          <p className="mt-4 text-center text-xs text-white/75">
             {year} RedesMYD | Desarrollado por Arturo Pozo
           </p>
         </motion.div>

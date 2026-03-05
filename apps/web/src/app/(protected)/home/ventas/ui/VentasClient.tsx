@@ -100,6 +100,22 @@ export default function VentasClient({
   const [pendingAction, setPendingAction] = useState(false);
   const [detalleItems, setDetalleItems] = useState<VentaItemDoc[]>([]);
 
+  async function abrirGuiaVentaPdf(ventaId: string, area: "INSTALACIONES" | "MANTENIMIENTO") {
+    const areaPath = area === "MANTENIMIENTO" ? "mantenimiento" : "instalaciones";
+    try {
+      const res = await fetch(
+        `/api/transferencias/${areaPath}/guia/url?guiaId=${encodeURIComponent(ventaId)}&tipo=ventas`,
+        { cache: "no-store" }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok || !data?.url) throw new Error(String(data?.error || "NO_PDF"));
+      const win = window.open(String(data.url), "_blank");
+      if (win) win.opener = null;
+    } catch {
+      toast.error("No se encontro el PDF de la guia");
+    }
+  }
+
   async function loadVentas(reset = false) {
     setLoading(true);
     try {
@@ -433,7 +449,16 @@ export default function VentasClient({
           <tbody>
             {ventasView.map((v) => (
               <tr key={v.id} className="border-t border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/70">
-                <td className="px-3 py-2 font-mono">{v.id}</td>
+                <td className="px-3 py-2 font-mono">
+                  <button
+                    type="button"
+                    onClick={() => void abrirGuiaVentaPdf(v.id, v.area)}
+                    className="text-blue-700 underline-offset-2 hover:underline dark:text-blue-300"
+                    title="Abrir PDF de la guia"
+                  >
+                    {v.id}
+                  </button>
+                </td>
                 <td className="px-3 py-2">{v.area}</td>
                 <td className="px-3 py-2">{v.cuadrillaNombre || v.cuadrillaId}</td>
                 <td className="px-3 py-2">{v.coordinadorNombre || v.coordinadorUid}</td>
@@ -483,10 +508,23 @@ export default function VentasClient({
       {selectedVenta && (
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/40" onClick={() => setSelectedVenta(null)} />
-          <div className="absolute inset-0 flex items-center justify-center p-4">
-            <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <div className="absolute inset-0 flex items-center justify-center p-4" onClick={() => setSelectedVenta(null)}>
+            <div
+              className="max-h-[90vh] w-full max-w-5xl overflow-y-auto space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="font-medium">Detalle venta: {selectedVenta.id}</div>
+                <div className="font-medium">
+                  Detalle venta:{" "}
+                  <button
+                    type="button"
+                    onClick={() => void abrirGuiaVentaPdf(selectedVenta.id, selectedVenta.area)}
+                    className="font-mono text-blue-700 underline-offset-2 hover:underline dark:text-blue-300"
+                    title="Abrir PDF de la guia"
+                  >
+                    {selectedVenta.id}
+                  </button>
+                </div>
                 <div className="flex items-center gap-3">
                   <div className="text-sm">
                     Estado:{" "}
@@ -608,9 +646,16 @@ export default function VentasClient({
                 type="button"
                 onClick={saveCuotas}
                 disabled={pendingAction}
-                className="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
               >
-                Guardar cuotas
+                {pendingAction ? (
+                  <>
+                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />
+                    Procesando...
+                  </>
+                ) : (
+                  "Guardar cuotas"
+                )}
               </button>
             </div>
           )}
@@ -638,14 +683,22 @@ export default function VentasClient({
                         className="w-24 rounded border border-slate-300 bg-white px-2 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                         inputMode="decimal"
                         placeholder={centsToMoney(pendiente)}
+                        disabled={pendingAction}
                       />
                       <button
                         type="button"
                         onClick={() => registrarPago(c)}
                         disabled={pendingAction}
-                        className="rounded bg-green-600 px-2 py-1 text-white hover:bg-green-700 disabled:opacity-50"
+                        className="inline-flex items-center justify-center gap-2 rounded bg-green-600 px-2 py-1 text-white hover:bg-green-700 disabled:opacity-50"
                       >
-                        Pagar
+                        {pendingAction ? (
+                          <>
+                            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />
+                            Procesando...
+                          </>
+                        ) : (
+                          "Pagar"
+                        )}
                       </button>
                     </div>
                   )}
@@ -659,9 +712,16 @@ export default function VentasClient({
               type="button"
               onClick={anularVenta}
               disabled={pendingAction || selectedVenta.estado === "ANULADA" || selectedVenta.estado === "PAGADO"}
-              className="rounded bg-red-600 px-3 py-2 text-white hover:bg-red-700 disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-2 rounded bg-red-600 px-3 py-2 text-white hover:bg-red-700 disabled:opacity-50"
             >
-              Anular venta (devuelve stock)
+              {pendingAction ? (
+                <>
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />
+                  Procesando...
+                </>
+              ) : (
+                "Anular venta (devuelve stock)"
+              )}
             </button>
           )}
             </div>

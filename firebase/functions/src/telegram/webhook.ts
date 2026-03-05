@@ -28,13 +28,21 @@ const OPENAI_PRELIQ_MODEL = defineString("OPENAI_PRELIQ_MODEL", {
 const UPDATES_COLLECTION = "telegram_updates";
 const PRELIQ_COLLECTION = "telegram_preliquidaciones";
 const PRELIQ_RETRY_COLLECTION = "telegram_preliquidacion_retries";
+const CUADRILLA_RESPONSABLES_COLLECTION = "telegram_cuadrilla_responsables";
 const ORDENES_COLLECTION = "ordenes";
 const FOUND_GUARDS_COLLECTION = "telegram_found_guards";
 const PRELIQ_RETRY_MAX_ATTEMPTS = 5;
 const PRELIQ_RETRY_INTERVAL_MS = 60 * 60 * 1000;
+const RESPONSABLE_CONFIDENCE_MIN_MENTION = 45;
+const RESPONSABLE_SWITCH_CANDIDATE_MIN = 1;
 
 type TelegramChat = { id?: number | string };
-type TelegramFrom = { id?: number | string };
+type TelegramFrom = {
+  id?: number | string;
+  username?: string;
+  first_name?: string;
+  last_name?: string;
+};
 
 type TelegramMessage = {
   message_id?: number;
@@ -69,10 +77,22 @@ type OrdenResumen = {
   cuadrillaId: string;
   cuadrillaNombre: string;
 };
+type ParsedTemplate = NonNullable<ReturnType<typeof parseTelegramTemplate>>;
+type CuadrillaResponsableState = {
+  key: string;
+  currentUserId: string;
+  currentDisplayName?: string;
+  currentUsername?: string;
+  confidence: number;
+};
 
 function isOrdenEstadoValido(estadoRaw: unknown): boolean {
   const estado = String(estadoRaw || "").trim().toUpperCase();
   return estado === "FINALIZADA" || estado === "INICIADA";
+}
+
+function isOrdenEstadoFinalizada(estadoRaw: unknown): boolean {
+  return String(estadoRaw || "").trim().toUpperCase() === "FINALIZADA";
 }
 
 function normalizeTextKey(value: unknown): string {
@@ -220,17 +240,17 @@ function normalizeYmdOrToday(v?: string): string {
 }
 
 function resolveOperacionYmdFromOrden(orden: Record<string, unknown>): string {
-  const byFechaFin = parseFlexibleDateToYmd(cleanValue(orden.fechaFinVisiYmd || ""));
-  if (byFechaFin) return byFechaFin;
   const bySoli = parseFlexibleDateToYmd(cleanValue(orden.fSoliYmd || ""));
   if (bySoli) return bySoli;
+  const byFechaFin = parseFlexibleDateToYmd(cleanValue(orden.fechaFinVisiYmd || ""));
+  if (byFechaFin) return byFechaFin;
   return todayLimaYmd();
 }
 
 function buildOrdenResumen(orden: Record<string, unknown>): OrdenResumen {
   const pedido = cleanValue(orden.codiSeguiClien || orden.ordenId || "");
   const cliente = cleanValue(orden.cliente || "-");
-  const fecha = cleanValue(orden.fechaFinVisiYmd || orden.fSoliYmd || "-");
+  const fecha = cleanValue(orden.fSoliYmd || orden.fechaFinVisiYmd || "-");
   const tramo = resolveTramoNombre(orden.fSoliHm || "", orden.fechaFinVisiHm || "");
   const cuadrillaId = cleanValue(orden.cuadrillaId || "");
   const cuadrillaNombre = cleanValue(
@@ -250,7 +270,7 @@ function buildClienteLiquidadoBlock(args: {
   boxes: string[];
   snFono?: string;
 }): string {
-  const fecha = cleanValue(args.orden.fechaFinVisiYmd || args.orden.fSoliYmd || "-");
+  const fecha = cleanValue(args.orden.fSoliYmd || args.orden.fechaFinVisiYmd || "-");
   const tramo = resolveTramoNombre(args.orden.fSoliHm || "", args.orden.fechaFinVisiHm || "");
   const cliente = cleanValue(args.orden.cliente || "-");
   const plan = cleanValue(args.orden.plan || args.orden.idenServi || "-");
@@ -310,6 +330,55 @@ function dedupeListByPedido(rows: OrdenResumen[]): OrdenResumen[] {
   return out;
 }
 
+function mergeSeries(primary: string[], secondary: string[], maxItems = 4): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const value of [...primary, ...secondary]) {
+    const v = cleanValue(value);
+    if (!v) continue;
+    const key = v.toUpperCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(v);
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
+function mergeParsedTemplate(base: ParsedTemplate, fromAi: ParsedTemplate): ParsedTemplate {
+  const basePedido = cleanValue(base.pedido).replace(/\D/g, "");
+  const aiPedido = cleanValue(fromAi.pedido).replace(/\D/g, "");
+  return {
+    pedido: basePedido || aiPedido,
+    ctoNap: cleanValue(base.ctoNap || "") || cleanValue(fromAi.ctoNap || "") || undefined,
+    puerto: cleanValue(base.puerto || "") || cleanValue(fromAi.puerto || "") || undefined,
+    potenciaCtoNapDbm:
+      cleanValue(base.potenciaCtoNapDbm || "") ||
+      cleanValue(fromAi.potenciaCtoNapDbm || "") ||
+      undefined,
+    snOnt: cleanValue(base.snOnt || "") || cleanValue(fromAi.snOnt || "") || undefined,
+    meshes: mergeSeries(base.meshes || [], fromAi.meshes || [], 4),
+    boxes: mergeSeries(base.boxes || [], fromAi.boxes || [], 4),
+    snFono: cleanValue(base.snFono || "") || cleanValue(fromAi.snFono || "") || undefined,
+    rawText: cleanValue(base.rawText || fromAi.rawText || ""),
+  };
+}
+
+function shouldAttemptAiEnrichment(rawText: string, parsed: ParsedTemplate | null): boolean {
+  if (!parsed) return true;
+  const text = String(rawText || "");
+  const mentionsMesh = /\bmesh\b/i.test(text);
+  const mentionsBox = /\b(?:winbox|sn\s*box|box)\b/i.test(text);
+  const mentionsOnt = /\b(?:sn|s\s*\/\s*n|id)\s*ont\b/i.test(text);
+  const mentionsFono = /\b(?:fono|fonowin)\b/i.test(text);
+
+  if (mentionsMesh && (!Array.isArray(parsed.meshes) || parsed.meshes.length === 0)) return true;
+  if (mentionsBox && (!Array.isArray(parsed.boxes) || parsed.boxes.length === 0)) return true;
+  if (mentionsOnt && !cleanValue(parsed.snOnt || "")) return true;
+  if (mentionsFono && !cleanValue(parsed.snFono || "")) return true;
+  return false;
+}
+
 async function fetchOrdenByPedido(pedido: string): Promise<{
   id: string;
   data: Record<string, unknown>;
@@ -327,12 +396,12 @@ async function fetchOrdenByPedido(pedido: string): Promise<{
   if (!candidates.length) return null;
 
   candidates.sort((a, b) => {
-    const aYmd = String(a.data.fechaFinVisiYmd || a.data.fSoliYmd || "");
-    const bYmd = String(b.data.fechaFinVisiYmd || b.data.fSoliYmd || "");
+    const aYmd = String(a.data.fSoliYmd || a.data.fechaFinVisiYmd || "");
+    const bYmd = String(b.data.fSoliYmd || b.data.fechaFinVisiYmd || "");
     const byYmd = bYmd.localeCompare(aYmd);
     if (byYmd !== 0) return byYmd;
-    const aHm = normalizeHm(a.data.fechaFinVisiHm || a.data.fSoliHm || "");
-    const bHm = normalizeHm(b.data.fechaFinVisiHm || b.data.fSoliHm || "");
+    const aHm = normalizeHm(a.data.fSoliHm || a.data.fechaFinVisiHm || "");
+    const bHm = normalizeHm(b.data.fSoliHm || b.data.fechaFinVisiHm || "");
     return bHm.localeCompare(aHm);
   });
 
@@ -340,14 +409,22 @@ async function fetchOrdenByPedido(pedido: string): Promise<{
 }
 
 async function fetchOrdenesFinalizadasByYmd(ymd: string): Promise<OrdenResumen[]> {
-  const snap = await db
+  let snap = await db
     .collection(ORDENES_COLLECTION)
-    .where("fechaFinVisiYmd", "==", ymd)
+    .where("fSoliYmd", "==", ymd)
     .limit(5000)
     .get();
+  if (snap.empty) {
+    // Fallback legado para ordenes antiguas sin fSoliYmd.
+    snap = await db
+      .collection(ORDENES_COLLECTION)
+      .where("fechaFinVisiYmd", "==", ymd)
+      .limit(5000)
+      .get();
+  }
   const rows = snap.docs
     .map((doc) => (doc.data() || {}) as Record<string, unknown>)
-    .filter((orden) => isOrdenConsiderada(orden))
+    .filter((orden) => isOrdenConsiderada(orden) && isOrdenEstadoFinalizada(orden.estado))
     .map((orden) => buildOrdenResumen(orden))
     .filter((row) => !!row.pedido);
   return dedupeListByPedido(rows);
@@ -554,6 +631,197 @@ function normalizeKey(value: string): string {
   return normalizeTextKey(value);
 }
 
+function cuadrillaKeyAndLabel(input: {
+  cuadrillaId?: unknown;
+  cuadrillaNombre?: unknown;
+}): { key: string; label: string } {
+  const byId = cleanValue(input.cuadrillaId || "");
+  const byName = cleanValue(input.cuadrillaNombre || "");
+  const label = byName || byId || "SIN_CUADRILLA";
+  const keySource = byId || byName || "";
+  return { key: normalizeKey(keySource), label };
+}
+
+function cuadrillaResponsableDocIdFromKey(key: string): string {
+  return encodeURIComponent(String(key || "").trim());
+}
+
+function buildTelegramDisplayName(args: {
+  username?: string;
+  firstName?: string;
+  lastName?: string;
+}): string {
+  const username = cleanValue(args.username || "");
+  if (username) return `@${username.replace(/^@+/, "")}`;
+  const firstName = cleanValue(args.firstName || "");
+  const lastName = cleanValue(args.lastName || "");
+  const full = `${firstName} ${lastName}`.trim();
+  return full || "Responsable";
+}
+
+async function upsertCuadrillaResponsableFromTemplate(params: {
+  cuadrillaId?: string;
+  cuadrillaNombre?: string;
+  userId: string;
+  username?: string;
+  firstName?: string;
+  lastName?: string;
+}) {
+  const userId = cleanValue(params.userId || "");
+  if (!userId) return;
+  const target = cuadrillaKeyAndLabel({
+    cuadrillaId: params.cuadrillaId,
+    cuadrillaNombre: params.cuadrillaNombre,
+  });
+  if (!target.key) return;
+  if (target.label === "SIN_CUADRILLA") return;
+
+  const now = FieldValue.serverTimestamp();
+  const ref = db
+    .collection(CUADRILLA_RESPONSABLES_COLLECTION)
+    .doc(cuadrillaResponsableDocIdFromKey(target.key));
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const state = (snap.data() || {}) as Record<string, unknown>;
+    const currentUserId = cleanValue(state.currentUserId || "");
+    const currentConfidence = Number(state.confidence || 0) || 0;
+    const username = cleanValue(params.username || "");
+    const displayName = buildTelegramDisplayName({
+      username,
+      firstName: params.firstName,
+      lastName: params.lastName,
+    });
+
+    if (!currentUserId) {
+      tx.set(
+        ref,
+        {
+          key: target.key,
+          label: target.label,
+          currentUserId: userId,
+          currentUsername: username || null,
+          currentDisplayName: displayName,
+          confidence: 70,
+          lastSeenAt: now,
+          createdAt: now,
+          updatedAt: now,
+          switchCount: 0,
+        },
+        { merge: true }
+      );
+      return;
+    }
+
+    if (currentUserId === userId) {
+      tx.set(
+        ref,
+        {
+          key: target.key,
+          label: target.label,
+          currentUsername: username || state.currentUsername || null,
+          currentDisplayName: displayName || state.currentDisplayName || "Responsable",
+          confidence: Math.min(100, Math.max(50, currentConfidence) + 10),
+          lastSeenAt: now,
+          updatedAt: now,
+          candidateUserId: FieldValue.delete(),
+          candidateUsername: FieldValue.delete(),
+          candidateDisplayName: FieldValue.delete(),
+          candidateCount: FieldValue.delete(),
+          candidateFirstSeenAt: FieldValue.delete(),
+        },
+        { merge: true }
+      );
+      return;
+    }
+
+    const candidateUserId = cleanValue(state.candidateUserId || "");
+    const previousCandidateCount = Number(state.candidateCount || 0) || 0;
+    const nextCandidateCount =
+      candidateUserId === userId ? previousCandidateCount + 1 : 1;
+
+    const candidatePayload = {
+      candidateUserId: userId,
+      candidateUsername: username || null,
+      candidateDisplayName: displayName,
+      candidateCount: nextCandidateCount,
+      candidateFirstSeenAt: now,
+      confidence: Math.max(30, currentConfidence - 15),
+      lastSeenAt: now,
+      updatedAt: now,
+      label: target.label,
+    };
+
+    if (nextCandidateCount >= RESPONSABLE_SWITCH_CANDIDATE_MIN) {
+      tx.set(
+        ref,
+        {
+          key: target.key,
+          label: target.label,
+          currentUserId: userId,
+          currentUsername: username || null,
+          currentDisplayName: displayName,
+          previousUserId: currentUserId || null,
+          previousSwitchedAt: now,
+          confidence: 65,
+          switchCount: FieldValue.increment(1),
+          lastSeenAt: now,
+          updatedAt: now,
+          candidateUserId: FieldValue.delete(),
+          candidateUsername: FieldValue.delete(),
+          candidateDisplayName: FieldValue.delete(),
+          candidateCount: FieldValue.delete(),
+          candidateFirstSeenAt: FieldValue.delete(),
+        },
+        { merge: true }
+      );
+      return;
+    }
+
+    tx.set(ref, candidatePayload, { merge: true });
+  });
+}
+
+async function fetchCuadrillaResponsablesByKeys(
+  keys: string[]
+): Promise<Map<string, CuadrillaResponsableState>> {
+  const uniq = Array.from(new Set(keys.filter(Boolean)));
+  const out = new Map<string, CuadrillaResponsableState>();
+  if (!uniq.length) return out;
+  const refs = uniq.map((key) =>
+    db.collection(CUADRILLA_RESPONSABLES_COLLECTION).doc(cuadrillaResponsableDocIdFromKey(key))
+  );
+  const snaps = await db.getAll(...refs);
+  for (const snap of snaps) {
+    if (!snap.exists) continue;
+    const row = (snap.data() || {}) as Record<string, unknown>;
+    const key = cleanValue(row.key || "");
+    const currentUserId = cleanValue(row.currentUserId || "");
+    const confidence = Number(row.confidence || 0) || 0;
+    if (!key || !currentUserId) continue;
+    out.set(key, {
+      key,
+      currentUserId,
+      currentDisplayName: cleanValue(row.currentDisplayName || "") || undefined,
+      currentUsername: cleanValue(row.currentUsername || "") || undefined,
+      confidence,
+    });
+  }
+  return out;
+}
+
+function buildResponsableMention(state?: CuadrillaResponsableState): string {
+  if (!state || !state.currentUserId) return "Responsable: por confirmar";
+  if (state.confidence < RESPONSABLE_CONFIDENCE_MIN_MENTION) return "Responsable: por confirmar";
+  const label =
+    cleanValue(state.currentDisplayName || "") ||
+    cleanValue(state.currentUsername || "") ||
+    "Responsable";
+  const safeLabel = label.replace(/([_*`\[])/g, "\\$1");
+  const safeUserId = encodeURIComponent(state.currentUserId);
+  return `Responsable: [${safeLabel}](tg://user?id=${safeUserId})`;
+}
+
 function filterByCuadrilla(rows: OrdenResumen[], query: string): OrdenResumen[] {
   const q = normalizeKey(query);
   if (!q) return [];
@@ -677,6 +945,44 @@ async function sendGlobalResumen(
     rows,
     title,
   });
+}
+
+async function sendPendientesDetalladoPorCuadrilla(
+  chatId: string,
+  token: string,
+  ymd: string
+) {
+  const pendingRows = await getResumenRows(chatId, "PENDIENTES", ymd);
+  if (!pendingRows.length) return;
+
+  const grouped = new Map<string, { label: string; rows: OrdenResumen[] }>();
+  for (const row of pendingRows) {
+    const target = cuadrillaKeyAndLabel({
+      cuadrillaId: row.cuadrillaId,
+      cuadrillaNombre: row.cuadrillaNombre,
+    });
+    const current = grouped.get(target.key) || { label: target.label, rows: [] };
+    current.rows.push(row);
+    grouped.set(target.key, current);
+  }
+
+  const responsables = await fetchCuadrillaResponsablesByKeys(Array.from(grouped.keys()));
+  const sorted = Array.from(grouped.entries()).sort((a, b) =>
+    a[1].label.localeCompare(b[1].label)
+  );
+
+  for (const [key, payload] of sorted) {
+    const mention = buildResponsableMention(responsables.get(key));
+    await sendTelegramMessage({
+      token,
+      chatId,
+      text: `CUADRILLA: ${payload.label}\n${mention}`,
+    });
+    const blocks = buildCuadrillaDetailBlocks(payload.label, payload.rows);
+    for (const block of blocks) {
+      await sendTelegramMessage({ token, chatId, text: block });
+    }
+  }
 }
 
 async function sendResumenByCuadrilla(
@@ -1101,26 +1407,30 @@ export const telegramWebhook = onRequest(
     }
 
     let parsed = parseTelegramTemplate(text);
-    let parseSource: "RULES" | "AI" = "RULES";
-    if (!parsed) {
-      const aiKey = String(OPENAI_API_KEY_PRELIQUIDACION.value() || "").trim();
-      if (aiKey) {
-        try {
-          const aiParsed = await parseTelegramTemplateWithAI({
-            apiKey: aiKey,
-            text,
-            model: OPENAI_PRELIQ_MODEL.value(),
-          });
-          if (aiParsed) {
+    let parseSource: "RULES" | "AI" | "RULES+AI" = "RULES";
+    const aiKey = String(OPENAI_API_KEY_PRELIQUIDACION.value() || "").trim();
+    const needsAi = shouldAttemptAiEnrichment(text, parsed);
+    if (needsAi && aiKey) {
+      try {
+        const aiParsed = await parseTelegramTemplateWithAI({
+          apiKey: aiKey,
+          text,
+          model: OPENAI_PRELIQ_MODEL.value(),
+        });
+        if (aiParsed) {
+          if (parsed) {
+            parsed = mergeParsedTemplate(parsed, aiParsed);
+            parseSource = "RULES+AI";
+          } else {
             parsed = aiParsed;
             parseSource = "AI";
           }
-        } catch (error) {
-          logger.error("telegram ai parser error", {
-            error: String((error as Error)?.message || error),
-            chatId,
-          });
         }
+      } catch (error) {
+        logger.error("telegram ai parser error", {
+          error: String((error as Error)?.message || error),
+          chatId,
+        });
       }
     }
     if (!parsed) {
@@ -1177,6 +1487,14 @@ export const telegramWebhook = onRequest(
 
     const orderMeta = buildOrdenResumen(orderResult.data);
     const operacionYmd = resolveOperacionYmdFromOrden(orderResult.data);
+    await upsertCuadrillaResponsableFromTemplate({
+      cuadrillaId: orderMeta.cuadrillaId,
+      cuadrillaNombre: orderMeta.cuadrillaNombre,
+      userId: fromId,
+      username: cleanValue(message?.from?.username || ""),
+      firstName: cleanValue(message?.from?.first_name || ""),
+      lastName: cleanValue(message?.from?.last_name || ""),
+    });
     const foundGuardAcquired = await tryAcquireFoundGuard(
       chatId,
       parsed.pedido,
@@ -1457,17 +1775,33 @@ export const telegramPreliqRetryWorker = onSchedule(
 );
 
 function reminderTextByHour(hourLima: number): string | null {
+  const generic =
+    "*RECORDAR ENVIAR SUS PLANTILLAS DE FINALIZACION, " +
+    "PARA UN MAYOR ABASTECIMIENTO DE EQUIPOS Y EVITAR ESCASEZ " +
+    "DE EQUIPOS Y DEMORAS EN LA GESTION.*";
+  if (hourLima === 10 || hourLima === 14 || hourLima === 18) {
+    return generic;
+  }
   if (hourLima === 12) {
-    return "Buenas tardes compañeros, por favor no olvidar enviar sus " +
-      "plantillas de finalizacion del primer tramo.";
+    return (
+      "*RECORDAR ENVIAR SUS PLANTILLAS DE FINALIZACION DEL PRIMER TRAMO, " +
+      "PARA UN MAYOR ABASTECIMIENTO DE EQUIPOS Y EVITAR ESCASEZ " +
+      "DE EQUIPOS Y DEMORAS EN LA GESTION.*"
+    );
   }
   if (hourLima === 16) {
-    return "Buenas tardes compañeros, por favor no olvidar enviar sus " +
-      "plantillas de finalizacion del segundo tramo.";
+    return (
+      "*RECORDAR ENVIAR SUS PLANTILLAS DE FINALIZACION DEL SEGUNDO TRAMO, " +
+      "PARA UN MAYOR ABASTECIMIENTO DE EQUIPOS Y EVITAR ESCASEZ " +
+      "DE EQUIPOS Y DEMORAS EN LA GESTION.*"
+    );
   }
   if (hourLima === 20) {
-    return "Buenas noches compañeros, por favor no olvidar enviar sus " +
-      "plantillas de finalizacion del tercer tramo.";
+    return (
+      "*RECORDAR ENVIAR SUS PLANTILLAS DE FINALIZACION DEL TERCER TRAMO, " +
+      "PARA UN MAYOR ABASTECIMIENTO DE EQUIPOS Y EVITAR ESCASEZ " +
+      "DE EQUIPOS Y DEMORAS EN LA GESTION.*"
+    );
   }
   return null;
 }
@@ -1475,7 +1809,7 @@ function reminderTextByHour(hourLima: number): string | null {
 export const telegramPendientesReminder = onSchedule(
   {
     region: "us-central1",
-    schedule: "0 12,16,20 * * *",
+    schedule: "0 10,12,14,16,18,20 * * *",
     timeZone: "America/Lima",
     secrets: [TELEGRAM_BOT_TOKEN],
   },
@@ -1498,11 +1832,9 @@ export const telegramPendientesReminder = onSchedule(
     for (const chatId of chats) {
       await sendTelegramMessage({ token, chatId, text: baseText });
       await sendResumenCount(chatId, token, "PENDIENTES", ymd, false);
-      await sendTelegramMessage({
-        token,
-        chatId,
-        text: "Escribe 'resumen' para ver detalle por cuadrilla.",
-      });
+      await sendPendientesDetalladoPorCuadrilla(chatId, token, ymd);
     }
   }
 );
+
+

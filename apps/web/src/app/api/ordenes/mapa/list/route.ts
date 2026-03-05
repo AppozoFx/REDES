@@ -68,7 +68,7 @@ export async function GET(req: Request) {
           plan: String(x.idenServi || ""),
           direccion: String(x.direccion || x.direccion1 || ""),
           estado: String(x.estado || ""),
-          tramo: resolveTramoBase(String(x.fSoliHm || ""), String(x.fechaFinVisiHm || "")),
+          tramo: resolveTramoBase(String(x.fSoliHm || "")),
           horaEnCamino: String(x.horaEnCamino || ""),
           horaInicio: String(x.fechaIniVisiHm || x.horaInicio || ""),
           horaFin: String(x.fechaFinVisiHm || x.horaFin || ""),

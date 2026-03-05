@@ -277,7 +277,7 @@ export default function ImportClient() {
             <button
               type="button"
               disabled={!file || saving}
-              className="rounded-xl bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => {
                 (async () => {
                   if (!file || !parseResult?.ok) return;
@@ -323,7 +323,14 @@ export default function ImportClient() {
                 })();
               }}
             >
-              {saving ? "Guardando..." : "Guardar nuevos"}
+              {saving ? (
+                <>
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />
+                  Procesando...
+                </>
+              ) : (
+                "Guardar nuevos"
+              )}
             </button>
           </div>
 

@@ -12,7 +12,7 @@ export async function getUsuarioProfileByUid(uid: string) {
  * Listado combinado: usuarios_access + perfil (batch)
  * Devuelve filas listas para tabla.
  */
-export async function listUsuariosForHome(limit = 50) {
+export async function listUsuariosForHome(limit?: number) {
   const accessRows = await listUsuariosAccess(limit);
 
   const refs = accessRows.map((r) => adminDb().collection("usuarios").doc(r.uid));

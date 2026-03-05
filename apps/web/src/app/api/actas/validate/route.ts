@@ -4,6 +4,13 @@ import { getServerSession } from "@/core/auth/session";
 
 export const runtime = "nodejs";
 
+function normalizeActa(raw: unknown) {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length <= 3) return digits;
+  return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+}
+
 export async function GET(req: Request) {
   try {
     const session = await getServerSession();
@@ -18,7 +25,7 @@ export async function GET(req: Request) {
     if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const { searchParams } = new URL(req.url);
-    const code = String(searchParams.get("code") || "").trim();
+    const code = normalizeActa(searchParams.get("code"));
     if (!code) return NextResponse.json({ ok: false, error: "ACTA_REQUIRED" }, { status: 400 });
 
     const ref = adminDb().collection("actas").doc(code);

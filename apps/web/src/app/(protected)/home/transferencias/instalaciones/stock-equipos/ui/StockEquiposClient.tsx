@@ -97,12 +97,14 @@ function extractGuiaId(v: any) {
   return "";
 }
 
-function isExcludedUbicacion(v: any) {
-  const s = String(v || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-  return ["robo", "perdida", "averia", "garantia"].some((w) => s.includes(w));
+function isUbicacionAlmacen(v: any) {
+  return (
+    String(v || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toUpperCase() === "ALMACEN"
+  );
 }
 
 function toLabelTipo(rc: string) {
@@ -328,7 +330,7 @@ export default function StockEquiposClient() {
           (eq) =>
             String(eq.estado || "").toUpperCase() === "ALMACEN" &&
             String(eq.equipo || "").toUpperCase() === tipo &&
-            !isExcludedUbicacion(eq.ubicacion)
+            isUbicacionAlmacen(eq.ubicacion)
         ).length,
       })),
     [equipos]
@@ -443,7 +445,7 @@ export default function StockEquiposClient() {
 
     for (const eq of equipos) {
       if (String(eq.estado || "").toUpperCase() !== "ALMACEN") continue;
-      if (isExcludedUbicacion(eq.ubicacion)) continue;
+      if (!isUbicacionAlmacen(eq.ubicacion)) continue;
       const tipoEq = String(eq.equipo || "").toUpperCase();
       if (equipoFiltro !== "todos" && tipoEq !== equipoFiltro) continue;
       if (descripcionesSeleccionadas.size > 0 && !descripcionesSeleccionadas.has(String(eq.descripcion || "").trim())) {

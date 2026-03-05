@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@babel/runtime": "^7.28.6",
+    "@zxing/library": "^0.21.3",
     "dayjs": "^1.11.12",
     "file-saver": "^2.0.5",
     "firebase": "^12.8.0",

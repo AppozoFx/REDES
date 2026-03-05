@@ -71,11 +71,11 @@ function sortRows(rows: Row[]) {
     const nB = cuadrillaNumber(b.cuadrillaId, b.cuadrillaNombre);
     if (nA !== nB) return nA - nB;
 
-    const tA = tramoPriority(resolveTramoBase(a.fSoliHm, a.fechaFinVisiHm));
-    const tB = tramoPriority(resolveTramoBase(b.fSoliHm, b.fechaFinVisiHm));
+    const tA = tramoPriority(resolveTramoBase(a.fSoliHm));
+    const tB = tramoPriority(resolveTramoBase(b.fSoliHm));
     if (tA !== tB) return tA - tB;
 
-    const hmCmp = String(a.fechaFinVisiHm || "").localeCompare(String(b.fechaFinVisiHm || ""));
+    const hmCmp = String(a.fSoliHm || "").localeCompare(String(b.fSoliHm || ""));
     if (hmCmp !== 0) return hmCmp;
 
     return a.ordenId.localeCompare(b.ordenId);
@@ -127,16 +127,16 @@ export async function GET(req: Request) {
     const q = adminDb().collection("ordenes");
     let snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>;
     if (ymd) {
-      snap = await q.where("fechaFinVisiYmd", "==", ymd).limit(3000).get();
+      snap = await q.where("fSoliYmd", "==", ymd).limit(3000).get();
     } else if (monthParsed) {
       snap = await q
-        .where("fechaFinVisiYmd", ">=", monthParsed.start)
-        .where("fechaFinVisiYmd", "<=", monthParsed.end)
+        .where("fSoliYmd", ">=", monthParsed.start)
+        .where("fSoliYmd", "<=", monthParsed.end)
         .limit(5000)
         .get();
     } else {
       const today = todayLimaYmd();
-      snap = await q.where("fechaFinVisiYmd", "==", today).limit(3000).get();
+      snap = await q.where("fSoliYmd", "==", today).limit(3000).get();
     }
 
     const allRowsBase: Row[] = snap.docs
@@ -154,8 +154,10 @@ export async function GET(req: Request) {
           ),
           cuadrillaId: String(x.cuadrillaId || ""),
           cuadrillaNombre: String(x.cuadrillaNombre || ""),
-          fechaFinVisiYmd: String(x.fechaFinVisiYmd || ""),
-          fechaFinVisiHm: String(x.fechaFinVisiHm || x.fSoliHm || ""),
+          // Mantiene nombre de campo para compatibilidad de frontend,
+          // pero la fuente oficial para filtros es fSoli*.
+          fechaFinVisiYmd: String(x.fSoliYmd || ""),
+          fechaFinVisiHm: String(x.fSoliHm || ""),
           fSoliHm: String(x.fSoliHm || ""),
           tipo: String(x.tipo || ""),
           tipoTraba: String(x.tipoTraba || ""),

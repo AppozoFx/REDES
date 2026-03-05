@@ -305,6 +305,7 @@ export default function RecepcionActasClient() {
   };
 
   const handleRegistrar = async () => {
+    if (procesando) return;
     if (!coordinadorUid) return toast.error("Selecciona coordinador");
     if (!actas.length) return toast.error("Agrega actas para registrar");
 
@@ -454,6 +455,7 @@ export default function RecepcionActasClient() {
                 onChange={(sel) => setCoordinadorUid(sel?.value || "")}
                 placeholder="Seleccionar coordinador"
                 isClearable
+                isDisabled={procesando}
                 {...selectPortalProps}
               />
             </div>
@@ -465,7 +467,7 @@ export default function RecepcionActasClient() {
                 onChange={(sel) => setCuadrillaId(sel?.value || "")}
                 placeholder={coordinadorUid ? "Seleccionar cuadrilla" : "Selecciona coordinador primero"}
                 isClearable
-                isDisabled={!coordinadorUid}
+                isDisabled={!coordinadorUid || procesando}
                 {...selectPortalProps}
               />
             </div>
@@ -479,15 +481,24 @@ export default function RecepcionActasClient() {
                 onChange={(e) => setActaCode(normalizeActa(e.target.value))}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
+                disabled={procesando}
                 placeholder="Escanea y presiona Enter (o pega varias líneas)"
                 className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
               />
               <button
                 type="button"
                 onClick={() => actaCode.trim() && agregarActa(actaCode.trim())}
-                className="rounded-xl bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
+                disabled={procesando || !actaCode.trim()}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-60"
               >
-                Agregar
+                {procesando ? (
+                  <>
+                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />
+                    Procesando...
+                  </>
+                ) : (
+                  "Agregar"
+                )}
               </button>
             </div>
             <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
@@ -502,6 +513,7 @@ export default function RecepcionActasClient() {
             {actas.length > 0 && (
               <button
                 onClick={() => setActas([])}
+                disabled={procesando}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 Limpiar todo
@@ -515,7 +527,7 @@ export default function RecepcionActasClient() {
               {actas.map((a) => (
                 <span key={a} className="inline-flex items-center gap-2 rounded-full bg-slate-800 text-white text-xs px-3 py-1">
                   {a}
-                  <button onClick={() => eliminarActa(a)} className="text-white/80 hover:text-white">
+                  <button disabled={procesando} onClick={() => eliminarActa(a)} className="text-white/80 hover:text-white disabled:opacity-50">
                     ✕
                   </button>
                 </span>
@@ -551,14 +563,22 @@ export default function RecepcionActasClient() {
         <button
           onClick={handleRegistrar}
           disabled={procesando || !coordinadorUid || actas.length === 0}
-          className="w-full rounded-xl bg-emerald-600 px-4 py-3 font-semibold text-white disabled:opacity-60 hover:bg-emerald-700"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 font-semibold text-white disabled:opacity-60 hover:bg-emerald-700"
         >
-          {procesando ? "Procesando..." : "Registrar y Generar Guía"}
+          {procesando ? (
+            <>
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />
+              Procesando...
+            </>
+          ) : (
+            "Registrar y Generar Guía"
+          )}
         </button>
       </div>
     </div>
   );
 }
+
 
 
 

@@ -123,7 +123,8 @@ export async function getExistingSNs(sns: string[]): Promise<Set<string>> {
 }
 
 export async function createEquipo(doc: Omit<EquipoDoc, "audit">, actorUid: string): Promise<void> {
-  const id = doc.SN;
+  const id = String(doc.SN || "").trim().toUpperCase();
+  if (!id) return;
   const ref = equiposCol().doc(id);
   const snap = await ref.get();
   if (snap.exists) return; // create-only
@@ -131,6 +132,7 @@ export async function createEquipo(doc: Omit<EquipoDoc, "audit">, actorUid: stri
   const sn_tail = doc.sn_tail || id.slice(-6);
   const payload: Partial<EquipoDoc> = {
     ...omitUndefined(doc),
+    SN: id,
     sn_tail,
     audit: {
       createdAt: FieldValue.serverTimestamp(),

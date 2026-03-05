@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldPath, FieldValue } from "firebase-admin/firestore";
 import { getServerSession } from "@/core/auth/session";
 import { adminDb } from "@/lib/firebase/admin";
 
@@ -90,6 +90,55 @@ function canAdjust(session: NonNullable<Awaited<ReturnType<typeof getServerSessi
   return session.permissions.includes("MATERIALES_TRANSFER_SERVICIO");
 }
 
+async function readAllDocsPaged(
+  baseQuery: FirebaseFirestore.Query,
+  pageSize: number,
+  maxDocs: number
+) {
+  const out: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+  let cursor: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+  let capped = false;
+
+  while (out.length < maxDocs) {
+    const left = maxDocs - out.length;
+    const chunk = Math.min(pageSize, left);
+    const q: FirebaseFirestore.Query = cursor ? baseQuery.startAfter(cursor).limit(chunk) : baseQuery.limit(chunk);
+    const snap: FirebaseFirestore.QuerySnapshot = await q.get();
+    if (!snap.size) break;
+    out.push(...snap.docs);
+    cursor = snap.docs[snap.docs.length - 1];
+    if (snap.size < chunk) break;
+  }
+
+  if (out.length >= maxDocs) {
+    capped = true;
+  }
+
+  return { docs: out, capped };
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>
+) {
+  if (!items.length) return [] as R[];
+  const out = new Array<R>(items.length);
+  let idx = 0;
+  const n = Math.max(1, Math.min(concurrency, items.length));
+
+  const runners = Array.from({ length: n }, async () => {
+    while (true) {
+      const i = idx++;
+      if (i >= items.length) return;
+      out[i] = await worker(items[i], i);
+    }
+  });
+
+  await Promise.all(runners);
+  return out;
+}
+
 export async function GET(req: Request) {
   try {
     const session = await getServerSession();
@@ -99,9 +148,11 @@ export async function GET(req: Request) {
     const includeInactive = String(searchParams.get("includeInactive") || "").trim() === "1";
 
     const db = adminDb();
-    const [cuadSnap, usersSnap, eqSnap, materialsSnap] = await Promise.all([
-      db.collection("cuadrillas")
+    const [cuadPack, usersPack, eqPack, materialsPack] = await Promise.all([
+      readAllDocsPaged(
+        db.collection("cuadrillas")
         .where("area", "==", "INSTALACIONES")
+        .orderBy(FieldPath.documentId())
         .select(
           "nombre",
           "numeroCuadrilla",
@@ -115,26 +166,46 @@ export async function GET(req: Request) {
           "coordinadora",
           "coordinadoraNombre"
         )
-        .limit(1200)
-        .get(),
-      db.collection("usuarios").select("nombres", "apellidos", "displayName").limit(5000).get(),
-      db.collection("equipos")
+      ,
+        500,
+        5000
+      ),
+      readAllDocsPaged(
+        db.collection("usuarios").orderBy(FieldPath.documentId()).select("nombres", "apellidos", "displayName"),
+        1000,
+        10000
+      ),
+      readAllDocsPaged(
+        db.collection("equipos")
         .where("estado", "in", ["ALMACEN", "CAMPO"])
+        .orderBy(FieldPath.documentId())
         .select("equipo", "estado", "ubicacion", "descripcion", "modelo", "marca", "fabricante", "nombre", "tipoModelo")
-        .limit(25000)
-        .get(),
-      db.collection("materiales").select("nombre", "descripcion", "unidadTipo", "estado").limit(3000).get(),
+      ,
+        2000,
+        60000
+      ),
+      readAllDocsPaged(
+        db.collection("materiales").orderBy(FieldPath.documentId()).select("nombre", "descripcion", "unidadTipo", "estado"),
+        1000,
+        8000
+      ),
     ]);
 
+    const warnings: string[] = [];
+    if (cuadPack.capped) warnings.push("LISTA_CUADRILLAS_CAPPED");
+    if (usersPack.capped) warnings.push("LISTA_USUARIOS_CAPPED");
+    if (eqPack.capped) warnings.push("LISTA_EQUIPOS_CAPPED");
+    if (materialsPack.capped) warnings.push("LISTA_MATERIALES_CAPPED");
+
     const usersMap = new Map<string, string>();
-    for (const u of usersSnap.docs) {
+    for (const u of usersPack.docs) {
       const x = u.data() as any;
       const displayName = asStr(x?.displayName);
       const composed = `${asStr(x?.nombres)} ${asStr(x?.apellidos)}`.trim();
       usersMap.set(u.id, shortName(displayName || composed || u.id));
     }
 
-    const cuadrillasAll = cuadSnap.docs
+    const cuadrillasAll = cuadPack.docs
       .map((d) => {
         const x = d.data() as any;
         const estado = normText(x?.estado);
@@ -167,16 +238,16 @@ export async function GET(req: Request) {
     for (const c of cuadrillas) byCuadrilla.set(c.id, emptyEquipos());
     const almacen = emptyEquipos();
 
-    for (const d of eqSnap.docs) {
+    for (const d of eqPack.docs) {
       const x = d.data() as any;
       const kind = equipoKind(x?.equipo);
       if (!kind) continue;
       const estado = normText(x?.estado);
-      const ubicacion = asStr(x?.ubicacion);
+      const ubicacion = normText(x?.ubicacion);
       const ubicacionId = byKey.get(normText(ubicacion)) || "";
       const model = modelFromEquipo(x);
 
-      if (estado === "ALMACEN") {
+      if (ubicacion === "ALMACEN") {
         almacen[kind] += 1;
         if (kind === "ONT" && model === "HUAWEI") almacen.ONT_HUAWEI += 1;
         if (kind === "ONT" && model === "ZTE") almacen.ONT_ZTE += 1;
@@ -195,8 +266,10 @@ export async function GET(req: Request) {
       }
     }
 
-    const stockPromises = cuadrillas.map(async (c) => {
-      const snap = await db.collection("cuadrillas").doc(c.id).collection("stock").limit(800).get();
+    let stockCollectionCapped = 0;
+    const stockByCuadRows = await mapWithConcurrency(cuadrillas, 25, async (c) => {
+      const stockLimit = 1200;
+      const snap = await db.collection("cuadrillas").doc(c.id).collection("stock").limit(stockLimit).get();
       let totalUnd = 0;
       let totalMetros = 0;
       const materiales = snap.docs.map((m) => {
@@ -212,6 +285,7 @@ export async function GET(req: Request) {
           stockMetros: Math.max(0, Number(metros.toFixed(2))),
         };
       });
+      if (snap.size >= stockLimit) stockCollectionCapped += 1;
       return {
         cuadrillaId: c.id,
         materialCount: materiales.length,
@@ -220,11 +294,12 @@ export async function GET(req: Request) {
         materiales,
       };
     });
-
-    const stockByCuadRows = await Promise.all(stockPromises);
+    if (stockCollectionCapped > 0) {
+      warnings.push(`STOCK_CAPPED_${stockCollectionCapped}`);
+    }
     const stockByCuad = new Map(stockByCuadRows.map((r) => [r.cuadrillaId, r]));
 
-    const materialesCatalog = materialsSnap.docs
+    const materialesCatalog = materialsPack.docs
       .map((m) => {
         const x = m.data() as any;
         const nombre = asStr(x?.nombre || x?.descripcion || m.id);
@@ -240,6 +315,8 @@ export async function GET(req: Request) {
       const criticos: string[] = [];
       if (eq.ONT <= 0) criticos.push("SIN_ONT");
       if (eq.MESH <= 0) criticos.push("SIN_MESH");
+      if (eq.FONO <= 0) criticos.push("SIN_FONO");
+      if (eq.BOX <= 0) criticos.push("SIN_BOX");
       if (eq.ONT + eq.MESH + eq.FONO + eq.BOX <= 0) criticos.push("SIN_EQUIPOS");
       if (st.materialCount <= 0) criticos.push("SIN_MATERIALES");
       return {
@@ -257,6 +334,15 @@ export async function GET(req: Request) {
       almacen,
       materialesCatalog,
       rows,
+      diagnostics: {
+        warnings,
+        counts: {
+          cuadrillas: cuadrillas.length,
+          usuarios: usersPack.docs.length,
+          equipos: eqPack.docs.length,
+          materiales: materialsPack.docs.length,
+        },
+      },
     });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });

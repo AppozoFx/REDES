@@ -287,7 +287,7 @@ export default function DashboardInstalacionesClient() {
   const [soloNoLiquidadas, setSoloNoLiquidadas] = useState(false);
 
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
+  const [pageSize, setPageSize] = useState(200);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");

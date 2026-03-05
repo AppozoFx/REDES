@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import React from "react";
 import { useFormStatus } from "react-dom";
 import { createUsuario } from "../actions";
@@ -7,20 +8,56 @@ import { toast } from "sonner";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
+  const [done, setDone] = React.useState(false);
+  const [wasPending, setWasPending] = React.useState(false);
+
+  React.useEffect(() => {
+    if (pending) {
+      setWasPending(true);
+      setDone(false);
+      return;
+    }
+    if (!pending && wasPending) {
+      setDone(true);
+      setWasPending(false);
+      const t = setTimeout(() => setDone(false), 1300);
+      return () => clearTimeout(t);
+    }
+  }, [pending, wasPending]);
 
   return (
     <button
       type="submit"
       disabled={pending}
-      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
+      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
     >
-      {pending ? "Creando..." : "Crear usuario"}
+      <span className={`inline-flex items-center gap-2 ${pending ? "animate-pulse" : ""}`}>
+        {pending ? (
+          <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-30" />
+            <path d="M22 12a10 10 0 00-10-10" stroke="currentColor" strokeWidth="3" className="opacity-95" />
+          </svg>
+        ) : done ? (
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
+        ) : null}
+        {pending ? "Creando..." : done ? "Usuario creado" : "Crear usuario"}
+      </span>
     </button>
   );
 }
 
-export function FormCreateUsuario({ roles, areas }: { roles: string[]; areas: string[] }) {
-  const [state, formAction] = React.useActionState(createUsuario as any, undefined as any);
+export function FormCreateUsuario({
+  roles,
+  areas,
+  cancelHref = "/admin/usuarios",
+}: {
+  roles: string[];
+  areas: string[];
+  cancelHref?: string;
+}) {
+  const [state, formAction, pending] = React.useActionState(createUsuario as any, undefined as any);
 
   React.useEffect(() => {
     if (!state) return;
@@ -33,21 +70,22 @@ export function FormCreateUsuario({ roles, areas }: { roles: string[]; areas: st
 
   return (
     <form action={formAction} className="space-y-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Credenciales</h2>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <div>
-            <label className="text-sm">Email</label>
-            <input name="email" className="ui-input mt-1" required />
+      <fieldset disabled={pending} aria-busy={pending} className={`space-y-5 ${pending ? "opacity-90" : ""}`}>
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Credenciales</h2>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div>
+              <label className="text-sm">Email</label>
+              <input name="email" className="ui-input mt-1" required />
+            </div>
+            <div>
+              <label className="text-sm">Password</label>
+              <input name="password" type="password" className="ui-input mt-1" required />
+            </div>
           </div>
-          <div>
-            <label className="text-sm">Password</label>
-            <input name="password" type="password" className="ui-input mt-1" required />
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-700">
+        <section className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-700">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Perfil</h2>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
@@ -111,9 +149,9 @@ export function FormCreateUsuario({ roles, areas }: { roles: string[]; areas: st
             </select>
           </div>
         </div>
-      </section>
+        </section>
 
-      <section className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-700">
+        <section className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-700">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Asignaciones opcionales</h2>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
@@ -133,9 +171,9 @@ export function FormCreateUsuario({ roles, areas }: { roles: string[]; areas: st
             <input name="supervisorUid" className="ui-input mt-1" />
           </div>
         </div>
-      </section>
+        </section>
 
-      <section className="grid grid-cols-1 gap-4 border-t border-slate-200 pt-4 md:grid-cols-2 dark:border-slate-700">
+        <section className="grid grid-cols-1 gap-4 border-t border-slate-200 pt-4 md:grid-cols-2 dark:border-slate-700">
         <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
           <div className="mb-2 font-medium">Roles</div>
           <div className="space-y-2">
@@ -161,24 +199,24 @@ export function FormCreateUsuario({ roles, areas }: { roles: string[]; areas: st
             {areas.length === 0 && <div className="text-sm text-slate-500 dark:text-slate-400">No hay areas activas.</div>}
           </div>
         </div>
-      </section>
+        </section>
 
-      {state && (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/50">
-          <div className="font-medium">Resultado</div>
-          <pre className="mt-1 whitespace-pre-wrap break-words">{JSON.stringify(state, null, 2)}</pre>
+        {state?.ok === false && state?.error?.formErrors?.length > 0 && (
+          <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200">
+            {state.error.formErrors[0]}
+          </div>
+        )}
 
-          {state?.ok === false && state?.error?.formErrors?.length > 0 && (
-            <ul className="mt-2 list-disc pl-5">
-              {state.error.formErrors.map((e: string, i: number) => (
-                <li key={i}>{e}</li>
-              ))}
-            </ul>
-          )}
+        <div className="flex items-center gap-2 pt-1">
+          <SubmitButton />
+          <Link
+            href={cancelHref}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+          >
+            Cancelar
+          </Link>
         </div>
-      )}
-
-      <SubmitButton />
+      </fieldset>
     </form>
   );
 }

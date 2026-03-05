@@ -23,12 +23,16 @@ export type UserAccessDoc = {
   audit: any;
 };
 
-export async function listUsuariosAccess(limit = 50) {
-  const snap = await adminDb()
+export async function listUsuariosAccess(limit?: number) {
+  let query: FirebaseFirestore.Query = adminDb()
     .collection("usuarios_access")
-    .orderBy("audit.createdAt", "desc")
-    .limit(limit)
-    .get();
+    .orderBy("audit.createdAt", "desc");
+
+  if (typeof limit === "number" && Number.isFinite(limit) && limit > 0) {
+    query = query.limit(limit);
+  }
+
+  const snap = await query.get();
 
   return snap.docs.map((d) => ({ uid: d.id, ...(d.data() as UserAccessDoc) }));
 }

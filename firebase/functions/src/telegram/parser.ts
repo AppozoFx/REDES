@@ -35,10 +35,26 @@ function matchLine(text: string, pattern: RegExp): string | undefined {
 }
 
 function parsePedido(text: string): string | undefined {
-  const raw = matchLine(text, /\bPedido\s*:\s*([0-9]+)\b/im);
-  if (!raw) return undefined;
-  const compact = raw.replace(/\D/g, "");
-  return compact || undefined;
+  const patterns = [
+    /\bPedido\s*:\s*([0-9]+)\b/im,
+    /\bCod(?:igo|\.)?\s*de\s*Pedido\s*:\s*([0-9]+)\b/im,
+    /\bCod(?:igo|\.)?\s*Pedido\s*:\s*([0-9]+)\b/im,
+  ];
+  for (const pattern of patterns) {
+    const raw = matchLine(text, pattern);
+    if (!raw) continue;
+    const compact = raw.replace(/\D/g, "");
+    if (compact) return compact;
+  }
+  return undefined;
+}
+
+function pushUniqueSeries(target: string[], value: string): void {
+  const normalized = normalizeSpaces(String(value || ""));
+  if (!normalized) return;
+  const key = normalized.toUpperCase();
+  if (target.some((item) => item.toUpperCase() === key)) return;
+  target.push(normalized);
 }
 
 export function parseTelegramTemplate(rawInput: string): TelegramParsedTemplate | null {
@@ -55,7 +71,10 @@ export function parseTelegramTemplate(rawInput: string): TelegramParsedTemplate 
     normalized,
     /^.*\bPotencia\s*CTO\s*\/\s*NAP\s*\(\s*Dbm\s*\)\s*:\s*(.+)\s*$/im
   ) || matchLine(normalized, /^.*\bPotencia\s*CTO\s*\/\s*NAP\s*:\s*(.+)\s*$/im);
-  const snOnt = matchLine(normalized, /^.*\bSN\s*ONT\s*:\s*(.+)\s*$/im);
+  const snOnt =
+    matchLine(normalized, /^.*\bSN\s*ONT\s*:\s*(.+)\s*$/im) ||
+    matchLine(normalized, /^.*\bS\s*\/\s*N\s*ONT\s*:\s*(.+)\s*$/im) ||
+    matchLine(normalized, /^.*\bID\s*ONT\s*:\s*(.+)\s*$/im);
   const snFono =
     matchLine(normalized, /^.*\bFONOWIN\b\s*,?\s*N[UÚ]MERO\s+DE\s+SERIE\s*:\s*(.+)\s*$/im) ||
     matchLine(normalized, /^.*\bSN\s*FONO\s*:\s*(.+)\s*$/im);
@@ -63,15 +82,26 @@ export function parseTelegramTemplate(rawInput: string): TelegramParsedTemplate 
   const meshes: string[] = [];
   const meshRegex = /^.*\bMESH\s*\(\s*\d+\s*\)\s*:\s*(.+)\s*$/gim;
   for (const match of normalized.matchAll(meshRegex)) {
-    const value = normalizeSpaces(String(match[1] || ""));
-    if (value) meshes.push(value);
+    pushUniqueSeries(meshes, String(match[1] || ""));
+  }
+  const meshAltRegexes = [
+    /^.*\b(?:S\s*\/\s*N|SN)\s*MESH(?:\s*\d+)?\s*:\s*(.+)\s*$/gim,
+    /^\s*MESH\s+\d+\s*:\s*(.+)\s*$/gim,
+  ];
+  for (const regex of meshAltRegexes) {
+    for (const match of normalized.matchAll(regex)) {
+      pushUniqueSeries(meshes, String(match[1] || ""));
+    }
   }
 
   const boxes: string[] = [];
   const boxRegex = /^.*\b(?:WINBOX|SN\s*BOX|BOX)\s*\(\s*\d+\s*\)\s*:\s*(.+)\s*$/gim;
   for (const match of normalized.matchAll(boxRegex)) {
-    const value = normalizeSpaces(String(match[1] || ""));
-    if (value) boxes.push(value);
+    pushUniqueSeries(boxes, String(match[1] || ""));
+  }
+  const boxAltRegex = /^.*\b(?:S\s*\/\s*N|SN)\s*BOX(?:\s*\d+)?\s*:\s*(.+)\s*$/gim;
+  for (const match of normalized.matchAll(boxAltRegex)) {
+    pushUniqueSeries(boxes, String(match[1] || ""));
   }
 
   return {

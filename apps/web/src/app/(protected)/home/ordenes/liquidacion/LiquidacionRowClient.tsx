@@ -1020,10 +1020,17 @@ export function LiquidacionRowClient({
           <div className="flex items-center gap-3">
             <button
               type="submit"
-              className="rounded bg-black text-white px-3 py-2 text-sm disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-2 rounded bg-black px-3 py-2 text-sm text-white disabled:opacity-60"
               disabled={!canSubmitStrict || !norm(rotuloNapCto)}
             >
-              {pending ? "Procesando..." : "Confirmar liquidacion"}
+              {pending ? (
+                <>
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />
+                  Procesando...
+                </>
+              ) : (
+                "Confirmar liquidacion"
+              )}
             </button>
             {state?.ok ? (
               <div className="text-xs text-emerald-700">

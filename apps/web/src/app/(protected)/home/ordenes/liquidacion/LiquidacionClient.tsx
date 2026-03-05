@@ -238,23 +238,34 @@ export function LiquidacionClient({ initialYmd, initialMonth }: { initialYmd?: s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoEnabled, loading, rows, ymd, reloadTick, autoRunning, autoRunKey]);
 
-  const filtered = useMemo(() => {
+  const filteredBase = useMemo(() => {
     const text = q.trim().toLowerCase();
     return rows.filter((r) => {
       const byDate = !filterDate || String(r.fechaFinVisiYmd || "") === filterDate;
       if (!byDate) return false;
       const byCoord = !coordinador || String(r.coordinador || "") === coordinador;
       if (!byCoord) return false;
-      if (!showLiquidadas && r.liquidado) return false;
       if (!text) return true;
       const hay = `${r.ordenId} ${r.cliente} ${r.codiSeguiClien} ${r.cuadrillaNombre} ${r.cuadrillaId} ${r.coordinador}`.toLowerCase();
       return hay.includes(text);
     });
-  }, [rows, q, coordinador, showLiquidadas, filterDate]);
+  }, [rows, q, coordinador, filterDate]);
+
+  const filtered = useMemo(() => {
+    if (showLiquidadas) return filteredBase;
+    return filteredBase.filter((r) => !r.liquidado);
+  }, [filteredBase, showLiquidadas]);
 
   const coordinadores = useMemo(() => {
     return Array.from(new Set(rows.map((r) => String(r.coordinador || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
   }, [rows]);
+
+  const kpiFiltrado = useMemo(() => {
+    const finalizadas = filteredBase.length;
+    const liquidadas = filteredBase.filter((r) => !!r.liquidado).length;
+    const pendientes = finalizadas - liquidadas;
+    return { finalizadas, liquidadas, pendientes };
+  }, [filteredBase]);
 
   return (
     <div className="w-full space-y-4 p-3 md:p-4">
@@ -327,9 +338,9 @@ export function LiquidacionClient({ initialYmd, initialMonth }: { initialYmd?: s
               ) : null}
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
-              <Metric title="Finalizadas" value={kpi.finalizadas} tone="slate" />
-              <Metric title="Liquidadas" value={kpi.liquidadas} tone="emerald" />
-              <Metric title="Pendientes" value={kpi.pendientes} tone="amber" />
+              <Metric title="Finalizadas" value={kpiFiltrado.finalizadas} tone="slate" />
+              <Metric title="Liquidadas" value={kpiFiltrado.liquidadas} tone="emerald" />
+              <Metric title="Pendientes" value={kpiFiltrado.pendientes} tone="amber" />
             </div>
           </div>
         </section>

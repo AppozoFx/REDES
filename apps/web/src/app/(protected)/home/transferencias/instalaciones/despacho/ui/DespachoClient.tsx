@@ -1518,9 +1518,16 @@ export default function DespachoClient() {
               type="button"
               disabled={pending || !cuadrillaId}
               onClick={abrirPreview}
-              className="rounded-xl bg-fuchsia-600 px-4 py-2 text-white hover:bg-fuchsia-700 disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-fuchsia-600 px-4 py-2 text-white hover:bg-fuchsia-700 disabled:opacity-50"
             >
-              {pending ? "Procesando..." : "Previsualizar"}
+              {pending ? (
+                <>
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />
+                  Procesando...
+                </>
+              ) : (
+                "Previsualizar"
+              )}
             </button>
 
             {result?.ok && (result as any)?.resumen?.warnings?.length > 0 && (
@@ -1703,9 +1710,16 @@ export default function DespachoClient() {
                 type="button"
                 disabled={pending}
                 onClick={confirmar}
-                className="rounded-xl bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700 disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700 disabled:opacity-50"
               >
-                {pending ? "Registrando..." : "Confirmar y Registrar"}
+                {pending ? (
+                  <>
+                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />
+                    Procesando...
+                  </>
+                ) : (
+                  "Confirmar y Registrar"
+                )}
               </button>
             </div>
           </div>

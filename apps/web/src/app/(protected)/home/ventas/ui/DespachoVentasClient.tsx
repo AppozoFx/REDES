@@ -544,6 +544,7 @@ export default function DespachoVentasClient({
   }
 
   async function handleSubmit() {
+    if (submitting) return;
     if (!coordinadorUid) return toast.error("Selecciona coordinador");
     if (!items.length) return toast.error("Agrega materiales");
 
@@ -617,6 +618,7 @@ export default function DespachoVentasClient({
                   setCuadrillaNombre("");
                   setCuadrillaQuery("");
                 }}
+                disabled={submitting}
                 className="mt-1 w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2"
               >
                 <option value="">Selecciona...</option>
@@ -640,7 +642,7 @@ export default function DespachoVentasClient({
                 setCuadrillaNombre("");
               }}
               placeholder={coordinadorUid || !canEditCoordinador ? "Escribe para buscar..." : "Selecciona coordinador primero"}
-              disabled={!coordinadorUid && canEditCoordinador}
+              disabled={submitting || (!coordinadorUid && canEditCoordinador)}
               className="mt-1 w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2"
             />
             {(coordinadorUid || !canEditCoordinador) && filteredCuadrillas.length > 0 && (
@@ -649,6 +651,7 @@ export default function DespachoVentasClient({
                   <button
                     key={c.id}
                     type="button"
+                    disabled={submitting}
                     onClick={() => {
                       setCuadrillaId(c.id);
                       setCuadrillaNombre(c.nombre || c.id);
@@ -677,6 +680,7 @@ export default function DespachoVentasClient({
             <select
               value={materialFilterArea}
               onChange={(e) => setMaterialFilterArea(e.target.value as any)}
+              disabled={submitting}
               className="rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-1 text-xs"
             >
               <option value="ALL">Todos</option>
@@ -695,6 +699,7 @@ export default function DespachoVentasClient({
               setSelectedMaterialId("");
             }}
             placeholder="Escribe material y selecciona..."
+            disabled={submitting}
             className="w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2"
             list="vendibles-list"
           />
@@ -705,6 +710,7 @@ export default function DespachoVentasClient({
           </datalist>
           <button
             type="button"
+            disabled={submitting}
             onClick={() => {
               const byId = materialMap.get(materialSearch.trim());
               const byName = materialByName.get(materialSearch.trim().toLowerCase());
@@ -713,9 +719,16 @@ export default function DespachoVentasClient({
               setSelectedMaterialId(mat.id);
               addMaterial(mat.id);
             }}
-            className="rounded-xl bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-60"
           >
-            Agregar
+            {submitting ? (
+              <>
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />
+                Procesando...
+              </>
+            ) : (
+              "Agregar"
+            )}
           </button>
         </div>
 
@@ -759,6 +772,7 @@ export default function DespachoVentasClient({
                             }
                             className="w-24 rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1"
                             inputMode="numeric"
+                            disabled={submitting}
                           />
                         ) : (
                           <input
@@ -772,6 +786,7 @@ export default function DespachoVentasClient({
                             }
                             className="w-24 rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1"
                             inputMode="decimal"
+                            disabled={submitting}
                           />
                         )}
                       </td>
@@ -789,6 +804,7 @@ export default function DespachoVentasClient({
                             placeholder={defaultPrice}
                             className="w-28 rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1"
                             inputMode="decimal"
+                            disabled={submitting}
                           />
                         ) : (
                           <span>{defaultPrice}</span>
@@ -798,8 +814,9 @@ export default function DespachoVentasClient({
                       <td className="px-3 py-2 text-right">
                         <button
                           type="button"
+                          disabled={submitting}
                           onClick={() => removeMaterial(it.materialId)}
-                          className="text-red-600 hover:underline"
+                          className="text-red-600 hover:underline disabled:opacity-50"
                         >
                           Quitar
                         </button>
@@ -818,6 +835,7 @@ export default function DespachoVentasClient({
             <input
               value={observacion}
               onChange={(e) => setObservacion(e.target.value)}
+              disabled={submitting}
               className="mt-1 w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2"
               placeholder="Observación (opcional)"
             />
@@ -831,9 +849,16 @@ export default function DespachoVentasClient({
           type="button"
           onClick={() => startTransition(() => { void handleSubmit(); })}
           disabled={submitting}
-          className="w-full rounded-xl bg-emerald-600 px-5 py-2 text-white hover:bg-emerald-700 disabled:opacity-50 sm:w-auto"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2 text-white hover:bg-emerald-700 disabled:opacity-50 sm:w-auto"
         >
-          {submitting ? "Registrando..." : "Registrar venta"}
+          {submitting ? (
+            <>
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />
+              Procesando...
+            </>
+          ) : (
+            "Registrar venta"
+          )}
         </button>
       </div>
     </div>

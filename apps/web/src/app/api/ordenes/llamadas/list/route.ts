@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { getServerSession } from "@/core/auth/session";
 import { resolveTramoBase, tramoNombreFromBase } from "@/domain/ordenes/tramo";
+import { getAsignacionData } from "@/lib/gestorAsignacion";
 
 export const runtime = "nodejs";
 const PERM_VIEW = "ORDENES_LLAMADAS_VIEW";
@@ -33,6 +34,12 @@ type Row = {
   estadoLlamada: string;
   observacionLlamada: string;
 };
+type RawRow = Omit<Row, "gestorNombre" | "coordinadorNombre" | "tramoBase" | "tramoNombre"> & {
+  _tipo: string;
+  _tipoTraba: string;
+  _idenServi: string;
+  _estado: string;
+};
 
 function todayLimaYmd() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -52,6 +59,18 @@ function shortName(name: string) {
   const first = parts[0];
   const firstLast = parts.length >= 4 ? parts[2] || "" : parts[1] || "";
   return `${first} ${firstLast}`.trim() || first;
+}
+
+function buildCuadrillaToGestorMap(map: Record<string, string[]>): Map<string, string> {
+  const out = new Map<string, string>();
+  Object.entries(map || {}).forEach(([gestorUid, cuadrillas]) => {
+    (cuadrillas || []).forEach((cuadrillaId) => {
+      const cid = String(cuadrillaId || "").trim();
+      if (!cid) return;
+      out.set(cid, String(gestorUid || "").trim());
+    });
+  });
+  return out;
 }
 
 export async function GET(req: Request) {
@@ -75,6 +94,9 @@ export async function GET(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const ymd = String(searchParams.get("ymd") || todayLimaYmd());
+    const asignacion = await getAsignacionData(ymd);
+    const hasDayMap = Object.keys(asignacion.day || {}).length > 0;
+    const gestorByCuadrilla = buildCuadrillaToGestorMap(hasDayMap ? asignacion.day : asignacion.base);
 
     const snap = await adminDb()
       .collection("ordenes")
@@ -82,7 +104,7 @@ export async function GET(req: Request) {
       .limit(700)
       .get();
 
-    const rawRows = snap.docs.map((d) => {
+    const rawRows: RawRow[] = snap.docs.map((d) => {
       const x = d.data() as any;
       return {
         id: d.id,
@@ -115,8 +137,36 @@ export async function GET(req: Request) {
       return !hayGarantia;
     });
 
+    const cuadrillaIds = Array.from(new Set(rawRows.map((r) => r.cuadrillaId).filter(Boolean)));
+    const cuadrillaRefs = cuadrillaIds.map((id) => adminDb().collection("cuadrillas").doc(id));
+    const cuadrillaSnaps = cuadrillaIds.length ? await adminDb().getAll(...cuadrillaRefs) : [];
+    const cuadrillaMap = new Map(
+      cuadrillaSnaps.map((s) => {
+        const c = s.data() as any;
+        return [
+          s.id,
+          {
+            gestorUid: String(c?.gestorUid || ""),
+            coordinadorUid: String(c?.coordinadorUid || ""),
+            nombre: String(c?.nombre || ""),
+          },
+        ];
+      })
+    );
+
+    const resolvedRows = rawRows.map((r) => {
+      const cMeta = cuadrillaMap.get(r.cuadrillaId);
+      const gestorAsignadoDia = gestorByCuadrilla.get(r.cuadrillaId || "");
+      return {
+        ...r,
+        cuadrillaNombre: cMeta?.nombre || r.cuadrillaNombre || "",
+        gestorUid: gestorAsignadoDia || cMeta?.gestorUid || r.gestorUid || "",
+        coordinadorUid: cMeta?.coordinadorUid || r.coordinadorUid || "",
+      };
+    });
+
     const userUids = Array.from(
-      new Set(rawRows.flatMap((r) => [r.gestorUid, r.coordinadorUid]).filter(Boolean))
+      new Set(resolvedRows.flatMap((r) => [r.gestorUid, r.coordinadorUid]).filter(Boolean))
     );
     const userRefs = userUids.map((uid) => adminDb().collection("usuarios").doc(uid));
     const userSnaps = userUids.length ? await adminDb().getAll(...userRefs) : [];
@@ -130,7 +180,7 @@ export async function GET(req: Request) {
       })
     );
 
-    let items: Row[] = rawRows.map((r: any) => {
+    const items: Row[] = resolvedRows.map((r: any) => {
       const { _tipo, _tipoTraba, _idenServi, _estado, ...clean } = r;
       const tramoBase = resolveTramoBase(r.fechaFinVisiHm);
       return {

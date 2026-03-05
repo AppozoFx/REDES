@@ -116,7 +116,7 @@ async function parseArrayBuffer(arrayBuf: ArrayBuffer): Promise<{
       inv: r["inv"],
     };
 
-    const SN = String(raw.SN ?? "").trim();
+    const SN = String(raw.SN ?? "").trim().toUpperCase();
     if (!SN) {
       invalidas++;
       continue;
@@ -329,7 +329,9 @@ export async function saveEquiposChunkAction(formData: FormData): Promise<{ ok: 
     const snsJson = formData.get("sns");
     if (!file || typeof file === "string") return { ok: false, error: { formErrors: ["FILE_REQUIRED"] } };
     if (typeof snsJson !== "string") return { ok: false, error: { formErrors: ["INVALID_FORMDATA"] } };
-    const sns: string[] = JSON.parse(snsJson);
+    const sns: string[] = (JSON.parse(snsJson) as any[])
+      .map((v) => String(v ?? "").trim().toUpperCase())
+      .filter(Boolean);
     const arrayBuf = await (file as File).arrayBuffer();
     const { nuevosItems } = await (async () => {
       const wb = XLSX.read(arrayBuf, { type: "array", cellDates: true });
@@ -339,7 +341,7 @@ export async function saveEquiposChunkAction(formData: FormData): Promise<{ ok: 
       const firstBySN = new Set<string>();
       const candidates: Map<string, { SN: string; equipo: string; doc: any }> = new Map();
       for (const r of rowsRaw) {
-        const SN = String(r["SN"] ?? "").trim();
+        const SN = String(r["SN"] ?? "").trim().toUpperCase();
         if (!SN) continue;
         if (firstBySN.has(SN)) continue;
         const equipo = normalizeEquipo(r["equipo"]);

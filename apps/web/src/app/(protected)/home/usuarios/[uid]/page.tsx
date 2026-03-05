@@ -2,6 +2,7 @@ import { requireAuth, requirePermission } from "@/core/auth/guards";
 import { getUsuarioProfileByUid } from "@/domain/usuarios/repo";
 import LocalTime from "@/ui/LocalTime";
 import UserEditOperativeForm from "@/ui/home/usuarios/UserEditOperativeForm";
+import Link from "next/link";
 
 function toMs(v: any): number | null {
   if (!v) return null;
@@ -35,6 +36,16 @@ export default async function HomeUsuariosEditPage({
 
   return (
     <div className="space-y-4 text-slate-900 dark:text-slate-100">
+      <div className="flex items-center">
+        <Link
+          href="/home/usuarios"
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+        >
+          <span aria-hidden>←</span>
+          Regresar a usuarios
+        </Link>
+      </div>
+
       <div>
         <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Editar usuario</h1>
         <div className="font-mono text-sm text-slate-500 dark:text-slate-400">{uid}</div>

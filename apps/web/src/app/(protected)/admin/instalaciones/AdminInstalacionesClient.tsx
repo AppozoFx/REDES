@@ -54,6 +54,15 @@ type ApiData = {
   };
   materialesCatalog: MaterialCatalog[];
   rows: Row[];
+  diagnostics?: {
+    warnings?: string[];
+    counts?: {
+      cuadrillas?: number;
+      usuarios?: number;
+      equipos?: number;
+      materiales?: number;
+    };
+  };
 };
 
 function asLocalDateTime(iso: string | null | undefined) {
@@ -112,7 +121,29 @@ function buildOperativeRecommendation(row: Row | null, almacen: ApiData["almacen
   return recs;
 }
 
-export default function AdminInstalacionesClient() {
+function stockClass(kind: "ONT" | "MESH" | "FONO" | "BOX", value: number) {
+  if (value <= 0) {
+    return "text-rose-700 dark:text-rose-300";
+  }
+  if (kind === "ONT" || kind === "MESH") {
+    if (value <= 3) return "text-rose-700 dark:text-rose-300";
+    if (value <= 6) return "text-amber-700 dark:text-amber-300";
+    return "text-emerald-700 dark:text-emerald-300";
+  }
+  return "text-emerald-700 dark:text-emerald-300";
+}
+
+function StockValue({ kind, value }: { kind: "ONT" | "MESH" | "FONO" | "BOX"; value: number }) {
+  return <span className={`font-semibold ${stockClass(kind, value)}`}>{value}</span>;
+}
+
+export default function AdminInstalacionesClient({
+  showManualAdjustPanel = true,
+  showControlHeader = true,
+}: {
+  showManualAdjustPanel?: boolean;
+  showControlHeader?: boolean;
+}) {
   const [data, setData] = useState<ApiData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -255,24 +286,49 @@ export default function AdminInstalacionesClient() {
 
   return (
     <div className="space-y-5 text-slate-900 dark:text-slate-100">
-      <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-r from-cyan-50 via-white to-emerald-50 p-5 shadow-sm dark:border-slate-700 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="space-y-1">
-            <h1 className="text-2xl font-semibold tracking-tight">Centro de Control Instalaciones</h1>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              Stock por modelo, cuadrillas criticas y ajuste manual de materiales. Actualizado: {asLocalDateTime(data?.generatedAt)}
-            </p>
+      {showControlHeader ? (
+        <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-r from-cyan-50 via-white to-emerald-50 p-5 shadow-sm dark:border-slate-700 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-1">
+              <h1 className="text-2xl font-semibold tracking-tight">Centro de Control Instalaciones</h1>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                Stock por modelo, cuadrillas criticas y ajuste manual de materiales. Actualizado: {asLocalDateTime(data?.generatedAt)}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => load()}
+              className="h-10 rounded-xl border border-slate-300 bg-white/80 px-4 text-sm font-medium hover:bg-white dark:border-slate-600 dark:bg-slate-900 dark:hover:bg-slate-800"
+            >
+              Refrescar
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => load()}
-            className="h-10 rounded-xl border border-slate-300 bg-white/80 px-4 text-sm font-medium hover:bg-white dark:border-slate-600 dark:bg-slate-900 dark:hover:bg-slate-800"
-          >
-            Refrescar
-          </button>
-        </div>
-        {error ? <p className="mt-2 text-sm text-rose-600">{error}</p> : null}
-      </section>
+          {error ? <p className="mt-2 text-sm text-rose-600">{error}</p> : null}
+          {!!data?.diagnostics?.warnings?.length && (
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+              Aviso de datos: {data.diagnostics.warnings.join(" | ")}.
+            </div>
+          )}
+        </section>
+      ) : (
+        <section className="space-y-2">
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => load()}
+              className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
+            >
+              Refrescar
+            </button>
+          </div>
+          {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+          {!!data?.diagnostics?.warnings?.length && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+              Aviso de datos: {data.diagnostics.warnings.join(" | ")}.
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-8">
         <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:col-span-2 dark:border-slate-700 dark:bg-slate-900">
@@ -295,20 +351,30 @@ export default function AdminInstalacionesClient() {
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-          <div className="text-xs text-slate-500">Pool ONT H/Z</div>
-          <div className="mt-1 text-lg font-semibold">{data?.almacen.ONT_HUAWEI || 0} / {data?.almacen.ONT_ZTE || 0}</div>
+          <div className="text-xs text-slate-500">Disponible en almacen ONT H/Z</div>
+          <div className="mt-1 text-lg">
+            <StockValue kind="ONT" value={data?.almacen.ONT_HUAWEI || 0} /> /{" "}
+            <StockValue kind="ONT" value={data?.almacen.ONT_ZTE || 0} />
+          </div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-          <div className="text-xs text-slate-500">Pool MESH H/Z</div>
-          <div className="mt-1 text-lg font-semibold">{data?.almacen.MESH_HUAWEI || 0} / {data?.almacen.MESH_ZTE || 0}</div>
+          <div className="text-xs text-slate-500">Disponible en almacen MESH H/Z</div>
+          <div className="mt-1 text-lg">
+            <StockValue kind="MESH" value={data?.almacen.MESH_HUAWEI || 0} /> /{" "}
+            <StockValue kind="MESH" value={data?.almacen.MESH_ZTE || 0} />
+          </div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-          <div className="text-xs text-slate-500">Pool FONO</div>
-          <div className="mt-1 text-lg font-semibold">{data?.almacen.FONO || 0}</div>
+          <div className="text-xs text-slate-500">Disponible en almacen FONO</div>
+          <div className="mt-1 text-lg">
+            <StockValue kind="FONO" value={data?.almacen.FONO || 0} />
+          </div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-          <div className="text-xs text-slate-500">Pool BOX</div>
-          <div className="mt-1 text-lg font-semibold">{data?.almacen.BOX || 0}</div>
+          <div className="text-xs text-slate-500">Disponible en almacen BOX</div>
+          <div className="mt-1 text-lg">
+            <StockValue kind="BOX" value={data?.almacen.BOX || 0} />
+          </div>
         </div>
       </section>
 
@@ -364,7 +430,8 @@ export default function AdminInstalacionesClient() {
                   </td>
                   <td className="px-3 py-2">{r.coordinadorNombre || "-"}</td>
                   <td className="px-3 py-2">
-                    ONT {r.equipos.ONT} | MESH {r.equipos.MESH} | FONO {r.equipos.FONO} | BOX {r.equipos.BOX}
+                    ONT <StockValue kind="ONT" value={r.equipos.ONT} /> | MESH <StockValue kind="MESH" value={r.equipos.MESH} /> | FONO{" "}
+                    <StockValue kind="FONO" value={r.equipos.FONO} /> | BOX <StockValue kind="BOX" value={r.equipos.BOX} />
                   </td>
                   <td className="px-3 py-2">
                     {r.materiales.materialCount} items | UND {r.materiales.totalUnd} | M {r.materiales.totalMetros}
@@ -429,19 +496,27 @@ export default function AdminInstalacionesClient() {
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
                 <div className="text-xs text-slate-500">ONT H/Z</div>
-                <div className="mt-1 text-lg font-semibold">{modalRow.equipos.ONT_HUAWEI} / {modalRow.equipos.ONT_ZTE}</div>
+                <div className="mt-1 text-lg">
+                  <StockValue kind="ONT" value={modalRow.equipos.ONT_HUAWEI} /> / <StockValue kind="ONT" value={modalRow.equipos.ONT_ZTE} />
+                </div>
               </div>
               <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
                 <div className="text-xs text-slate-500">MESH H/Z</div>
-                <div className="mt-1 text-lg font-semibold">{modalRow.equipos.MESH_HUAWEI} / {modalRow.equipos.MESH_ZTE}</div>
+                <div className="mt-1 text-lg">
+                  <StockValue kind="MESH" value={modalRow.equipos.MESH_HUAWEI} /> / <StockValue kind="MESH" value={modalRow.equipos.MESH_ZTE} />
+                </div>
               </div>
               <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
                 <div className="text-xs text-slate-500">FONO</div>
-                <div className="mt-1 text-lg font-semibold">{modalRow.equipos.FONO}</div>
+                <div className="mt-1 text-lg">
+                  <StockValue kind="FONO" value={modalRow.equipos.FONO} />
+                </div>
               </div>
               <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
                 <div className="text-xs text-slate-500">BOX</div>
-                <div className="mt-1 text-lg font-semibold">{modalRow.equipos.BOX}</div>
+                <div className="mt-1 text-lg">
+                  <StockValue kind="BOX" value={modalRow.equipos.BOX} />
+                </div>
               </div>
             </div>
 
@@ -501,51 +576,53 @@ export default function AdminInstalacionesClient() {
                 </div>
               </div>
 
-              <div>
-                <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Agregar stock manual</h4>
-                {!data?.canAdjustStock ? (
-                  <p className="mt-3 text-sm text-rose-600">No tienes permiso para ajustar stock.</p>
-                ) : (
-                  <div className="mt-2 space-y-3">
-                    <select
-                      value={materialId}
-                      onChange={(e) => setMaterialId(e.target.value)}
-                      className="h-10 w-full rounded-xl border border-slate-300 px-3 text-sm dark:border-slate-700 dark:bg-slate-900"
-                    >
-                      <option value="">Selecciona material</option>
-                      {(data?.materialesCatalog || []).map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.nombre} ({m.unidadTipo})
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      value={cantidad}
-                      onChange={(e) => setCantidad(e.target.value)}
-                      placeholder={selectedMaterial?.unidadTipo === "METROS" ? "Metros a sumar" : "Unidades a sumar"}
-                      type="number"
-                      min="0"
-                      step={selectedMaterial?.unidadTipo === "METROS" ? "0.01" : "1"}
-                      className="h-10 w-full rounded-xl border border-slate-300 px-3 text-sm dark:border-slate-700 dark:bg-slate-900"
-                    />
-                    <textarea
-                      value={observacion}
-                      onChange={(e) => setObservacion(e.target.value)}
-                      placeholder="Motivo del ajuste"
-                      className="min-h-24 w-full rounded-xl border border-slate-300 p-3 text-sm dark:border-slate-700 dark:bg-slate-900"
-                    />
-                    <button
-                      type="button"
-                      onClick={onAjustar}
-                      disabled={saving}
-                      className="h-10 rounded-xl bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60 dark:bg-cyan-600 dark:hover:bg-cyan-500"
-                    >
-                      {saving ? "Aplicando..." : "Aplicar ajuste"}
-                    </button>
-                    {msg ? <p className="text-sm text-slate-700 dark:text-slate-300">{msg}</p> : null}
-                  </div>
-                )}
-              </div>
+              {showManualAdjustPanel ? (
+                <div>
+                  <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Agregar stock manual</h4>
+                  {!data?.canAdjustStock ? (
+                    <p className="mt-3 text-sm text-rose-600">No tienes permiso para ajustar stock.</p>
+                  ) : (
+                    <div className="mt-2 space-y-3">
+                      <select
+                        value={materialId}
+                        onChange={(e) => setMaterialId(e.target.value)}
+                        className="h-10 w-full rounded-xl border border-slate-300 px-3 text-sm dark:border-slate-700 dark:bg-slate-900"
+                      >
+                        <option value="">Selecciona material</option>
+                        {(data?.materialesCatalog || []).map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.nombre} ({m.unidadTipo})
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        value={cantidad}
+                        onChange={(e) => setCantidad(e.target.value)}
+                        placeholder={selectedMaterial?.unidadTipo === "METROS" ? "Metros a sumar" : "Unidades a sumar"}
+                        type="number"
+                        min="0"
+                        step={selectedMaterial?.unidadTipo === "METROS" ? "0.01" : "1"}
+                        className="h-10 w-full rounded-xl border border-slate-300 px-3 text-sm dark:border-slate-700 dark:bg-slate-900"
+                      />
+                      <textarea
+                        value={observacion}
+                        onChange={(e) => setObservacion(e.target.value)}
+                        placeholder="Motivo del ajuste"
+                        className="min-h-24 w-full rounded-xl border border-slate-300 p-3 text-sm dark:border-slate-700 dark:bg-slate-900"
+                      />
+                      <button
+                        type="button"
+                        onClick={onAjustar}
+                        disabled={saving}
+                        className="h-10 rounded-xl bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60 dark:bg-cyan-600 dark:hover:bg-cyan-500"
+                      >
+                        {saving ? "Aplicando..." : "Aplicar ajuste"}
+                      </button>
+                      {msg ? <p className="text-sm text-slate-700 dark:text-slate-300">{msg}</p> : null}
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

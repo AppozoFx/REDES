@@ -62,7 +62,7 @@ export async function guardarProIdLoteAction(input: {
   const pairs = Array.isArray(input?.pairs) ? input.pairs : [];
 
   if (!pairs.length) throw new Error("PAIRS_REQUIRED");
-  if (pairs.length > 200) throw new Error("MAX_200_PAIRS");
+  if (pairs.length > 20) throw new Error("MAX_20_PAIRS");
 
   const normalized = pairs.map((p) => ({
     sn: normalizeSn(p?.sn),
@@ -81,89 +81,91 @@ export async function guardarProIdLoteAction(input: {
   }> = [];
 
   for (const row of normalized) {
-    const ref = db.collection("equipos").doc(row.sn);
-    const snap = await ref.get();
-    if (!snap.exists) {
-      resultRows.push({
-        sn: row.sn,
-        proId: row.proId,
-        ok: false,
-        status: "not_found",
-        previousProId: "",
-        message: "SN no existe en EQUIPOS",
-      });
-      continue;
-    }
+    const res = await db.runTransaction(async (tx) => {
+      const ref = db.collection("equipos").doc(row.sn);
+      const snap = await tx.get(ref);
+      if (!snap.exists) {
+        return {
+          sn: row.sn,
+          proId: row.proId,
+          ok: false,
+          status: "not_found" as const,
+          previousProId: "",
+          message: "SN no existe en EQUIPOS",
+        };
+      }
 
-    const data = snap.data() as any;
-    const equipo = String(data?.equipo || "").trim().toUpperCase();
-    const previousProId = String(data?.proId || "").trim().toUpperCase();
-    if (equipo !== "ONT") {
-      resultRows.push({
-        sn: row.sn,
-        proId: row.proId,
-        ok: false,
-        status: "not_ont",
-        previousProId,
-        message: `SN existe pero equipo=${equipo || "N/A"} (no ONT)`,
-      });
-      continue;
-    }
+      const data = snap.data() as any;
+      const equipo = String(data?.equipo || "").trim().toUpperCase();
+      const previousProId = String(data?.proId || "").trim().toUpperCase();
+      if (equipo !== "ONT") {
+        return {
+          sn: row.sn,
+          proId: row.proId,
+          ok: false,
+          status: "not_ont" as const,
+          previousProId,
+          message: `SN existe pero equipo=${equipo || "N/A"} (no ONT)`,
+        };
+      }
 
-    if (previousProId && previousProId === row.proId) {
-      resultRows.push({
+      if (previousProId && previousProId === row.proId) {
+        return {
+          sn: row.sn,
+          proId: row.proId,
+          ok: true,
+          status: "already_same" as const,
+          previousProId,
+          message: "ProID ya estaba asignado con el mismo valor",
+        };
+      }
+
+      if (previousProId && previousProId !== row.proId && !forceReplace) {
+        return {
+          sn: row.sn,
+          proId: row.proId,
+          ok: false,
+          status: "has_existing_proid" as const,
+          previousProId,
+          message: `Ya tiene ProID (${previousProId}). Activa reemplazo forzado para actualizar`,
+        };
+      }
+
+      tx.set(
+        ref,
+        {
+          proId: row.proId,
+          audit: {
+            updatedAt: FieldValue.serverTimestamp(),
+            updatedBy: session.uid,
+          },
+        },
+        { merge: true }
+      );
+
+      const logRef = db.collection(LOGS_COL).doc();
+      tx.set(logRef, {
+        type: "ONT_PROID_LINK",
+        sn: row.sn,
+        proIdNew: row.proId,
+        proIdPrev: previousProId || null,
+        forceReplace,
+        sessionLabel: sessionLabel || null,
+        actorUid: session.uid,
+        ts: FieldValue.serverTimestamp(),
+      });
+
+      return {
         sn: row.sn,
         proId: row.proId,
         ok: true,
-        status: "already_same",
+        status: "updated" as const,
         previousProId,
-        message: "ProID ya estaba asignado con el mismo valor",
-      });
-      continue;
-    }
-
-    if (previousProId && previousProId !== row.proId && !forceReplace) {
-      resultRows.push({
-        sn: row.sn,
-        proId: row.proId,
-        ok: false,
-        status: "has_existing_proid",
-        previousProId,
-        message: `Ya tiene ProID (${previousProId}). Activa reemplazo forzado para actualizar`,
-      });
-      continue;
-    }
-
-    await ref.set(
-      {
-        proId: row.proId,
-        audit: {
-          updatedAt: FieldValue.serverTimestamp(),
-          updatedBy: session.uid,
-        },
-      },
-      { merge: true }
-    );
-
-    resultRows.push({
-      sn: row.sn,
-      proId: row.proId,
-      ok: true,
-      status: "updated",
-      previousProId,
-      message: previousProId ? `ProID reemplazado (${previousProId} -> ${row.proId})` : "ProID asignado",
+        message: previousProId ? `ProID reemplazado (${previousProId} -> ${row.proId})` : "ProID asignado",
+      };
     });
 
-    await db.collection(LOGS_COL).add({
-      type: "ONT_PROID_LINK",
-      sn: row.sn,
-      proIdNew: row.proId,
-      proIdPrev: previousProId || null,
-      forceReplace,
-      sessionLabel: sessionLabel || null,
-      actorUid: session.uid,
-      ts: new Date().toISOString(),
-    });
+    resultRows.push(res);
   }
 
   const summary = resultRows.reduce(
@@ -185,4 +187,3 @@ export async function guardarProIdLoteAction(input: {
     rows: resultRows,
   };
 }
-

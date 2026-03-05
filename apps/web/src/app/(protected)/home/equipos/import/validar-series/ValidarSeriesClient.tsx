@@ -56,7 +56,6 @@ function normalizeProId(v: string) {
 
 export default function ValidarSeriesClient() {
   const [mode, setMode] = useState<"general" | "ont">("general");
-  const [scanInput, setScanInput] = useState("");
   const [rows, setRows] = useState<GeneralRow[]>([]);
 
   const [ontLotSize, setOntLotSize] = useState(20);
@@ -68,6 +67,10 @@ export default function ValidarSeriesClient() {
 
   const [isPending, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const generalSnSetRef = useRef<Set<string>>(new Set());
+  const ontSnSetRef = useRef<Set<string>>(new Set());
+  const inflightGeneralSnRef = useRef<Set<string>>(new Set());
+  const inflightOntSnRef = useRef<Set<string>>(new Set());
 
   const generalSummary = useMemo(() => {
     return rows.reduce(
@@ -84,6 +87,16 @@ export default function ValidarSeriesClient() {
   const ontValidSn = useMemo(() => ontSnRows.filter((x) => x.ok), [ontSnRows]);
   const ontPhase = ontValidSn.length < ontLotSize ? "scan_sn" : "scan_proid";
   const canSaveOnt = ontValidSn.length === ontLotSize && ontProIds.length === ontLotSize && !isPending;
+  const hasOntSessionStarted = ontSnRows.length > 0 || ontProIds.length > 0 || saveRows.length > 0;
+  const ontRowsWithAlignedProId = useMemo(() => {
+    let validIdx = 0;
+    return ontSnRows.map((row) => {
+      if (!row.ok) return { row, proIdEscaneado: "" };
+      const proIdEscaneado = ontProIds[validIdx] || "";
+      validIdx += 1;
+      return { row, proIdEscaneado };
+    });
+  }, [ontSnRows, ontProIds]);
 
   const focusInput = () => {
     setTimeout(() => {
@@ -95,33 +108,45 @@ export default function ValidarSeriesClient() {
   const addGeneralScan = (snRaw: string) => {
     const sn = normalizeSn(snRaw);
     if (!sn) return;
-    if (rows.some((r) => r.sn === sn)) {
+    if (generalSnSetRef.current.has(sn) || inflightGeneralSnRef.current.has(sn)) {
       toast.error(`SN duplicado en sesion: ${sn}`);
       return;
     }
+    inflightGeneralSnRef.current.add(sn);
 
     startTransition(async () => {
       try {
         const r = await validarSerieAction({ sn });
-        const next: GeneralRow = {
-          idx: rows.length + 1,
-          sn,
-          ok: !!r.exists,
-          status: r.exists ? "ok" : "not_found",
-          equipo: r.equipo || "",
-          descripcion: r.descripcion || "",
-          ubicacion: r.ubicacion || "",
-          estado: r.estado || "",
-          proId: r.proId || "",
-          message: r.exists ? "Coincide con sistema" : "No existe en EQUIPOS",
-          scannedAt: nowHm(),
-        };
-        setRows((prev) => [...prev, next]);
-        if (next.ok) toast.success(`OK: ${sn}`);
-        else toast.error(`NO COINCIDE: ${sn}`);
+        let added = false;
+        let wasOk = false;
+        setRows((prev) => {
+          if (prev.some((x) => x.sn === sn)) return prev;
+          const next: GeneralRow = {
+            idx: prev.length + 1,
+            sn,
+            ok: !!r.exists,
+            status: r.exists ? "ok" : "not_found",
+            equipo: r.equipo || "",
+            descripcion: r.descripcion || "",
+            ubicacion: r.ubicacion || "",
+            estado: r.estado || "",
+            proId: r.proId || "",
+            message: r.exists ? "Coincide con sistema" : "No existe en EQUIPOS",
+            scannedAt: nowHm(),
+          };
+          generalSnSetRef.current.add(sn);
+          added = true;
+          wasOk = next.ok;
+          return [...prev, next];
+        });
+        if (added) {
+          if (wasOk) toast.success(`OK: ${sn}`);
+          else toast.error(`NO COINCIDE: ${sn}`);
+        }
       } catch (e: any) {
         toast.error(String(e?.message || "Error validando serie"));
       } finally {
+        inflightGeneralSnRef.current.delete(sn);
         focusInput();
       }
     });
@@ -131,30 +156,44 @@ export default function ValidarSeriesClient() {
     if (ontPhase === "scan_sn") {
       const sn = normalizeSn(raw);
       if (!sn) return;
-      if (ontSnRows.some((x) => x.sn === sn)) {
+      if (ontSnSetRef.current.has(sn) || inflightOntSnRef.current.has(sn)) {
         toast.error(`SN ONT duplicado en lote: ${sn}`);
         return;
       }
+      inflightOntSnRef.current.add(sn);
       startTransition(async () => {
         try {
           const r = await validarSerieAction({ sn });
-          const ok = !!r.exists && !!r.isOnt;
-          const status: OntSnRow["status"] = !r.exists ? "not_found" : r.isOnt ? "ok" : "not_ont";
-          const row: OntSnRow = {
-            idx: ontSnRows.length + 1,
-            sn,
-            ok,
-            status,
-            equipo: r.equipo || "",
-            proIdActual: r.proId || "",
-            message: !r.exists ? "No existe en EQUIPOS" : r.isOnt ? "ONT valido" : `Equipo ${r.equipo} (no ONT)`,
-          };
-          setOntSnRows((prev) => [...prev, row]);
-          if (row.ok) toast.success(`ONT valida ${row.idx}/${ontLotSize}: ${sn}`);
-          else toast.error(`SN invalido para lote ONT: ${sn}`);
+          let addedRow = false;
+          let addedRowOk = false;
+          let addedRowIdx = 0;
+          setOntSnRows((prev) => {
+            if (prev.some((x) => x.sn === sn)) return prev;
+            const ok = !!r.exists && !!r.isOnt;
+            const status: OntSnRow["status"] = !r.exists ? "not_found" : r.isOnt ? "ok" : "not_ont";
+            const row: OntSnRow = {
+              idx: prev.length + 1,
+              sn,
+              ok,
+              status,
+              equipo: r.equipo || "",
+              proIdActual: r.proId || "",
+              message: !r.exists ? "No existe en EQUIPOS" : r.isOnt ? "ONT valido" : `Equipo ${r.equipo} (no ONT)`,
+            };
+            ontSnSetRef.current.add(sn);
+            addedRow = true;
+            addedRowOk = row.ok;
+            addedRowIdx = row.idx;
+            return [...prev, row];
+          });
+          if (addedRow) {
+            if (addedRowOk) toast.success(`ONT valida ${addedRowIdx}/${ontLotSize}: ${sn}`);
+            else toast.error(`SN invalido para lote ONT: ${sn}`);
+          }
         } catch (e: any) {
           toast.error(String(e?.message || "Error validando ONT"));
         } finally {
+          inflightOntSnRef.current.delete(sn);
           focusInput();
         }
       });
@@ -172,17 +211,19 @@ export default function ValidarSeriesClient() {
     focusInput();
   };
 
-  const handleScan = () => {
-    const raw = scanInput;
+  const handleScan = (rawValue?: string) => {
+    const raw = String(rawValue ?? inputRef.current?.value ?? "");
     if (!raw.trim()) return;
-    setScanInput("");
+    if (inputRef.current) inputRef.current.value = "";
     if (mode === "general") addGeneralScan(raw);
     else addOntScan(raw);
   };
 
   const clearGeneral = () => {
     setRows([]);
-    setScanInput("");
+    generalSnSetRef.current.clear();
+    inflightGeneralSnRef.current.clear();
+    if (inputRef.current) inputRef.current.value = "";
     focusInput();
   };
 
@@ -190,7 +231,9 @@ export default function ValidarSeriesClient() {
     setOntSnRows([]);
     setOntProIds([]);
     setSaveRows([]);
-    setScanInput("");
+    ontSnSetRef.current.clear();
+    inflightOntSnRef.current.clear();
+    if (inputRef.current) inputRef.current.value = "";
     focusInput();
   };
 
@@ -240,13 +283,13 @@ export default function ValidarSeriesClient() {
   const exportOnt = () => {
     if (!ontSnRows.length) return toast.error("No hay datos ONT para exportar");
     const ws = XLSX.utils.json_to_sheet(
-      ontSnRows.map((r, idx) => ({
+      ontRowsWithAlignedProId.map(({ row: r, proIdEscaneado }) => ({
         idx: r.idx,
         SN: r.sn,
         validacion_sn: r.status,
         equipo: r.equipo,
         proId_actual: r.proIdActual,
-        proId_escaneado: ontProIds[idx] || "",
+        proId_escaneado: proIdEscaneado,
         mensaje: r.message,
       }))
     );
@@ -283,12 +326,10 @@ export default function ValidarSeriesClient() {
         <div className="flex flex-wrap items-center gap-2">
           <input
             ref={inputRef}
-            value={scanInput}
-            onChange={(e) => setScanInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                handleScan();
+                handleScan((e.currentTarget as HTMLInputElement).value);
               }
             }}
             placeholder={mode === "general" ? "Pistolea SN y Enter" : ontPhase === "scan_sn" ? "Fase SN ONT: pistolea serie y Enter" : "Fase ProID: pistolea ProID y Enter"}
@@ -296,7 +337,7 @@ export default function ValidarSeriesClient() {
           />
           <button
             type="button"
-            onClick={handleScan}
+            onClick={() => handleScan()}
             disabled={isPending}
             className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
           >
@@ -371,11 +412,29 @@ export default function ValidarSeriesClient() {
               <input
                 type="number"
                 min={1}
-                max={200}
+                max={20}
                 value={ontLotSize}
-                onChange={(e) => setOntLotSize(Math.max(1, Math.min(200, Number(e.target.value || 20))))}
+                disabled={hasOntSessionStarted || isPending}
+                onChange={(e) => {
+                  if (hasOntSessionStarted) {
+                    toast.error("Reinicia el lote para cambiar el tamanio");
+                    return;
+                  }
+                  setOntLotSize(Math.max(1, Math.min(20, Number(e.target.value || 20))));
+                }}
                 className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
               />
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={hasOntSessionStarted || isPending}
+                  onClick={() => setOntLotSize(20)}
+                  className={`rounded-md border px-2 py-1 text-xs ${ontLotSize === 20 ? "border-emerald-600 bg-emerald-600 text-white" : "border-slate-300 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"} disabled:opacity-50`}
+                >
+                  Caja estandar (20)
+                </button>
+                <span className="text-xs text-slate-500 dark:text-slate-400">Para caja pequena u otros casos, ingresa manualmente un valor de 1 a 19.</span>
+              </div>
             </div>
             <div>
               <label className="text-xs font-medium">Sesion/Lote (opcional)</label>
@@ -436,8 +495,9 @@ export default function ValidarSeriesClient() {
               </thead>
               <tbody>
                 {Array.from({ length: Math.max(ontSnRows.length, ontLotSize) }).map((_, idx) => {
-                  const snRow = ontSnRows[idx];
-                  const proId = ontProIds[idx] || "";
+                  const item = ontRowsWithAlignedProId[idx];
+                  const snRow = item?.row;
+                  const proId = item?.proIdEscaneado || "";
                   return (
                     <tr key={`ont_row_${idx}`} className="border-t border-slate-200 dark:border-slate-700">
                       <td className="p-2">{idx + 1}</td>
@@ -486,4 +546,3 @@ export default function ValidarSeriesClient() {
     </div>
   );
 }
-

@@ -25,6 +25,14 @@ type Row = {
   liquidado?: boolean;
 };
 
+type AutoReviewItem = {
+  ordenId: string;
+  codigoCliente: string;
+  cuadrilla: string;
+  message: string;
+  reason: string;
+};
+
 function todayLimaYmd() {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Lima",
@@ -37,6 +45,27 @@ function todayLimaYmd() {
 function monthFromYmd(ymd: string) {
   const v = String(ymd || "").trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v.slice(0, 7) : todayLimaYmd().slice(0, 7);
+}
+
+function reasonToUserMessage(reasonRaw: string): string {
+  const reason = String(reasonRaw || "").trim().toUpperCase();
+  if (reason === "PRELIQ_NOT_FOUND") return "No se encontro preliquidacion de Telegram para la fecha.";
+  if (reason === "PRELIQ_ERROR") return "Error consultando preliquidacion de Telegram.";
+  if (reason === "SN_ONT_REQUIRED" || reason === "ONT_INVALID_COUNT") return "SN ONT faltante o invalido.";
+  if (reason === "ROTULO_NAP_CTO_REQUIRED") return "Falta rotulo NAP/CTO.";
+  if (reason === "SNS_REQUIRED") return "No se recibieron series SN para liquidar.";
+  if (reason === "MESH_INSUFICIENTE") return "Faltan equipos MESH requeridos.";
+  if (reason === "BOX_INSUFICIENTE") return "Faltan equipos BOX requeridos.";
+  if (reason === "FONO_INSUFICIENTE") return "Falta equipo FONO requerido.";
+  if (reason === "MESH_MAX_4" || reason === "BOX_MAX_4" || reason === "FONO_MAX_1") {
+    return "Cantidad maxima excedida para series de equipos.";
+  }
+  if (reason === "ORDEN_YA_LIQUIDADA") return "La orden ya estaba liquidada.";
+  if (reason === "ORDEN_NOT_FOUND") return "No se encontro la orden en base de datos.";
+  if (reason === "ORDEN_SIN_CUADRILLA") return "La orden no tiene cuadrilla asignada.";
+  if (reason === "INVALID_CUADRILLA") return "La cuadrilla asignada no es valida.";
+  if (reason === "AUTO_LIQ_ERROR") return "Fallo inesperado durante auto-liquidacion.";
+  return `Revision manual requerida (${reason || "ERROR_DESCONOCIDO"}).`;
 }
 
 export function LiquidacionClient({ initialYmd, initialMonth }: { initialYmd?: string; initialMonth?: string }) {
@@ -54,7 +83,7 @@ export function LiquidacionClient({ initialYmd, initialMonth }: { initialYmd?: s
   const [autoEnabled, setAutoEnabled] = useState(false);
   const [autoRunning, setAutoRunning] = useState(false);
   const [autoSummary, setAutoSummary] = useState<{ processed: number; liquidated: number; review: number } | null>(null);
-  const [autoReview, setAutoReview] = useState<Array<{ ordenId: string; pedido: string; reason: string }>>([]);
+  const [autoReview, setAutoReview] = useState<AutoReviewItem[]>([]);
   const [autoRunKey, setAutoRunKey] = useState("");
 
   function norm(s: string) {
@@ -99,9 +128,17 @@ export function LiquidacionClient({ initialYmd, initialMonth }: { initialYmd?: s
     setAutoReview([]);
     setAutoSummary(null);
 
-    const reviewRows: Array<{ ordenId: string; pedido: string; reason: string }> = [];
+    const reviewRows: AutoReviewItem[] = [];
     let liquidated = 0;
     let processed = 0;
+
+    const buildReview = (row: Row, reasonRaw: string): AutoReviewItem => ({
+      ordenId: row.id,
+      codigoCliente: String(row.codiSeguiClien || row.ordenId || row.id).trim(),
+      cuadrilla: String(row.cuadrillaNombre || row.cuadrillaId || "-").trim() || "-",
+      reason: String(reasonRaw || "").trim() || "REVIEW_REQUIRED",
+      message: reasonToUserMessage(reasonRaw),
+    });
 
     try {
       for (const row of pendingRows) {
@@ -116,11 +153,11 @@ export function LiquidacionClient({ initialYmd, initialMonth }: { initialYmd?: s
           );
           const preData = await preRes.json().catch(() => ({}));
           if (!preRes.ok) {
-            reviewRows.push({ ordenId: row.id, pedido, reason: String(preData?.error || "PRELIQ_ERROR") });
+            reviewRows.push(buildReview(row, String(preData?.error || "PRELIQ_ERROR")));
             continue;
           }
           if (!preData?.found || !preData?.item) {
-            reviewRows.push({ ordenId: row.id, pedido, reason: "PRELIQ_NOT_FOUND" });
+            reviewRows.push(buildReview(row, "PRELIQ_NOT_FOUND"));
             continue;
           }
 
@@ -132,17 +169,17 @@ export function LiquidacionClient({ initialYmd, initialMonth }: { initialYmd?: s
           const rotuloNapCto = String(item.rotuloNapCto || "").trim();
 
           if (!snOnt) {
-            reviewRows.push({ ordenId: row.id, pedido, reason: "SN_ONT_REQUIRED" });
+            reviewRows.push(buildReview(row, "SN_ONT_REQUIRED"));
             continue;
           }
           if (!rotuloNapCto) {
-            reviewRows.push({ ordenId: row.id, pedido, reason: "ROTULO_NAP_CTO_REQUIRED" });
+            reviewRows.push(buildReview(row, "ROTULO_NAP_CTO_REQUIRED"));
             continue;
           }
 
           const sns = uniq([snOnt, ...snMeshes, ...snBoxes, snFono]);
           if (!sns.length) {
-            reviewRows.push({ ordenId: row.id, pedido, reason: "SNS_REQUIRED" });
+            reviewRows.push(buildReview(row, "SNS_REQUIRED"));
             continue;
           }
 
@@ -168,10 +205,10 @@ export function LiquidacionClient({ initialYmd, initialMonth }: { initialYmd?: s
             liquidated += 1;
           } else {
             const reason = String(result?.error?.formErrors?.[0] || "REVIEW_REQUIRED");
-            reviewRows.push({ ordenId: row.id, pedido, reason });
+            reviewRows.push(buildReview(row, reason));
           }
         } catch (e: any) {
-          reviewRows.push({ ordenId: row.id, pedido, reason: String(e?.message || "AUTO_LIQ_ERROR") });
+          reviewRows.push(buildReview(row, String(e?.message || "AUTO_LIQ_ERROR")));
         }
       }
 
@@ -181,7 +218,7 @@ export function LiquidacionClient({ initialYmd, initialMonth }: { initialYmd?: s
       if (liquidated > 0) setReloadTick((v) => v + 1);
 
       if (trigger === "manual") {
-        toast.success(`Auto-liquidacion procesada: ${liquidated} liquidadas, ${reviewRows.length} en revision`);
+        toast.success(`Auto-liquidacion completada. Liquidadas: ${liquidated}. En revision: ${reviewRows.length}.`);
       }
     } finally {
       setAutoRunning(false);
@@ -362,7 +399,7 @@ export function LiquidacionClient({ initialYmd, initialMonth }: { initialYmd?: s
               <div className="max-h-28 overflow-auto space-y-1">
                 {autoReview.map((x) => (
                   <div key={`rev-${x.ordenId}-${x.reason}`}>
-                    {x.pedido}: {x.reason}
+                    {x.codigoCliente} | {x.cuadrilla} | {x.message}
                   </div>
                 ))}
               </div>

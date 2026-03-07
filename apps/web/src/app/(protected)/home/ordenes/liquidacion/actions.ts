@@ -115,6 +115,12 @@ function datePartsFromOrderYmdHm(
   };
 }
 
+function parseExpectedCount(raw: unknown): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.floor(n));
+}
+
 const KIT_BASE_POR_INSTALACION: Record<string, number> = {
   ACTA: 1,
   CINTILLO_30: 4,
@@ -272,6 +278,22 @@ export async function liquidarOrdenAction(_: any, formData: FormData): Promise<L
         equiposInstalados.push({ sn, tipo, proid, descripcion });
         equiposItems.push({ sn, tipo, status: "OK" });
       }
+
+      const ontCount = Number(movedTypes.get("ONT") || 0);
+      const meshCount = Number(movedTypes.get("MESH") || 0);
+      const boxCount = Number(movedTypes.get("BOX") || 0);
+      const fonoCount = Number(movedTypes.get("FONO") || 0);
+      const expectedMeshMin = Math.min(4, parseExpectedCount(ord?.cantMESHwin));
+      const expectedBoxMin = Math.min(4, parseExpectedCount(ord?.cantBOXwin));
+      const expectedFonoMin = parseExpectedCount(ord?.cantFONOwin) > 0 ? 1 : 0;
+
+      if (ontCount !== 1) throw new Error("ONT_INVALID_COUNT");
+      if (meshCount < expectedMeshMin) throw new Error("MESH_INSUFICIENTE");
+      if (boxCount < expectedBoxMin) throw new Error("BOX_INSUFICIENTE");
+      if (fonoCount < expectedFonoMin) throw new Error("FONO_INSUFICIENTE");
+      if (meshCount > 4) throw new Error("MESH_MAX_4");
+      if (boxCount > 4) throw new Error("BOX_MAX_4");
+      if (fonoCount > 1) throw new Error("FONO_MAX_1");
 
       const materialesItems: Array<{ materialId: string; und: number; metros: number; status: "OK" }> = [];
       for (const [materialId, qty] of matAgg.entries()) {
@@ -475,7 +497,7 @@ export async function liquidarOrdenAction(_: any, formData: FormData): Promise<L
       const cuadrillaNombre = String(ord?.cuadrillaNombre || ord?.cuadrillaId || "");
       await addGlobalNotification({
         title: "Liquidacion",
-        message: `✅ Cliente: ${cliente || codiSeguiClien || "cliente"} • Pedido: ${codiSeguiClien || ordenId} • Cuadrilla: ${cuadrillaNombre || "-"} • Liquidado por: ${liquidadoPor} • Fecha: ${fechaOrden || "-"}`,
+        message: `\u2705 Cliente: ${cliente || codiSeguiClien || "cliente"} \u2022 Pedido: ${codiSeguiClien || ordenId} \u2022 Cuadrilla: ${cuadrillaNombre || "-"} \u2022 Liquidado por: ${liquidadoPor} \u2022 Fecha: ${fechaOrden || "-"}`,
         type: "success",
         scope: "ALL",
         createdBy: session.uid,
@@ -554,6 +576,10 @@ export async function corregirOrdenAction(_: any, formData: FormData): Promise<C
 
       const ord = ordSnap.data() as any;
       const inst = instSnap.data() as any;
+      const liqEstado = String(ord?.liquidacion?.estado || "").toUpperCase();
+      const liquidada = liqEstado === "LIQUIDADO" || !!ord?.liquidadoAt;
+      if (!liquidada) throw new Error("ORDEN_NO_LIQUIDADA");
+      if (!!ord?.correccionPendiente) throw new Error("ORDEN_YA_CORREGIDA_PENDIENTE");
 
       const cuadrillaId = String(ord?.cuadrillaId || "").trim();
       if (!cuadrillaId) throw new Error("ORDEN_SIN_CUADRILLA");
@@ -675,7 +701,7 @@ export async function corregirOrdenAction(_: any, formData: FormData): Promise<C
       try {
         await addGlobalNotification({
           title: "Orden corregida",
-          message: `✅ Cliente: ${cliente || codiSeguiClien || "cliente"} • Pedido: ${codiSeguiClien || ordenId} • Cuadrilla: ${cuadrillaNombre || "-"} • Corregido por: ${corregidoPor} • Fecha: ${fechaOrden || "-"}`,
+          message: `\u2705 Cliente: ${cliente || codiSeguiClien || "cliente"} \u2022 Pedido: ${codiSeguiClien || ordenId} \u2022 Cuadrilla: ${cuadrillaNombre || "-"} \u2022 Corregido por: ${corregidoPor} \u2022 Fecha: ${fechaOrden || "-"}`,
           type: "warn",
           scope: "ALL",
           createdBy: session.uid,
@@ -693,5 +719,4 @@ export async function corregirOrdenAction(_: any, formData: FormData): Promise<C
     return { ok: false, error: { formErrors: [msg] } };
   }
 }
-
 

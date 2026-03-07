@@ -156,6 +156,14 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     });
   }
 
+  if (session.isAdmin || isGerencia) {
+    items.push({
+      key: "GERENCIA_VALIDACION_WIN",
+      label: "Gerencia: VALIDACION WIN",
+      href: "/home/gerencia/validacion-win",
+    });
+  }
+
   if (hasPerm(session, "ZONAS_MANAGE")) {
     items.push({ key: "ZONAS", label: "Zonas", href: "/home/zonas" });
   }

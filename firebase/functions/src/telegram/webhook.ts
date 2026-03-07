@@ -32,7 +32,8 @@ const CUADRILLA_RESPONSABLES_COLLECTION = "telegram_cuadrilla_responsables";
 const ORDENES_COLLECTION = "ordenes";
 const FOUND_GUARDS_COLLECTION = "telegram_found_guards";
 const PRELIQ_RETRY_MAX_ATTEMPTS = 5;
-const PRELIQ_RETRY_INTERVAL_MS = 60 * 60 * 1000;
+const PRELIQ_RETRY_INTERVAL_MS = 30 * 60 * 1000;
+const PRELIQ_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const RESPONSABLE_CONFIDENCE_MIN_MENTION = 45;
 const RESPONSABLE_SWITCH_CANDIDATE_MIN = 1;
 
@@ -130,6 +131,17 @@ function parseAllowedUserIds(raw: string | undefined): Set<string> {
       .map((v) => v.trim())
       .filter(Boolean)
   );
+}
+
+function toMillis(value: unknown): number {
+  if (!value) return 0;
+  if (typeof (value as any)?.toMillis === "function") {
+    return Number((value as any).toMillis()) || 0;
+  }
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number") return value;
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function normalizeHm(v: unknown): string {
@@ -848,10 +860,11 @@ function parseModeDateOnlyCommand(
   text: string
 ): { mode: "LIQUIDADAS" | "PENDIENTES"; ymd: string } | null {
   const raw = String(text || "").trim();
-  const m = /^(liquidadas|pendientes)\s+(\S+)$/i.exec(raw);
+  const m = /^(liquidadas|pendientes)(?:\s+(\S+))?$/i.exec(raw);
   if (!m) return null;
   const mode = String(m[1]).toUpperCase() === "LIQUIDADAS" ? "LIQUIDADAS" : "PENDIENTES";
-  const ymd = parseFlexibleDateToYmd(String(m[2]));
+  const dateRaw = String(m[2] || "").trim();
+  const ymd = dateRaw ? parseFlexibleDateToYmd(dateRaw) : todayLimaYmd();
   if (!ymd) return null;
   return { mode, ymd };
 }
@@ -1110,32 +1123,41 @@ async function enqueuePreliqRetry(params: {
   const docId = preliqRetryDocId(params.pedido);
   const ref = db.collection(PRELIQ_RETRY_COLLECTION).doc(docId);
   const nextRetryAt = new Date(Date.now() + PRELIQ_RETRY_INTERVAL_MS);
-  await ref.set(
-    {
-      pedido: params.pedido,
-      chatId: params.chatId,
-      fromId: params.fromId || null,
-      ymd: params.ymd,
-      status: "PENDING_ORDER",
-      attempts: FieldValue.increment(1),
-      nextRetryAt,
-      lastError: params.reason,
-      parsedFields: {
-        pedido: params.parsed.pedido,
-        ctoNap: params.parsed.ctoNap || null,
-        puerto: params.parsed.puerto || null,
-        potenciaCtoNapDbm: params.parsed.potenciaCtoNapDbm || null,
-        snOnt: params.parsed.snOnt || null,
-        meshes: params.parsed.meshes || [],
-        boxes: params.parsed.boxes || [],
-        snFono: params.parsed.snFono || null,
-        rawText: params.parsed.rawText || "",
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const current = snap.exists ? (snap.data() as Record<string, unknown>) : {};
+    const currentAttempts = Number(current.attempts || 0);
+    const attempts = Number.isFinite(currentAttempts) ? currentAttempts + 1 : 1;
+
+    tx.set(
+      ref,
+      {
+        pedido: params.pedido,
+        chatId: params.chatId,
+        fromId: params.fromId || null,
+        ymd: params.ymd,
+        status: "PENDING_ORDER",
+        attempts,
+        nextRetryAt,
+        lastError: params.reason,
+        parsedFields: {
+          pedido: params.parsed.pedido,
+          ctoNap: params.parsed.ctoNap || null,
+          puerto: params.parsed.puerto || null,
+          potenciaCtoNapDbm: params.parsed.potenciaCtoNapDbm || null,
+          snOnt: params.parsed.snOnt || null,
+          meshes: params.parsed.meshes || [],
+          boxes: params.parsed.boxes || [],
+          snFono: params.parsed.snFono || null,
+          rawText: params.parsed.rawText || "",
+        },
+        updatedAt: FieldValue.serverTimestamp(),
+        // Mantener la primera creacion para cortar reintentos a las 24h.
+        createdAt: current.createdAt || FieldValue.serverTimestamp(),
       },
-      updatedAt: FieldValue.serverTimestamp(),
-      createdAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
+      { merge: true }
+    );
+  });
 }
 
 async function clearPreliqRetry(pedido: string) {
@@ -1167,6 +1189,7 @@ async function handleCallback(update: TelegramUpdate, token: string) {
   }
   if (action === "RESUMEN_PENDIENTES") {
     await sendResumenCount(chatId, token, "PENDIENTES", ymd, true);
+    await sendPendientesDetalladoPorCuadrilla(chatId, token, ymd);
     return;
   }
   if (action === "DETALLE_LIQUIDADAS") {
@@ -1348,6 +1371,9 @@ export const telegramWebhook = onRequest(
         modeDateCmd.ymd,
         true
       );
+      if (modeDateCmd.mode === "PENDIENTES") {
+        await sendPendientesDetalladoPorCuadrilla(chatId, token, modeDateCmd.ymd);
+      }
       res.status(200).json({ ok: true, handled: "MODE_DATE_CMD" });
       return;
     }
@@ -1434,6 +1460,13 @@ export const telegramWebhook = onRequest(
       }
     }
     if (!parsed) {
+      await sendTelegramMessage({
+        token,
+        chatId,
+        text:
+          "No pude detectar el codigo de pedido en la plantilla. " +
+          "Verifica que incluya 'PEDIDO' o 'Cod. de Pedido' con numero.",
+      });
       await updateRef.set(
         {
           status: "IGNORED",
@@ -1657,7 +1690,7 @@ export const telegramWebhook = onRequest(
 export const telegramPreliqRetryWorker = onSchedule(
   {
     region: "us-central1",
-    schedule: "0 * * * *",
+    schedule: "*/30 * * * *",
     timeZone: "America/Lima",
     secrets: [TELEGRAM_BOT_TOKEN],
   },
@@ -1687,6 +1720,21 @@ export const telegramPreliqRetryWorker = onSchedule(
       }
 
       const attempts = Number(row.attempts || 0);
+      const createdAtMs = toMillis(row.createdAt);
+      const expiredByWindow =
+        createdAtMs > 0 && Date.now() - createdAtMs >= PRELIQ_RETRY_WINDOW_MS;
+      if (expiredByWindow) {
+        await docSnap.ref.set(
+          {
+            status: "FAILED_FINAL",
+            lastError: "RETRY_WINDOW_EXPIRED",
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        continue;
+      }
+
       if (attempts >= PRELIQ_RETRY_MAX_ATTEMPTS) {
         await docSnap.ref.set(
           {
@@ -1752,6 +1800,22 @@ export const telegramPreliqRetryWorker = onSchedule(
           { merge: true }
         );
         if (token && cleanValue(row.chatId || "")) {
+          const resumen = buildClienteLiquidadoBlock({
+            pedido,
+            orden: orderResult.data,
+            ctoNap: parsed.ctoNap,
+            puerto: parsed.puerto,
+            potenciaCtoNapDbm: parsed.potenciaCtoNapDbm,
+            snOnt: parsed.snOnt,
+            meshes: parsed.meshes,
+            boxes: parsed.boxes,
+            snFono: parsed.snFono,
+          });
+          await sendTelegramMessage({
+            token,
+            chatId: cleanValue(row.chatId || ""),
+            text: resumen,
+          });
           await sendTelegramMessage({
             token,
             chatId: cleanValue(row.chatId || ""),

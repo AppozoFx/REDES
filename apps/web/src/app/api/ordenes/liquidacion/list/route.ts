@@ -125,21 +125,33 @@ export async function GET(req: Request) {
     const monthParsed = monthRange(month);
 
     const q = adminDb().collection("ordenes");
-    let snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>;
+    const docsById = new Map<string, FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>>();
+    const collect = (snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>) => {
+      for (const d of snap.docs) docsById.set(d.id, d);
+    };
+
     if (ymd) {
-      snap = await q.where("fSoliYmd", "==", ymd).limit(3000).get();
+      collect(await q.where("fSoliYmd", "==", ymd).limit(3000).get());
+      collect(await q.where("fechaFinVisiYmd", "==", ymd).limit(3000).get());
     } else if (monthParsed) {
-      snap = await q
+      collect(await q
         .where("fSoliYmd", ">=", monthParsed.start)
         .where("fSoliYmd", "<=", monthParsed.end)
         .limit(5000)
-        .get();
+        .get());
+      collect(await q
+        .where("fechaFinVisiYmd", ">=", monthParsed.start)
+        .where("fechaFinVisiYmd", "<=", monthParsed.end)
+        .limit(5000)
+        .get());
     } else {
       const today = todayLimaYmd();
-      snap = await q.where("fSoliYmd", "==", today).limit(3000).get();
+      collect(await q.where("fSoliYmd", "==", today).limit(3000).get());
+      collect(await q.where("fechaFinVisiYmd", "==", today).limit(3000).get());
     }
+    const docs = Array.from(docsById.values());
 
-    const allRowsBase: Row[] = snap.docs
+    const allRowsBase: Row[] = docs
       .map((d) => {
         const x = d.data() as any;
         return {

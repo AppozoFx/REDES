@@ -66,6 +66,8 @@ export async function GET(req: Request) {
         "numeroCuadrilla",
         "coordinadorUid",
         "gestorUid",
+        "credUsuario",
+        "credPassword",
         "tecnicosUids",
         "tecnicos",
         "estado"
@@ -88,6 +90,8 @@ export async function GET(req: Request) {
           numeroCuadrilla: data?.numeroCuadrilla ?? "",
           coordinadorUid: data?.coordinadorUid ?? "",
           gestorUid: data?.gestorUid ?? "",
+          credUsuario: data?.credUsuario ?? "",
+          credPassword: data?.credPassword ?? "",
           tecnicosUids: Array.isArray(data?.tecnicosUids)
             ? data.tecnicosUids
             : Array.isArray(data?.tecnicos)

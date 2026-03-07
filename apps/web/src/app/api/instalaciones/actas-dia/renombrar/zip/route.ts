@@ -19,6 +19,12 @@ function sanitizeFileName(name: string) {
     .trim();
 }
 
+function formatDateDdMmYyyy(ymd: string) {
+  const m = String(ymd || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return ymd;
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
 function uniqueName(name: string, used: Set<string>) {
   const safe = sanitizeFileName(name) || "archivo.pdf";
   if (!used.has(safe)) {
@@ -71,7 +77,7 @@ export async function GET(req: Request) {
     }
 
     const zipBody = Buffer.from(zipSync(entries));
-    const zipName = `ACTAS_OK_${dateFolder}.zip`;
+    const zipName = `${formatDateDdMmYyyy(dateFolder)}.zip`;
 
     return new NextResponse(zipBody, {
       status: 200,

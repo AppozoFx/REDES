@@ -13,20 +13,32 @@ export async function getUsuarioProfileByUid(uid: string) {
  * Devuelve filas listas para tabla.
  */
 export async function listUsuariosForHome(limit?: number) {
-  const accessRows = await listUsuariosAccess(limit);
+  const accessRows = await listUsuariosAccess();
+  const profileSnap = await adminDb().collection("usuarios").get();
 
-  const refs = accessRows.map((r) => adminDb().collection("usuarios").doc(r.uid));
-  const snaps = refs.length ? await adminDb().getAll(...refs) : [];
-  const profileByUid = new Map(snaps.map((s) => [s.id, s.data() as any]));
+  const profileByUid = new Map(profileSnap.docs.map((d) => [d.id, (d.data() as any) ?? {}]));
+  const accessByUid = new Map(accessRows.map((a) => [a.uid, a]));
 
-  return accessRows.map((a) => {
-    const p = profileByUid.get(a.uid) ?? {};
+  const toMs = (v: unknown): number => {
+    if (!v) return 0;
+    if (typeof (v as any)?.toMillis === "function") return Number((v as any).toMillis()) || 0;
+    if (v instanceof Date) return v.getTime();
+    if (typeof v === "number") return v;
+    const parsed = Date.parse(String(v));
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const uids = Array.from(new Set<string>([...accessByUid.keys(), ...profileByUid.keys()]));
+
+  const rows = uids.map((uid) => {
+    const a = accessByUid.get(uid) ?? ({} as any);
+    const p = profileByUid.get(uid) ?? {};
     return {
-      uid: a.uid,
-      roles: a.roles ?? [],
-      areas: a.areas ?? [],
+      uid,
+      roles: Array.isArray(a.roles) ? a.roles : [],
+      areas: Array.isArray(a.areas) ? a.areas : [],
       estadoAcceso: a.estadoAcceso ?? "INHABILITADO",
-      permissions: a.permissions ?? [],
+      permissions: Array.isArray(a.permissions) ? a.permissions : [],
       nombres: p.nombres ?? "",
       apellidos: p.apellidos ?? "",
       celular: p.celular ?? "",
@@ -34,8 +46,13 @@ export async function listUsuariosForHome(limit?: number) {
       fIngreso: p.fIngreso ?? null,
       fNacimiento: p.fNacimiento ?? null,
       audit: p.audit ?? {},
+      _sortMs: Math.max(toMs((a as any)?.audit?.createdAt), toMs((p as any)?.audit?.createdAt)),
     };
   });
+
+  rows.sort((x, y) => (y as any)._sortMs - (x as any)._sortMs);
+  const trimmed = typeof limit === "number" && Number.isFinite(limit) && limit > 0 ? rows.slice(0, limit) : rows;
+  return trimmed.map(({ _sortMs, ...row }: any) => row);
 }
 
 export async function updateUsuarioSelfProfile(

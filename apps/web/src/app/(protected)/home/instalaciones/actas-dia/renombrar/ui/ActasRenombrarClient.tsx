@@ -17,6 +17,11 @@ type ListResponse = {
   inbox: StorageItem[];
   okFiles: StorageItem[];
   errorFiles: StorageItem[];
+  stats?: {
+    instalacionesDia: number;
+    actasOkDia: number;
+    faltanActas: number;
+  };
   error?: string;
 };
 
@@ -93,6 +98,8 @@ export default function ActasRenombrarClient() {
   const [lastUpload, setLastUpload] = useState<UploadResponse | null>(null);
   const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const queueRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [activeQueueId, setActiveQueueId] = useState<string | null>(null);
 
   const totals = useMemo(() => {
     const totalBytes = files.reduce((acc, f) => acc + (f.size || 0), 0);
@@ -119,6 +126,22 @@ export default function ActasRenombrarClient() {
     void refreshList();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFolder]);
+
+  useEffect(() => {
+    const ms = uploading ? 4000 : 8000;
+    const id = window.setInterval(() => {
+      void refreshList(true);
+    }, ms);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uploading, dateFolder]);
+
+  useEffect(() => {
+    if (!activeQueueId) return;
+    const el = queueRowRefs.current[activeQueueId];
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [activeQueueId, uploadQueue]);
 
   const addFiles = (fileList: FileList | null) => {
     if (!fileList?.length) return;
@@ -167,6 +190,7 @@ export default function ActasRenombrarClient() {
       for (let i = 0; i < files.length; i += 1) {
         const f = files[i];
         const q = queueSeed[i];
+        setActiveQueueId(q.id);
         setUploadQueue((prev) =>
           prev.map((x) => (x.id === q.id ? { ...x, status: "processing", message: "Subiendo y analizando PDF..." } : x))
         );
@@ -202,6 +226,7 @@ export default function ActasRenombrarClient() {
                 : x
             )
           );
+          await refreshList(true);
         } catch (e: any) {
           const msg = String(e?.message || "Error procesando archivo");
           uploadedRows.push({
@@ -217,6 +242,7 @@ export default function ActasRenombrarClient() {
           setUploadQueue((prev) =>
             prev.map((x) => (x.id === q.id ? { ...x, progress: 100, status: "error", message: msg } : x))
           );
+          await refreshList(true);
         } finally {
           window.clearInterval(timer);
         }
@@ -240,6 +266,7 @@ export default function ActasRenombrarClient() {
       setLastUpload(data);
       setFiles([]);
       setTimeout(() => setUploadQueue([]), 2500);
+      setActiveQueueId(null);
       toast.success(`Carga completa: ${data.summary.ok} OK / ${data.summary.error} ERROR`);
       await refreshList(true);
     } catch (e: any) {
@@ -410,6 +437,11 @@ export default function ActasRenombrarClient() {
         <Badge tone={dateConfirmedForUpload ? "ok" : "error"}>
           Fecha {dateConfirmedForUpload ? "validada" : "sin validar"}
         </Badge>
+        <Badge tone="info">Instalaciones dia: {list?.stats?.instalacionesDia ?? 0}</Badge>
+        <Badge tone="ok">Actas OK dia: {list?.stats?.actasOkDia ?? 0}</Badge>
+        <Badge tone={(list?.stats?.faltanActas ?? 0) > 0 ? "error" : "ok"}>
+          Faltan actas: {list?.stats?.faltanActas ?? 0}
+        </Badge>
         <Badge>Por subir: {totals.count}</Badge>
         <Badge>Peso: {bytesToHuman(totals.totalBytes)}</Badge>
         <Badge tone="ok">OK: {list?.okFiles?.length ?? 0}</Badge>
@@ -418,14 +450,6 @@ export default function ActasRenombrarClient() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => refreshList()}
-          disabled={loadingList}
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
-        >
-          {loadingList ? "Actualizando..." : "Actualizar"}
-        </button>
         <button
           type="button"
           onClick={runCleanup}
@@ -444,7 +468,7 @@ export default function ActasRenombrarClient() {
         </button>
       </div>
       <div className="text-xs text-slate-500 dark:text-slate-400">
-        Para evitar errores, primero valida la fecha y recien despues sube los PDFs.
+        Para evitar errores, primero valida la fecha y recien despues sube los PDFs. La vista se actualiza automaticamente con un ritmo suave.
       </div>
 
       {files.length > 0 && (
@@ -468,7 +492,17 @@ export default function ActasRenombrarClient() {
           </div>
           <div className="max-h-80 overflow-auto divide-y divide-blue-100 dark:divide-blue-900/40">
             {uploadQueue.map((q) => (
-              <div key={q.id} className="space-y-2 px-3 py-2">
+              <div
+                key={q.id}
+                ref={(el) => {
+                  queueRowRefs.current[q.id] = el;
+                }}
+                className={`space-y-2 px-3 py-2 ${
+                  q.id === activeQueueId && q.status === "processing"
+                    ? "bg-blue-50/70 ring-1 ring-blue-200 dark:bg-blue-900/20 dark:ring-blue-800/60"
+                    : ""
+                }`}
+              >
                 <div className="flex items-center justify-between gap-3 text-sm">
                   <div className="min-w-0">
                     <div className="truncate font-medium">{q.fileName}</div>

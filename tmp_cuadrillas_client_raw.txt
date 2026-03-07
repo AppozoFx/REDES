@@ -305,8 +305,6 @@ export default function CuadrillasGestionClient() {
               <th className="p-2 text-left">Gestor</th>
               <th className="p-2 text-left">Coordinador</th>
               <th className="p-2 text-left">Técnicos</th>
-              <th className="p-2 text-left">Credencial usuario</th>
-              <th className="p-2 text-left">Credencial password</th>
               <th className="p-2 text-left">Acciones</th>
             </tr>
           </thead>
@@ -400,31 +398,6 @@ export default function CuadrillasGestionClient() {
                         .join(", ") || "-"
                     )}
                   </td>
-                  <td className="p-2 min-w-[180px]">
-                    {editing ? (
-                      <input
-                        className="w-full rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                        value={form.credUsuario || ""}
-                        onChange={(e) => setForm((p) => ({ ...p, credUsuario: e.target.value }))}
-                        placeholder="Usuario credencial"
-                      />
-                    ) : (
-                      row.credUsuario || "-"
-                    )}
-                  </td>
-                  <td className="p-2 min-w-[180px]">
-                    {editing ? (
-                      <input
-                        type="text"
-                        className="w-full rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                        value={form.credPassword || ""}
-                        onChange={(e) => setForm((p) => ({ ...p, credPassword: e.target.value }))}
-                        placeholder="Password credencial"
-                      />
-                    ) : (
-                      row.credPassword || "-"
-                    )}
-                  </td>
                   <td className="p-2">
                     {editing ? (
                       <div className="flex gap-2">
@@ -458,7 +431,7 @@ export default function CuadrillasGestionClient() {
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={11} className="p-6 text-center text-gray-500 dark:text-slate-400">
+                <td colSpan={10} className="p-6 text-center text-gray-500 dark:text-slate-400">
                   No hay cuadrillas para mostrar.
                 </td>
               </tr>

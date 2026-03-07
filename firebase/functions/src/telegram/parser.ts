@@ -23,7 +23,13 @@ function normalizeLines(text: string): string {
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
     .split("\n")
-    .map((line) => normalizeSpaces(line))
+    .map((line) =>
+      normalizeSpaces(
+        String(line || "")
+          .replace(/[`*]/g, "")
+          .replace(/[“”]/g, '"')
+      )
+    )
     .join("\n")
     .trim();
 }
@@ -36,9 +42,9 @@ function matchLine(text: string, pattern: RegExp): string | undefined {
 
 function parsePedido(text: string): string | undefined {
   const patterns = [
-    /\bPedido\s*:\s*([0-9]+)\b/im,
-    /\bCod(?:igo|\.)?\s*de\s*Pedido\s*:\s*([0-9]+)\b/im,
-    /\bCod(?:igo|\.)?\s*Pedido\s*:\s*([0-9]+)\b/im,
+    /\bPedido\b\s*:\s*([0-9]+)\b/im,
+    /\bCod(?:igo|\.)?\s*de\s*Pedido\b\s*:?[^0-9]{0,12}([0-9]+)\b/im,
+    /\bCod(?:igo|\.)?\s*Pedido\b\s*:?[^0-9]{0,12}([0-9]+)\b/im,
   ];
   for (const pattern of patterns) {
     const raw = matchLine(text, pattern);
@@ -52,6 +58,8 @@ function parsePedido(text: string): string | undefined {
 function pushUniqueSeries(target: string[], value: string): void {
   const normalized = normalizeSpaces(String(value || ""));
   if (!normalized) return;
+  const skip = normalized.toUpperCase();
+  if (skip === "NO" || skip === "N/A" || skip === "NA" || skip === "-") return;
   const key = normalized.toUpperCase();
   if (target.some((item) => item.toUpperCase() === key)) return;
   target.push(normalized);
@@ -65,7 +73,9 @@ export function parseTelegramTemplate(rawInput: string): TelegramParsedTemplate 
   const pedido = parsePedido(normalized);
   if (!pedido) return null;
 
-  const ctoNap = matchLine(normalized, /^.*\bCTO\s*\/\s*NAP\s*:\s*(.+)\s*$/im);
+  const ctoNap =
+    matchLine(normalized, /^.*\bCTO\s*\/\s*NAP\s*:\s*(.+)\s*$/im) ||
+    matchLine(normalized, /^.*\bCTO\s*:\s*(.+)\s*$/im);
   const puerto = matchLine(normalized, /^.*\bPuerto\s*:\s*(.+)\s*$/im);
   const potenciaCtoNapDbm = matchLine(
     normalized,
@@ -87,6 +97,7 @@ export function parseTelegramTemplate(rawInput: string): TelegramParsedTemplate 
   const meshAltRegexes = [
     /^.*\b(?:S\s*\/\s*N|SN)\s*MESH(?:\s*\d+)?\s*:\s*(.+)\s*$/gim,
     /^\s*MESH\s+\d+\s*:\s*(.+)\s*$/gim,
+    /^.*\bMAC\s*MESH(?:\s*\d+)?\s*:\s*(.+)\s*$/gim,
   ];
   for (const regex of meshAltRegexes) {
     for (const match of normalized.matchAll(regex)) {

@@ -14,6 +14,12 @@ const INDEX_COL = "actas_renombrado_index";
 const MAX_FILES_PER_REQUEST = 300;
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
 
+type DayStats = {
+  instalacionesDia: number;
+  actasOkDia: number;
+  faltanActas: number;
+};
+
 function normalizeDateFolder(raw: string) {
   const v = String(raw || "").trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "";
@@ -828,6 +834,18 @@ async function listByPrefix(bucket: any, prefix: string) {
     .sort((a: any, b: any) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
 }
 
+async function countInstalacionesByDay(dateFolder: string) {
+  const db = adminDb();
+  const [byOrden, byInst] = await Promise.all([
+    db.collection("instalaciones").where("fechaOrdenYmd", "==", dateFolder).select().limit(10000).get(),
+    db.collection("instalaciones").where("fechaInstalacionYmd", "==", dateFolder).select().limit(10000).get(),
+  ]);
+  const ids = new Set<string>();
+  byOrden.docs.forEach((d) => ids.add(d.id));
+  byInst.docs.forEach((d) => ids.add(d.id));
+  return ids.size;
+}
+
 function requireSessionAndScopeErrorMessage(msg: string) {
   if (msg === "UNAUTHENTICATED") return { status: 401, error: "UNAUTHENTICATED" };
   if (msg === "ACCESS_DISABLED") return { status: 403, error: "ACCESS_DISABLED" };
@@ -852,11 +870,17 @@ export async function GET(req: Request) {
     }
 
     const bucket = adminStorageBucket();
-    const [inbox, okFiles, errorFiles] = await Promise.all([
+    const [inbox, okFiles, errorFiles, instalacionesDia] = await Promise.all([
       listByPrefix(bucket, `${ROOT_PREFIX}/inbox/${dateFolder}/`),
       listByPrefix(bucket, `${ROOT_PREFIX}/ok/${dateFolder}/`),
       listByPrefix(bucket, `${ROOT_PREFIX}/error/${dateFolder}/`),
+      countInstalacionesByDay(dateFolder),
     ]);
+    const stats: DayStats = {
+      instalacionesDia,
+      actasOkDia: okFiles.length,
+      faltanActas: Math.max(0, instalacionesDia - okFiles.length),
+    };
 
     return NextResponse.json({
       ok: true,
@@ -864,6 +888,7 @@ export async function GET(req: Request) {
       inbox,
       okFiles,
       errorFiles,
+      stats,
     });
   } catch (e: any) {
     const mapped = requireSessionAndScopeErrorMessage(String(e?.message || ""));

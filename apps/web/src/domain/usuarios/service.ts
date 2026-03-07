@@ -24,17 +24,30 @@ export type UserAccessDoc = {
 };
 
 export async function listUsuariosAccess(limit?: number) {
-  let query: FirebaseFirestore.Query = adminDb()
-    .collection("usuarios_access")
-    .orderBy("audit.createdAt", "desc");
+  const snap = await adminDb().collection("usuarios_access").get();
+
+  const toMs = (v: unknown): number => {
+    if (!v) return 0;
+    if (typeof (v as any)?.toMillis === "function") return Number((v as any).toMillis()) || 0;
+    if (v instanceof Date) return v.getTime();
+    if (typeof v === "number") return v;
+    const parsed = Date.parse(String(v));
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const rows = snap.docs.map((d) => ({ uid: d.id, ...(d.data() as UserAccessDoc) }));
+
+  rows.sort((a, b) => {
+    const aMs = toMs((a as any)?.audit?.createdAt);
+    const bMs = toMs((b as any)?.audit?.createdAt);
+    return bMs - aMs;
+  });
 
   if (typeof limit === "number" && Number.isFinite(limit) && limit > 0) {
-    query = query.limit(limit);
+    return rows.slice(0, limit);
   }
 
-  const snap = await query.get();
-
-  return snap.docs.map((d) => ({ uid: d.id, ...(d.data() as UserAccessDoc) }));
+  return rows;
 }
 
 export async function getUserProfile(uid: string) {

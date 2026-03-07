@@ -62,7 +62,8 @@ function getGroup(href: string): GroupKey {
   if (
     href === "/home/gerencia/coordinadores" ||
     href === "/home/gerencia/orden-compra" ||
-    href === "/home/gerencia/ordenes-compra"
+    href === "/home/gerencia/ordenes-compra" ||
+    href === "/home/gerencia/validacion-win"
   ) {
     return "GERENCIA";
   }

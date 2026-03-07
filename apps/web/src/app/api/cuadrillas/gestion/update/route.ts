@@ -13,6 +13,8 @@ const BodySchema = z.object({
   placa: z.string().optional(),
   gestorUid: z.string().optional(),
   coordinadorUid: z.string().optional(),
+  credUsuario: z.string().optional(),
+  credPassword: z.string().optional(),
   tecnicosUids: z.array(z.string()).optional(),
 });
 
@@ -49,6 +51,8 @@ export async function POST(req: Request) {
     if (data.placa !== undefined) payload.placa = data.placa || "";
     if (data.gestorUid !== undefined) payload.gestorUid = data.gestorUid || "";
     if (data.coordinadorUid !== undefined) payload.coordinadorUid = data.coordinadorUid || "";
+    if (data.credUsuario !== undefined) payload.credUsuario = data.credUsuario || "";
+    if (data.credPassword !== undefined) payload.credPassword = data.credPassword || "";
     if (data.tecnicosUids !== undefined) payload.tecnicosUids = data.tecnicosUids;
 
     await ref.set(payload, { merge: true });

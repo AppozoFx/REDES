@@ -40,7 +40,6 @@ function detectTipificaciones(idenServi: string) {
   const cableadoMesh = compact.includes("SERVICIOCABLEADODEMESH") || base.includes("CABLEADO DE MESH");
   return { gamer, kitWifiPro, cableadoMesh };
 }
-
 function ensureArraySize(arr: string[], n: number) {
   const out = [...arr];
   while (out.length < n) out.push("");
@@ -358,7 +357,7 @@ export function LiquidacionRowClient({
       const fechaOrden = d.fechaOrdenYmd ? d.fechaOrdenYmd.split("-").reverse().join("/") : "-";
       const ont = d.ont?.sn ? `ONT: ${d.ont.sn}${d.ont.proid ? ` (PROID ${d.ont.proid})` : ""}` : "ONT: -";
       const desc = [
-        `✅ ${d.cliente || "-"} — Pedido ${d.codigoCliente || "-"} (${fechaOrden})`,
+        `OK ${d.cliente || "-"} - Pedido ${d.codigoCliente || "-"} (${fechaOrden})`,
         `Cuadrilla: ${d.cuadrilla || "-"}`,
         ont,
         `MESH: ${d.mesh ?? 0}`,
@@ -519,7 +518,7 @@ export function LiquidacionRowClient({
         <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
           Pendiente por corregir. Devuelve equipos y vuelve a liquidar con las series correctas.
           {orden.correccionYmd ? ` Corregida: ${orden.correccionYmd.split("-").reverse().join("/")}` : ""}
-          {orden.correccionBy ? ` • Por: ${orden.correccionBy}` : ""}
+          {orden.correccionBy ? ` | Por: ${orden.correccionBy}` : ""}
         </div>
       ) : null}
 
@@ -563,7 +562,7 @@ export function LiquidacionRowClient({
                 </span>
               </div>
               <div>
-                <span className="text-slate-500 dark:text-slate-400">Código Cliente:</span>{" "}
+                <span className="text-slate-500 dark:text-slate-400">Codigo Cliente:</span>{" "}
                 <button
                   type="button"
                   className="rounded border border-dashed border-slate-300 bg-white px-2 py-0.5 text-xs font-medium hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
@@ -1048,3 +1047,4 @@ export function LiquidacionRowClient({
     </div>
   );
 }
+

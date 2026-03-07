@@ -15,54 +15,33 @@ function normalizeProId(v: unknown) {
   return String(v || "").trim().toUpperCase();
 }
 
-export async function validarSerieAction(input: { sn: string }) {
-  await requireServerPermission(PERM);
-  const sn = normalizeSn(input?.sn);
-  if (!sn) throw new Error("SN_REQUIRED");
+type ProIdPair = { sn: string; proId: string };
 
-  const snap = await adminDb().collection("equipos").doc(sn).get();
-  if (!snap.exists) {
-    return {
-      ok: true,
-      sn,
-      exists: false,
-      isOnt: false,
-      equipo: "",
-      descripcion: "",
-      ubicacion: "",
-      estado: "",
-      proId: "",
-    };
-  }
+type SaveRowStatus = "updated" | "already_same" | "has_existing_proid" | "not_found" | "not_ont" | "invalid";
 
-  const d = snap.data() as any;
-  const equipo = String(d?.equipo || "").trim().toUpperCase();
-  return {
-    ok: true,
-    sn,
-    exists: true,
-    isOnt: equipo === "ONT",
-    equipo,
-    descripcion: String(d?.descripcion || ""),
-    ubicacion: String(d?.ubicacion || ""),
-    estado: String(d?.estado || ""),
-    proId: String(d?.proId || ""),
-  };
-}
+type SaveRow = {
+  sn: string;
+  proId: string;
+  ok: boolean;
+  status: SaveRowStatus;
+  previousProId: string;
+  message: string;
+};
 
-export async function guardarProIdLoteAction(input: {
-  pairs: Array<{ sn: string; proId: string }>;
-  forceReplace?: boolean;
-  sessionLabel?: string;
+async function procesarParesProId(input: {
+  pairs: ProIdPair[];
+  forceReplace: boolean;
+  sessionLabel: string;
+  actorUid: string;
+  maxPairs: number;
+  logType: string;
 }) {
-  const session = await requireServerPermission(PERM);
   const db = adminDb();
-  const forceReplace = !!input?.forceReplace;
-  const sessionLabel = String(input?.sessionLabel || "").trim();
-  const pairs = Array.isArray(input?.pairs) ? input.pairs : [];
+  const { forceReplace, sessionLabel, actorUid, maxPairs, logType } = input;
+  const pairs = Array.isArray(input.pairs) ? input.pairs : [];
 
   if (!pairs.length) throw new Error("PAIRS_REQUIRED");
-  if (pairs.length > 20) throw new Error("MAX_20_PAIRS");
+  if (pairs.length > maxPairs) throw new Error(`MAX_${maxPairs}_PAIRS`);
 
   const normalized = pairs.map((p) => ({
     sn: normalizeSn(p?.sn),
@@ -71,14 +50,13 @@ export async function guardarProIdLoteAction(input: {
   if (normalized.some((p) => !p.sn)) throw new Error("SN_REQUIRED");
   if (normalized.some((p) => !p.proId)) throw new Error("PROID_REQUIRED");
 
-  const resultRows: Array<{
-    sn: string;
-    proId: string;
-    ok: boolean;
-    status: "updated" | "already_same" | "has_existing_proid" | "not_found" | "not_ont" | "invalid";
-    previousProId: string;
-    message: string;
-  }> = [];
+  const seenSn = new Set<string>();
+  for (const p of normalized) {
+    if (seenSn.has(p.sn)) throw new Error(`DUPLICATE_SN_IN_BATCH:${p.sn}`);
+    seenSn.add(p.sn);
+  }
+
+  const resultRows: SaveRow[] = [];
 
   for (const row of normalized) {
     const res = await db.runTransaction(async (tx) => {
@@ -137,7 +115,7 @@ export async function guardarProIdLoteAction(input: {
           proId: row.proId,
           audit: {
             updatedAt: FieldValue.serverTimestamp(),
-            updatedBy: session.uid,
+            updatedBy: actorUid,
           },
         },
         { merge: true }
@@ -145,13 +123,13 @@ export async function guardarProIdLoteAction(input: {
 
       const logRef = db.collection(LOGS_COL).doc();
       tx.set(logRef, {
-        type: "ONT_PROID_LINK",
+        type: logType,
         sn: row.sn,
         proIdNew: row.proId,
         proIdPrev: previousProId || null,
         forceReplace,
         sessionLabel: sessionLabel || null,
-        actorUid: session.uid,
+        actorUid,
         ts: FieldValue.serverTimestamp(),
       });
 
@@ -186,4 +164,73 @@ export async function guardarProIdLoteAction(input: {
     summary,
     rows: resultRows,
   };
+}
+
+export async function validarSerieAction(input: { sn: string }) {
+  await requireServerPermission(PERM);
+  const sn = normalizeSn(input?.sn);
+  if (!sn) throw new Error("SN_REQUIRED");
+
+  const snap = await adminDb().collection("equipos").doc(sn).get();
+  if (!snap.exists) {
+    return {
+      ok: true,
+      sn,
+      exists: false,
+      isOnt: false,
+      equipo: "",
+      descripcion: "",
+      ubicacion: "",
+      estado: "",
+      proId: "",
+    };
+  }
+
+  const d = snap.data() as any;
+  const equipo = String(d?.equipo || "").trim().toUpperCase();
+  return {
+    ok: true,
+    sn,
+    exists: true,
+    isOnt: equipo === "ONT",
+    equipo,
+    descripcion: String(d?.descripcion || ""),
+    ubicacion: String(d?.ubicacion || ""),
+    estado: String(d?.estado || ""),
+    proId: String(d?.proId || ""),
+  };
+}
+
+export async function guardarProIdLoteAction(input: {
+  pairs: Array<{ sn: string; proId: string }>;
+  forceReplace?: boolean;
+  sessionLabel?: string;
+}) {
+  const session = await requireServerPermission(PERM);
+  return procesarParesProId({
+    pairs: Array.isArray(input?.pairs) ? input.pairs : [],
+    forceReplace: !!input?.forceReplace,
+    sessionLabel: String(input?.sessionLabel || "").trim(),
+    actorUid: session.uid,
+    maxPairs: 20,
+    logType: "ONT_PROID_LINK",
+  });
+}
+
+export async function guardarProIdMasivoDesdeSnAction(input: {
+  sns: string[];
+  forceReplace?: boolean;
+  sessionLabel?: string;
+}) {
+  const session = await requireServerPermission(PERM);
+  const sns = Array.isArray(input?.sns) ? input.sns.map((v) => normalizeSn(v)).filter(Boolean) : [];
+
+  return procesarParesProId({
+    pairs: sns.map((sn) => ({ sn, proId: sn })),
+    forceReplace: !!input?.forceReplace,
+    sessionLabel: String(input?.sessionLabel || "").trim(),
+    actorUid: session.uid,
+    maxPairs: 1000,
+    logType: "ONT_PROID_LINK_BULK_SN_EQ_PROID",
+  });
 }

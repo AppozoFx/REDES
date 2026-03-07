@@ -8,7 +8,15 @@ export default async function HomeUsuariosPage() {
   await requirePermission("USERS_LIST");
 
   const canCreate = session.permissions?.includes("USERS_CREATE") ?? false;
-  const rows = await listUsuariosForHome();
+  const rowsRaw = await listUsuariosForHome();
+  const rows = rowsRaw.map((r) => ({
+    uid: r.uid,
+    nombres: String(r.nombres ?? ""),
+    apellidos: String(r.apellidos ?? ""),
+    roles: Array.isArray(r.roles) ? r.roles.map((x: unknown) => String(x)) : [],
+    areas: Array.isArray(r.areas) ? r.areas.map((x: unknown) => String(x)) : [],
+    estadoAcceso: String(r.estadoAcceso ?? "INHABILITADO"),
+  }));
 
   return (
     <div className="space-y-4 text-slate-900 dark:text-slate-100">
@@ -42,4 +50,3 @@ export default async function HomeUsuariosPage() {
     </div>
   );
 }
-

@@ -14,7 +14,7 @@ export default async function ValidarSeriesPage() {
           <div>
             <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Validacion de series y ONT ProID</h1>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Valida SN fisica contra EQUIPOS y vincula ProID a ONT por lote y orden de pistoleo.
+              Valida SN fisica contra EQUIPOS, vincula ONT+ProID por pistoleo y procesa lotes masivos desde Excel (SN=ProID).
             </p>
           </div>
           <Link
@@ -32,4 +32,3 @@ export default async function ValidarSeriesPage() {
     </div>
   );
 }
-

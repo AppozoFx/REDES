@@ -28,12 +28,21 @@ type ListResponse = {
 type UploadResult = {
   originalName: string;
   acta: string | null;
-  source: "pdf_text" | "ai_pdf" | null;
+  source: "pdf_text" | "det_engine" | "ai_pdf" | null;
   status: "ok" | "error";
   finalPath: string;
   finalName: string;
   reason: string;
   detail: string;
+  attempts?: number;
+  durationMs?: number;
+  trace?: Array<{
+    stage: string;
+    label: string;
+    status: "done" | "miss" | "error";
+    detail: string;
+    durationMs: number;
+  }>;
 };
 
 type UploadResponse = {
@@ -48,6 +57,13 @@ type UploadResponse = {
   error?: string;
 };
 
+type ReprocessRigorousResponse = {
+  ok: boolean;
+  mode?: "rigorous";
+  result?: UploadResult;
+  error?: string;
+};
+
 type QueueStatus = "queued" | "processing" | "done" | "error";
 type UploadQueueItem = {
   id: string;
@@ -56,6 +72,21 @@ type UploadQueueItem = {
   progress: number;
   status: QueueStatus;
   message: string;
+};
+
+type ProgressResponse = {
+  ok: boolean;
+  requestId?: string;
+  progress?: {
+    status?: "processing" | "ok" | "error";
+    stageKey?: string;
+    stageLabel?: string;
+    stageStatus?: "running" | "done" | "miss" | "error";
+    detail?: string;
+    useAi?: boolean;
+    durationMs?: number;
+  } | null;
+  error?: string;
 };
 
 const MAX_FILES_PER_BATCH = 300;
@@ -92,6 +123,7 @@ export default function ActasRenombrarClient() {
   const [cleaningOld, setCleaningOld] = useState(false);
   const [cleaningDay, setCleaningDay] = useState(false);
   const [downloadingOkZip, setDownloadingOkZip] = useState(false);
+  const [reprocessingPath, setReprocessingPath] = useState<string | null>(null);
   const [manualCodigoDraft, setManualCodigoDraft] = useState<Record<string, string>>({});
   const [manualClienteDraft, setManualClienteDraft] = useState<Record<string, string>>({});
   const [list, setList] = useState<ListResponse | null>(null);
@@ -99,12 +131,39 @@ export default function ActasRenombrarClient() {
   const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const queueRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const [activeQueueId, setActiveQueueId] = useState<string | null>(null);
 
   const totals = useMemo(() => {
     const totalBytes = files.reduce((acc, f) => acc + (f.size || 0), 0);
     return { count: files.length, totalBytes };
   }, [files]);
+
+  const playTone = (kind: "ok" | "warn") => {
+    try {
+      const Ctx = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext;
+      if (!Ctx) return;
+      if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
+      const ctx = audioCtxRef.current;
+      if (ctx.state === "suspended") void ctx.resume();
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = kind === "ok" ? 880 : 560;
+      gain.gain.value = 0.0001;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      const now = ctx.currentTime;
+      gain.gain.exponentialRampToValueAtTime(0.03, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.20);
+      osc.start(now);
+      osc.stop(now + 0.21);
+    } catch {
+      // sonido opcional
+    }
+  };
 
   const refreshList = async (silent = false) => {
     if (!silent) setLoadingList(true);
@@ -175,8 +234,9 @@ export default function ActasRenombrarClient() {
     if (!files.length) return toast.error("Selecciona al menos un PDF");
     setUploading(true);
     setLastUpload(null);
-    const queueSeed: UploadQueueItem[] = files.map((f) => ({
-      id: `${f.name}_${f.size}_${Math.random().toString(36).slice(2, 8)}`,
+    const seedBase = Date.now().toString(36);
+    const queueSeed: UploadQueueItem[] = files.map((f, idx) => ({
+      id: `rq_${seedBase}_${idx}_${Math.random().toString(36).slice(2, 8)}`,
       fileName: f.name,
       size: f.size,
       progress: 0,
@@ -196,14 +256,44 @@ export default function ActasRenombrarClient() {
         );
 
         let pulse = 8;
+        let pulseAlive = true;
         const timer = window.setInterval(() => {
+          if (!pulseAlive) return;
           pulse = Math.min(88, pulse + Math.floor(Math.random() * 8) + 2);
-          setUploadQueue((prev) => prev.map((x) => (x.id === q.id ? { ...x, progress: pulse } : x)));
+          setUploadQueue((prev) =>
+            prev.map((x) => (x.id === q.id && x.status === "processing" ? { ...x, progress: pulse } : x))
+          );
         }, 250);
+        let pollInFlight = false;
+        const progressPoll = window.setInterval(async () => {
+          if (pollInFlight || !pulseAlive) return;
+          pollInFlight = true;
+          try {
+            const res = await fetch(
+              `/api/instalaciones/actas-dia/renombrar?requestId=${encodeURIComponent(q.id)}`,
+              { cache: "no-store" }
+            );
+            const data = (await res.json()) as ProgressResponse;
+            const p = data?.progress;
+            if (!p) return;
+            const stage = String(p.stageLabel || "Procesando");
+            const detail = String(p.detail || "").trim();
+            const aiTag = p.useAi ? " [IA]" : "";
+            const msg = detail ? `${stage}${aiTag}: ${detail}` : `${stage}${aiTag}`;
+            setUploadQueue((prev) =>
+              prev.map((x) => (x.id === q.id && x.status === "processing" ? { ...x, message: msg } : x))
+            );
+          } catch {
+            // no-op
+          } finally {
+            pollInFlight = false;
+          }
+        }, 900);
 
         try {
           const fd = new FormData();
           fd.set("dateFolder", dateFolder);
+          fd.set("requestId", q.id);
           fd.append("files", f);
           const res = await fetch("/api/instalaciones/actas-dia/renombrar", {
             method: "POST",
@@ -214,6 +304,9 @@ export default function ActasRenombrarClient() {
           const row = data.uploaded?.[0];
           if (!row) throw new Error("Sin respuesta de archivo");
           uploadedRows.push(row);
+          pulseAlive = false;
+          window.clearInterval(timer);
+          window.clearInterval(progressPoll);
           setUploadQueue((prev) =>
             prev.map((x) =>
               x.id === q.id
@@ -221,7 +314,10 @@ export default function ActasRenombrarClient() {
                     ...x,
                     progress: 100,
                     status: row.status === "ok" ? "done" : "error",
-                    message: row.status === "ok" ? "Procesado OK" : `${row.reason}`,
+                    message:
+                      row.status === "ok"
+                        ? `Procesado OK (${row.source === "ai_pdf" ? "ANALISIS CON IA" : "LECTURA AUTOMATICA"})`
+                        : `${row.reason}`,
                   }
                 : x
             )
@@ -238,13 +334,21 @@ export default function ActasRenombrarClient() {
             finalName: "",
             reason: "REQUEST_ERROR",
             detail: msg,
+            attempts: 0,
+            durationMs: 0,
+            trace: [],
           });
+          pulseAlive = false;
+          window.clearInterval(timer);
+          window.clearInterval(progressPoll);
           setUploadQueue((prev) =>
             prev.map((x) => (x.id === q.id ? { ...x, progress: 100, status: "error", message: msg } : x))
           );
           await refreshList(true);
         } finally {
+          pulseAlive = false;
           window.clearInterval(timer);
+          window.clearInterval(progressPoll);
         }
       }
 
@@ -263,6 +367,8 @@ export default function ActasRenombrarClient() {
         uploaded: uploadedRows,
         summary,
       };
+      if (data.summary.error > 0) playTone("warn");
+      else playTone("ok");
       setLastUpload(data);
       setFiles([]);
       setTimeout(() => setUploadQueue([]), 2500);
@@ -304,6 +410,55 @@ export default function ActasRenombrarClient() {
       toast.error(e?.message || "Error moviendo archivo");
     } finally {
       setMovingPath(null);
+    }
+  };
+
+  const reprocessRigorous = async (row: UploadResult) => {
+    const fromPath = String(row.finalPath || "").trim();
+    if (!fromPath) return toast.error("No se encontro la ruta del archivo en error");
+    setReprocessingPath(fromPath);
+    try {
+      const res = await fetch("/api/instalaciones/actas-dia/renombrar", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reprocess_rigorous",
+          dateFolder,
+          fromPath,
+        }),
+      });
+      const data = (await res.json()) as ReprocessRigorousResponse;
+      if (!res.ok || !data?.ok || !data?.result) throw new Error(data?.error || "No se pudo reanalizar");
+      const nextRow = data.result;
+      setLastUpload((prev) => {
+        if (!prev) return prev;
+        const updated = prev.uploaded.map((x) =>
+          x.finalPath === fromPath
+            ? {
+                ...x,
+                ...nextRow,
+                originalName: x.originalName || nextRow.originalName,
+              }
+            : x
+        );
+        const summary = updated.reduce(
+          (acc, item) => {
+            acc.total += 1;
+            if (item.status === "ok") acc.ok += 1;
+            else acc.error += 1;
+            return acc;
+          },
+          { total: 0, ok: 0, error: 0 }
+        );
+        return { ...prev, uploaded: updated, summary };
+      });
+      if (nextRow.status === "ok") toast.success("Reanalisis riguroso OK. Archivo movido a OK");
+      else toast.warning(nextRow.detail || "Reanalisis completado, sigue en ERROR");
+      await refreshList(true);
+    } catch (e: any) {
+      toast.error(e?.message || "Error en reanalisis riguroso");
+    } finally {
+      setReprocessingPath(null);
     }
   };
 
@@ -545,9 +700,12 @@ export default function ActasRenombrarClient() {
                     <th className="p-2 text-left">Archivo</th>
                     <th className="p-2 text-left">Acta</th>
                     <th className="p-2 text-left">Fuente</th>
+                    <th className="p-2 text-left">Tiempo</th>
+                    <th className="p-2 text-left">Intentos</th>
                     <th className="p-2 text-left">Resultado</th>
                     <th className="p-2 text-left">Motivo</th>
                     <th className="p-2 text-left">Detalle</th>
+                    <th className="p-2 text-left">Accion</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -556,13 +714,36 @@ export default function ActasRenombrarClient() {
                       <td className="p-2">{r.originalName}</td>
                       <td className="p-2">{r.acta || "-"}</td>
                       <td className="p-2">{r.source || "-"}</td>
+                      <td className="p-2">{typeof r.durationMs === "number" ? `${r.durationMs} ms` : "-"}</td>
+                      <td className="p-2">{typeof r.attempts === "number" ? r.attempts : "-"}</td>
                       <td className="p-2">
                         <span className={r.status === "ok" ? "text-emerald-600 dark:text-emerald-300" : "text-rose-600 dark:text-rose-300"}>
                           {r.status.toUpperCase()}
                         </span>
                       </td>
                       <td className="p-2">{r.reason}</td>
-                      <td className="p-2">{r.detail}</td>
+                      <td className="p-2">
+                        <div>{r.detail}</div>
+                        {!!r.trace?.length && (
+                          <div className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                            {r.trace.map((t) => `${t.label}:${t.status}(${t.durationMs}ms)`).join(" | ")}
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-2">
+                        {r.status === "error" && String(r.finalPath || "").includes("/error/") ? (
+                          <button
+                            type="button"
+                            onClick={() => reprocessRigorous(r)}
+                            disabled={uploading || reprocessingPath === r.finalPath}
+                            className="rounded-lg border border-blue-300 bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-800/60 dark:bg-blue-900/25 dark:text-blue-200"
+                          >
+                            {reprocessingPath === r.finalPath ? "Reanalizando..." : "Reanalizar riguroso"}
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 dark:text-slate-500">-</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

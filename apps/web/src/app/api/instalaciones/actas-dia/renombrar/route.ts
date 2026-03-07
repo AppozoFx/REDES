@@ -4,6 +4,11 @@ import { requireAreaScope } from "@/core/auth/apiGuards";
 import { adminDb, adminStorageBucket } from "@/lib/firebase/admin";
 import { openai } from "@/lib/ai/openai";
 import { createHash } from "crypto";
+import { execFile } from "child_process";
+import { promisify } from "util";
+import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
 
 export const runtime = "nodejs";
 
@@ -11,8 +16,24 @@ const ROOT_PREFIX = "guias_actas/actas_servicio";
 const ALLOWED_FOLDERS = new Set(["inbox", "ok", "error"]);
 const LOGS_COL = "actas_renombrado_logs";
 const INDEX_COL = "actas_renombrado_index";
+const PROGRESS_COL = "actas_renombrado_progress";
+const PROGRESS_TTL_HOURS = 72;
 const MAX_FILES_PER_REQUEST = 300;
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
+const execFileAsync = promisify(execFile);
+
+type DeterministicEngineMode = "off" | "shadow" | "active";
+
+function normalizeEngineMode(raw: string): DeterministicEngineMode {
+  const v = String(raw || "").trim().toLowerCase();
+  if (v === "shadow" || v === "active") return v;
+  return "off";
+}
+
+const ACTA_ENGINE_MODE = normalizeEngineMode(process.env.ACTA_ENGINE_MODE || "");
+const ACTA_ENGINE_URL = String(process.env.ACTA_ENGINE_URL || "").trim();
+const ACTA_ENGINE_BEARER = String(process.env.ACTA_ENGINE_BEARER || "").trim();
+const ACTA_ENGINE_TIMEOUT_MS = Math.max(1000, Math.min(20000, Number(process.env.ACTA_ENGINE_TIMEOUT_MS || 7000)));
 
 type DayStats = {
   instalacionesDia: number;
@@ -63,8 +84,17 @@ function normalizeActaStrict(raw: string) {
   return acta;
 }
 
+function stripPdfTechnicalMetadata(text: string) {
+  let clean = String(text || "");
+  // Evita falsos positivos desde el trailer/ID técnico del PDF.
+  clean = clean.replace(/\/ID\s*\[\s*<[^>\r\n]{8,}>\s*<[^>\r\n]{8,}>\s*\]/gi, " ");
+  clean = clean.replace(/xref[\s\S]*?trailer[\s\S]*?(?:startxref[\s\S]*?%%EOF|%%EOF)/gi, " ");
+  clean = clean.replace(/startxref\s+\d+\s+%%EOF/gi, " ");
+  return clean;
+}
+
 function extractActaByRegex(text: string) {
-  const clean = String(text || "");
+  const clean = stripPdfTechnicalMetadata(text);
   const contextual = clean.match(
     /\b(?:acta|codigo(?:\s+de)?\s+acta|cod(?:\.|igo)?)\b[\s:#-]*([0-9]{3}[-\s]?[0-9]{4,})/i
   );
@@ -81,14 +111,14 @@ function extractActaByRegex(text: string) {
 }
 
 function extractActaByLooseDigits(text: string) {
-  const clean = String(text || "");
+  const clean = stripPdfTechnicalMetadata(text);
   const contextualRegex = /\b(?:acta|codigo(?:\s+de)?\s+acta|cod(?:\.|igo)?)\b[\s:#-]*([0-9][0-9\-\s]{6,18})/gi;
   for (const m of clean.matchAll(contextualRegex)) {
     const acta = normalizeActaStrict(m[1] || "");
     if (acta) return acta;
   }
 
-  const typicalRegex = /(?:^|[^0-9])(0[0-9]{2}[-\s]?[0-9]{6,10})(?=[^0-9]|$)/g;
+  const typicalRegex = /(?:^|[^0-9])(0[0-9]{2}(?:[-\s][0-9]{4,10}|[0-9]{7}))(?=[^0-9]|$)/g;
   for (const m of clean.matchAll(typicalRegex)) {
     const acta = normalizeActaStrict(m[1] || "");
     if (acta) return acta;
@@ -187,10 +217,53 @@ function extractJsonPayload(rawText: string): unknown | null {
 
 type ActaDetection = {
   acta: string | null;
-  source: "pdf_text" | "ai_pdf" | null;
+  source: "pdf_text" | "det_engine" | "ai_pdf" | null;
   detail: string;
   attempts?: number;
+  trace?: DetectionTraceStep[];
 };
+
+type DetectionStageStatus = "running" | "done" | "miss" | "error";
+type DetectionTraceStep = {
+  stage: string;
+  label: string;
+  status: Exclude<DetectionStageStatus, "running">;
+  detail: string;
+  durationMs: number;
+};
+type DetectionProgressReporter = (update: {
+  stageKey: string;
+  stageLabel: string;
+  stageStatus: DetectionStageStatus;
+  detail?: string;
+  durationMs?: number;
+  useAi?: boolean;
+}) => Promise<void>;
+
+function sanitizeRequestId(raw: string) {
+  return String(raw || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .slice(0, 120);
+}
+
+async function writeProgress(requestId: string, payload: Record<string, any>) {
+  const id = sanitizeRequestId(requestId);
+  if (!id) return;
+  const expiresAt = new Date(Date.now() + PROGRESS_TTL_HOURS * 60 * 60 * 1000);
+  await adminDb()
+    .collection(PROGRESS_COL)
+    .doc(id)
+    .set(
+      {
+        ...payload,
+        requestId: id,
+        updatedAt: new Date().toISOString(),
+        expiresAt,
+      },
+      { merge: true }
+    );
+}
 
 async function decodeBarcodeWithZxing(imageBuffer: Buffer): Promise<string> {
   try {
@@ -242,6 +315,62 @@ async function decodeBarcodeWithZxing(imageBuffer: Buffer): Promise<string> {
   }
 }
 
+function sharpCanReadPdf() {
+  try {
+    const req = eval("require") as NodeRequire;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const sharp = req("sharp") as any;
+    return Boolean(sharp?.format?.pdf?.input?.buffer || sharp?.format?.pdf?.input?.file);
+  } catch {
+    return false;
+  }
+}
+
+async function rasterizePdfWithPoppler(pdfBuffer: Buffer, density = 280): Promise<Buffer | null> {
+  const tmpBase = join(tmpdir(), "actas-renombrar-");
+  const dir = await mkdtemp(tmpBase);
+  const src = join(dir, "in.pdf");
+  const outPrefix = join(dir, "page");
+  const outPng = `${outPrefix}.png`;
+  try {
+    await writeFile(src, pdfBuffer);
+    await execFileAsync("pdftoppm", ["-f", "1", "-singlefile", "-r", String(density), "-png", src, outPrefix], {
+      windowsHide: true,
+    });
+    const png = await readFile(outPng);
+    if (!png.length) return null;
+    return png;
+  } catch {
+    return null;
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => null);
+  }
+}
+
+async function rasterizePdfFirstPageToPng(
+  pdfBuffer: Buffer,
+  density = 280
+): Promise<{ png: Buffer; mode: "sharp_pdf" | "poppler_pdftoppm" } | null> {
+  try {
+    const req = eval("require") as NodeRequire;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const sharp = req("sharp") as any;
+    if (sharpCanReadPdf()) {
+      const png = await sharp(pdfBuffer, { density, page: 0, failOn: "none" })
+        .flatten({ background: "#ffffff" })
+        .png()
+        .toBuffer();
+      if (png.length) return { png, mode: "sharp_pdf" };
+    }
+  } catch {
+    // fallback to poppler
+  }
+
+  const popplerPng = await rasterizePdfWithPoppler(pdfBuffer, density);
+  if (popplerPng?.length) return { png: popplerPng, mode: "poppler_pdftoppm" };
+  return null;
+}
+
 async function extractActaFromPdfByBarcodeDecoder(pdfBuffer: Buffer): Promise<ActaDetection> {
   try {
     const req = eval("require") as NodeRequire;
@@ -250,7 +379,11 @@ async function extractActaFromPdfByBarcodeDecoder(pdfBuffer: Buffer): Promise<Ac
     // Si no esta instalado, no rompe: sigue con siguientes capas.
     req("@zxing/library");
 
-    const base = sharp(pdfBuffer, { density: 280, page: 0, failOn: "none" }).flatten({ background: "#ffffff" });
+    const raster = await rasterizePdfFirstPageToPng(pdfBuffer, 280);
+    if (!raster?.png) {
+      return { acta: null, source: null, detail: "ZXING_NO_RASTER_ENGINE", attempts: 1 };
+    }
+    const base = sharp(raster.png, { failOn: "none" }).flatten({ background: "#ffffff" });
     const meta = await base.metadata();
     const width = Number(meta.width || 0);
     const height = Number(meta.height || 0);
@@ -324,7 +457,7 @@ async function extractActaFromPdfByBarcodeDecoder(pdfBuffer: Buffer): Promise<Ac
         return {
           acta,
           source: "pdf_text",
-          detail: `Detectada por ZXING (${v.label})`,
+          detail: `Detectada por ZXING (${v.label}; ${raster.mode})`,
           attempts: variants.length,
         };
       }
@@ -412,7 +545,11 @@ async function extractActaFromPdfByAiImagePasses(fileName: string, pdfBuffer: Bu
     // sharp ya esta presente en el lockfile del workspace.
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const sharp = require("sharp") as any;
-    const base = sharp(pdfBuffer, { density: 260, page: 0, failOn: "none" }).flatten({ background: "#ffffff" });
+    const raster = await rasterizePdfFirstPageToPng(pdfBuffer, 260);
+    if (!raster?.png) {
+      return { acta: null, source: null, detail: `No se pudo rasterizar PDF (${fileName})`, attempts: 1 };
+    }
+    const base = sharp(raster.png, { failOn: "none" }).flatten({ background: "#ffffff" });
     const meta = await base.metadata();
     const width = Number(meta.width || 0);
     const height = Number(meta.height || 0);
@@ -474,7 +611,7 @@ async function extractActaFromPdfByAiImagePasses(fileName: string, pdfBuffer: Bu
     return {
       acta: null,
       source: null,
-      detail: details.join("; "),
+      detail: `${details.join("; ")}; raster=${raster.mode}`,
       attempts: passes.length,
     };
   } catch (e: any) {
@@ -487,61 +624,423 @@ async function extractActaFromPdfByAiImagePasses(fileName: string, pdfBuffer: Bu
   }
 }
 
-async function extractActaFromPdf(fileName: string, pdfBuffer: Buffer): Promise<ActaDetection> {
-  // 1) Heuristica local por texto embebido en PDF (cuando existe).
-  const candidates = [
-    pdfBuffer.toString("utf8"),
-    pdfBuffer.toString("latin1"),
-  ];
-  for (const text of candidates) {
-    const acta = extractActaByRegex(text) || extractActaByLooseDigits(text);
-    if (acta) {
+async function extractActaFromPdfByDeterministicEngine(fileName: string, pdfBuffer: Buffer): Promise<ActaDetection> {
+  if (!ACTA_ENGINE_URL) {
+    return { acta: null, source: null, detail: "ENGINE_NOT_CONFIGURED", attempts: 1 };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ACTA_ENGINE_TIMEOUT_MS);
+  try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (ACTA_ENGINE_BEARER) headers.Authorization = `Bearer ${ACTA_ENGINE_BEARER}`;
+
+    const resp = await fetch(ACTA_ENGINE_URL, {
+      method: "POST",
+      headers,
+      signal: controller.signal,
+      body: JSON.stringify({
+        fileName,
+        mimeType: "application/pdf",
+        pdfBase64: pdfBuffer.toString("base64"),
+      }),
+    });
+
+    const raw = await resp.text();
+    if (!resp.ok) {
       return {
-        acta,
-        source: "pdf_text",
-        detail: "Detectada por texto embebido en PDF (regex deterministico)",
+        acta: null,
+        source: null,
+        detail: `ENGINE_HTTP_${resp.status}${raw ? `: ${raw.slice(0, 180)}` : ""}`,
         attempts: 1,
       };
     }
-  }
 
-  // 2) Parser deterministico de streams PDF (literales/hex) antes de IA.
-  const streamActa = extractActaFromPdfStreams(pdfBuffer);
-  if (streamActa) {
-    return {
-      acta: streamActa,
-      source: "pdf_text",
-      detail: "Detectada por parser deterministico de stream PDF",
-      attempts: 1,
-    };
-  }
+    let payload: any = null;
+    try {
+      payload = raw ? JSON.parse(raw) : null;
+    } catch {
+      // no-op
+    }
 
-  // 3) Decoder real de barcode (ZXING) sobre ROI + variantes.
-  const zxing = await extractActaFromPdfByBarcodeDecoder(pdfBuffer);
-  if (zxing.acta) return zxing;
+    const rawActa =
+      payload?.acta ??
+      payload?.codigoActa ??
+      payload?.code ??
+      payload?.data?.acta ??
+      payload?.result?.acta ??
+      "";
+    const acta = normalizeActaStrict(String(rawActa || ""));
+    if (acta) {
+      return {
+        acta,
+        source: "det_engine",
+        detail: "Detectada por motor deterministico externo",
+        attempts: 1,
+      };
+    }
 
-  // 4) IA sobre imagen (ROI sup-der con margen + preprocesado + pagina completa).
-  const aiImage = await extractActaFromPdfByAiImagePasses(fileName, pdfBuffer);
-  if (aiImage.acta) return aiImage;
-
-  // 5) Fallback IA directo sobre PDF.
-  try {
-    const ai = await extractActaFromPdfByAi(fileName, pdfBuffer, "roi");
-    if (ai.acta) return ai;
-    const aiRetry = await extractActaFromPdfByAi(fileName, pdfBuffer, "full");
-    if (aiRetry.acta) return { ...aiRetry, attempts: 2 };
     return {
       acta: null,
       source: null,
-      detail: `${zxing.detail}; ${aiImage.detail}; ${ai.detail}; ${aiRetry.detail}`,
-      attempts: 2,
+      detail: String(payload?.detail || payload?.message || "ENGINE_NO_MATCH"),
+      attempts: 1,
     };
   } catch (e: any) {
     return {
       acta: null,
       source: null,
+      detail: `ENGINE_ERROR: ${String(e?.message || "UNKNOWN")}`,
+      attempts: 1,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function extractActaFromPdf(
+  fileName: string,
+  pdfBuffer: Buffer,
+  onProgress?: DetectionProgressReporter,
+  options?: {
+    skipEmbeddedText?: boolean;
+    forceEngineActive?: boolean;
+  }
+): Promise<ActaDetection> {
+  const trace: DetectionTraceStep[] = [];
+  const skipEmbeddedText = Boolean(options?.skipEmbeddedText);
+  const engineMode: "off" | "shadow" | "active" = options?.forceEngineActive ? "active" : ACTA_ENGINE_MODE;
+  const pushTrace = async (
+    stage: string,
+    label: string,
+    status: Exclude<DetectionStageStatus, "running">,
+    detail: string,
+    durationMs: number,
+    useAi = false
+  ) => {
+    trace.push({ stage, label, status, detail, durationMs });
+    if (onProgress) {
+      await onProgress({
+        stageKey: stage,
+        stageLabel: label,
+        stageStatus: status,
+        detail,
+        durationMs,
+        useAi,
+      });
+    }
+  };
+
+  // 1) y 2) Heuristicas rapidas por texto/streams embebidos.
+  if (!skipEmbeddedText) {
+    if (onProgress) {
+      await onProgress({
+        stageKey: "pdf_text_scan",
+        stageLabel: "Analizando texto embebido",
+        stageStatus: "running",
+        detail: "Regex deterministico sobre contenido del PDF",
+        useAi: false,
+      });
+    }
+    const tPdfText = Date.now();
+    const candidates = [
+      pdfBuffer.toString("utf8"),
+      pdfBuffer.toString("latin1"),
+    ];
+    for (const text of candidates) {
+      const acta = extractActaByRegex(text) || extractActaByLooseDigits(text);
+      if (acta) {
+        return {
+          acta,
+          source: "pdf_text",
+          detail: "Detectada por texto embebido en PDF (regex deterministico)",
+          attempts: 1,
+          trace: [
+            ...trace,
+            {
+              stage: "pdf_text_scan",
+              label: "Analizando texto embebido",
+              status: "done",
+              detail: "Detectada por texto embebido en PDF (regex deterministico)",
+              durationMs: Date.now() - tPdfText,
+            },
+          ],
+        };
+      }
+    }
+    await pushTrace(
+      "pdf_text_scan",
+      "Analizando texto embebido",
+      "miss",
+      "Sin coincidencias por regex deterministico",
+      Date.now() - tPdfText
+    );
+
+    if (onProgress) {
+      await onProgress({
+        stageKey: "pdf_stream_parser",
+        stageLabel: "Analizando streams PDF",
+        stageStatus: "running",
+        detail: "Parser deterministico de literales/hex",
+        useAi: false,
+      });
+    }
+    const tStream = Date.now();
+    const streamActa = extractActaFromPdfStreams(pdfBuffer);
+    if (streamActa) {
+      return {
+        acta: streamActa,
+        source: "pdf_text",
+        detail: "Detectada por parser deterministico de stream PDF",
+        attempts: 1,
+        trace: [
+          ...trace,
+          {
+            stage: "pdf_stream_parser",
+            label: "Analizando streams PDF",
+            status: "done",
+            detail: "Detectada por parser deterministico de stream PDF",
+            durationMs: Date.now() - tStream,
+          },
+        ],
+      };
+    }
+    await pushTrace(
+      "pdf_stream_parser",
+      "Analizando streams PDF",
+      "miss",
+      "Sin codigo valido en streams PDF",
+      Date.now() - tStream
+    );
+  } else {
+    await pushTrace(
+      "pdf_text_scan",
+      "Analizando texto embebido",
+      "miss",
+      "Omitido en modo riguroso",
+      0
+    );
+    await pushTrace(
+      "pdf_stream_parser",
+      "Analizando streams PDF",
+      "miss",
+      "Omitido en modo riguroso",
+      0
+    );
+  }
+
+  // 3) Decoder real de barcode (ZXING) sobre ROI + variantes.
+  if (onProgress) {
+    await onProgress({
+      stageKey: "barcode_zxing",
+      stageLabel: "Decodificando barcode con ZXING",
+      stageStatus: "running",
+      detail: "ROI + variantes de imagen",
+      useAi: false,
+    });
+  }
+  const tZxing = Date.now();
+  const zxing = await extractActaFromPdfByBarcodeDecoder(pdfBuffer);
+  if (zxing.acta) {
+    return {
+      ...zxing,
+      trace: [
+        ...trace,
+        {
+          stage: "barcode_zxing",
+          label: "Decodificando barcode con ZXING",
+          status: "done",
+          detail: zxing.detail,
+          durationMs: Date.now() - tZxing,
+        },
+      ],
+    };
+  }
+  await pushTrace(
+    "barcode_zxing",
+    "Decodificando barcode con ZXING",
+    "miss",
+    zxing.detail,
+    Date.now() - tZxing
+  );
+
+  // 4) Motor deterministico externo opcional (feature-flag), antes de IA.
+  if (engineMode !== "off") {
+    if (onProgress) {
+      await onProgress({
+        stageKey: "det_engine",
+        stageLabel: "Motor deterministico externo",
+        stageStatus: "running",
+        detail: engineMode === "active" ? "Modo active (resultado aplicado)" : "Modo shadow (solo observacion)",
+        useAi: false,
+      });
+    }
+
+    const tEngine = Date.now();
+    const engine = await extractActaFromPdfByDeterministicEngine(fileName, pdfBuffer);
+    const engineStatus: Exclude<DetectionStageStatus, "running"> = engine.acta
+      ? "done"
+      : engine.detail.startsWith("ENGINE_ERROR") || engine.detail.startsWith("ENGINE_HTTP_")
+      ? "error"
+      : "miss";
+
+    if (engine.acta && engineMode === "active") {
+      return {
+        ...engine,
+        trace: [
+          ...trace,
+          {
+            stage: "det_engine",
+            label: "Motor deterministico externo",
+            status: "done",
+            detail: engine.detail,
+            durationMs: Date.now() - tEngine,
+          },
+        ],
+      };
+    }
+
+    await pushTrace(
+      "det_engine",
+      "Motor deterministico externo",
+      engineStatus,
+      engine.acta && engineMode === "shadow" ? `${engine.detail} (shadow)` : engine.detail,
+      Date.now() - tEngine
+    );
+  }
+
+  // 5) IA sobre imagen (ROI sup-der con margen + preprocesado + pagina completa).
+  if (onProgress) {
+    await onProgress({
+      stageKey: "ai_image_passes",
+      stageLabel: "Analizando imagen con IA",
+      stageStatus: "running",
+      detail: "ROI superior derecha + pagina completa",
+      useAi: true,
+    });
+  }
+  const tAiImg = Date.now();
+  const aiImage = await extractActaFromPdfByAiImagePasses(fileName, pdfBuffer);
+  if (aiImage.acta) {
+    return {
+      ...aiImage,
+      trace: [
+        ...trace,
+        {
+          stage: "ai_image_passes",
+          label: "Analizando imagen con IA",
+          status: "done",
+          detail: aiImage.detail,
+          durationMs: Date.now() - tAiImg,
+        },
+      ],
+    };
+  }
+  await pushTrace(
+    "ai_image_passes",
+    "Analizando imagen con IA",
+    "miss",
+    aiImage.detail,
+    Date.now() - tAiImg,
+    true
+  );
+
+  // 6) Fallback IA directo sobre PDF.
+  if (onProgress) {
+    await onProgress({
+      stageKey: "ai_pdf_roi",
+      stageLabel: "Analizando PDF completo con IA (ROI)",
+      stageStatus: "running",
+      detail: "Paso ROI en archivo PDF",
+      useAi: true,
+    });
+  }
+  const tAiRoi = Date.now();
+  try {
+    const ai = await extractActaFromPdfByAi(fileName, pdfBuffer, "roi");
+    if (ai.acta) {
+      return {
+        ...ai,
+        trace: [
+          ...trace,
+          {
+            stage: "ai_pdf_roi",
+            label: "Analizando PDF completo con IA (ROI)",
+            status: "done",
+            detail: ai.detail,
+            durationMs: Date.now() - tAiRoi,
+          },
+        ],
+      };
+    }
+    await pushTrace(
+      "ai_pdf_roi",
+      "Analizando PDF completo con IA (ROI)",
+      "miss",
+      ai.detail,
+      Date.now() - tAiRoi,
+      true
+    );
+
+    if (onProgress) {
+      await onProgress({
+        stageKey: "ai_pdf_full",
+        stageLabel: "Analizando PDF completo con IA (full page)",
+        stageStatus: "running",
+        detail: "Paso full page en archivo PDF",
+        useAi: true,
+      });
+    }
+    const tAiFull = Date.now();
+    const aiRetry = await extractActaFromPdfByAi(fileName, pdfBuffer, "full");
+    if (aiRetry.acta) {
+      return {
+        ...aiRetry,
+        attempts: 2,
+        trace: [
+          ...trace,
+          {
+            stage: "ai_pdf_full",
+            label: "Analizando PDF completo con IA (full page)",
+            status: "done",
+            detail: aiRetry.detail,
+            durationMs: Date.now() - tAiFull,
+          },
+        ],
+      };
+    }
+    await pushTrace(
+      "ai_pdf_full",
+      "Analizando PDF completo con IA (full page)",
+      "miss",
+      aiRetry.detail,
+      Date.now() - tAiFull,
+      true
+    );
+    return {
+      acta: null,
+      source: null,
+      detail: `${zxing.detail}; ${aiImage.detail}; ${ai.detail}; ${aiRetry.detail}`,
+      attempts: 2,
+      trace,
+    };
+  } catch (e: any) {
+    await pushTrace(
+      "ai_pdf_roi",
+      "Analizando PDF completo con IA (ROI)",
+      "error",
+      `Error IA PDF: ${String(e?.message || "UNKNOWN_AI_ERROR")}`,
+      Date.now() - tAiRoi,
+      true
+    );
+    return {
+      acta: null,
+      source: null,
       detail: `${zxing.detail}; ${aiImage.detail}; Error IA PDF: ${String(e?.message || "UNKNOWN_AI_ERROR")}`,
       attempts: 2,
+      trace,
     };
   }
 
@@ -549,6 +1048,7 @@ async function extractActaFromPdf(fileName: string, pdfBuffer: Buffer): Promise<
     acta: null,
     source: null,
     detail: "No se detecto acta por heuristica deterministica ni por IA",
+    trace,
   };
 }
 
@@ -761,9 +1261,10 @@ async function autoClassifyUploaded(
   srcPath: string,
   fileName: string,
   dateFolder: string,
-  pdfBuffer: Buffer
+  pdfBuffer: Buffer,
+  onProgress?: DetectionProgressReporter
 ) {
-  const detected = await extractActaFromPdf(fileName, pdfBuffer);
+  const detected = await extractActaFromPdf(fileName, pdfBuffer, onProgress);
   const acta = detected.acta || "";
   if (!acta) {
     const dstPath = await moveToFolder(bucket, srcPath, "error", dateFolder, fileName);
@@ -775,12 +1276,14 @@ async function autoClassifyUploaded(
       finalName: splitPath(dstPath).fileName,
       reason: "ACTA_NO_DETECTADA_EN_PDF",
       detail: detected.detail,
+      attempts: Number(detected.attempts || 0),
+      trace: detected.trace || [],
     };
   }
 
   const found = await resolveClienteFromActa(acta);
   if (!found) {
-    if (detected.source === "pdf_text") {
+    if (detected.source !== "ai_pdf") {
       const aiRetry = await extractActaFromPdfByAi(fileName, pdfBuffer, "full").catch(() => null);
       const aiActa = aiRetry?.acta || "";
       if (aiActa && aiActa !== acta) {
@@ -796,6 +1299,8 @@ async function autoClassifyUploaded(
             finalName: splitPath(dstPathAi).fileName,
             reason: "RENOMBRADO_OK",
             detail: `Renombrado por reintento IA a ${targetNameAi}`,
+            attempts: Number(detected.attempts || 0),
+            trace: detected.trace || [],
           };
         }
       }
@@ -810,6 +1315,8 @@ async function autoClassifyUploaded(
       finalName: splitPath(dstPath).fileName,
       reason: "SIN_CLIENTE_ASOCIADO",
       detail: `Acta detectada (${acta}) pero sin cliente/codigo en Firestore`,
+      attempts: Number(detected.attempts || 0),
+      trace: detected.trace || [],
     };
   }
 
@@ -823,6 +1330,93 @@ async function autoClassifyUploaded(
     finalName: splitPath(dstPath).fileName,
     reason: "RENOMBRADO_OK",
     detail: `Renombrado a ${targetName}`,
+    attempts: Number(detected.attempts || 0),
+    trace: detected.trace || [],
+  };
+}
+
+async function reanalyzeErrorFileRigorous(
+  bucket: any,
+  fromPath: string,
+  dateFolder: string,
+  onProgress?: DetectionProgressReporter
+) {
+  const split = splitPath(fromPath);
+  const fileName = ensurePdfName(split.fileName || "archivo.pdf");
+  const srcFile = bucket.file(fromPath);
+  const [exists] = await srcFile.exists();
+  if (!exists) {
+    return {
+      originalName: fileName,
+      acta: null,
+      source: null,
+      status: "error" as const,
+      finalPath: fromPath,
+      finalName: fileName,
+      reason: "SOURCE_NOT_FOUND",
+      detail: "El archivo ya no existe en la carpeta error",
+      attempts: 0,
+      trace: [],
+      durationMs: 0,
+    };
+  }
+
+  const startedAt = Date.now();
+  const [buffer] = await srcFile.download();
+  const detected = await extractActaFromPdf(fileName, buffer, onProgress, {
+    skipEmbeddedText: true,
+    forceEngineActive: true,
+  });
+  const acta = detected.acta || "";
+  if (!acta) {
+    return {
+      originalName: fileName,
+      acta: null,
+      source: detected.source,
+      status: "error" as const,
+      finalPath: fromPath,
+      finalName: fileName,
+      reason: "ACTA_NO_DETECTADA_EN_PDF",
+      detail: `${detected.detail} (reanálisis riguroso)`,
+      attempts: Number(detected.attempts || 0),
+      trace: detected.trace || [],
+      durationMs: Date.now() - startedAt,
+    };
+  }
+
+  const found = await resolveClienteFromActa(acta);
+  if (!found) {
+    return {
+      originalName: fileName,
+      acta,
+      source: detected.source,
+      status: "error" as const,
+      finalPath: fromPath,
+      finalName: fileName,
+      reason: "SIN_CLIENTE_ASOCIADO",
+      detail: `Acta detectada (${acta}) pero sin cliente/codigo en Firestore (reanálisis riguroso)`,
+      attempts: Number(detected.attempts || 0),
+      trace: detected.trace || [],
+      durationMs: Date.now() - startedAt,
+    };
+  }
+
+  const targetName = `${safeNameStrict(found.codigoCliente)} - ${safeNameStrict(found.cliente)}.pdf`;
+  const dstPath = await ensureUniqueDestinationPath(bucket, `${ROOT_PREFIX}/ok/${dateFolder}`, targetName);
+  await srcFile.move(dstPath);
+
+  return {
+    originalName: fileName,
+    acta,
+    source: detected.source,
+    status: "ok" as const,
+    finalPath: dstPath,
+    finalName: splitPath(dstPath).fileName,
+    reason: "RENOMBRADO_OK",
+    detail: `Renombrado a ${targetName} (reanálisis riguroso)`,
+    attempts: Number(detected.attempts || 0),
+    trace: detected.trace || [],
+    durationMs: Date.now() - startedAt,
   };
 }
 
@@ -864,6 +1458,16 @@ export async function GET(req: Request) {
   try {
     await resolveSession();
     const { searchParams } = new URL(req.url);
+    const requestId = sanitizeRequestId(String(searchParams.get("requestId") || ""));
+    if (requestId) {
+      const snap = await adminDb().collection(PROGRESS_COL).doc(requestId).get();
+      return NextResponse.json({
+        ok: true,
+        requestId,
+        progress: snap.exists ? (snap.data() as any) : null,
+      });
+    }
+
     const dateFolder = normalizeDateFolder(String(searchParams.get("dateFolder") || ""));
     if (!dateFolder) {
       return NextResponse.json({ ok: false, error: "DATE_REQUIRED_YYYY_MM_DD" }, { status: 400 });
@@ -907,6 +1511,7 @@ export async function POST(req: Request) {
 
     const form = await req.formData();
     const dateFolder = normalizeDateFolder(String(form.get("dateFolder") || ""));
+    const baseRequestId = sanitizeRequestId(String(form.get("requestId") || ""));
     if (!dateFolder) {
       return NextResponse.json({ ok: false, error: "DATE_REQUIRED_YYYY_MM_DD" }, { status: 400 });
     }
@@ -925,55 +1530,134 @@ export async function POST(req: Request) {
     const uploaded: Array<{
       originalName: string;
       acta: string | null;
-      source: "pdf_text" | "ai_pdf" | null;
+      source: "pdf_text" | "det_engine" | "ai_pdf" | null;
       status: "ok" | "error";
       finalPath: string;
       finalName: string;
       reason: string;
       detail: string;
+      attempts: number;
+      trace: DetectionTraceStep[];
+      durationMs: number;
     }> = [];
 
-    for (const file of rawFiles) {
+    for (let idx = 0; idx < rawFiles.length; idx += 1) {
+      const file = rawFiles[idx];
       const fileStartedAt = Date.now();
+      const requestId = sanitizeRequestId(
+        rawFiles.length === 1
+          ? baseRequestId
+          : `${baseRequestId || `r_${Date.now().toString(36)}`}_${String(idx + 1)}`
+      );
       const originalName = String(file.name || "archivo.pdf");
+      if (requestId) {
+        await writeProgress(requestId, {
+          status: "processing",
+          dateFolder,
+          fileName: originalName,
+          stageKey: "upload_precheck",
+          stageLabel: "Validando archivo",
+          stageStatus: "running",
+          useAi: false,
+          startedAt: new Date().toISOString(),
+        });
+      }
       const isPdf = originalName.toLowerCase().endsWith(".pdf") || String(file.type || "").toLowerCase().includes("pdf");
       if (!isPdf) {
-        uploaded.push({
+        const row = {
           originalName,
           acta: null,
           source: null,
-          status: "error",
+          status: "error" as const,
           finalPath: "",
           finalName: "",
           reason: "NO_PDF",
           detail: "El archivo no es PDF",
-        });
+          attempts: 0,
+          trace: [],
+          durationMs: Date.now() - fileStartedAt,
+        };
+        uploaded.push(row);
+        if (requestId) {
+          await writeProgress(requestId, {
+            status: "error",
+            stageKey: "upload_precheck",
+            stageLabel: "Validando archivo",
+            stageStatus: "error",
+            detail: row.detail,
+            durationMs: row.durationMs,
+            useAi: false,
+            completedAt: new Date().toISOString(),
+          });
+        }
         continue;
       }
       const fileBytes = Number(file.size || 0);
       if (!fileBytes || fileBytes > MAX_PDF_BYTES) {
-        uploaded.push({
+        const row = {
           originalName,
           acta: null,
           source: null,
-          status: "error",
+          status: "error" as const,
           finalPath: "",
           finalName: "",
           reason: "PDF_SIZE_INVALID",
           detail: `El PDF debe tener tamaño entre 1 byte y ${Math.floor(MAX_PDF_BYTES / (1024 * 1024))} MB`,
-        });
+          attempts: 0,
+          trace: [],
+          durationMs: Date.now() - fileStartedAt,
+        };
+        uploaded.push(row);
+        if (requestId) {
+          await writeProgress(requestId, {
+            status: "error",
+            stageKey: "upload_precheck",
+            stageLabel: "Validando archivo",
+            stageStatus: "error",
+            detail: row.detail,
+            durationMs: row.durationMs,
+            useAi: false,
+            completedAt: new Date().toISOString(),
+          });
+        }
         continue;
       }
 
       const buffer = Buffer.from(await file.arrayBuffer());
       const fileHash = hashBuffer(buffer);
+      if (requestId) {
+        await writeProgress(requestId, {
+          fileHash,
+          stageKey: "cache_lookup",
+          stageLabel: "Buscando en cache",
+          stageStatus: "running",
+          useAi: false,
+        });
+      }
       const cached = await loadCachedResult(dateFolder, fileHash);
       if (cached) {
         const cachedRow = {
           originalName,
           ...cached,
+          attempts: 0,
+          trace: [],
+          durationMs: Date.now() - fileStartedAt,
         };
         uploaded.push(cachedRow);
+        if (requestId) {
+          await writeProgress(requestId, {
+            status: cachedRow.status,
+            stageKey: "cache_lookup",
+            stageLabel: "Buscando en cache",
+            stageStatus: "done",
+            detail: "Resultado recuperado por cache hash",
+            durationMs: cachedRow.durationMs,
+            source: cachedRow.source,
+            reason: "IDEMPOTENTE_CACHE",
+            useAi: false,
+            completedAt: new Date().toISOString(),
+          });
+        }
         await writeProcessLog({
           dateFolder,
           fileName: originalName,
@@ -991,6 +1675,14 @@ export async function POST(req: Request) {
       const safeOriginal = ensurePdfName(originalName);
       const inboxDir = `${ROOT_PREFIX}/inbox/${dateFolder}`;
       const inboxPath = await ensureUniqueDestinationPath(bucket, inboxDir, safeOriginal);
+      if (requestId) {
+        await writeProgress(requestId, {
+          stageKey: "upload_storage",
+          stageLabel: "Subiendo PDF a Storage",
+          stageStatus: "running",
+          useAi: false,
+        });
+      }
 
       await bucket.file(inboxPath).save(buffer, {
         contentType: "application/pdf",
@@ -1003,12 +1695,51 @@ export async function POST(req: Request) {
         },
       });
 
-      const processed = await autoClassifyUploaded(bucket, inboxPath, safeOriginal, dateFolder, buffer);
+      if (requestId) {
+        await writeProgress(requestId, {
+          stageKey: "classify",
+          stageLabel: "Clasificando acta",
+          stageStatus: "running",
+          useAi: false,
+        });
+      }
+
+      const processed = await autoClassifyUploaded(bucket, inboxPath, safeOriginal, dateFolder, buffer, async (update) => {
+        if (!requestId) return;
+        await writeProgress(requestId, {
+          status: "processing",
+          stageKey: update.stageKey,
+          stageLabel: update.stageLabel,
+          stageStatus: update.stageStatus,
+          detail: update.detail || "",
+          stageDurationMs: Number(update.durationMs || 0),
+          useAi: Boolean(update.useAi),
+        });
+      });
       const row = {
         originalName,
         ...processed,
+        durationMs: Date.now() - fileStartedAt,
       };
       uploaded.push(row);
+      if (requestId) {
+        const usedAi = row.source === "ai_pdf" || (row.trace || []).some((x) => x.stage.startsWith("ai_"));
+        await writeProgress(requestId, {
+          status: row.status,
+          stageKey: "completed",
+          stageLabel: row.status === "ok" ? "Completado" : "Completado con error",
+          stageStatus: row.status === "ok" ? "done" : "error",
+          detail: row.detail,
+          source: row.source,
+          reason: row.reason,
+          useAi: usedAi,
+          attempts: row.attempts,
+          trace: row.trace,
+          durationMs: row.durationMs,
+          finalPath: row.finalPath,
+          completedAt: new Date().toISOString(),
+        });
+      }
       await saveResultIndex(dateFolder, fileHash, row);
       await writeProcessLog({
         dateFolder,
@@ -1019,7 +1750,9 @@ export async function POST(req: Request) {
         reason: row.reason,
         detail: row.detail,
         finalPath: row.finalPath,
-        durationMs: Date.now() - fileStartedAt,
+        durationMs: row.durationMs,
+        attempts: row.attempts,
+        trace: row.trace,
         fromCache: false,
       });
     }
@@ -1051,8 +1784,67 @@ export async function PATCH(req: Request) {
   try {
     await resolveSession();
     const body = await req.json().catch(() => ({}));
+    const action = String(body?.action || "").trim();
     const dateFolder = normalizeDateFolder(String(body?.dateFolder || ""));
     const fromPath = String(body?.fromPath || "").trim();
+    const requestId = sanitizeRequestId(String(body?.requestId || ""));
+
+    if (action === "reprocess_rigorous") {
+      if (!dateFolder) return NextResponse.json({ ok: false, error: "DATE_REQUIRED_YYYY_MM_DD" }, { status: 400 });
+      if (!fromPath || !isAllowedPath(fromPath)) {
+        return NextResponse.json({ ok: false, error: "INVALID_SOURCE_PATH" }, { status: 400 });
+      }
+      const split = splitPath(fromPath);
+      if (split.folder !== "error" || split.dateFolder !== dateFolder) {
+        return NextResponse.json({ ok: false, error: "SOURCE_MUST_BE_ERROR_OF_DATE" }, { status: 400 });
+      }
+      if (requestId) {
+        await writeProgress(requestId, {
+          status: "processing",
+          dateFolder,
+          fileName: split.fileName,
+          stageKey: "rigorous_reprocess",
+          stageLabel: "Reanalisis riguroso",
+          stageStatus: "running",
+          detail: "Omitiendo lectura rapida por texto embebido",
+          useAi: false,
+          startedAt: new Date().toISOString(),
+        });
+      }
+      const bucket = adminStorageBucket();
+      const result = await reanalyzeErrorFileRigorous(bucket, fromPath, dateFolder, async (update) => {
+        if (!requestId) return;
+        await writeProgress(requestId, {
+          status: "processing",
+          stageKey: update.stageKey,
+          stageLabel: update.stageLabel,
+          stageStatus: update.stageStatus,
+          detail: update.detail || "",
+          stageDurationMs: Number(update.durationMs || 0),
+          useAi: Boolean(update.useAi),
+        });
+      });
+      if (requestId) {
+        const usedAi = result.source === "ai_pdf" || (result.trace || []).some((x) => x.stage.startsWith("ai_"));
+        await writeProgress(requestId, {
+          status: result.status,
+          stageKey: "completed",
+          stageLabel: result.status === "ok" ? "Completado" : "Completado con error",
+          stageStatus: result.status === "ok" ? "done" : "error",
+          detail: result.detail,
+          source: result.source,
+          reason: result.reason,
+          useAi: usedAi,
+          attempts: result.attempts,
+          trace: result.trace,
+          durationMs: result.durationMs,
+          finalPath: result.finalPath,
+          completedAt: new Date().toISOString(),
+        });
+      }
+      return NextResponse.json({ ok: true, mode: "rigorous", result });
+    }
+
     const newName = ensurePdfName(String(body?.newName || ""));
 
     if (!dateFolder) return NextResponse.json({ ok: false, error: "DATE_REQUIRED_YYYY_MM_DD" }, { status: 400 });

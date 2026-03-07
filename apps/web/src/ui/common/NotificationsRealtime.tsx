@@ -35,9 +35,13 @@ export function NotificationsRealtime() {
     return () => unsub();
   }, []);
 
-  // Clic en cualquier parte => cerrar toasts visibles
+  // Clic fuera del toast => cerrar toasts visibles
   React.useEffect(() => {
-    const dismissAll = () => toast.dismiss();
+    const dismissAll = (ev: MouseEvent) => {
+      const target = ev.target as Element | null;
+      if (target?.closest?.("[data-sonner-toast]")) return;
+      toast.dismiss();
+    };
     window.addEventListener("mousedown", dismissAll);
     return () => window.removeEventListener("mousedown", dismissAll);
   }, []);

@@ -27,5 +27,16 @@ export async function buildAdminNav(params: {
     })
     .filter(Boolean) as AdminNavItem[];
 
+  // Fallback operativo: mostrar dashboard de Actas aunque aun no exista modulo en Firestore.
+  const canSeeActasRenombrar = params.isAdmin || params.areas.includes("INSTALACIONES");
+  if (canSeeActasRenombrar && !items.some((it) => it.href === "/admin/actas_renombrar")) {
+    items.push({
+      key: "ACTAS_RENOMBRAR",
+      label: "Actas Renombrar",
+      href: "/admin/actas_renombrar",
+      adminOnly: false,
+    });
+  }
+
   return [{ key: "DASHBOARD", label: "Dashboard", href: "/admin" }, ...items];
 }

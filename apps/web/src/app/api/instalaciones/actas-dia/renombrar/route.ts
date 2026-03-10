@@ -17,9 +17,11 @@ const ALLOWED_FOLDERS = new Set(["inbox", "ok", "error"]);
 const LOGS_COL = "actas_renombrado_logs";
 const INDEX_COL = "actas_renombrado_index";
 const PROGRESS_COL = "actas_renombrado_progress";
+const LOCKS_COL = "actas_renombrado_locks";
 const PROGRESS_TTL_HOURS = 72;
 const MAX_FILES_PER_REQUEST = 300;
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
+const FILE_LOCK_TTL_MS = 45 * 60 * 1000;
 const execFileAsync = promisify(execFile);
 
 type DeterministicEngineMode = "off" | "shadow" | "active";
@@ -30,20 +32,77 @@ function normalizeEngineMode(raw: string): DeterministicEngineMode {
   return "off";
 }
 
-const ACTA_ENGINE_MODE = normalizeEngineMode(process.env.ACTA_ENGINE_MODE || "");
 const ACTA_ENGINE_URL = String(process.env.ACTA_ENGINE_URL || "").trim();
 const ACTA_ENGINE_BEARER = String(process.env.ACTA_ENGINE_BEARER || "").trim();
 const ACTA_ENGINE_TIMEOUT_MS = Math.max(1000, Math.min(20000, Number(process.env.ACTA_ENGINE_TIMEOUT_MS || 7000)));
+const ACTA_ENGINE_MODE: DeterministicEngineMode = (() => {
+  const parsed = normalizeEngineMode(process.env.ACTA_ENGINE_MODE || "");
+  if (parsed === "off" && ACTA_ENGINE_URL) return "active";
+  return parsed;
+})();
 
 type DayStats = {
   instalacionesDia: number;
   actasOkDia: number;
   faltanActas: number;
+  sobranActas: number;
+};
+
+type InstalacionActaItem = {
+  id: string;
+  acta: string;
+  actaDigits: string;
+  codigoCliente: string;
+  cliente: string;
+  fechaOrdenYmd: string;
+  fechaInstalacionYmd: string;
+};
+
+type InstalacionSinActaItem = {
+  id: string;
+  codigoCliente: string;
+  cliente: string;
+  fechaOrdenYmd: string;
+  fechaInstalacionYmd: string;
+};
+
+type DaySnapshot = {
+  instalacionesDia: number;
+  instalacionesConActa: InstalacionActaItem[];
+  instalacionesSinActa: InstalacionSinActaItem[];
+  byActaDigits: Map<string, InstalacionActaItem[]>;
+  byCodigoCliente: Map<string, InstalacionActaItem[]>;
 };
 
 function normalizeDateFolder(raw: string) {
   const v = String(raw || "").trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "";
+}
+
+function normalizeAnyDateToYmd(raw: unknown) {
+  const v = String(raw || "").trim();
+  if (!v) return "";
+  const iso = v.match(/^(\d{4})[-\/](\d{2})[-\/](\d{2})(?:[T\s].*)?$/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const dmy = v.match(/^(\d{2})[-\/](\d{2})[-\/](\d{4})(?:[T\s].*)?$/);
+  if (dmy) return `${dmy[3]}-${dmy[2]}-${dmy[1]}`;
+  return "";
+}
+
+function pickFirstYmd(values: unknown[]) {
+  for (const v of values) {
+    const ymd = normalizeAnyDateToYmd(v);
+    if (ymd) return ymd;
+  }
+  return "";
+}
+
+function pickFirstActaRaw(values: unknown[]) {
+  for (const v of values) {
+    const acta = String(v || "").trim();
+    if (acta) return acta;
+  }
+  return "";
 }
 
 function sanitizeFileName(v: string) {
@@ -72,6 +131,10 @@ function normalizeActa(raw: string) {
   if (!digits) return "";
   if (digits.length <= 3) return digits;
   return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+}
+
+function normalizeActaDigits(raw: string) {
+  return String(raw || "").replace(/\D/g, "");
 }
 
 function normalizeActaStrict(raw: string) {
@@ -1184,6 +1247,83 @@ async function writeProcessLog(payload: Record<string, any>) {
   }
 }
 
+function buildRunId(uid: string, dateFolder: string, baseRequestId: string) {
+  const seed = baseRequestId || `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  return sanitizeRequestId(`${uid}_${dateFolder}_${seed}`.slice(0, 128));
+}
+
+
+function buildFileLockId(dateFolder: string, fileHash: string) {
+  return `${dateFolder}_${fileHash}`;
+}
+
+async function acquireFileLock(params: {
+  lockId: string;
+  dateFolder: string;
+  fileHash: string;
+  uid: string;
+  runId: string;
+  requestId: string;
+  fileName: string;
+}) {
+  const now = Date.now();
+  const expiresAtMs = now + FILE_LOCK_TTL_MS;
+  const db = adminDb();
+  const ref = db.collection(LOCKS_COL).doc(params.lockId);
+  let blockedBy: string | null = null;
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (snap.exists) {
+      const row = (snap.data() as any) || {};
+      const ownerRunId = sanitizeRequestId(String(row.runId || ""));
+      const status = String(row.status || "");
+      const exp = Number(row.expiresAtMs || 0);
+      if (status === "processing" && exp > now && ownerRunId && ownerRunId !== params.runId) {
+        blockedBy = ownerRunId;
+        return;
+      }
+    }
+    tx.set(
+      ref,
+      {
+        lockId: params.lockId,
+        dateFolder: params.dateFolder,
+        fileHash: params.fileHash,
+        uid: params.uid,
+        runId: params.runId,
+        requestId: params.requestId,
+        fileName: params.fileName,
+        status: "processing",
+        startedAt: new Date().toISOString(),
+        expiresAtMs,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  });
+
+  if (blockedBy) return { ok: false as const, blockedBy };
+  return { ok: true as const };
+}
+
+async function releaseFileLock(params: { lockId: string; runId: string }) {
+  try {
+    const db = adminDb();
+    const ref = db.collection(LOCKS_COL).doc(params.lockId);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const row = (snap.data() as any) || {};
+      const ownerRunId = sanitizeRequestId(String(row.runId || ""));
+      if (ownerRunId && ownerRunId !== params.runId) return;
+      tx.delete(ref);
+    });
+  } catch {
+    // no-op
+  }
+}
+
 function splitPath(path: string) {
   const parts = String(path || "").split("/").filter(Boolean);
   return {
@@ -1428,16 +1568,195 @@ async function listByPrefix(bucket: any, prefix: string) {
     .sort((a: any, b: any) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
 }
 
-async function countInstalacionesByDay(dateFolder: string) {
-  const db = adminDb();
-  const [byOrden, byInst] = await Promise.all([
-    db.collection("instalaciones").where("fechaOrdenYmd", "==", dateFolder).select().limit(10000).get(),
-    db.collection("instalaciones").where("fechaInstalacionYmd", "==", dateFolder).select().limit(10000).get(),
+function mapInstalacionActaItem(docId: string, data: any): InstalacionActaItem | null {
+  const actaRaw = pickFirstActaRaw([
+    data?.ACTA,
+    data?.acta,
+    data?.materialesLiquidacion?.acta,
+    data?.liquidacion?.acta,
+    data?.orden?.ACTA,
+    data?.orden?.acta,
+    data?.orden?.codigoActa,
+    data?.orden?.codActa,
   ]);
-  const ids = new Set<string>();
-  byOrden.docs.forEach((d) => ids.add(d.id));
-  byInst.docs.forEach((d) => ids.add(d.id));
-  return ids.size;
+  if (!actaRaw) return null;
+  const acta = normalizeActaStrict(actaRaw) || actaRaw;
+  const actaDigits = normalizeActaDigits(actaRaw);
+  return {
+    id: docId,
+    acta,
+    actaDigits,
+    codigoCliente: String(data?.codigoCliente || data?.orden?.codiSeguiClien || docId || "").trim(),
+    cliente: String(data?.cliente || data?.orden?.cliente || "").trim(),
+    fechaOrdenYmd: pickFirstYmd([
+      data?.fechaOrdenYmd,
+      data?.fechaOrden,
+      data?.orden?.fechaFinVisiYmd,
+      data?.orden?.fechaFinVisi,
+      data?.orden?.fSoliYmd,
+      data?.orden?.fSoli,
+    ]),
+    fechaInstalacionYmd: pickFirstYmd([
+      data?.fechaInstalacionYmd,
+      data?.fechaInstalacion,
+      data?.liquidacion?.ymd,
+      data?.liquidacion?.fecha,
+    ]),
+  };
+}
+
+async function loadDaySnapshot(dateFolder: string): Promise<DaySnapshot> {
+  const db = adminDb();
+  const fields = [
+    "ACTA",
+    "acta",
+    "codigoCliente",
+    "cliente",
+    "fechaOrdenYmd",
+    "fechaOrden",
+    "fechaInstalacionYmd",
+    "fechaInstalacion",
+    "materialesLiquidacion.acta",
+    "liquidacion.acta",
+    "liquidacion.ymd",
+    "liquidacion.fecha",
+    "orden.ACTA",
+    "orden.acta",
+    "orden.codigoActa",
+    "orden.codActa",
+    "orden.codiSeguiClien",
+    "orden.cliente",
+    "orden.fechaFinVisiYmd",
+    "orden.fechaFinVisi",
+    "orden.fSoliYmd",
+    "orden.fSoli",
+  ];
+  const [byOrden, byInst] = await Promise.all([
+    db.collection("instalaciones").where("fechaOrdenYmd", "==", dateFolder).select(...fields).limit(10000).get(),
+    db.collection("instalaciones").where("fechaInstalacionYmd", "==", dateFolder).select(...fields).limit(10000).get(),
+  ]);
+  const docById = new Map<string, any>();
+  [...byOrden.docs, ...byInst.docs].forEach((d) => {
+    if (!docById.has(d.id)) docById.set(d.id, d.data() as any);
+  });
+
+  const instalacionesConActa: InstalacionActaItem[] = [];
+  const instalacionesSinActa: InstalacionSinActaItem[] = [];
+  const byActaDigits = new Map<string, InstalacionActaItem[]>();
+  const byCodigoCliente = new Map<string, InstalacionActaItem[]>();
+  docById.forEach((data, docId) => {
+    const item = mapInstalacionActaItem(docId, data);
+    if (!item) {
+      instalacionesSinActa.push({
+        id: docId,
+        codigoCliente: String(data?.codigoCliente || data?.orden?.codiSeguiClien || docId || "").trim(),
+        cliente: String(data?.cliente || data?.orden?.cliente || "").trim(),
+        fechaOrdenYmd: pickFirstYmd([
+          data?.fechaOrdenYmd,
+          data?.fechaOrden,
+          data?.orden?.fechaFinVisiYmd,
+          data?.orden?.fechaFinVisi,
+          data?.orden?.fSoliYmd,
+          data?.orden?.fSoli,
+        ]),
+        fechaInstalacionYmd: pickFirstYmd([
+          data?.fechaInstalacionYmd,
+          data?.fechaInstalacion,
+          data?.liquidacion?.ymd,
+          data?.liquidacion?.fecha,
+        ]),
+      });
+      return;
+    }
+    instalacionesConActa.push(item);
+    const list = byActaDigits.get(item.actaDigits) || [];
+    list.push(item);
+    byActaDigits.set(item.actaDigits, list);
+    const code = String(item.codigoCliente || "").trim();
+    if (code) {
+      const byCode = byCodigoCliente.get(code) || [];
+      byCode.push(item);
+      byCodigoCliente.set(code, byCode);
+    }
+  });
+
+  return {
+    instalacionesDia: docById.size,
+    instalacionesConActa,
+    instalacionesSinActa,
+    byActaDigits,
+    byCodigoCliente,
+  };
+}
+
+async function lookupActaDateHints(acta: string) {
+  const clean = normalizeActaStrict(acta);
+  if (!clean) return [] as string[];
+  const db = adminDb();
+  const [byActa, byMatActa] = await Promise.all([
+    db.collection("instalaciones").where("ACTA", "==", clean).limit(30).get(),
+    db.collection("instalaciones").where("materialesLiquidacion.acta", "==", clean).limit(30).get(),
+  ]);
+  const dates = new Set<string>();
+  [...byActa.docs, ...byMatActa.docs].forEach((doc) => {
+    const row = doc.data() as any;
+    const d1 = pickFirstYmd([
+      row?.fechaOrdenYmd,
+      row?.fechaOrden,
+      row?.orden?.fechaFinVisiYmd,
+      row?.orden?.fechaFinVisi,
+      row?.orden?.fSoliYmd,
+      row?.orden?.fSoli,
+    ]);
+    const d2 = pickFirstYmd([
+      row?.fechaInstalacionYmd,
+      row?.fechaInstalacion,
+      row?.liquidacion?.ymd,
+      row?.liquidacion?.fecha,
+    ]);
+    if (d1) dates.add(d1);
+    if (d2) dates.add(d2);
+  });
+  const actaDoc = await db.collection("actas").doc(clean).get().catch(() => null);
+  if (actaDoc?.exists) {
+    const row = actaDoc.data() as any;
+    const d0 = pickFirstYmd([
+      row?.fechaYmd,
+      row?.fecha,
+      row?.fechaInstalacionYmd,
+      row?.fechaInstalacion,
+      row?.fSoliYmd,
+      row?.fSoli,
+    ]);
+    if (d0) dates.add(d0);
+  }
+  return Array.from(dates).sort((a, b) => a.localeCompare(b));
+}
+
+async function relinkIndexFinalPath(params: {
+  fromPath: string;
+  toPath: string;
+  status: "ok" | "error";
+  reason?: string;
+}) {
+  const db = adminDb();
+  const snap = await db.collection(INDEX_COL).where("finalPath", "==", params.fromPath).limit(200).get();
+  if (snap.empty) return 0;
+  const batch = db.batch();
+  snap.docs.forEach((d) => {
+    batch.set(
+      d.ref,
+      {
+        finalPath: params.toPath,
+        status: params.status,
+        reason: params.reason || "",
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  });
+  await batch.commit();
+  return snap.size;
 }
 
 function requireSessionAndScopeErrorMessage(msg: string) {
@@ -1469,21 +1788,187 @@ export async function GET(req: Request) {
     }
 
     const dateFolder = normalizeDateFolder(String(searchParams.get("dateFolder") || ""));
+    const liteMode = ["1", "true", "yes"].includes(String(searchParams.get("lite") || "").trim().toLowerCase());
     if (!dateFolder) {
       return NextResponse.json({ ok: false, error: "DATE_REQUIRED_YYYY_MM_DD" }, { status: 400 });
     }
 
     const bucket = adminStorageBucket();
-    const [inbox, okFiles, errorFiles, instalacionesDia] = await Promise.all([
+    if (liteMode) {
+      const [inbox, okFiles, errorFiles, daySnapshot] = await Promise.all([
+        listByPrefix(bucket, `${ROOT_PREFIX}/inbox/${dateFolder}/`),
+        listByPrefix(bucket, `${ROOT_PREFIX}/ok/${dateFolder}/`),
+        listByPrefix(bucket, `${ROOT_PREFIX}/error/${dateFolder}/`),
+        loadDaySnapshot(dateFolder),
+      ]);
+
+      const stats: DayStats = {
+        instalacionesDia: daySnapshot.instalacionesDia,
+        actasOkDia: okFiles.length,
+        faltanActas: Math.max(0, daySnapshot.instalacionesDia - okFiles.length),
+        sobranActas: Math.max(0, okFiles.length - daySnapshot.instalacionesDia),
+      };
+
+      return NextResponse.json({
+        ok: true,
+        dateFolder,
+        inbox,
+        okFiles,
+        errorFiles,
+        stats,
+      });
+    }
+
+    const [inbox, okFiles, errorFiles, daySnapshot, indexSnap] = await Promise.all([
       listByPrefix(bucket, `${ROOT_PREFIX}/inbox/${dateFolder}/`),
       listByPrefix(bucket, `${ROOT_PREFIX}/ok/${dateFolder}/`),
       listByPrefix(bucket, `${ROOT_PREFIX}/error/${dateFolder}/`),
-      countInstalacionesByDay(dateFolder),
+      loadDaySnapshot(dateFolder),
+      adminDb().collection(INDEX_COL).where("dateFolder", "==", dateFolder).limit(10000).get(),
     ]);
+
+    const indexByFinalPath = new Map<string, { acta: string; updatedAt: number }>();
+    indexSnap.docs.forEach((doc) => {
+      const row = doc.data() as any;
+      const finalPath = String(row?.finalPath || "").trim();
+      const acta = normalizeActaStrict(String(row?.acta || ""));
+      if (!finalPath || !acta) return;
+      const updatedAt = Date.parse(String(row?.updatedAt || "")) || 0;
+      const prev = indexByFinalPath.get(finalPath);
+      if (!prev || updatedAt >= prev.updatedAt) {
+        indexByFinalPath.set(finalPath, { acta, updatedAt });
+      }
+    });
+
+    const okDentroFecha: Array<{
+      fileName: string;
+      fullPath: string;
+      acta: string;
+      codigoCliente: string;
+      cliente: string;
+      fechaOrdenYmd: string;
+      fechaInstalacionYmd: string;
+    }> = [];
+    const okFueraFechaRaw: Array<{ fileName: string; fullPath: string; acta: string; actaDigits: string }> = [];
+    const okSinTrazabilidad: Array<{ fileName: string; fullPath: string }> = [];
+    const okActasDetectadas = new Set<string>();
+
+    okFiles.forEach((item: any) => {
+      const idx = indexByFinalPath.get(String(item.fullPath || ""));
+      if (!idx?.acta) {
+        okSinTrazabilidad.push({ fileName: item.name, fullPath: item.fullPath });
+        return;
+      }
+      const actaDigits = normalizeActaDigits(idx.acta);
+      if (!actaDigits) {
+        okSinTrazabilidad.push({ fileName: item.name, fullPath: item.fullPath });
+        return;
+      }
+      okActasDetectadas.add(actaDigits);
+      const matches = daySnapshot.byActaDigits.get(actaDigits) || [];
+      if (matches.length) {
+        const m = matches[0];
+        okDentroFecha.push({
+          fileName: item.name,
+          fullPath: item.fullPath,
+          acta: idx.acta,
+          codigoCliente: m.codigoCliente,
+          cliente: m.cliente,
+          fechaOrdenYmd: m.fechaOrdenYmd,
+          fechaInstalacionYmd: m.fechaInstalacionYmd,
+        });
+      } else {
+        const codigoFromName = String(item.name || "").split(" - ")[0]?.trim() || "";
+        const byCode = codigoFromName ? daySnapshot.byCodigoCliente.get(codigoFromName) || [] : [];
+        if (byCode.length) {
+          const m = byCode[0];
+          okDentroFecha.push({
+            fileName: item.name,
+            fullPath: item.fullPath,
+            acta: idx.acta,
+            codigoCliente: m.codigoCliente,
+            cliente: m.cliente,
+            fechaOrdenYmd: m.fechaOrdenYmd,
+            fechaInstalacionYmd: m.fechaInstalacionYmd,
+          });
+        } else {
+          okFueraFechaRaw.push({ fileName: item.name, fullPath: item.fullPath, acta: idx.acta, actaDigits });
+        }
+      }
+    });
+
+    const hintsByActaDigits = new Map<string, string[]>();
+    const actasFueraUnicas = Array.from(new Set(okFueraFechaRaw.map((x) => x.actaDigits))).slice(0, 100);
+    await Promise.all(
+      actasFueraUnicas.map(async (digits) => {
+        const hints = await lookupActaDateHints(normalizeActa(digits)).catch(() => []);
+        hintsByActaDigits.set(digits, hints);
+      })
+    );
+
+    const okFueraFecha: Array<{
+      fileName: string;
+      fullPath: string;
+      acta: string;
+      fechasSugeridas: string[];
+    }> = [];
+    okFueraFechaRaw.forEach((x) => {
+      const fechasSugeridas = hintsByActaDigits.get(x.actaDigits) || [];
+      if (fechasSugeridas.includes(dateFolder)) {
+        okDentroFecha.push({
+          fileName: x.fileName,
+          fullPath: x.fullPath,
+          acta: x.acta,
+          codigoCliente: "-",
+          cliente: "-",
+          fechaOrdenYmd: dateFolder,
+          fechaInstalacionYmd: dateFolder,
+        });
+      } else {
+        okFueraFecha.push({
+          fileName: x.fileName,
+          fullPath: x.fullPath,
+          acta: x.acta,
+          fechasSugeridas,
+        });
+      }
+    });
+
+    const sobrantes = [
+      ...okFueraFecha.map((x) => ({
+        fileName: x.fileName,
+        fullPath: x.fullPath,
+        tipo: "fuera_fecha" as const,
+        acta: x.acta,
+        fechasSugeridas: x.fechasSugeridas,
+      })),
+      ...okSinTrazabilidad.map((x) => ({
+        fileName: x.fileName,
+        fullPath: x.fullPath,
+        tipo: "sin_trazabilidad" as const,
+        acta: "",
+        fechasSugeridas: [] as string[],
+      })),
+    ].sort((a, b) => a.fileName.localeCompare(b.fileName, "es", { sensitivity: "base" }));
+
+    const faltantes = Array.from(daySnapshot.byActaDigits.entries())
+      .filter(([actaDigits]) => !okActasDetectadas.has(actaDigits))
+      .map(([, rows]) => rows[0])
+      .sort((a, b) => a.acta.localeCompare(b.acta, "es", { sensitivity: "base" }))
+      .map((row) => ({
+        id: row.id,
+        acta: row.acta,
+        codigoCliente: row.codigoCliente,
+        cliente: row.cliente,
+        fechaOrdenYmd: row.fechaOrdenYmd,
+        fechaInstalacionYmd: row.fechaInstalacionYmd,
+      }));
+
     const stats: DayStats = {
-      instalacionesDia,
+      instalacionesDia: daySnapshot.instalacionesDia,
       actasOkDia: okFiles.length,
-      faltanActas: Math.max(0, instalacionesDia - okFiles.length),
+      faltanActas: Math.max(0, daySnapshot.instalacionesDia - okFiles.length),
+      sobranActas: Math.max(0, okFiles.length - daySnapshot.instalacionesDia),
     };
 
     return NextResponse.json({
@@ -1493,6 +1978,24 @@ export async function GET(req: Request) {
       okFiles,
       errorFiles,
       stats,
+      actaAudit: {
+        summary: {
+          esperadasConActa: daySnapshot.instalacionesConActa.length,
+          instalacionesSinActa: daySnapshot.instalacionesSinActa.length,
+          okConActa: okFiles.length - okSinTrazabilidad.length,
+          okDentroFecha: okDentroFecha.length,
+          okFueraFecha: okFueraFecha.length,
+          sobrantes: sobrantes.length,
+          faltantes: faltantes.length,
+          okSinTrazabilidad: okSinTrazabilidad.length,
+        },
+        okDentroFecha,
+        okFueraFecha,
+        sobrantes,
+        faltantes,
+        sinActa: daySnapshot.instalacionesSinActa,
+        okSinTrazabilidad,
+      },
     });
   } catch (e: any) {
     const mapped = requireSessionAndScopeErrorMessage(String(e?.message || ""));
@@ -1526,6 +2029,8 @@ export async function POST(req: Request) {
       );
     }
 
+    const runId = buildRunId(session.uid, dateFolder, baseRequestId);
+
     const bucket = adminStorageBucket();
     const uploaded: Array<{
       originalName: string;
@@ -1542,14 +2047,14 @@ export async function POST(req: Request) {
     }> = [];
 
     for (let idx = 0; idx < rawFiles.length; idx += 1) {
-      const file = rawFiles[idx];
-      const fileStartedAt = Date.now();
-      const requestId = sanitizeRequestId(
-        rawFiles.length === 1
-          ? baseRequestId
-          : `${baseRequestId || `r_${Date.now().toString(36)}`}_${String(idx + 1)}`
-      );
-      const originalName = String(file.name || "archivo.pdf");
+        const file = rawFiles[idx];
+        const fileStartedAt = Date.now();
+        const requestId = sanitizeRequestId(
+          rawFiles.length === 1
+            ? baseRequestId
+            : `${baseRequestId || `r_${Date.now().toString(36)}`}_${String(idx + 1)}`
+        );
+        const originalName = String(file.name || "archivo.pdf");
       if (requestId) {
         await writeProgress(requestId, {
           status: "processing",
@@ -1625,6 +2130,7 @@ export async function POST(req: Request) {
 
       const buffer = Buffer.from(await file.arrayBuffer());
       const fileHash = hashBuffer(buffer);
+      const lockId = buildFileLockId(dateFolder, fileHash);
       if (requestId) {
         await writeProgress(requestId, {
           fileHash,
@@ -1672,89 +2178,181 @@ export async function POST(req: Request) {
         continue;
       }
 
-      const safeOriginal = ensurePdfName(originalName);
-      const inboxDir = `${ROOT_PREFIX}/inbox/${dateFolder}`;
-      const inboxPath = await ensureUniqueDestinationPath(bucket, inboxDir, safeOriginal);
-      if (requestId) {
-        await writeProgress(requestId, {
-          stageKey: "upload_storage",
-          stageLabel: "Subiendo PDF a Storage",
-          stageStatus: "running",
-          useAi: false,
-        });
-      }
-
-      await bucket.file(inboxPath).save(buffer, {
-        contentType: "application/pdf",
-        metadata: {
-          metadata: {
-            uploadedBy: session.uid,
-            uploadedAt: new Date().toISOString(),
-            originalName: originalName,
-          },
-        },
+      const lock = await acquireFileLock({
+        lockId,
+        dateFolder,
+        fileHash,
+        uid: session.uid,
+        runId,
+        requestId,
+        fileName: originalName,
       });
-
-      if (requestId) {
-        await writeProgress(requestId, {
-          stageKey: "classify",
-          stageLabel: "Clasificando acta",
-          stageStatus: "running",
-          useAi: false,
-        });
-      }
-
-      const processed = await autoClassifyUploaded(bucket, inboxPath, safeOriginal, dateFolder, buffer, async (update) => {
-        if (!requestId) return;
-        await writeProgress(requestId, {
-          status: "processing",
-          stageKey: update.stageKey,
-          stageLabel: update.stageLabel,
-          stageStatus: update.stageStatus,
-          detail: update.detail || "",
-          stageDurationMs: Number(update.durationMs || 0),
-          useAi: Boolean(update.useAi),
-        });
-      });
-      const row = {
-        originalName,
-        ...processed,
-        durationMs: Date.now() - fileStartedAt,
-      };
-      uploaded.push(row);
-      if (requestId) {
-        const usedAi = row.source === "ai_pdf" || (row.trace || []).some((x) => x.stage.startsWith("ai_"));
-        await writeProgress(requestId, {
+      if (!lock.ok) {
+        const cachedAfterLock = await loadCachedResult(dateFolder, fileHash);
+        if (cachedAfterLock) {
+          const cachedRow = {
+            originalName,
+            ...cachedAfterLock,
+            attempts: 0,
+            trace: [],
+            durationMs: Date.now() - fileStartedAt,
+          };
+          uploaded.push(cachedRow);
+          if (requestId) {
+            await writeProgress(requestId, {
+              status: cachedRow.status,
+              stageKey: "cache_lookup",
+              stageLabel: "Buscando en cache",
+              stageStatus: "done",
+              detail: "Resultado recuperado por cache hash",
+              durationMs: cachedRow.durationMs,
+              source: cachedRow.source,
+              reason: "IDEMPOTENTE_CACHE",
+              useAi: false,
+              completedAt: new Date().toISOString(),
+            });
+          }
+          await writeProcessLog({
+            dateFolder,
+            fileName: originalName,
+            fileHash,
+            status: cachedRow.status,
+            source: cachedRow.source,
+            reason: "IDEMPOTENTE_CACHE",
+            detail: cachedRow.detail,
+            durationMs: Date.now() - fileStartedAt,
+            fromCache: true,
+          });
+          continue;
+        }
+        const row = {
+          originalName,
+          acta: null,
+          source: null,
+          status: "error" as const,
+          finalPath: "",
+          finalName: "",
+          reason: "ALREADY_PROCESSING",
+          detail: "El archivo ya se esta procesando en otra pestana. Reintenta en unos segundos.",
+          attempts: 0,
+          trace: [],
+          durationMs: Date.now() - fileStartedAt,
+        };
+        uploaded.push(row);
+        if (requestId) {
+          await writeProgress(requestId, {
+            status: "error",
+            stageKey: "cache_lookup",
+            stageLabel: "Buscando en cache",
+            stageStatus: "error",
+            detail: row.detail,
+            reason: row.reason,
+            durationMs: row.durationMs,
+            useAi: false,
+            completedAt: new Date().toISOString(),
+          });
+        }
+        await writeProcessLog({
+          dateFolder,
+          fileName: originalName,
+          fileHash,
           status: row.status,
-          stageKey: "completed",
-          stageLabel: row.status === "ok" ? "Completado" : "Completado con error",
-          stageStatus: row.status === "ok" ? "done" : "error",
-          detail: row.detail,
           source: row.source,
           reason: row.reason,
-          useAi: usedAi,
+          detail: row.detail,
+          durationMs: row.durationMs,
+          fromCache: false,
+        });
+        continue;
+      }
+
+      try {
+        const safeOriginal = ensurePdfName(originalName);
+        const inboxDir = `${ROOT_PREFIX}/inbox/${dateFolder}`;
+        const inboxPath = await ensureUniqueDestinationPath(bucket, inboxDir, safeOriginal);
+        if (requestId) {
+          await writeProgress(requestId, {
+            stageKey: "upload_storage",
+            stageLabel: "Subiendo PDF a Storage",
+            stageStatus: "running",
+            useAi: false,
+          });
+        }
+
+        await bucket.file(inboxPath).save(buffer, {
+          contentType: "application/pdf",
+          metadata: {
+            metadata: {
+              uploadedBy: session.uid,
+              uploadedAt: new Date().toISOString(),
+              originalName: originalName,
+            },
+          },
+        });
+
+        if (requestId) {
+          await writeProgress(requestId, {
+            stageKey: "classify",
+            stageLabel: "Clasificando acta",
+            stageStatus: "running",
+            useAi: false,
+          });
+        }
+
+        const processed = await autoClassifyUploaded(bucket, inboxPath, safeOriginal, dateFolder, buffer, async (update) => {
+          if (!requestId) return;
+          await writeProgress(requestId, {
+            status: "processing",
+            stageKey: update.stageKey,
+            stageLabel: update.stageLabel,
+            stageStatus: update.stageStatus,
+            detail: update.detail || "",
+            stageDurationMs: Number(update.durationMs || 0),
+            useAi: Boolean(update.useAi),
+          });
+        });
+        const row = {
+          originalName,
+          ...processed,
+          durationMs: Date.now() - fileStartedAt,
+        };
+        uploaded.push(row);
+        if (requestId) {
+          const usedAi = row.source === "ai_pdf" || (row.trace || []).some((x) => x.stage.startsWith("ai_"));
+          await writeProgress(requestId, {
+            status: row.status,
+            stageKey: "completed",
+            stageLabel: row.status === "ok" ? "Completado" : "Completado con error",
+            stageStatus: row.status === "ok" ? "done" : "error",
+            detail: row.detail,
+            source: row.source,
+            reason: row.reason,
+            useAi: usedAi,
+            attempts: row.attempts,
+            trace: row.trace,
+            durationMs: row.durationMs,
+            finalPath: row.finalPath,
+            completedAt: new Date().toISOString(),
+          });
+        }
+        await saveResultIndex(dateFolder, fileHash, row);
+        await writeProcessLog({
+          dateFolder,
+          fileName: originalName,
+          fileHash,
+          status: row.status,
+          source: row.source,
+          reason: row.reason,
+          detail: row.detail,
+          finalPath: row.finalPath,
+          durationMs: row.durationMs,
           attempts: row.attempts,
           trace: row.trace,
-          durationMs: row.durationMs,
-          finalPath: row.finalPath,
-          completedAt: new Date().toISOString(),
+          fromCache: false,
         });
+      } finally {
+        await releaseFileLock({ lockId, runId });
       }
-      await saveResultIndex(dateFolder, fileHash, row);
-      await writeProcessLog({
-        dateFolder,
-        fileName: originalName,
-        fileHash,
-        status: row.status,
-        source: row.source,
-        reason: row.reason,
-        detail: row.detail,
-        finalPath: row.finalPath,
-        durationMs: row.durationMs,
-        attempts: row.attempts,
-        trace: row.trace,
-        fromCache: false,
-      });
     }
 
     const summary = uploaded.reduce(
@@ -1788,6 +2386,45 @@ export async function PATCH(req: Request) {
     const dateFolder = normalizeDateFolder(String(body?.dateFolder || ""));
     const fromPath = String(body?.fromPath || "").trim();
     const requestId = sanitizeRequestId(String(body?.requestId || ""));
+
+    if (action === "move_ok_to_date") {
+      const toDateFolder = normalizeDateFolder(String(body?.toDateFolder || ""));
+      if (!dateFolder || !toDateFolder) {
+        return NextResponse.json({ ok: false, error: "DATE_REQUIRED_YYYY_MM_DD" }, { status: 400 });
+      }
+      if (!fromPath || !isAllowedPath(fromPath)) {
+        return NextResponse.json({ ok: false, error: "INVALID_SOURCE_PATH" }, { status: 400 });
+      }
+      const split = splitPath(fromPath);
+      if (split.folder !== "ok" || split.dateFolder !== dateFolder) {
+        return NextResponse.json({ ok: false, error: "SOURCE_MUST_BE_OK_OF_DATE" }, { status: 400 });
+      }
+      if (toDateFolder === dateFolder) {
+        return NextResponse.json({ ok: false, error: "TARGET_DATE_MUST_DIFFERENT" }, { status: 400 });
+      }
+
+      const bucket = adminStorageBucket();
+      const srcFile = bucket.file(fromPath);
+      const [exists] = await srcFile.exists();
+      if (!exists) return NextResponse.json({ ok: false, error: "SOURCE_NOT_FOUND" }, { status: 404 });
+
+      const dstPath = await ensureUniqueDestinationPath(bucket, `${ROOT_PREFIX}/ok/${toDateFolder}`, split.fileName);
+      await srcFile.move(dstPath);
+      await relinkIndexFinalPath({
+        fromPath,
+        toPath: dstPath,
+        status: "ok",
+        reason: "MOVE_OK_TO_OK_SUGGESTED_DATE",
+      }).catch(() => 0);
+
+      return NextResponse.json({
+        ok: true,
+        fromPath,
+        toPath: dstPath,
+        toName: splitPath(dstPath).fileName,
+        toDateFolder,
+      });
+    }
 
     if (action === "reprocess_rigorous") {
       if (!dateFolder) return NextResponse.json({ ok: false, error: "DATE_REQUIRED_YYYY_MM_DD" }, { status: 400 });
@@ -1824,6 +2461,14 @@ export async function PATCH(req: Request) {
           useAi: Boolean(update.useAi),
         });
       });
+      if (result.status === "ok" && result.finalPath !== fromPath) {
+        await relinkIndexFinalPath({
+          fromPath,
+          toPath: result.finalPath,
+          status: "ok",
+          reason: "REPROCESS_RIGOROUS_OK",
+        }).catch(() => 0);
+      }
       if (requestId) {
         const usedAi = result.source === "ai_pdf" || (result.trace || []).some((x) => x.stage.startsWith("ai_"));
         await writeProgress(requestId, {
@@ -1863,6 +2508,12 @@ export async function PATCH(req: Request) {
 
     const dstPath = await ensureUniqueDestinationPath(bucket, `${ROOT_PREFIX}/ok/${dateFolder}`, newName);
     await srcFile.move(dstPath);
+    await relinkIndexFinalPath({
+      fromPath,
+      toPath: dstPath,
+      status: "ok",
+      reason: "MOVE_ERROR_TO_OK_MANUAL",
+    }).catch(() => 0);
 
     return NextResponse.json({
       ok: true,

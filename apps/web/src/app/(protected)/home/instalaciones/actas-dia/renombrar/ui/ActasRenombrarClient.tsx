@@ -21,6 +21,60 @@ type ListResponse = {
     instalacionesDia: number;
     actasOkDia: number;
     faltanActas: number;
+    sobranActas?: number;
+  };
+  actaAudit?: {
+    summary: {
+      esperadasConActa: number;
+      instalacionesSinActa: number;
+      okConActa: number;
+      okDentroFecha: number;
+      okFueraFecha: number;
+      sobrantes: number;
+      faltantes: number;
+      okSinTrazabilidad: number;
+    };
+    okDentroFecha: Array<{
+      fileName: string;
+      fullPath: string;
+      acta: string;
+      codigoCliente: string;
+      cliente: string;
+      fechaOrdenYmd: string;
+      fechaInstalacionYmd: string;
+    }>;
+    okFueraFecha: Array<{
+      fileName: string;
+      fullPath: string;
+      acta: string;
+      fechasSugeridas: string[];
+    }>;
+    sobrantes: Array<{
+      fileName: string;
+      fullPath: string;
+      tipo: "fuera_fecha" | "sin_trazabilidad";
+      acta: string;
+      fechasSugeridas: string[];
+    }>;
+    faltantes: Array<{
+      id: string;
+      acta: string;
+      codigoCliente: string;
+      cliente: string;
+      fechaOrdenYmd: string;
+      fechaInstalacionYmd: string;
+    }>;
+    sinActa: Array<{
+      id: string;
+      codigoCliente: string;
+      cliente: string;
+      fechaOrdenYmd: string;
+      fechaInstalacionYmd: string;
+    }>;
+    okSinTrazabilidad: Array<{
+      fileName: string;
+      fullPath: string;
+    }>;
   };
   error?: string;
 };
@@ -102,6 +156,34 @@ const bytesToHuman = (bytes: number) => {
   return `${gb.toFixed(2)} GB`;
 };
 
+const reasonToLabel = (reason: string, detail?: string) => {
+  const code = String(reason || "").trim().toUpperCase();
+  if (code === "ALREADY_PROCESSING") return "Ya se esta procesando en otra pestana";
+  if (code === "TOO_MANY_REQUESTS") return "Demasiados procesos en paralelo";
+  if (code === "REQUEST_ERROR") {
+    const d = String(detail || "").toLowerCase();
+    if (d.includes("failed to fetch")) return "No se pudo conectar con el servidor";
+    return "Fallo de comunicacion con el servidor";
+  }
+  if (code === "IDEMPOTENTE_CACHE") return "Archivo ya procesado (cache)";
+  if (code === "NO_PDF") return "El archivo no es PDF";
+  if (code === "PDF_SIZE_INVALID") return "Tamano de PDF invalido";
+  if (code === "UNAUTHENTICATED") return "Sesion expirada. Vuelve a iniciar sesion";
+  if (code === "FORBIDDEN") return "Sin permisos para esta accion";
+  return code || "ERROR";
+};
+
+const formatApiUploadError = (status: number, body: { error?: string; detail?: string }) => {
+  const code = String(body?.error || "").trim().toUpperCase();
+  const detail = String(body?.detail || "").trim();
+  if (status === 429 || code === "TOO_MANY_REQUESTS") {
+    return detail || "Demasiados procesos en paralelo. Espera y vuelve a intentar.";
+  }
+  if (code === "UNAUTHENTICATED") return "Sesion expirada. Vuelve a iniciar sesion.";
+  if (code === "FORBIDDEN") return "No tienes permiso para esta accion.";
+  return detail || body?.error || "No se pudo procesar archivo";
+};
+
 function Badge({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "neutral" | "ok" | "error" | "info" }) {
   const base = "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium";
   const tones = {
@@ -120,6 +202,7 @@ export default function ActasRenombrarClient() {
   const [loadingList, setLoadingList] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [movingPath, setMovingPath] = useState<string | null>(null);
+  const [movingSobrantePath, setMovingSobrantePath] = useState<string | null>(null);
   const [cleaningOld, setCleaningOld] = useState(false);
   const [cleaningDay, setCleaningDay] = useState(false);
   const [downloadingOkZip, setDownloadingOkZip] = useState(false);
@@ -131,6 +214,7 @@ export default function ActasRenombrarClient() {
   const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const queueRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const queueContainerRef = useRef<HTMLDivElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const [activeQueueId, setActiveQueueId] = useState<string | null>(null);
 
@@ -138,6 +222,27 @@ export default function ActasRenombrarClient() {
     const totalBytes = files.reduce((acc, f) => acc + (f.size || 0), 0);
     return { count: files.length, totalBytes };
   }, [files]);
+
+  const auditInsideByPath = useMemo(() => {
+    return new Set((list?.actaAudit?.okDentroFecha || []).map((x) => x.fullPath));
+  }, [list?.actaAudit?.okDentroFecha]);
+
+  const auditOutsideByPath = useMemo(() => {
+    const map = new Map<string, string[]>();
+    (list?.actaAudit?.okFueraFecha || []).forEach((x) => {
+      map.set(x.fullPath, x.fechasSugeridas || []);
+    });
+    return map;
+  }, [list?.actaAudit?.okFueraFecha]);
+
+  const auditNoTraceByPath = useMemo(() => {
+    return new Set((list?.actaAudit?.okSinTrazabilidad || []).map((x) => x.fullPath));
+  }, [list?.actaAudit?.okSinTrazabilidad]);
+
+  const activeQueueItem = useMemo(() => {
+    if (!activeQueueId) return null;
+    return uploadQueue.find((x) => x.id === activeQueueId) || null;
+  }, [activeQueueId, uploadQueue]);
 
   const playTone = (kind: "ok" | "warn") => {
     try {
@@ -168,12 +273,15 @@ export default function ActasRenombrarClient() {
   const refreshList = async (silent = false) => {
     if (!silent) setLoadingList(true);
     try {
-      const res = await fetch(`/api/instalaciones/actas-dia/renombrar?dateFolder=${encodeURIComponent(dateFolder)}`, {
-        cache: "no-store",
-      });
+      const qs = new URLSearchParams({ dateFolder });
+      if (silent) qs.set("lite", "1");
+      const res = await fetch(`/api/instalaciones/actas-dia/renombrar?${qs.toString()}`, { cache: "no-store" });
       const data = (await res.json()) as ListResponse;
       if (!res.ok || !data?.ok) throw new Error(data?.error || "No se pudo cargar archivos");
-      setList(data);
+      setList((prev) => {
+        if (!silent || data.actaAudit || !prev?.actaAudit) return data;
+        return { ...data, actaAudit: prev.actaAudit };
+      });
     } catch (e: any) {
       if (!silent) toast.error(e?.message || "Error cargando datos");
     } finally {
@@ -197,9 +305,21 @@ export default function ActasRenombrarClient() {
 
   useEffect(() => {
     if (!activeQueueId) return;
-    const el = queueRowRefs.current[activeQueueId];
-    if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    const raf = window.requestAnimationFrame(() => {
+      const row = queueRowRefs.current[activeQueueId];
+      const container = queueContainerRef.current;
+      if (!row || !container) return;
+      const pad = 16;
+      const rowRect = row.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      const fullyVisible = rowRect.top >= containerRect.top + pad && rowRect.bottom <= containerRect.bottom - pad;
+      if (fullyVisible) return;
+
+      const deltaTop = rowRect.top - containerRect.top;
+      const centeredTop = container.scrollTop + deltaTop - (container.clientHeight - row.offsetHeight) / 2;
+      container.scrollTo({ top: Math.max(0, centeredTop), behavior: "auto" });
+    });
+    return () => window.cancelAnimationFrame(raf);
   }, [activeQueueId, uploadQueue]);
 
   const addFiles = (fileList: FileList | null) => {
@@ -278,7 +398,7 @@ export default function ActasRenombrarClient() {
             if (!p) return;
             const stage = String(p.stageLabel || "Procesando");
             const detail = String(p.detail || "").trim();
-            const aiTag = p.useAi ? " [IA]" : "";
+            const aiTag = String(p.stageKey || "").startsWith("ai_") ? " [fallback IA]" : "";
             const msg = detail ? `${stage}${aiTag}: ${detail}` : `${stage}${aiTag}`;
             setUploadQueue((prev) =>
               prev.map((x) => (x.id === q.id && x.status === "processing" ? { ...x, message: msg } : x))
@@ -299,8 +419,14 @@ export default function ActasRenombrarClient() {
             method: "POST",
             body: fd,
           });
-          const data = (await res.json()) as UploadResponse;
-          if (!res.ok || !data?.ok) throw new Error(data?.error || "No se pudo procesar archivo");
+          const raw = await res.text();
+          let data = {} as UploadResponse & { detail?: string };
+          try {
+            data = (raw ? JSON.parse(raw) : {}) as UploadResponse & { detail?: string };
+          } catch {
+            data = { ok: false, error: "", detail: raw || "" } as UploadResponse & { detail?: string };
+          }
+          if (!res.ok || !data?.ok) throw new Error(formatApiUploadError(res.status, data));
           const row = data.uploaded?.[0];
           if (!row) throw new Error("Sin respuesta de archivo");
           uploadedRows.push(row);
@@ -317,7 +443,7 @@ export default function ActasRenombrarClient() {
                     message:
                       row.status === "ok"
                         ? `Procesado OK (${row.source === "ai_pdf" ? "ANALISIS CON IA" : "LECTURA AUTOMATICA"})`
-                        : `${row.reason}`,
+                        : reasonToLabel(row.reason, row.detail),
                   }
                 : x
             )
@@ -374,6 +500,9 @@ export default function ActasRenombrarClient() {
       setTimeout(() => setUploadQueue([]), 2500);
       setActiveQueueId(null);
       toast.success(`Carga completa: ${data.summary.ok} OK / ${data.summary.error} ERROR`);
+      if (uploadedRows.some((r) => r.reason === "ALREADY_PROCESSING")) {
+        toast.info("Algunos archivos se omitieron porque ya se estaban procesando en otra pestana.");
+      }
       await refreshList(true);
     } catch (e: any) {
       toast.error(e?.message || "Error subiendo actas");
@@ -459,6 +588,36 @@ export default function ActasRenombrarClient() {
       toast.error(e?.message || "Error en reanalisis riguroso");
     } finally {
       setReprocessingPath(null);
+    }
+  };
+
+  const moveSobranteToSuggestedDate = async (item: NonNullable<ListResponse["actaAudit"]>["sobrantes"][number]) => {
+    if (item.tipo !== "fuera_fecha") return;
+    const suggested = (item.fechasSugeridas || []).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x || "")));
+    if (suggested.length !== 1) {
+      return toast.error("Este archivo no tiene una unica fecha sugerida para mover automatico");
+    }
+    const toDateFolder = suggested[0];
+    setMovingSobrantePath(item.fullPath);
+    try {
+      const res = await fetch("/api/instalaciones/actas-dia/renombrar", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "move_ok_to_date",
+          dateFolder,
+          fromPath: item.fullPath,
+          toDateFolder,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "No se pudo mover a la fecha sugerida");
+      toast.success(`Archivo movido a ${toDateFolder}`);
+      await refreshList(false);
+    } catch (e: any) {
+      toast.error(e?.message || "Error moviendo a fecha sugerida");
+    } finally {
+      setMovingSobrantePath(null);
     }
   };
 
@@ -597,6 +756,18 @@ export default function ActasRenombrarClient() {
         <Badge tone={(list?.stats?.faltanActas ?? 0) > 0 ? "error" : "ok"}>
           Faltan actas: {list?.stats?.faltanActas ?? 0}
         </Badge>
+        <Badge tone={(list?.stats?.sobranActas ?? 0) > 0 ? "error" : "ok"}>
+          Sobran actas: {list?.stats?.sobranActas ?? 0}
+        </Badge>
+        <Badge tone={(list?.actaAudit?.summary?.okFueraFecha ?? 0) > 0 ? "error" : "ok"}>
+          OK fuera de fecha: {list?.actaAudit?.summary?.okFueraFecha ?? 0}
+        </Badge>
+        <Badge tone={(list?.actaAudit?.summary?.okSinTrazabilidad ?? 0) > 0 ? "error" : "ok"}>
+          OK sin trazabilidad: {list?.actaAudit?.summary?.okSinTrazabilidad ?? 0}
+        </Badge>
+        <Badge tone={(list?.actaAudit?.summary?.instalacionesSinActa ?? 0) > 0 ? "error" : "ok"}>
+          Instalaciones sin ACTA: {list?.actaAudit?.summary?.instalacionesSinActa ?? 0}
+        </Badge>
         <Badge>Por subir: {totals.count}</Badge>
         <Badge>Peso: {bytesToHuman(totals.totalBytes)}</Badge>
         <Badge tone="ok">OK: {list?.okFiles?.length ?? 0}</Badge>
@@ -626,6 +797,108 @@ export default function ActasRenombrarClient() {
         Para evitar errores, primero valida la fecha y recien despues sube los PDFs. La vista se actualiza automaticamente con un ritmo suave.
       </div>
 
+      <div className="grid gap-4 xl:grid-cols-4">
+        <div className="rounded-xl border border-rose-200 bg-rose-50/50 dark:border-rose-800/60 dark:bg-rose-900/20">
+          <div className="border-b border-rose-200 px-3 py-2 text-sm font-semibold text-rose-900 dark:border-rose-800/60 dark:text-rose-100">
+            Actas faltantes ({list?.actaAudit?.faltantes?.length ?? 0})
+          </div>
+          <div className="max-h-60 overflow-auto divide-y divide-rose-200 dark:divide-rose-800/50">
+            {(list?.actaAudit?.faltantes || []).length === 0 ? (
+              <div className="p-3 text-sm text-slate-500 dark:text-slate-400">No hay faltantes por acta para esta fecha.</div>
+            ) : (
+              (list?.actaAudit?.faltantes || []).map((item) => (
+                <div key={`${item.id}_${item.acta}`} className="space-y-1 p-3 text-xs">
+                  <div className="font-medium">Acta: {item.acta}</div>
+                  <div>
+                    Cliente esperado: {item.codigoCliente} - {item.cliente || "-"}
+                  </div>
+                  <div>Orden: {item.fechaOrdenYmd || "-"} | Instalacion: {item.fechaInstalacionYmd || "-"}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-amber-200 bg-amber-50/60 dark:border-amber-800/60 dark:bg-amber-900/20">
+          <div className="border-b border-amber-200 px-3 py-2 text-sm font-semibold text-amber-900 dark:border-amber-800/60 dark:text-amber-100">
+            Instalaciones sin ACTA ({list?.actaAudit?.sinActa?.length ?? 0})
+          </div>
+          <div className="max-h-60 overflow-auto divide-y divide-amber-200 dark:divide-amber-800/50">
+            {(list?.actaAudit?.sinActa || []).length === 0 ? (
+              <div className="p-3 text-sm text-slate-500 dark:text-slate-400">Todas las instalaciones del dia tienen ACTA registrada.</div>
+            ) : (
+              (list?.actaAudit?.sinActa || []).map((item) => (
+                <div key={item.id} className="space-y-1 p-3 text-xs">
+                  <div className="font-medium">ID: {item.id}</div>
+                  <div>
+                    Cliente: {item.codigoCliente || "-"} - {item.cliente || "-"}
+                  </div>
+                  <div>Orden: {item.fechaOrdenYmd || "-"} | Instalacion: {item.fechaInstalacionYmd || "-"}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50/60 dark:border-slate-700 dark:bg-slate-900/40">
+          <div className="border-b border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-100">
+            OK sin trazabilidad ({list?.actaAudit?.okSinTrazabilidad?.length ?? 0})
+          </div>
+          <div className="max-h-60 overflow-auto divide-y divide-slate-200 dark:divide-slate-700">
+            {(list?.actaAudit?.okSinTrazabilidad || []).length === 0 ? (
+              <div className="p-3 text-sm text-slate-500 dark:text-slate-400">Todos los OK tienen acta trazable.</div>
+            ) : (
+              (list?.actaAudit?.okSinTrazabilidad || []).map((item) => (
+                <div key={item.fullPath} className="p-3 text-xs">
+                  {item.fileName}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-amber-300 bg-amber-50/70 dark:border-amber-800/60 dark:bg-amber-900/20">
+          <div className="border-b border-amber-300 px-3 py-2 text-sm font-semibold text-amber-900 dark:border-amber-800/60 dark:text-amber-100">
+            Actas sobrantes ({list?.actaAudit?.sobrantes?.length ?? 0})
+          </div>
+          <div className="max-h-60 overflow-auto divide-y divide-amber-300 dark:divide-amber-800/50">
+            {(list?.actaAudit?.sobrantes || []).length === 0 ? (
+              <div className="p-3 text-sm text-slate-500 dark:text-slate-400">No hay archivos sobrantes en OK.</div>
+            ) : (
+              (list?.actaAudit?.sobrantes || []).map((item) => (
+                <div key={item.fullPath} className="space-y-1 p-3 text-xs">
+                  <div className="font-medium">{item.fileName}</div>
+                  <div>
+                    Motivo:{" "}
+                    {item.tipo === "fuera_fecha"
+                      ? `Fuera de fecha${item.acta ? ` (acta ${item.acta})` : ""}`
+                      : "Sin trazabilidad en indice"}
+                  </div>
+                  {item.tipo === "fuera_fecha" && (
+                    <div>Fechas sugeridas: {item.fechasSugeridas?.join(", ") || "sin sugerencia"}</div>
+                  )}
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => moveSobranteToSuggestedDate(item)}
+                      disabled={
+                        uploading ||
+                        movingSobrantePath === item.fullPath ||
+                        item.tipo !== "fuera_fecha" ||
+                        (item.fechasSugeridas || []).length !== 1
+                      }
+                      className="rounded-lg border border-amber-300 bg-white px-2 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-700 dark:bg-slate-900 dark:text-amber-200"
+                    >
+                      {movingSobrantePath === item.fullPath ? "Moviendo..." : "Mover a fecha sugerida"}
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
       {files.length > 0 && (
         <div className="rounded-xl border border-slate-200 dark:border-slate-700">
           <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold dark:border-slate-700 dark:bg-slate-800/60">Archivos por subir</div>
@@ -645,7 +918,15 @@ export default function ActasRenombrarClient() {
           <div className="border-b border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900 dark:border-blue-800/60 dark:bg-blue-900/20 dark:text-blue-100">
             Procesamiento por archivo
           </div>
-          <div className="max-h-80 overflow-auto divide-y divide-blue-100 dark:divide-blue-900/40">
+          <div className="border-b border-blue-100 bg-blue-50/60 px-3 py-2 text-xs text-blue-900 dark:border-blue-900/40 dark:bg-blue-900/15 dark:text-blue-100">
+            {activeQueueItem
+              ? `En foco: ${activeQueueItem.fileName} (${activeQueueItem.status})`
+              : "Sin archivo en cola"}
+          </div>
+          <div
+            ref={queueContainerRef}
+            className="max-h-80 overflow-auto divide-y divide-blue-100 dark:divide-blue-900/40"
+          >
             {uploadQueue.map((q) => (
               <div
                 key={q.id}
@@ -699,6 +980,7 @@ export default function ActasRenombrarClient() {
                   <tr>
                     <th className="p-2 text-left">Archivo</th>
                     <th className="p-2 text-left">Acta</th>
+                    <th className="p-2 text-left">Fecha</th>
                     <th className="p-2 text-left">Fuente</th>
                     <th className="p-2 text-left">Tiempo</th>
                     <th className="p-2 text-left">Intentos</th>
@@ -713,6 +995,21 @@ export default function ActasRenombrarClient() {
                     <tr key={`${r.originalName}_${r.finalPath}`} className="border-t border-slate-200 dark:border-slate-700">
                       <td className="p-2">{r.originalName}</td>
                       <td className="p-2">{r.acta || "-"}</td>
+                      <td className="p-2">
+                        {r.status !== "ok" ? (
+                          "-"
+                        ) : auditInsideByPath.has(r.finalPath) ? (
+                          <span className="text-emerald-600 dark:text-emerald-300">Dentro de fecha</span>
+                        ) : auditOutsideByPath.has(r.finalPath) ? (
+                          <span className="text-amber-700 dark:text-amber-300">
+                            Fuera: {auditOutsideByPath.get(r.finalPath)?.join(", ") || "sin sugerencia"}
+                          </span>
+                        ) : auditNoTraceByPath.has(r.finalPath) ? (
+                          <span className="text-slate-500 dark:text-slate-300">Sin trazabilidad</span>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
                       <td className="p-2">{r.source || "-"}</td>
                       <td className="p-2">{typeof r.durationMs === "number" ? `${r.durationMs} ms` : "-"}</td>
                       <td className="p-2">{typeof r.attempts === "number" ? r.attempts : "-"}</td>
@@ -721,7 +1018,7 @@ export default function ActasRenombrarClient() {
                           {r.status.toUpperCase()}
                         </span>
                       </td>
-                      <td className="p-2">{r.reason}</td>
+                      <td className="p-2">{reasonToLabel(r.reason, r.detail)}</td>
                       <td className="p-2">
                         <div>{r.detail}</div>
                         {!!r.trace?.length && (

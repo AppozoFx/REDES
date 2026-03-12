@@ -25,6 +25,7 @@ type VentaItemDoc = {
   materialId: string;
   nombre?: string;
   unidadTipo?: "UND" | "METROS";
+  modoVenta?: "UND" | "METROS";
   und?: number;
   metros?: number;
   precioUnitCents?: number;
@@ -573,7 +574,7 @@ export default function VentasClient({
                   </thead>
                   <tbody>
                     {detalleItems.map((it, idx) => {
-                      const unidad = String(it.unidadTipo || "UND");
+                      const unidad = String(it.modoVenta || it.unidadTipo || "UND");
                       const qty =
                         unidad === "METROS"
                           ? Number(it.metros || 0).toFixed(2)
@@ -731,6 +732,5 @@ export default function VentasClient({
     </div>
   );
 }
-
 
 

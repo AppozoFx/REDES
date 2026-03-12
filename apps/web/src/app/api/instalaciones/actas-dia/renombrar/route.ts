@@ -1851,7 +1851,16 @@ export async function GET(req: Request) {
     }> = [];
     const okFueraFechaRaw: Array<{ fileName: string; fullPath: string; acta: string; actaDigits: string }> = [];
     const okSinTrazabilidad: Array<{ fileName: string; fullPath: string }> = [];
+    const okDuplicatesRaw: Array<{
+      fileName: string;
+      fullPath: string;
+      acta: string;
+      actaDigits: string;
+      codigoCliente: string;
+      cliente: string;
+    }> = [];
     const okActasDetectadas = new Set<string>();
+    const okSeenByActaDigits = new Set<string>();
 
     okFiles.forEach((item: any) => {
       const idx = indexByFinalPath.get(String(item.fullPath || ""));
@@ -1864,10 +1873,22 @@ export async function GET(req: Request) {
         okSinTrazabilidad.push({ fileName: item.name, fullPath: item.fullPath });
         return;
       }
-      okActasDetectadas.add(actaDigits);
       const matches = daySnapshot.byActaDigits.get(actaDigits) || [];
       if (matches.length) {
         const m = matches[0];
+        if (okSeenByActaDigits.has(actaDigits)) {
+          okDuplicatesRaw.push({
+            fileName: item.name,
+            fullPath: item.fullPath,
+            acta: idx.acta,
+            actaDigits,
+            codigoCliente: m.codigoCliente,
+            cliente: m.cliente,
+          });
+          return;
+        }
+        okSeenByActaDigits.add(actaDigits);
+        okActasDetectadas.add(actaDigits);
         okDentroFecha.push({
           fileName: item.name,
           fullPath: item.fullPath,
@@ -1882,6 +1903,19 @@ export async function GET(req: Request) {
         const byCode = codigoFromName ? daySnapshot.byCodigoCliente.get(codigoFromName) || [] : [];
         if (byCode.length) {
           const m = byCode[0];
+          if (okSeenByActaDigits.has(actaDigits)) {
+            okDuplicatesRaw.push({
+              fileName: item.name,
+              fullPath: item.fullPath,
+              acta: idx.acta,
+              actaDigits,
+              codigoCliente: m.codigoCliente,
+              cliente: m.cliente,
+            });
+            return;
+          }
+          okSeenByActaDigits.add(actaDigits);
+          okActasDetectadas.add(actaDigits);
           okDentroFecha.push({
             fileName: item.name,
             fullPath: item.fullPath,
@@ -1915,6 +1949,19 @@ export async function GET(req: Request) {
     okFueraFechaRaw.forEach((x) => {
       const fechasSugeridas = hintsByActaDigits.get(x.actaDigits) || [];
       if (fechasSugeridas.includes(dateFolder)) {
+        if (okSeenByActaDigits.has(x.actaDigits)) {
+          okDuplicatesRaw.push({
+            fileName: x.fileName,
+            fullPath: x.fullPath,
+            acta: x.acta,
+            actaDigits: x.actaDigits,
+            codigoCliente: "-",
+            cliente: "-",
+          });
+          return;
+        }
+        okSeenByActaDigits.add(x.actaDigits);
+        okActasDetectadas.add(x.actaDigits);
         okDentroFecha.push({
           fileName: x.fileName,
           fullPath: x.fullPath,
@@ -1935,12 +1982,23 @@ export async function GET(req: Request) {
     });
 
     const sobrantes = [
+      ...okDuplicatesRaw.map((x) => ({
+        fileName: x.fileName,
+        fullPath: x.fullPath,
+        tipo: "duplicada" as const,
+        acta: x.acta,
+        fechasSugeridas: [] as string[],
+        codigoCliente: x.codigoCliente,
+        cliente: x.cliente,
+      })),
       ...okFueraFecha.map((x) => ({
         fileName: x.fileName,
         fullPath: x.fullPath,
         tipo: "fuera_fecha" as const,
         acta: x.acta,
         fechasSugeridas: x.fechasSugeridas,
+        codigoCliente: "",
+        cliente: "",
       })),
       ...okSinTrazabilidad.map((x) => ({
         fileName: x.fileName,
@@ -1948,6 +2006,8 @@ export async function GET(req: Request) {
         tipo: "sin_trazabilidad" as const,
         acta: "",
         fechasSugeridas: [] as string[],
+        codigoCliente: "",
+        cliente: "",
       })),
     ].sort((a, b) => a.fileName.localeCompare(b.fileName, "es", { sensitivity: "base" }));
 
@@ -2426,6 +2486,163 @@ export async function PATCH(req: Request) {
       });
     }
 
+    if (action === "move_ok_to_error") {
+      if (!dateFolder) {
+        return NextResponse.json({ ok: false, error: "DATE_REQUIRED_YYYY_MM_DD" }, { status: 400 });
+      }
+      if (!fromPath || !isAllowedPath(fromPath)) {
+        return NextResponse.json({ ok: false, error: "INVALID_SOURCE_PATH" }, { status: 400 });
+      }
+      const split = splitPath(fromPath);
+      if (split.folder !== "ok" || split.dateFolder !== dateFolder) {
+        return NextResponse.json({ ok: false, error: "SOURCE_MUST_BE_OK_OF_DATE" }, { status: 400 });
+      }
+
+      const bucket = adminStorageBucket();
+      const srcFile = bucket.file(fromPath);
+      const [exists] = await srcFile.exists();
+      if (!exists) return NextResponse.json({ ok: false, error: "SOURCE_NOT_FOUND" }, { status: 404 });
+
+      const dstPath = await ensureUniqueDestinationPath(bucket, `${ROOT_PREFIX}/error/${dateFolder}`, split.fileName);
+      await srcFile.move(dstPath);
+      await relinkIndexFinalPath({
+        fromPath,
+        toPath: dstPath,
+        status: "error",
+        reason: "MOVE_OK_TO_ERROR_MANUAL",
+      }).catch(() => 0);
+
+      return NextResponse.json({
+        ok: true,
+        fromPath,
+        toPath: dstPath,
+        toName: splitPath(dstPath).fileName,
+      });
+    }
+
+    if (action === "move_error_to_inbox") {
+      if (!dateFolder) {
+        return NextResponse.json({ ok: false, error: "DATE_REQUIRED_YYYY_MM_DD" }, { status: 400 });
+      }
+      if (!fromPath || !isAllowedPath(fromPath)) {
+        return NextResponse.json({ ok: false, error: "INVALID_SOURCE_PATH" }, { status: 400 });
+      }
+      const split = splitPath(fromPath);
+      if (split.folder !== "error" || split.dateFolder !== dateFolder) {
+        return NextResponse.json({ ok: false, error: "SOURCE_MUST_BE_ERROR_OF_DATE" }, { status: 400 });
+      }
+
+      const bucket = adminStorageBucket();
+      const srcFile = bucket.file(fromPath);
+      const [exists] = await srcFile.exists();
+      if (!exists) return NextResponse.json({ ok: false, error: "SOURCE_NOT_FOUND" }, { status: 404 });
+
+      const dstPath = await ensureUniqueDestinationPath(bucket, `${ROOT_PREFIX}/inbox/${dateFolder}`, split.fileName);
+      await srcFile.move(dstPath);
+      await relinkIndexFinalPath({
+        fromPath,
+        toPath: dstPath,
+        status: "error",
+        reason: "MOVE_ERROR_TO_INBOX_MANUAL",
+      }).catch(() => 0);
+
+      return NextResponse.json({
+        ok: true,
+        fromPath,
+        toPath: dstPath,
+        toName: splitPath(dstPath).fileName,
+      });
+    }
+
+    if (action === "reprocess_inbox") {
+      if (!dateFolder) return NextResponse.json({ ok: false, error: "DATE_REQUIRED_YYYY_MM_DD" }, { status: 400 });
+      if (!fromPath || !isAllowedPath(fromPath)) {
+        return NextResponse.json({ ok: false, error: "INVALID_SOURCE_PATH" }, { status: 400 });
+      }
+      const split = splitPath(fromPath);
+      if (split.folder !== "inbox" || split.dateFolder !== dateFolder) {
+        return NextResponse.json({ ok: false, error: "SOURCE_MUST_BE_INBOX_OF_DATE" }, { status: 400 });
+      }
+
+      const bucket = adminStorageBucket();
+      const srcFile = bucket.file(fromPath);
+      const [exists] = await srcFile.exists();
+      if (!exists) return NextResponse.json({ ok: false, error: "SOURCE_NOT_FOUND" }, { status: 404 });
+
+      const [buffer] = await srcFile.download();
+      const fileHash = hashBuffer(buffer);
+      const fileName = ensurePdfName(split.fileName || "archivo.pdf");
+      const result = await autoClassifyUploaded(bucket, fromPath, fileName, dateFolder, buffer);
+      await saveResultIndex(dateFolder, fileHash, result).catch(() => undefined);
+      if (result.finalPath !== fromPath) {
+        await relinkIndexFinalPath({
+          fromPath,
+          toPath: result.finalPath,
+          status: result.status,
+          reason: result.status === "ok" ? "REPROCESS_INBOX_OK" : "REPROCESS_INBOX_ERROR",
+        }).catch(() => 0);
+      }
+
+      return NextResponse.json({ ok: true, mode: "reprocess_inbox", result });
+    }
+
+    if (action === "delete_inbox") {
+      if (!dateFolder) return NextResponse.json({ ok: false, error: "DATE_REQUIRED_YYYY_MM_DD" }, { status: 400 });
+      if (!fromPath || !isAllowedPath(fromPath)) {
+        return NextResponse.json({ ok: false, error: "INVALID_SOURCE_PATH" }, { status: 400 });
+      }
+      const split = splitPath(fromPath);
+      if (split.folder !== "inbox" || split.dateFolder !== dateFolder) {
+        return NextResponse.json({ ok: false, error: "SOURCE_MUST_BE_INBOX_OF_DATE" }, { status: 400 });
+      }
+
+      const bucket = adminStorageBucket();
+      const srcFile = bucket.file(fromPath);
+      const [exists] = await srcFile.exists();
+      if (!exists) return NextResponse.json({ ok: false, error: "SOURCE_NOT_FOUND" }, { status: 404 });
+
+      await srcFile.delete();
+
+      return NextResponse.json({
+        ok: true,
+        fromPath,
+        deleted: true,
+      });
+    }
+
+    if (action === "reprocess_ok") {
+      if (!dateFolder) return NextResponse.json({ ok: false, error: "DATE_REQUIRED_YYYY_MM_DD" }, { status: 400 });
+      if (!fromPath || !isAllowedPath(fromPath)) {
+        return NextResponse.json({ ok: false, error: "INVALID_SOURCE_PATH" }, { status: 400 });
+      }
+      const split = splitPath(fromPath);
+      if (split.folder !== "ok" || split.dateFolder !== dateFolder) {
+        return NextResponse.json({ ok: false, error: "SOURCE_MUST_BE_OK_OF_DATE" }, { status: 400 });
+      }
+
+      const bucket = adminStorageBucket();
+      const srcFile = bucket.file(fromPath);
+      const [exists] = await srcFile.exists();
+      if (!exists) return NextResponse.json({ ok: false, error: "SOURCE_NOT_FOUND" }, { status: 404 });
+
+      const tempInboxPath = await ensureUniqueDestinationPath(bucket, `${ROOT_PREFIX}/inbox/${dateFolder}`, split.fileName);
+      await srcFile.move(tempInboxPath);
+
+      const [buffer] = await bucket.file(tempInboxPath).download();
+      const fileHash = hashBuffer(buffer);
+      const fileName = ensurePdfName(split.fileName || "archivo.pdf");
+      const result = await autoClassifyUploaded(bucket, tempInboxPath, fileName, dateFolder, buffer);
+      await saveResultIndex(dateFolder, fileHash, result).catch(() => undefined);
+      await relinkIndexFinalPath({
+        fromPath,
+        toPath: result.finalPath,
+        status: result.status,
+        reason: result.status === "ok" ? "REPROCESS_OK_OK" : "REPROCESS_OK_ERROR",
+      }).catch(() => 0);
+
+      return NextResponse.json({ ok: true, mode: "reprocess_ok", result });
+    }
+
     if (action === "reprocess_rigorous") {
       if (!dateFolder) return NextResponse.json({ ok: false, error: "DATE_REQUIRED_YYYY_MM_DD" }, { status: 400 });
       if (!fromPath || !isAllowedPath(fromPath)) {
@@ -2449,6 +2666,9 @@ export async function PATCH(req: Request) {
         });
       }
       const bucket = adminStorageBucket();
+      const srcFile = bucket.file(fromPath);
+      const [buffer] = await srcFile.download();
+      const fileHash = hashBuffer(buffer);
       const result = await reanalyzeErrorFileRigorous(bucket, fromPath, dateFolder, async (update) => {
         if (!requestId) return;
         await writeProgress(requestId, {
@@ -2461,6 +2681,7 @@ export async function PATCH(req: Request) {
           useAi: Boolean(update.useAi),
         });
       });
+      await saveResultIndex(dateFolder, fileHash, result).catch(() => undefined);
       if (result.status === "ok" && result.finalPath !== fromPath) {
         await relinkIndexFinalPath({
           fromPath,
@@ -2505,9 +2726,27 @@ export async function PATCH(req: Request) {
     const srcFile = bucket.file(fromPath);
     const [exists] = await srcFile.exists();
     if (!exists) return NextResponse.json({ ok: false, error: "SOURCE_NOT_FOUND" }, { status: 404 });
+    const [buffer] = await srcFile.download();
+    const fileHash = hashBuffer(buffer);
+    const detected = await extractActaFromPdf(newName, buffer).catch(() => ({
+      acta: null,
+      source: null,
+      detail: "",
+      attempts: 0,
+      trace: [],
+    }));
 
     const dstPath = await ensureUniqueDestinationPath(bucket, `${ROOT_PREFIX}/ok/${dateFolder}`, newName);
     await srcFile.move(dstPath);
+    if (detected?.acta) {
+      await saveResultIndex(dateFolder, fileHash, {
+        status: "ok",
+        source: detected.source || null,
+        acta: detected.acta,
+        finalPath: dstPath,
+        reason: "MOVE_ERROR_TO_OK_MANUAL",
+      }).catch(() => undefined);
+    }
     await relinkIndexFinalPath({
       fromPath,
       toPath: dstPath,
@@ -2527,5 +2766,3 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }
 }
-
-

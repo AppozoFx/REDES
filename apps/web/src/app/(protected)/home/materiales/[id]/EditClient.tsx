@@ -6,6 +6,14 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { updateMaterialAction } from "../actions";
 
+function toNum(v: string) {
+  return Number(String(v ?? "").replace(",", "."));
+}
+
+function roundUpToHalfSol(value: number) {
+  return Math.ceil(value * 2) / 2;
+}
+
 export default function EditClient({ initial }: { initial: any }) {
   const router = useRouter();
   const [nombre, setNombre] = useState(initial?.nombre ?? "");
@@ -13,16 +21,29 @@ export default function EditClient({ initial }: { initial: any }) {
   const [unidadTipo] = useState<"UND" | "METROS">(initial?.unidadTipo ?? "UND");
   const [areas, setAreas] = useState<string[]>(initial?.areas ?? []);
   const [vendible, setVendible] = useState<boolean>(!!initial?.vendible);
+  const [ventaUnidadTipos, setVentaUnidadTipos] = useState<Array<"UND" | "METROS">>(
+    initial?.unidadTipo === "METROS"
+      ? Array.isArray(initial?.ventaUnidadTipos) && initial.ventaUnidadTipos.length
+        ? initial.ventaUnidadTipos
+        : ["METROS"]
+      : ["UND"]
+  );
 
   const [metrosPorUnd, setMetrosPorUnd] = useState<string>(initial?.unidadTipo === "METROS" ? String((initial?.metrosPorUndCm ?? 0) / 100) : "");
   const [precioPorMetro, setPrecioPorMetro] = useState<string>(
-    initial?.unidadTipo === "METROS" && initial?.precioPorCmCents != null ? String(((initial?.precioPorCmCents ?? 0) * 100) / 10000) : ""
+    initial?.unidadTipo === "METROS"
+      ? initial?.precioPorMetroCents != null
+        ? String((initial?.precioPorMetroCents ?? 0) / 100)
+        : initial?.precioPorCmCents != null
+        ? String(((initial?.precioPorCmCents ?? 0) * 100) / 10000)
+        : ""
+      : ""
   );
   const [minUndUi, setMinUndUi] = useState<string>("");
   const [minMetrosSueltosUi, setMinMetrosSueltosUi] = useState<string>("");
   const [stockMetros, setStockMetros] = useState<string>(initial?.unidadTipo === "METROS" && initial?.stockMetros != null ? String(initial?.stockMetros) : "");
 
-  const [precioUnd, setPrecioUnd] = useState<string>(initial?.unidadTipo === "UND" && initial?.precioUndCents != null ? String((initial?.precioUndCents ?? 0) / 100) : "");
+  const [precioUnd, setPrecioUnd] = useState<string>(initial?.precioUndCents != null ? String((initial?.precioUndCents ?? 0) / 100) : "");
   const [minStockUnd, setMinStockUnd] = useState<string>(initial?.unidadTipo === "UND" && initial?.minStockUnd != null ? String(initial?.minStockUnd) : "");
   const [stockUnd, setStockUnd] = useState<string>(initial?.unidadTipo === "UND" && initial?.stockUnd != null ? String(initial?.stockUnd) : "");
 
@@ -45,11 +66,25 @@ export default function EditClient({ initial }: { initial: any }) {
     }
   }, [result, router]);
 
+  useEffect(() => {
+    if (unidadTipo !== "METROS" || !vendible) {
+      setPrecioPorMetro("");
+      return;
+    }
+    const und = toNum(precioUnd || "0");
+    const mpo = toNum(metrosPorUnd || "0");
+    if (!Number.isFinite(und) || !Number.isFinite(mpo) || und <= 0 || mpo <= 0) {
+      setPrecioPorMetro("");
+      return;
+    }
+    const calc = roundUpToHalfSol(und / mpo);
+    setPrecioPorMetro(calc.toFixed(2));
+  }, [unidadTipo, vendible, precioUnd, metrosPorUnd]);
+
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     shouldReturnRef.current = volverAlGuardar;
 
-    const toNum = (v: string) => Number(String(v ?? "").replace(",", "."));
     const fd = new FormData();
     fd.set("id", initial.id);
     fd.set("nombre", nombre);
@@ -57,12 +92,14 @@ export default function EditClient({ initial }: { initial: any }) {
     fd.set("unidadTipo", unidadTipo);
     fd.set("areas", JSON.stringify(areas));
     fd.set("vendible", vendible ? "true" : "false");
+    fd.set("ventaUnidadTipos", JSON.stringify(ventaUnidadTipos));
     if (unidadTipo === "UND") {
       if (precioUnd) fd.set("precioUnd", String(toNum(precioUnd)));
       if (minStockUnd) fd.set("minStockUnd", String(toNum(minStockUnd)));
       if (stockUnd !== "") fd.set("stockUnd", String(toNum(stockUnd)));
     } else {
       if (metrosPorUnd) fd.set("metrosPorUnd", String(toNum(metrosPorUnd)));
+      if (vendible && precioUnd) fd.set("precioUnd", String(toNum(precioUnd)));
       if (vendible && precioPorMetro) fd.set("precioPorMetro", String(toNum(precioPorMetro)));
       const und = Math.max(0, Math.floor(Number(minUndUi || "0")));
       const mpo = toNum(metrosPorUnd || "0");
@@ -145,6 +182,28 @@ export default function EditClient({ initial }: { initial: any }) {
 
           {unidadTipo === "METROS" && (
             <div className="space-y-3">
+              {vendible && (
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Modos de venta</label>
+                  <div className="flex flex-wrap gap-3 text-sm">
+                    {(["UND", "METROS"] as const).map((modo) => (
+                      <label key={modo} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700 dark:text-slate-200">
+                        <input
+                          type="checkbox"
+                          checked={ventaUnidadTipos.includes(modo)}
+                          onChange={(e) => {
+                            setVentaUnidadTipos((prev) => {
+                              const next = e.target.checked ? Array.from(new Set([...prev, modo])) : prev.filter((x) => x !== modo);
+                              return next.length ? next : ["METROS"];
+                            });
+                          }}
+                        />
+                        Vender por {modo}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Equivalencia (metros por UND)</label>
@@ -157,8 +216,14 @@ export default function EditClient({ initial }: { initial: any }) {
                 </div>
                 {vendible && (
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Precio por metro</label>
-                    <input value={precioPorMetro} onChange={(e) => setPrecioPorMetro(e.target.value)} className={fieldClass} inputMode="decimal" />
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Precio por UND</label>
+                    <input value={precioUnd} onChange={(e) => setPrecioUnd(e.target.value)} className={fieldClass} inputMode="decimal" />
+                  </div>
+                )}
+                {vendible && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Precio por metro (auto)</label>
+                    <input value={precioPorMetro} readOnly className={`${fieldClass} bg-slate-50 dark:bg-slate-800/60`} inputMode="decimal" />
                   </div>
                 )}
               </div>
@@ -218,5 +283,3 @@ export default function EditClient({ initial }: { initial: any }) {
     </div>
   );
 }
-
-

@@ -3,7 +3,7 @@
 import { requireServerPermission } from "@/core/auth/require";
 import { adminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
-import { metersToCm } from "@/domain/materiales/repo";
+import { derivePrecioPorMetroCents, metersToCm } from "@/domain/materiales/repo";
 import {
   VentaCreateInputSchema,
   VentaCuotasUpdateSchema,
@@ -18,6 +18,7 @@ type VentaItemDoc = {
   materialId: string;
   nombre?: string;
   unidadTipo: "UND" | "METROS";
+  modoVenta?: "UND" | "METROS";
   und?: number;
   metros?: number;
   precioUnitCents: number;
@@ -55,6 +56,16 @@ function shortName(name: string) {
   const first = parts[0];
   const firstLast = parts.length >= 4 ? parts[2] || "" : parts[1] || "";
   return `${first} ${firstLast}`.trim() || first;
+}
+
+function getVentaUnidadTipos(mat: any): Array<"UND" | "METROS"> {
+  const base = String(mat?.unidadTipo || "").toUpperCase() === "METROS" ? "METROS" : "UND";
+  const raw = Array.isArray(mat?.ventaUnidadTipos) ? mat.ventaUnidadTipos : [];
+  const list = raw
+    .map((x: any) => String(x || "").toUpperCase())
+    .filter((x: string) => x === "UND" || x === "METROS") as Array<"UND" | "METROS">;
+  if (base === "UND") return ["UND"];
+  return list.length ? Array.from(new Set(list)) : ["METROS"];
 }
 
 type StockLoc = { type: "ALMACEN" | "CUADRILLA" | "COORDINADOR"; id: string };
@@ -250,37 +261,66 @@ export async function crearVentaAction(raw: any) {
     }
 
     const unidadTipo = String(m.unidadTipo || "").toUpperCase() === "METROS" ? "METROS" : "UND";
-    const und = unidadTipo === "UND" ? Math.floor(it.und || 0) : 0;
-    const metros = unidadTipo === "METROS" ? Math.max(0, Number(it.metros || 0)) : 0;
-    if (unidadTipo === "UND" && und <= 0) {
+    const ventaUnidadTipos = getVentaUnidadTipos(m);
+    const requestedModoVenta = String(it.modoVenta || "").toUpperCase();
+    const modoVenta =
+      requestedModoVenta === "UND" && ventaUnidadTipos.includes("UND")
+        ? "UND"
+        : requestedModoVenta === "METROS" && ventaUnidadTipos.includes("METROS")
+        ? "METROS"
+        : ventaUnidadTipos[0];
+    const undInput = Math.floor(it.und || 0);
+    const metrosInput = Math.max(0, Number(it.metros || 0));
+    if (modoVenta === "UND" && undInput <= 0) {
       return { ok: false, error: { formErrors: [`CANTIDAD_INVALIDA ${it.materialId}`] } } as const;
     }
-    if (unidadTipo === "METROS" && metros <= 0) {
+    if (modoVenta === "METROS" && metrosInput <= 0) {
       return { ok: false, error: { formErrors: [`METROS_INVALIDOS ${it.materialId}`] } } as const;
+    }
+
+    let und = 0;
+    let metros = 0;
+    if (unidadTipo === "UND") {
+      und = undInput;
+    } else if (modoVenta === "UND") {
+      const metrosPorUndCm = Math.max(0, Math.floor(Number(m.metrosPorUndCm || 0)));
+      if (metrosPorUndCm <= 0) {
+        return { ok: false, error: { formErrors: [`METROS_POR_UND_REQUIRED ${it.materialId}`] } } as const;
+      }
+      und = undInput;
+      metros = (metrosPorUndCm * undInput) / 100;
+    } else {
+      metros = metrosInput;
     }
 
     let precioUnitCents = 0;
     if (canEditPrecio && typeof it.precioUnitCents === "number") {
       precioUnitCents = Math.max(0, Math.floor(it.precioUnitCents));
-    } else if (unidadTipo === "UND") {
+    } else if (modoVenta === "UND") {
       precioUnitCents = Math.max(0, Math.floor(m.precioUndCents || 0));
     } else {
-      precioUnitCents = Math.max(0, Math.floor(m.precioPorCmCents || 0));
+      precioUnitCents =
+        derivePrecioPorMetroCents({
+          precioPorMetroCents: m.precioPorMetroCents,
+          precioUndCents: m.precioUndCents,
+          metrosPorUndCm: m.metrosPorUndCm,
+        }) ?? Math.max(0, Math.floor((m.precioPorCmCents || 0) * 100));
     }
     if (precioUnitCents <= 0) {
       return { ok: false, error: { formErrors: [`PRECIO_INVALIDO ${it.materialId}`] } } as const;
     }
 
     const subtotalCents =
-      unidadTipo === "UND" ? precioUnitCents * und : precioUnitCents * metersToCm(metros);
+      modoVenta === "UND" ? precioUnitCents * und : Math.round(precioUnitCents * metros);
     totalCents += subtotalCents;
 
     items.push({
       materialId: it.materialId,
       nombre: String(m.nombre || "").trim() || it.materialId,
       unidadTipo,
-      und: unidadTipo === "UND" ? und : 0,
-      metros: unidadTipo === "METROS" ? metros : 0,
+      modoVenta,
+      und: modoVenta === "UND" ? und : 0,
+      metros: modoVenta === "METROS" ? metros : unidadTipo === "METROS" ? metros : 0,
       precioUnitCents,
       subtotalCents,
     });
@@ -626,6 +666,3 @@ export async function anularVentaAction(raw: any) {
 
   return { ok: true } as const;
 }
-
-
-

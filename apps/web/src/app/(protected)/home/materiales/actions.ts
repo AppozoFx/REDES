@@ -1,7 +1,7 @@
 "use server";
 
 import { requireServerPermission } from "@/core/auth/require";
-import { listMateriales, getMaterial, updateMaterial, metersToCm } from "@/domain/materiales/repo";
+import { listMateriales, getMaterial, updateMaterial, metersToCm, derivePrecioPorMetroCents } from "@/domain/materiales/repo";
 import { MaterialUpdateInputSchema } from "@/domain/materiales/schemas";
 import { revalidatePath } from "next/cache";
 import { adminDb } from "@/lib/firebase/admin";
@@ -87,6 +87,13 @@ export async function getMaterialAction(id: string) {
   const doc = await getMaterial(id);
   if (!doc) return { ok: false, error: { formErrors: ["MATERIAL_NOT_FOUND"] } } as const;
   const { audit, ...rest } = (doc as any) || {};
+  if ((rest as any).unidadTipo === "METROS") {
+    (rest as any).precioPorMetroCents = derivePrecioPorMetroCents({
+      precioPorMetroCents: (rest as any).precioPorMetroCents,
+      precioUndCents: (rest as any).precioUndCents,
+      metrosPorUndCm: (rest as any).metrosPorUndCm,
+    });
+  }
   const stockSnap = await adminDb().collection("almacen_stock").doc(id).get();
   if (stockSnap.exists) {
     const s = stockSnap.data() as any;
@@ -114,6 +121,7 @@ export async function updateMaterialAction(arg1: any, arg2?: any) {
         unidadTipo: String(form.get("unidadTipo") ?? ""),
         areas: JSON.parse(String(form.get("areas") ?? "[]")),
         vendible: String(form.get("vendible") ?? "false") === "true",
+        ventaUnidadTipos: JSON.parse(String(form.get("ventaUnidadTipos") ?? "[]")),
         metrosPorUnd: form.get("metrosPorUnd") ? Number(String(form.get("metrosPorUnd")).replace(",", ".")) : undefined,
         precioPorMetro: form.get("precioPorMetro") ? Number(String(form.get("precioPorMetro")).replace(",", ".")) : undefined,
         minStockMetros: form.get("minStockMetros") ? Number(String(form.get("minStockMetros")).replace(",", ".")) : undefined,
@@ -131,6 +139,7 @@ export async function updateMaterialAction(arg1: any, arg2?: any) {
         unidadTipo: String(form.get("unidadTipo") ?? ""),
         areas: JSON.parse(String(form.get("areas") ?? "[]")),
         vendible: String(form.get("vendible") ?? "false") === "true",
+        ventaUnidadTipos: JSON.parse(String(form.get("ventaUnidadTipos") ?? "[]")),
         metrosPorUnd: form.get("metrosPorUnd") ? Number(String(form.get("metrosPorUnd")).replace(",", ".")) : undefined,
         precioPorMetro: form.get("precioPorMetro") ? Number(String(form.get("precioPorMetro")).replace(",", ".")) : undefined,
         minStockMetros: form.get("minStockMetros") ? Number(String(form.get("minStockMetros")).replace(",", ".")) : undefined,

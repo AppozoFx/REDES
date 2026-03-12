@@ -17,6 +17,14 @@ function toId(nombre: string): string {
   return singleSp.replace(/\s+/g, "_").replace(/_+/g, "_");
 }
 
+function toNum(v: string) {
+  return Number(String(v ?? "").replace(",", "."));
+}
+
+function roundUpToHalfSol(value: number) {
+  return Math.ceil(value * 2) / 2;
+}
+
 export default function CreateMaterialClient() {
   const router = useRouter();
   const defaultAreas = ["INSTALACIONES", "MANTENIMIENTO"];
@@ -25,6 +33,7 @@ export default function CreateMaterialClient() {
   const [unidadTipo, setUnidadTipo] = useState<"UND" | "METROS">("UND");
   const [areas, setAreas] = useState<string[]>(defaultAreas);
   const [vendible, setVendible] = useState(false);
+  const [ventaUnidadTipos, setVentaUnidadTipos] = useState<Array<"UND" | "METROS">>(["UND"]);
 
   const [metrosPorUnd, setMetrosPorUnd] = useState<string>("");
   const [precioUndMetros, setPrecioUndMetros] = useState<string>("");
@@ -58,23 +67,26 @@ export default function CreateMaterialClient() {
     setStockInicialUndMetros("");
     setAreas(defaultAreas);
     setUnidadTipo("UND");
+    setVentaUnidadTipos(["UND"]);
   };
 
   useEffect(() => {
-    const toNum = (v: string) => Number(String(v ?? "").replace(",", "."));
-    const roundUpHalfStep = (v: number) => Math.ceil(v * 2) / 2;
+    setVentaUnidadTipos(unidadTipo === "UND" ? ["UND"] : ["METROS"]);
+  }, [unidadTipo]);
+
+  useEffect(() => {
     if (unidadTipo !== "METROS" || !vendible) {
       setPrecioPorMetro("");
       return;
     }
     const und = toNum(precioUndMetros || "0");
     const mpo = toNum(metrosPorUnd || "0");
-    if (und > 0 && mpo > 0) {
-      const calc = und / mpo;
-      setPrecioPorMetro(roundUpHalfStep(calc).toFixed(2));
-    } else {
+    if (!Number.isFinite(und) || !Number.isFinite(mpo) || und <= 0 || mpo <= 0) {
       setPrecioPorMetro("");
+      return;
     }
+    const calc = roundUpToHalfSol(und / mpo);
+    setPrecioPorMetro(calc.toFixed(2));
   }, [unidadTipo, vendible, precioUndMetros, metrosPorUnd]);
 
   useEffect(() => {
@@ -104,13 +116,14 @@ export default function CreateMaterialClient() {
     fd.set("unidadTipo", unidadTipo);
     fd.set("areas", JSON.stringify(areas));
     fd.set("vendible", vendible ? "true" : "false");
+    fd.set("ventaUnidadTipos", JSON.stringify(ventaUnidadTipos));
     if (unidadTipo === "UND") {
       if (precioUnd) fd.set("precioUnd", String(Number(precioUnd)));
       if (minStockUnd) fd.set("minStockUnd", String(Number(minStockUnd)));
       if (stockInicialUnd) fd.set("stockInicialUnd", String(Math.max(0, Math.floor(Number(stockInicialUnd)))));
     } else {
-      const toNum = (v: string) => Number(String(v ?? "").replace(",", "."));
       if (metrosPorUnd) fd.set("metrosPorUnd", String(toNum(metrosPorUnd)));
+      if (precioUndMetros) fd.set("precioUnd", String(toNum(precioUndMetros)));
       if (precioPorMetro) fd.set("precioPorMetro", String(toNum(precioPorMetro)));
       const stockUndInit = Math.max(0, toNum(stockInicialUndMetros || "0"));
       const mpo = toNum(metrosPorUnd || "0");
@@ -185,7 +198,17 @@ export default function CreateMaterialClient() {
               <div className="flex gap-3 text-sm">
                 {["UND", "METROS"].map((u) => (
                   <label key={u} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700 dark:text-slate-200">
-                    <input type="radio" name="unidad" checked={unidadTipo === u} onChange={() => setUnidadTipo(u as any)} />
+                    <input
+                      type="radio"
+                      name="unidad"
+                      checked={unidadTipo === u}
+                      onChange={() => {
+                        setUnidadTipo(u as any);
+                        setPrecioUnd("");
+                        setPrecioUndMetros("");
+                        setPrecioPorMetro("");
+                      }}
+                    />
                     {u}
                   </label>
                 ))}
@@ -205,6 +228,28 @@ export default function CreateMaterialClient() {
 
           {unidadTipo === "METROS" && (
             <div className="space-y-3">
+              {vendible && (
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Modos de venta</label>
+                  <div className="flex flex-wrap gap-3 text-sm">
+                    {(["UND", "METROS"] as const).map((modo) => (
+                      <label key={modo} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700 dark:text-slate-200">
+                        <input
+                          type="checkbox"
+                          checked={ventaUnidadTipos.includes(modo)}
+                          onChange={(e) => {
+                            setVentaUnidadTipos((prev) => {
+                              const next = e.target.checked ? Array.from(new Set([...prev, modo])) : prev.filter((x) => x !== modo);
+                              return next.length ? next : ["METROS"];
+                            });
+                          }}
+                        />
+                        Vender por {modo}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Equivalencia (metros por UND)</label>
@@ -216,11 +261,13 @@ export default function CreateMaterialClient() {
                   <input value={stockInicialUndMetros} onChange={(e) => setStockInicialUndMetros(e.target.value)} className={fieldClass} inputMode="decimal" />
                 </div>
                 {vendible && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Precio por UND</label>
+                    <input value={precioUndMetros} onChange={(e) => setPrecioUndMetros(e.target.value)} className={fieldClass} inputMode="decimal" />
+                  </div>
+                )}
+                {vendible && (
                   <>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Precio por UND</label>
-                      <input value={precioUndMetros} onChange={(e) => setPrecioUndMetros(e.target.value)} className={fieldClass} inputMode="decimal" />
-                    </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Precio por metro (auto)</label>
                       <input value={precioPorMetro} readOnly className={`${fieldClass} bg-slate-50 dark:bg-slate-800/60`} inputMode="decimal" />
@@ -307,4 +354,3 @@ function PreviewMinimo({ metrosPorUnd, und, sueltos }: { metrosPorUnd: string; u
   if (!mpo || total <= 0) return null;
   return <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">Se guardara como {total} metros</div>;
 }
-

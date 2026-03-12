@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { getServerSession } from "@/core/auth/session";
+import { derivePrecioPorMetroCents } from "@/domain/materiales/repo";
 
 export const runtime = "nodejs";
 
@@ -31,11 +32,18 @@ export async function GET(req: Request) {
     const snap = await q.limit(1000).get();
     const items = snap.docs.map((d) => {
       const data = d.data() as any;
+      const precioPorMetroCents = derivePrecioPorMetroCents({
+        precioPorMetroCents: data?.precioPorMetroCents,
+        precioUndCents: data?.precioUndCents,
+        metrosPorUndCm: data?.metrosPorUndCm,
+      });
       return {
         id: d.id,
         nombre: data?.nombre ?? "",
         unidadTipo: data?.unidadTipo ?? "",
+        ventaUnidadTipos: Array.isArray(data?.ventaUnidadTipos) ? data.ventaUnidadTipos : null,
         precioUndCents: data?.precioUndCents ?? null,
+        precioPorMetroCents,
         precioPorCmCents: data?.precioPorCmCents ?? null,
         areas: data?.areas ?? [],
       };
@@ -46,4 +54,3 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }
 }
-

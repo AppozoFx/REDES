@@ -5,6 +5,7 @@ export type VentaArea = z.infer<typeof VentaAreaEnum>;
 
 export const VentaItemInputSchema = z.object({
   materialId: z.string().min(1),
+  modoVenta: z.enum(["UND", "METROS"]).optional(),
   und: z.number().nonnegative().optional(),
   metros: z.number().nonnegative().optional(),
   // precio unitario opcional (solo si tiene permiso)
@@ -42,4 +43,3 @@ export const VentaAnularInputSchema = z.object({
   ventaId: z.string().min(1),
 });
 export type VentaAnularInput = z.infer<typeof VentaAnularInputSchema>;
-

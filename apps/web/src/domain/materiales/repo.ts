@@ -35,6 +35,40 @@ export function metersToCm(m: number): number {
   return Math.round((m ?? 0) * 100);
 }
 
+export function roundUpToHalfSol(value: number): number {
+  return Math.ceil((value ?? 0) * 2) / 2;
+}
+
+export function derivePrecioPorMetroCents(input: {
+  precioPorMetroCents?: number | null;
+  precioUndCents?: number | null;
+  metrosPorUndCm?: number | null;
+}): number | null {
+  if (typeof input.precioPorMetroCents === "number" && Number.isFinite(input.precioPorMetroCents) && input.precioPorMetroCents > 0) {
+    return Math.max(0, Math.floor(input.precioPorMetroCents));
+  }
+  const precioUndCents = Number(input.precioUndCents || 0);
+  const metrosPorUndCm = Number(input.metrosPorUndCm || 0);
+  if (!Number.isFinite(precioUndCents) || !Number.isFinite(metrosPorUndCm) || precioUndCents <= 0 || metrosPorUndCm <= 0) {
+    return null;
+  }
+  const metrosPorUnd = metrosPorUndCm / 100;
+  if (metrosPorUnd <= 0) return null;
+  const precioUnd = precioUndCents / 100;
+  const precioPorMetro = roundUpToHalfSol(precioUnd / metrosPorUnd);
+  return moneyToCents(precioPorMetro);
+}
+
+function normalizeVentaUnidadTipos(
+  unidadTipo: "UND" | "METROS",
+  ventaUnidadTipos?: Array<"UND" | "METROS">
+): Array<"UND" | "METROS"> {
+  const unique = Array.from(new Set((ventaUnidadTipos || []).filter(Boolean))) as Array<"UND" | "METROS">;
+  if (unidadTipo === "UND") return ["UND"];
+  const filtered = unique.filter((x) => x === "UND" || x === "METROS");
+  return filtered.length ? filtered : ["METROS"];
+}
+
 export async function existsByNombreNorm(norm: string): Promise<boolean> {
   const snap = await materialesCol().where("nombreNorm", "==", norm).limit(1).get();
   return !snap.empty;
@@ -74,6 +108,7 @@ export async function createMaterial(input: MaterialCreateInput, actorUid: strin
 
   if (input.unidadTipo === "UND") {
     base.unidadTipo = "UND";
+    base.ventaUnidadTipos = ["UND"];
     base.stockUnd = 0;
     if (typeof input.minStockUnd === "number") base.minStockUnd = Math.max(0, Math.floor(input.minStockUnd));
     if (input.vendible) {
@@ -82,14 +117,23 @@ export async function createMaterial(input: MaterialCreateInput, actorUid: strin
     }
   } else {
     base.unidadTipo = "METROS";
+    const ventaUnidadTipos = normalizeVentaUnidadTipos("METROS", input.ventaUnidadTipos as Array<"UND" | "METROS"> | undefined);
+    base.ventaUnidadTipos = ventaUnidadTipos;
     if (typeof input.metrosPorUnd !== "number" || input.metrosPorUnd <= 0) throw new Error("METROS_POR_UND_REQUIRED");
     base.metrosPorUndCm = metersToCm(input.metrosPorUnd);
     base.stockCm = 0;
     if (typeof input.minStockMetros === "number") base.minStockCm = Math.max(0, metersToCm(input.minStockMetros));
     if (input.vendible) {
-      if (typeof input.precioPorMetro !== "number") throw new Error("PRECIO_POR_METRO_REQUIRED");
-      const centsPerMeter = moneyToCents(input.precioPorMetro);
-      base.precioPorCmCents = Math.round(centsPerMeter / 100);
+      if (ventaUnidadTipos.includes("UND")) {
+        if (typeof input.precioUnd !== "number") throw new Error("PRECIO_UND_REQUIRED");
+        base.precioUndCents = moneyToCents(input.precioUnd);
+      }
+      if (ventaUnidadTipos.includes("METROS")) {
+        if (typeof input.precioPorMetro !== "number") throw new Error("PRECIO_POR_METRO_REQUIRED");
+        const centsPerMeter = moneyToCents(input.precioPorMetro);
+        base.precioPorMetroCents = centsPerMeter;
+        base.precioPorCmCents = Math.round(centsPerMeter / 100);
+      }
     }
   }
 
@@ -149,6 +193,7 @@ export async function updateMaterial(input: MaterialUpdateInput, actorUid: strin
   };
 
   if (curr.unidadTipo === "UND") {
+    base.ventaUnidadTipos = ["UND"];
     if (typeof input.minStockUnd === "number") base.minStockUnd = Math.max(0, Math.floor(input.minStockUnd));
     if (input.vendible) {
       if (typeof input.precioUnd !== "number") throw new Error("PRECIO_UND_REQUIRED");
@@ -157,14 +202,30 @@ export async function updateMaterial(input: MaterialUpdateInput, actorUid: strin
       base.precioUndCents = FieldValue.delete();
     }
   } else {
+    const ventaUnidadTipos = normalizeVentaUnidadTipos("METROS", input.ventaUnidadTipos as Array<"UND" | "METROS"> | undefined);
+    base.ventaUnidadTipos = ventaUnidadTipos;
     if (typeof input.metrosPorUnd !== "number" || input.metrosPorUnd <= 0) throw new Error("METROS_POR_UND_REQUIRED");
     base.metrosPorUndCm = metersToCm(input.metrosPorUnd);
     if (typeof input.minStockMetros === "number") base.minStockCm = Math.max(0, metersToCm(input.minStockMetros));
     if (input.vendible) {
-      if (typeof input.precioPorMetro !== "number") throw new Error("PRECIO_POR_METRO_REQUIRED");
-      const centsPerMeter = moneyToCents(input.precioPorMetro);
-      base.precioPorCmCents = Math.round(centsPerMeter / 100);
+      if (ventaUnidadTipos.includes("UND")) {
+        if (typeof input.precioUnd !== "number") throw new Error("PRECIO_UND_REQUIRED");
+        base.precioUndCents = moneyToCents(input.precioUnd);
+      } else {
+        base.precioUndCents = FieldValue.delete();
+      }
+      if (ventaUnidadTipos.includes("METROS")) {
+        if (typeof input.precioPorMetro !== "number") throw new Error("PRECIO_POR_METRO_REQUIRED");
+        const centsPerMeter = moneyToCents(input.precioPorMetro);
+        base.precioPorMetroCents = centsPerMeter;
+        base.precioPorCmCents = Math.round(centsPerMeter / 100);
+      } else {
+        base.precioPorMetroCents = FieldValue.delete();
+        base.precioPorCmCents = FieldValue.delete();
+      }
     } else {
+      base.precioUndCents = FieldValue.delete();
+      base.precioPorMetroCents = FieldValue.delete();
       base.precioPorCmCents = FieldValue.delete();
     }
   }

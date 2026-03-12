@@ -2,6 +2,8 @@ import { z } from "zod";
 
 export const UnidadTipoEnum = z.enum(["UND", "METROS"]);
 export type UnidadTipo = z.infer<typeof UnidadTipoEnum>;
+export const VentaUnidadTiposSchema = z.array(UnidadTipoEnum).min(1).optional();
+export type VentaUnidadTipos = z.infer<typeof VentaUnidadTiposSchema>;
 
 export const AreaEnum = z.enum(["INSTALACIONES", "MANTENIMIENTO"]);
 export type Area = z.infer<typeof AreaEnum>;
@@ -12,14 +14,15 @@ export const MaterialCreateInputSchema = z.object({
   areas: z.array(AreaEnum).min(1),
   unidadTipo: UnidadTipoEnum,
   vendible: z.boolean(),
+  ventaUnidadTipos: VentaUnidadTiposSchema,
 
   // Solo si unidadTipo === 'METROS'
-  metrosPorUnd: z.number().positive().optional(), // UI en metros
-  precioPorMetro: z.number().nonnegative().optional(), // UI en moneda por metro
-  minStockMetros: z.number().nonnegative().optional(), // UI en metros
+  metrosPorUnd: z.number().positive().optional(),
+  precioPorMetro: z.number().nonnegative().optional(),
+  minStockMetros: z.number().nonnegative().optional(),
 
   // Solo si unidadTipo === 'UND'
-  precioUnd: z.number().nonnegative().optional(), // UI en moneda por UND
+  precioUnd: z.number().nonnegative().optional(),
   minStockUnd: z.number().nonnegative().optional(),
 });
 
@@ -31,6 +34,7 @@ export type MaterialDocUnd = {
   nombreNorm: string;
   descripcion?: string;
   unidadTipo: "UND";
+  ventaUnidadTipos?: Array<"UND">;
   stockUnd: number;
   minStockUnd?: number;
   vendible: boolean;
@@ -46,10 +50,13 @@ export type MaterialDocMetros = {
   nombreNorm: string;
   descripcion?: string;
   unidadTipo: "METROS";
+  ventaUnidadTipos?: Array<"UND" | "METROS">;
   metrosPorUndCm: number;
   stockCm: number;
   minStockCm?: number;
   vendible: boolean;
+  precioUndCents?: number;
+  precioPorMetroCents?: number;
   precioPorCmCents?: number;
   areas: Area[];
   estado: "ACTIVO" | "INACTIVO";
@@ -63,8 +70,9 @@ export const MaterialUpdateInputSchema = z.object({
   nombre: z.string().min(1),
   descripcion: z.string().optional(),
   areas: z.array(AreaEnum).min(1),
-  unidadTipo: UnidadTipoEnum, // no cambiar unidad sin migración; validar en repo
+  unidadTipo: UnidadTipoEnum,
   vendible: z.boolean(),
+  ventaUnidadTipos: VentaUnidadTiposSchema,
 
   // METROS
   metrosPorUnd: z.number().positive().optional(),
@@ -77,4 +85,3 @@ export const MaterialUpdateInputSchema = z.object({
 });
 
 export type MaterialUpdateInput = z.infer<typeof MaterialUpdateInputSchema>;
-

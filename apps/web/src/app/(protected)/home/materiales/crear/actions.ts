@@ -29,6 +29,7 @@ export async function createMaterialAction(arg1: any, arg2?: any): Promise<
       unidadTipo: String(form.get("unidadTipo") ?? "").toUpperCase(),
       areas: JSON.parse(String(form.get("areas") ?? "[]")),
       vendible: String(form.get("vendible") ?? "false") === "true",
+      ventaUnidadTipos: JSON.parse(String(form.get("ventaUnidadTipos") ?? "[]")),
       metrosPorUnd: form.get("metrosPorUnd") ? Number(form.get("metrosPorUnd")) : undefined,
       precioPorMetro: form.get("precioPorMetro") ? Number(form.get("precioPorMetro")) : undefined,
       minStockMetros: form.get("minStockMetros") ? Number(form.get("minStockMetros")) : undefined,

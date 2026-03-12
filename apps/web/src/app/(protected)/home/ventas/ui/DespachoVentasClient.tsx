@@ -22,13 +22,17 @@ type MaterialItem = {
   id: string;
   nombre?: string;
   unidadTipo?: "UND" | "METROS";
+  ventaUnidadTipos?: Array<"UND" | "METROS"> | null;
   precioUndCents?: number | null;
+  precioPorMetroCents?: number | null;
   precioPorCmCents?: number | null;
   areas?: string[];
 };
 
 type ItemState = {
+  rowId: string;
   materialId: string;
+  modoVenta: "UND" | "METROS";
   und: string;
   metros: string;
   precioInput: string;
@@ -59,13 +63,29 @@ function centsToMoney(cents: number) {
   return (Math.round(cents || 0) / 100).toFixed(2);
 }
 
-function pricePerMeterToCentsPerCm(pricePerMeter: number) {
-  const centsPerMeter = moneyToCents(pricePerMeter);
-  return Math.round(centsPerMeter / 100);
+function pricePerMeterToCents(pricePerMeter: number) {
+  return moneyToCents(pricePerMeter);
 }
 
-function centsPerCmToPricePerMeter(centsPerCm: number) {
-  return (Math.round((centsPerCm || 0) * 100) / 100).toFixed(2);
+function centsPerMeterToPricePerMeter(centsPerMeter: number) {
+  return (Math.round(centsPerMeter || 0) / 100).toFixed(2);
+}
+
+function sanitizeDecimalInput(raw: string) {
+  const cleaned = String(raw || "").replace(",", ".").replace(/[^0-9.]/g, "");
+  const firstDot = cleaned.indexOf(".");
+  if (firstDot === -1) return cleaned;
+  return `${cleaned.slice(0, firstDot + 1)}${cleaned.slice(firstDot + 1).replace(/\./g, "")}`;
+}
+
+function getVentaModes(mat?: MaterialItem): Array<"UND" | "METROS"> {
+  if (!mat) return ["UND"];
+  if (mat.unidadTipo !== "METROS") return ["UND"];
+  const raw = Array.isArray(mat.ventaUnidadTipos) ? mat.ventaUnidadTipos : [];
+  const list = raw.filter((x): x is "UND" | "METROS" => x === "UND" || x === "METROS");
+  if (list.length) return Array.from(new Set(list));
+  if ((mat.precioUndCents || 0) > 0) return ["METROS", "UND"];
+  return ["METROS"];
 }
 
 function shortName(name: string) {
@@ -394,6 +414,28 @@ export default function DespachoVentasClient({
 
   const selectedMaterial = selectedMaterialId ? materialMap.get(selectedMaterialId) : undefined;
 
+  function makeRowId() {
+    return typeof crypto?.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  function patchItem(rowId: string, updater: (item: ItemState) => ItemState) {
+    setItems((prev) => prev.map((item) => (item.rowId === rowId ? updater(item) : item)));
+  }
+
+  function getDefaultPriceInput(mat?: MaterialItem, modoVenta: "UND" | "METROS" = "UND") {
+    if (!mat) return "";
+    if (modoVenta === "METROS") {
+      const cents =
+        mat.precioPorMetroCents != null
+          ? Math.max(0, Math.floor(mat.precioPorMetroCents || 0))
+          : Math.max(0, Math.floor((mat.precioPorCmCents || 0) * 100));
+      return centsPerMeterToPricePerMeter(cents);
+    }
+    return centsToMoney(Math.max(0, Math.floor(mat.precioUndCents || 0)));
+  }
+
   function addMaterial(materialId?: string) {
     const id = materialId || selectedMaterialId;
     if (!id) return;
@@ -401,34 +443,46 @@ export default function DespachoVentasClient({
       toast.error("Material ya agregado");
       return;
     }
+    const mat = materialMap.get(id);
+    const ventaModes = getVentaModes(mat);
     setItems((prev) => [
       ...prev,
-      { materialId: id, und: "", metros: "", precioInput: "" },
+      {
+        rowId: makeRowId(),
+        materialId: id,
+        modoVenta: ventaModes[0],
+        und: "",
+        metros: "",
+        precioInput: getDefaultPriceInput(mat, ventaModes[0]),
+      },
     ]);
     setSelectedMaterialId("");
     setMaterialSearch("");
     setTimeout(() => materialInputRef.current?.focus(), 0);
   }
 
-  function removeMaterial(id: string) {
-    setItems((prev) => prev.filter((i) => i.materialId !== id));
+  function removeMaterial(rowId: string) {
+    setItems((prev) => prev.filter((i) => i.rowId !== rowId));
   }
 
   function resolveUnitPriceCents(item: ItemState, mat: MaterialItem) {
     if (canEditPrecio && item.precioInput) {
       const n = toNum(item.precioInput);
-      if (mat.unidadTipo === "METROS") return pricePerMeterToCentsPerCm(n);
+      if (item.modoVenta === "METROS") return pricePerMeterToCents(n);
       return moneyToCents(n);
     }
-    if (mat.unidadTipo === "METROS") return Math.max(0, Math.floor(mat.precioPorCmCents || 0));
+    if (item.modoVenta === "METROS") {
+      if (mat.precioPorMetroCents != null) return Math.max(0, Math.floor(mat.precioPorMetroCents || 0));
+      return Math.max(0, Math.floor((mat.precioPorCmCents || 0) * 100));
+    }
     return Math.max(0, Math.floor(mat.precioUndCents || 0));
   }
 
   function calcSubtotal(item: ItemState, mat: MaterialItem) {
     const unitCents = resolveUnitPriceCents(item, mat);
-    if (mat.unidadTipo === "METROS") {
+    if (item.modoVenta === "METROS") {
       const metros = Math.max(0, toNum(item.metros));
-      return unitCents * Math.round(metros * 100);
+      return Math.round(unitCents * metros);
     }
     const und = Math.max(0, Math.floor(toNum(item.und)));
     return unitCents * und;
@@ -470,8 +524,8 @@ export default function DespachoVentasClient({
   async function imprimirGuiaTermica(ventaId: string): Promise<boolean> {
     const itemsList = items.map((it) => {
       const mat = materialMap.get(it.materialId);
-      const unidad = mat?.unidadTipo === "METROS" ? "m" : "und";
-      const qty = mat?.unidadTipo === "METROS" ? `${toNum(it.metros).toFixed(2)} ${unidad}` : `${Math.floor(toNum(it.und))} ${unidad}`;
+      const unidad = it.modoVenta === "METROS" ? "m" : "und";
+      const qty = it.modoVenta === "METROS" ? `${toNum(it.metros).toFixed(2)} ${unidad}` : `${Math.floor(toNum(it.und))} ${unidad}`;
       const subtotal = centsToMoney(calcSubtotal(it, mat as any));
       return { nombre: mat?.nombre || it.materialId, qty, subtotal };
     });
@@ -552,11 +606,12 @@ export default function DespachoVentasClient({
       .map((it) => {
         const mat = materialMap.get(it.materialId);
         if (!mat) return null;
-        const unidadTipo = mat.unidadTipo === "METROS" ? "METROS" : "UND";
-        const und = unidadTipo === "UND" ? Math.max(0, Math.floor(toNum(it.und))) : 0;
-        const metros = unidadTipo === "METROS" ? Math.max(0, toNum(it.metros)) : 0;
+        const modoVenta = it.modoVenta === "METROS" ? "METROS" : "UND";
+        const und = modoVenta === "UND" ? Math.max(0, Math.floor(toNum(it.und))) : 0;
+        const metros = modoVenta === "METROS" ? Math.max(0, toNum(it.metros)) : 0;
         const base: any = { materialId: it.materialId };
-        if (unidadTipo === "UND") base.und = und;
+        base.modoVenta = modoVenta;
+        if (modoVenta === "UND") base.und = und;
         else base.metros = metros;
         if (canEditPrecio && it.precioInput) {
           base.precioUnitCents = resolveUnitPriceCents(it, mat);
@@ -749,26 +804,46 @@ export default function DespachoVentasClient({
                 {items.map((it) => {
                   const mat = materialMap.get(it.materialId);
                   if (!mat) return null;
-                  const unidad = mat.unidadTipo === "METROS" ? "METROS" : "UND";
+                  const ventaModes = getVentaModes(mat);
+                  const unidad = it.modoVenta === "METROS" ? "METROS" : "UND";
                   const subtotal = calcSubtotal(it, mat);
                   const defaultPrice =
-                    unidad === "METROS"
-                      ? centsPerCmToPricePerMeter(Math.max(0, Math.floor(mat.precioPorCmCents || 0)))
-                      : centsToMoney(Math.max(0, Math.floor(mat.precioUndCents || 0)));
+                    getDefaultPriceInput(mat, it.modoVenta);
                   return (
-                    <tr key={it.materialId} className="border-t border-slate-200 dark:border-slate-700">
+                    <tr key={it.rowId} className="border-t border-slate-200 dark:border-slate-700">
                       <td className="px-3 py-2">{mat.nombre || it.materialId}</td>
-                      <td className="px-3 py-2">{unidad}</td>
                       <td className="px-3 py-2">
-                        {unidad === "UND" ? (
+                        {mat.unidadTipo === "METROS" ? (
+                          <select
+                            value={it.modoVenta}
+                            onChange={(e) =>
+                              patchItem(it.rowId, (item) => ({
+                                ...item,
+                                modoVenta: e.target.value as "UND" | "METROS",
+                                und: "",
+                                metros: "",
+                                precioInput: getDefaultPriceInput(mat, e.target.value as "UND" | "METROS"),
+                              }))
+                            }
+                            className="rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1"
+                            disabled={submitting || ventaModes.length <= 1}
+                          >
+                            {ventaModes.map((modo) => (
+                              <option key={modo} value={modo}>
+                                {modo}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          unidad
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {it.modoVenta === "UND" ? (
                           <input
                             value={it.und}
                             onChange={(e) =>
-                              setItems((prev) =>
-                                prev.map((p) =>
-                                  p.materialId === it.materialId ? { ...p, und: e.target.value.replace(/\D/g, "") } : p
-                                )
-                              )
+                              patchItem(it.rowId, (item) => ({ ...item, und: e.target.value.replace(/\D/g, "") }))
                             }
                             className="w-24 rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1"
                             inputMode="numeric"
@@ -778,11 +853,7 @@ export default function DespachoVentasClient({
                           <input
                             value={it.metros}
                             onChange={(e) =>
-                              setItems((prev) =>
-                                prev.map((p) =>
-                                  p.materialId === it.materialId ? { ...p, metros: e.target.value } : p
-                                )
-                              )
+                              patchItem(it.rowId, (item) => ({ ...item, metros: sanitizeDecimalInput(e.target.value) }))
                             }
                             className="w-24 rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1"
                             inputMode="decimal"
@@ -795,13 +866,8 @@ export default function DespachoVentasClient({
                           <input
                             value={it.precioInput}
                             onChange={(e) =>
-                              setItems((prev) =>
-                                prev.map((p) =>
-                                  p.materialId === it.materialId ? { ...p, precioInput: e.target.value } : p
-                                )
-                              )
+                              patchItem(it.rowId, (item) => ({ ...item, precioInput: sanitizeDecimalInput(e.target.value) }))
                             }
-                            placeholder={defaultPrice}
                             className="w-28 rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1"
                             inputMode="decimal"
                             disabled={submitting}
@@ -815,7 +881,7 @@ export default function DespachoVentasClient({
                         <button
                           type="button"
                           disabled={submitting}
-                          onClick={() => removeMaterial(it.materialId)}
+                          onClick={() => removeMaterial(it.rowId)}
                           className="text-red-600 hover:underline disabled:opacity-50"
                         >
                           Quitar
@@ -864,11 +930,6 @@ export default function DespachoVentasClient({
     </div>
   );
 }
-
-
-
-
-
 
 
 

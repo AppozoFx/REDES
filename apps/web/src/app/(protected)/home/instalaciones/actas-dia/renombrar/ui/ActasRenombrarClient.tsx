@@ -145,6 +145,23 @@ type ProgressResponse = {
   error?: string;
 };
 
+type MonthSummaryResponse = {
+  ok: boolean;
+  month?: string;
+  days?: Array<{
+    dateFolder: string;
+    inboxCount: number;
+    okCount: number;
+    errorCount: number;
+    instalacionesDia: number;
+    actasOkDia: number;
+    faltanActas: number;
+    sobranActas: number;
+    instalacionesSinActa: number;
+  }>;
+  error?: string;
+};
+
 const MAX_FILES_PER_BATCH = 300;
 
 const looksLikeIndexedCopy = (fileName: string) => /\(\d+\)\.pdf$/i.test(String(fileName || "").trim());
@@ -201,6 +218,8 @@ function Badge({ children, tone = "neutral" }: { children: React.ReactNode; tone
 
 export default function ActasRenombrarClient() {
   const [dateFolder, setDateFolder] = useState(dayjs().format("YYYY-MM-DD"));
+  const [monthFilter, setMonthFilter] = useState(dayjs().format("YYYY-MM"));
+  const [selectedDateFolder, setSelectedDateFolder] = useState<string | null>(null);
   const [dateConfirmedForUpload, setDateConfirmedForUpload] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [loadingList, setLoadingList] = useState(false);
@@ -213,12 +232,17 @@ export default function ActasRenombrarClient() {
   const [reprocessingPath, setReprocessingPath] = useState<string | null>(null);
   const [reprocessingInboxPath, setReprocessingInboxPath] = useState<string | null>(null);
   const [reprocessingOkPath, setReprocessingOkPath] = useState<string | null>(null);
+  const [highlightedOkPath, setHighlightedOkPath] = useState<string | null>(null);
   const [manualCodigoDraft, setManualCodigoDraft] = useState<Record<string, string>>({});
   const [manualClienteDraft, setManualClienteDraft] = useState<Record<string, string>>({});
   const [list, setList] = useState<ListResponse | null>(null);
   const [lastUpload, setLastUpload] = useState<UploadResponse | null>(null);
+  const [monthSummary, setMonthSummary] = useState<MonthSummaryResponse["days"]>([]);
+  const [loadingMonthSummary, setLoadingMonthSummary] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const okSectionRef = useRef<HTMLDivElement | null>(null);
+  const okRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const queueRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const queueContainerRef = useRef<HTMLDivElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -233,6 +257,12 @@ export default function ActasRenombrarClient() {
     const parsed = dayjs(dateFolder, "YYYY-MM-DD", true);
     return parsed.isValid() ? parsed.format("DD/MM/YYYY") : dateFolder;
   }, [dateFolder]);
+
+  const displayMonth = useMemo(() => {
+    const parsed = dayjs(`${monthFilter}-01`, "YYYY-MM-DD", true);
+    if (!parsed.isValid()) return monthFilter;
+    return new Intl.DateTimeFormat("es-PE", { month: "long", year: "numeric" }).format(parsed.toDate());
+  }, [monthFilter]);
 
   const missingByActaCount = list?.actaAudit?.faltantes?.length ?? 0;
   const missingWithoutActaCount = list?.actaAudit?.sinActa?.length ?? 0;
@@ -319,6 +349,9 @@ export default function ActasRenombrarClient() {
         if (!silent || data.actaAudit || !prev?.actaAudit) return data;
         return { ...data, actaAudit: prev.actaAudit };
       });
+      if (!silent && dateFolder.startsWith(monthFilter)) {
+        void refreshMonthSummary();
+      }
     } catch (e: any) {
       if (!silent) toast.error(e?.message || "Error cargando datos");
     } finally {
@@ -326,10 +359,32 @@ export default function ActasRenombrarClient() {
     }
   };
 
+  const refreshMonthSummary = async () => {
+    if (!/^\d{4}-\d{2}$/.test(monthFilter)) return;
+    setLoadingMonthSummary(true);
+    try {
+      const res = await fetch(`/api/instalaciones/actas-dia/renombrar?month=${encodeURIComponent(monthFilter)}`, {
+        cache: "no-store",
+      });
+      const data = (await res.json()) as MonthSummaryResponse;
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "No se pudo cargar el resumen mensual");
+      setMonthSummary(data.days || []);
+    } catch (e: any) {
+      toast.error(e?.message || "Error cargando resumen mensual");
+    } finally {
+      setLoadingMonthSummary(false);
+    }
+  };
+
   useEffect(() => {
     void refreshList();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFolder]);
+
+  useEffect(() => {
+    void refreshMonthSummary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthFilter]);
 
   useEffect(() => {
     const ms = uploading ? 4000 : 8000;
@@ -358,6 +413,17 @@ export default function ActasRenombrarClient() {
     });
     return () => window.cancelAnimationFrame(raf);
   }, [activeQueueId, uploadQueue]);
+
+  useEffect(() => {
+    if (!highlightedOkPath) return;
+    const row = okRowRefs.current[highlightedOkPath];
+    const section = okSectionRef.current;
+    if (!row) return;
+    if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.setTimeout(() => {
+      row.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
+  }, [highlightedOkPath]);
 
   const addFiles = (fileList: FileList | null) => {
     if (!fileList?.length) return;
@@ -777,6 +843,10 @@ export default function ActasRenombrarClient() {
     }
   };
 
+  const focusOkFile = (path: string) => {
+    setHighlightedOkPath(path);
+  };
+
   const runCleanup = async () => {
     setCleaningOld(true);
     try {
@@ -841,131 +911,239 @@ export default function ActasRenombrarClient() {
 
   return (
     <div className="space-y-4 text-slate-900 dark:text-slate-100">
-      <div className="grid gap-3 md:grid-cols-[220px_1fr_auto]">
-        <div>
-          <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Fecha</label>
-          <input
-            type="date"
-            value={dateFolder}
-            onChange={(e) => {
-              setDateFolder(e.target.value);
-              setDateConfirmedForUpload(false);
-            }}
-            className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-          />
-          <div className="mt-2 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFolder)) {
-                  toast.error("Fecha invalida");
-                  return;
-                }
-                setDateConfirmedForUpload(true);
-                toast.success(`Fecha validada: ${dateFolder}`);
-              }}
-              className="rounded-lg border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 dark:border-blue-800/60 dark:bg-blue-900/25 dark:text-blue-200"
-            >
-              Validar fecha
-            </button>
-            {dateConfirmedForUpload ? <Badge tone="ok">Fecha validada</Badge> : <Badge tone="error">Validacion pendiente</Badge>}
+      {!selectedDateFolder ? (
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-700 dark:bg-slate-900/40">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Resumen por mes</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                Revisa por dia si instalaciones y actas OK coinciden antes de entrar al detalle.
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="month"
+                value={monthFilter}
+                onChange={(e) => setMonthFilter(e.target.value)}
+                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              />
+              <Badge tone="info">{displayMonth}</Badge>
+            </div>
+          </div>
+          <div className="mt-3 rounded-xl border border-slate-200 dark:border-slate-700">
+            <table className="min-w-full text-xs">
+              <thead className="bg-slate-100 dark:bg-slate-800/80">
+                <tr>
+                  <th className="p-2 text-left">Fecha</th>
+                  <th className="p-2 text-left">Inst.</th>
+                  <th className="p-2 text-left">OK</th>
+                  <th className="p-2 text-left">Faltan</th>
+                  <th className="p-2 text-left">Sobran</th>
+                  <th className="p-2 text-left">Sin ACTA</th>
+                  <th className="p-2 text-left">ERROR</th>
+                  <th className="p-2 text-left">INBOX</th>
+                  <th className="p-2 text-left">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loadingMonthSummary ? (
+                  <tr>
+                    <td colSpan={9} className="p-3 text-slate-500 dark:text-slate-400">
+                      Cargando resumen mensual...
+                    </td>
+                  </tr>
+                ) : monthSummary.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="p-3 text-slate-500 dark:text-slate-400">
+                      No hay dias para mostrar en este mes.
+                    </td>
+                  </tr>
+                ) : (
+                  monthSummary.map((row) => {
+                    const isSelected = row.dateFolder === dateFolder;
+                    const isBalanced =
+                      row.faltanActas === 0 && row.sobranActas === 0 && row.errorCount === 0 && row.inboxCount === 0;
+                    return (
+                      <tr
+                        key={row.dateFolder}
+                        onClick={() => {
+                          setDateFolder(row.dateFolder);
+                          setSelectedDateFolder(row.dateFolder);
+                          setDateConfirmedForUpload(false);
+                        }}
+                        className={`cursor-pointer border-t border-slate-200 dark:border-slate-700 ${
+                          isSelected ? "bg-blue-50 dark:bg-blue-900/20" : "hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                        }`}
+                      >
+                        <td className="p-2 font-medium">{dayjs(row.dateFolder).format("DD/MM/YYYY")}</td>
+                        <td className="p-2">{row.instalacionesDia}</td>
+                        <td className="p-2">{row.actasOkDia}</td>
+                        <td className="p-2 text-rose-700 dark:text-rose-300">{row.faltanActas}</td>
+                        <td className="p-2 text-amber-700 dark:text-amber-300">{row.sobranActas}</td>
+                        <td className="p-2">{row.instalacionesSinActa}</td>
+                        <td className="p-2">{row.errorCount}</td>
+                        <td className="p-2">{row.inboxCount}</td>
+                        <td className="p-2">
+                          {isBalanced ? <Badge tone="ok">Cuadra</Badge> : <Badge tone="error">Revisar</Badge>}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
-        <div>
-          <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Actas PDF</label>
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            accept="application/pdf"
-            onChange={(e) => addFiles(e.target.files)}
-            className="mt-1 block w-full cursor-pointer rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
-          />
-        </div>
-        <div className="flex items-end gap-2">
-          <button
-            type="button"
-            onClick={uploadAll}
-            disabled={uploading || files.length === 0 || !dateConfirmedForUpload}
-            className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {uploading ? "Procesando..." : "Subir y procesar"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setFiles([])}
-            disabled={uploading || files.length === 0}
-            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
-          >
-            Limpiar
-          </button>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <Badge tone="info">Fecha: {displayDate}</Badge>
-        <Badge tone={dateConfirmedForUpload ? "ok" : "error"}>
-          Fecha {dateConfirmedForUpload ? "validada" : "sin validar"}
-        </Badge>
-        <Badge tone="info">Instalaciones dia: {list?.stats?.instalacionesDia ?? 0}</Badge>
-        <Badge tone="ok">Actas OK dia: {list?.stats?.actasOkDia ?? 0}</Badge>
-        <Badge tone={pendingVsInstallationsCount > 0 ? "error" : "ok"}>
-          Pendientes vs instalaciones: {pendingVsInstallationsCount}
-        </Badge>
-        <Badge tone={missingByActaCount > 0 ? "error" : "ok"}>
-          Faltan por ACTA: {missingByActaCount}
-        </Badge>
-        <Badge tone={missingWithoutActaCount > 0 ? "error" : "ok"}>
-          Sin ACTA en BD: {missingWithoutActaCount}
-        </Badge>
-        <Badge tone={(list?.stats?.sobranActas ?? 0) > 0 ? "error" : "ok"}>
-          Sobran actas: {list?.stats?.sobranActas ?? 0}
-        </Badge>
-        <Badge tone={(list?.actaAudit?.summary?.okFueraFecha ?? 0) > 0 ? "error" : "ok"}>
-          OK fuera de fecha: {list?.actaAudit?.summary?.okFueraFecha ?? 0}
-        </Badge>
-        <Badge tone={(list?.actaAudit?.summary?.okSinTrazabilidad ?? 0) > 0 ? "error" : "ok"}>
-          OK sin trazabilidad: {list?.actaAudit?.summary?.okSinTrazabilidad ?? 0}
-        </Badge>
-        <Badge tone={(list?.actaAudit?.summary?.instalacionesSinActa ?? 0) > 0 ? "error" : "ok"}>
-          Instalaciones sin ACTA: {list?.actaAudit?.summary?.instalacionesSinActa ?? 0}
-        </Badge>
-        <Badge>Por subir: {totals.count}</Badge>
-        <Badge>Peso: {bytesToHuman(totals.totalBytes)}</Badge>
-        <Badge tone="ok">OK: {list?.okFiles?.length ?? 0}</Badge>
-        <Badge tone="error">ERROR: {list?.errorFiles?.length ?? 0}</Badge>
-        <Badge>INBOX: {list?.inbox?.length ?? 0}</Badge>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={runCleanup}
-          disabled={cleaningOld}
-          className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50 dark:border-amber-800/60 dark:bg-amber-900/25 dark:text-amber-200 dark:hover:bg-amber-900/35"
-        >
-          {cleaningOld ? "Limpiando..." : "Limpiar antiguos > 7 dias"}
-        </button>
-        <button
-          type="button"
-          onClick={runDayCleanup}
-          disabled={cleaningDay}
-          className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50 dark:border-rose-800/60 dark:bg-rose-900/25 dark:text-rose-200 dark:hover:bg-rose-900/35"
-        >
-          {cleaningDay ? "Limpiando dia..." : "Limpiar dia seleccionado"}
-        </button>
-      </div>
-      <div className="text-xs text-slate-500 dark:text-slate-400">
-        Para evitar errores, primero valida la fecha y recien despues sube los PDFs. La vista se actualiza automaticamente con un ritmo suave.
-      </div>
-      {pendingVsInstallationsCount > 0 ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-100">
-          Pendientes para {displayDate}: {pendingVsInstallationsCount}. Revisa "Actas faltantes" para faltas con ACTA conocida y
-          "Instalaciones sin ACTA" cuando la base no tiene ACTA registrada, por eso a veces falta 1 pero no aparece una acta especifica.
-        </div>
       ) : null}
+      {selectedDateFolder ? (
+        <>
+          <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3 dark:border-blue-800/60 dark:bg-blue-900/15">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-blue-900 dark:text-blue-100">Detalle del dia {displayDate}</div>
+                <div className="text-xs text-blue-800/80 dark:text-blue-200/80">
+                  La operacion diaria queda igual que antes. Puedes volver al resumen mensual cuando quieras.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedDateFolder(null)}
+                className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:bg-slate-900 dark:text-blue-200"
+              >
+                Volver al resumen mensual
+              </button>
+            </div>
+          </div>
 
-      <div className="grid gap-4 xl:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-[220px_1fr_auto]">
+            <div>
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Fecha</label>
+              <input
+                type="date"
+                value={dateFolder}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setDateFolder(next);
+                  setSelectedDateFolder(next);
+                  const nextMonth = dayjs(next, "YYYY-MM-DD", true).format("YYYY-MM");
+                  if (/^\d{4}-\d{2}$/.test(nextMonth) && nextMonth !== monthFilter) setMonthFilter(nextMonth);
+                  setDateConfirmedForUpload(false);
+                }}
+                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFolder)) {
+                      toast.error("Fecha invalida");
+                      return;
+                    }
+                    setDateConfirmedForUpload(true);
+                    toast.success(`Fecha validada: ${dateFolder}`);
+                  }}
+                  className="rounded-lg border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 dark:border-blue-800/60 dark:bg-blue-900/25 dark:text-blue-200"
+                >
+                  Validar fecha
+                </button>
+                {dateConfirmedForUpload ? <Badge tone="ok">Fecha validada</Badge> : <Badge tone="error">Validacion pendiente</Badge>}
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Actas PDF</label>
+              <input
+                ref={inputRef}
+                type="file"
+                multiple
+                accept="application/pdf"
+                onChange={(e) => addFiles(e.target.files)}
+                className="mt-1 block w-full cursor-pointer rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+              />
+            </div>
+            <div className="flex items-end gap-2">
+              <button
+                type="button"
+                onClick={uploadAll}
+                disabled={uploading || files.length === 0 || !dateConfirmedForUpload}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {uploading ? "Procesando..." : "Subir y procesar"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setFiles([])}
+                disabled={uploading || files.length === 0}
+                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Limpiar
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="info">Fecha: {displayDate}</Badge>
+            <Badge tone={dateConfirmedForUpload ? "ok" : "error"}>
+              Fecha {dateConfirmedForUpload ? "validada" : "sin validar"}
+            </Badge>
+            <Badge tone="info">Instalaciones dia: {list?.stats?.instalacionesDia ?? 0}</Badge>
+            <Badge tone="ok">Actas OK dia: {list?.stats?.actasOkDia ?? 0}</Badge>
+            <Badge tone={pendingVsInstallationsCount > 0 ? "error" : "ok"}>
+              Pendientes vs instalaciones: {pendingVsInstallationsCount}
+            </Badge>
+            <Badge tone={missingByActaCount > 0 ? "error" : "ok"}>
+              Faltan por ACTA: {missingByActaCount}
+            </Badge>
+            <Badge tone={missingWithoutActaCount > 0 ? "error" : "ok"}>
+              Sin ACTA en BD: {missingWithoutActaCount}
+            </Badge>
+            <Badge tone={(list?.stats?.sobranActas ?? 0) > 0 ? "error" : "ok"}>
+              Sobran actas: {list?.stats?.sobranActas ?? 0}
+            </Badge>
+            <Badge tone={(list?.actaAudit?.summary?.okFueraFecha ?? 0) > 0 ? "error" : "ok"}>
+              OK fuera de fecha: {list?.actaAudit?.summary?.okFueraFecha ?? 0}
+            </Badge>
+            <Badge tone={(list?.actaAudit?.summary?.okSinTrazabilidad ?? 0) > 0 ? "error" : "ok"}>
+              OK sin trazabilidad: {list?.actaAudit?.summary?.okSinTrazabilidad ?? 0}
+            </Badge>
+            <Badge tone={(list?.actaAudit?.summary?.instalacionesSinActa ?? 0) > 0 ? "error" : "ok"}>
+              Instalaciones sin ACTA: {list?.actaAudit?.summary?.instalacionesSinActa ?? 0}
+            </Badge>
+            <Badge>Por subir: {totals.count}</Badge>
+            <Badge>Peso: {bytesToHuman(totals.totalBytes)}</Badge>
+            <Badge tone="ok">OK: {list?.okFiles?.length ?? 0}</Badge>
+            <Badge tone="error">ERROR: {list?.errorFiles?.length ?? 0}</Badge>
+            <Badge>INBOX: {list?.inbox?.length ?? 0}</Badge>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={runCleanup}
+              disabled={cleaningOld}
+              className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50 dark:border-amber-800/60 dark:bg-amber-900/25 dark:text-amber-200 dark:hover:bg-amber-900/35"
+            >
+              {cleaningOld ? "Limpiando..." : "Limpiar antiguos > 7 dias"}
+            </button>
+            <button
+              type="button"
+              onClick={runDayCleanup}
+              disabled={cleaningDay}
+              className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50 dark:border-rose-800/60 dark:bg-rose-900/25 dark:text-rose-200 dark:hover:bg-rose-900/35"
+            >
+              {cleaningDay ? "Limpiando dia..." : "Limpiar dia seleccionado"}
+            </button>
+          </div>
+          <div className="text-xs text-slate-500 dark:text-slate-400">
+            Para evitar errores, primero valida la fecha y recien despues sube los PDFs. La vista se actualiza automaticamente con un ritmo suave.
+          </div>
+          {pendingVsInstallationsCount > 0 ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-100">
+              Pendientes para {displayDate}: {pendingVsInstallationsCount}. Revisa "Actas faltantes" para faltas con ACTA conocida y
+              "Instalaciones sin ACTA" cuando la base no tiene ACTA registrada, por eso a veces falta 1 pero no aparece una acta especifica.
+            </div>
+          ) : null}
+
+          <div className="grid gap-4 xl:grid-cols-4">
         <div className="rounded-xl border border-rose-200 bg-rose-50/50 dark:border-rose-800/60 dark:bg-rose-900/20">
           <div className="border-b border-rose-200 px-3 py-2 text-sm font-semibold text-rose-900 dark:border-rose-800/60 dark:text-rose-100">
             Actas faltantes ({list?.actaAudit?.faltantes?.length ?? 0})
@@ -1045,7 +1223,10 @@ export default function ActasRenombrarClient() {
               <div className="p-3 text-sm text-slate-500 dark:text-slate-400">No hay archivos sobrantes en OK.</div>
             ) : (
               (list?.actaAudit?.sobrantes || []).map((item) => (
-                <div key={item.fullPath} className="space-y-1 p-3 text-xs">
+                <div
+                  key={item.fullPath}
+                  className={`space-y-1 p-3 text-xs ${highlightedOkPath === item.fullPath ? "bg-amber-100/80 dark:bg-amber-900/30" : ""}`}
+                >
                   <div className="font-medium">{item.fileName}</div>
                   <div>
                     Motivo:{" "}
@@ -1072,6 +1253,13 @@ export default function ActasRenombrarClient() {
                   )}
                   <div className="pt-1">
                     <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => focusOkFile(item.fullPath)}
+                        className="rounded-lg border border-blue-300 bg-white px-2 py-1 text-[11px] font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:bg-slate-900 dark:text-blue-200"
+                      >
+                        Ver en OK
+                      </button>
                       <button
                         type="button"
                         onClick={() => moveSobranteToSuggestedDate(item)}
@@ -1306,7 +1494,7 @@ export default function ActasRenombrarClient() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 dark:border-emerald-800/60 dark:bg-emerald-900/20">
+        <div ref={okSectionRef} className="rounded-xl border border-emerald-200 bg-emerald-50/50 dark:border-emerald-800/60 dark:bg-emerald-900/20">
           <div className="flex items-center justify-between gap-2 border-b border-emerald-200 px-3 py-2 dark:border-emerald-800/60">
             <div className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">
               Resultado final OK ({list?.okFiles?.length ?? 0})
@@ -1325,7 +1513,17 @@ export default function ActasRenombrarClient() {
               <div className="p-3 text-sm text-slate-500 dark:text-slate-400">No hay archivos OK para esta fecha.</div>
             ) : (
               (list?.okFiles || []).map((item) => (
-                <div key={item.fullPath} className="flex items-center justify-between gap-2 p-3 text-sm">
+                <div
+                  key={item.fullPath}
+                  ref={(el) => {
+                    okRowRefs.current[item.fullPath] = el;
+                  }}
+                  className={`flex items-center justify-between gap-2 p-3 text-sm ${
+                    highlightedOkPath === item.fullPath
+                      ? "bg-amber-100 ring-1 ring-amber-300 dark:bg-amber-900/25 dark:ring-amber-700"
+                      : ""
+                  }`}
+                >
                   <div className="min-w-0">
                     <div className="truncate font-medium">{item.name}</div>
                     <div className="text-xs text-slate-500 dark:text-slate-400">{bytesToHuman(item.size)}</div>
@@ -1451,6 +1649,8 @@ export default function ActasRenombrarClient() {
         El sistema detecta el codigo de acta leyendo el contenido del PDF (barcode/texto) para renombrar automaticamente a{" "}
         <b>CODIGOCLIENTE - CLIENTE.pdf</b>. Si no encuentra datos, el archivo queda en ERROR para correccion manual.
       </div>
+        </>
+      ) : null}
     </div>
   );
 }

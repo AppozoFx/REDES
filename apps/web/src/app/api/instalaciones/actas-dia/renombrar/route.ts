@@ -79,6 +79,23 @@ function normalizeDateFolder(raw: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "";
 }
 
+function normalizeMonthFolder(raw: string) {
+  const v = String(raw || "").trim();
+  return /^\d{4}-\d{2}$/.test(v) ? v : "";
+}
+
+function buildMonthDateFolders(month: string) {
+  const [yearRaw, monthRaw] = String(month || "").split("-");
+  const year = Number(yearRaw);
+  const monthIndex = Number(monthRaw);
+  if (!Number.isInteger(year) || !Number.isInteger(monthIndex) || monthIndex < 1 || monthIndex > 12) return [];
+  const daysInMonth = new Date(year, monthIndex, 0).getDate();
+  return Array.from({ length: daysInMonth }, (_, idx) => {
+    const day = String(idx + 1).padStart(2, "0");
+    return `${yearRaw}-${monthRaw}-${day}`;
+  });
+}
+
 function normalizeAnyDateToYmd(raw: unknown) {
   const v = String(raw || "").trim();
   if (!v) return "";
@@ -1784,6 +1801,45 @@ export async function GET(req: Request) {
         ok: true,
         requestId,
         progress: snap.exists ? (snap.data() as any) : null,
+      });
+    }
+
+    const month = normalizeMonthFolder(String(searchParams.get("month") || ""));
+    if (month) {
+      const bucket = adminStorageBucket();
+      const days = buildMonthDateFolders(month);
+      const rows = await Promise.all(
+        days.map(async (day) => {
+          const [inbox, okFiles, errorFiles, daySnapshot] = await Promise.all([
+            listByPrefix(bucket, `${ROOT_PREFIX}/inbox/${day}/`),
+            listByPrefix(bucket, `${ROOT_PREFIX}/ok/${day}/`),
+            listByPrefix(bucket, `${ROOT_PREFIX}/error/${day}/`),
+            loadDaySnapshot(day),
+          ]);
+          const stats: DayStats = {
+            instalacionesDia: daySnapshot.instalacionesDia,
+            actasOkDia: okFiles.length,
+            faltanActas: Math.max(0, daySnapshot.instalacionesDia - okFiles.length),
+            sobranActas: Math.max(0, okFiles.length - daySnapshot.instalacionesDia),
+          };
+          return {
+            dateFolder: day,
+            inboxCount: inbox.length,
+            okCount: okFiles.length,
+            errorCount: errorFiles.length,
+            instalacionesDia: stats.instalacionesDia,
+            actasOkDia: stats.actasOkDia,
+            faltanActas: stats.faltanActas,
+            sobranActas: stats.sobranActas,
+            instalacionesSinActa: daySnapshot.instalacionesSinActa.length,
+          };
+        })
+      );
+
+      return NextResponse.json({
+        ok: true,
+        month,
+        days: rows,
       });
     }
 

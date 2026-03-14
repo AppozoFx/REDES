@@ -148,18 +148,20 @@ type ProgressResponse = {
 type MonthSummaryResponse = {
   ok: boolean;
   month?: string;
-  days?: Array<{
-    dateFolder: string;
-    inboxCount: number;
-    okCount: number;
-    errorCount: number;
-    instalacionesDia: number;
-    actasOkDia: number;
-    faltanActas: number;
-    sobranActas: number;
-    instalacionesSinActa: number;
-  }>;
+  days?: MonthSummaryDay[];
   error?: string;
+};
+
+type MonthSummaryDay = {
+  dateFolder: string;
+  inboxCount: number;
+  okCount: number;
+  errorCount: number;
+  instalacionesDia: number;
+  actasOkDia: number;
+  faltanActas: number;
+  sobranActas: number;
+  instalacionesSinActa: number;
 };
 
 const MAX_FILES_PER_BATCH = 300;
@@ -229,6 +231,9 @@ export default function ActasRenombrarClient() {
   const [cleaningOld, setCleaningOld] = useState(false);
   const [cleaningDay, setCleaningDay] = useState(false);
   const [downloadingOkZip, setDownloadingOkZip] = useState(false);
+  const [bulkMovingErrorToInbox, setBulkMovingErrorToInbox] = useState(false);
+  const [bulkDeletingInbox, setBulkDeletingInbox] = useState(false);
+  const [bulkReprocessingInbox, setBulkReprocessingInbox] = useState(false);
   const [reprocessingPath, setReprocessingPath] = useState<string | null>(null);
   const [reprocessingInboxPath, setReprocessingInboxPath] = useState<string | null>(null);
   const [reprocessingOkPath, setReprocessingOkPath] = useState<string | null>(null);
@@ -237,7 +242,7 @@ export default function ActasRenombrarClient() {
   const [manualClienteDraft, setManualClienteDraft] = useState<Record<string, string>>({});
   const [list, setList] = useState<ListResponse | null>(null);
   const [lastUpload, setLastUpload] = useState<UploadResponse | null>(null);
-  const [monthSummary, setMonthSummary] = useState<MonthSummaryResponse["days"]>([]);
+  const [monthSummary, setMonthSummary] = useState<MonthSummaryDay[]>([]);
   const [loadingMonthSummary, setLoadingMonthSummary] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -817,6 +822,98 @@ export default function ActasRenombrarClient() {
       toast.error(e?.message || "Error eliminando archivo");
     } finally {
       setMovingPath(null);
+    }
+  };
+
+  const moveAllErrorToInbox = async () => {
+    const items = list?.errorFiles || [];
+    if (!items.length) return toast.error("No hay archivos en ERROR para mover");
+    const confirmed = window.confirm(
+      `Se moveran ${items.length} archivos de ERROR a INBOX. Deseas continuar?`
+    );
+    if (!confirmed) return;
+
+    setBulkMovingErrorToInbox(true);
+    try {
+      for (const item of items) {
+        const res = await fetch("/api/instalaciones/actas-dia/renombrar", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "move_error_to_inbox",
+            dateFolder,
+            fromPath: item.fullPath,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data?.ok) throw new Error(data?.error || `No se pudo mover ${item.name}`);
+      }
+      toast.success("Todos los archivos de ERROR fueron movidos a INBOX");
+      await refreshList(false);
+    } catch (e: any) {
+      toast.error(e?.message || "Error moviendo archivos de ERROR a INBOX");
+    } finally {
+      setBulkMovingErrorToInbox(false);
+    }
+  };
+
+  const reprocessAllInboxFiles = async () => {
+    const items = list?.inbox || [];
+    if (!items.length) return toast.error("No hay archivos en INBOX para procesar");
+
+    setBulkReprocessingInbox(true);
+    try {
+      for (const item of items) {
+        const res = await fetch("/api/instalaciones/actas-dia/renombrar", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "reprocess_inbox",
+            dateFolder,
+            fromPath: item.fullPath,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data?.ok) throw new Error(data?.error || `No se pudo procesar ${item.name}`);
+      }
+      toast.success("Todos los archivos de INBOX fueron procesados");
+      await refreshList(false);
+    } catch (e: any) {
+      toast.error(e?.message || "Error procesando archivos de INBOX");
+    } finally {
+      setBulkReprocessingInbox(false);
+    }
+  };
+
+  const deleteAllInboxFiles = async () => {
+    const items = list?.inbox || [];
+    if (!items.length) return toast.error("No hay archivos en INBOX para quitar");
+    const confirmed = window.confirm(
+      `Se eliminaran ${items.length} archivos de INBOX y no se podran recuperar. Deseas continuar?`
+    );
+    if (!confirmed) return;
+
+    setBulkDeletingInbox(true);
+    try {
+      for (const item of items) {
+        const res = await fetch("/api/instalaciones/actas-dia/renombrar", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "delete_inbox",
+            dateFolder,
+            fromPath: item.fullPath,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data?.ok) throw new Error(data?.error || `No se pudo eliminar ${item.name}`);
+      }
+      toast.success("Todos los archivos de INBOX fueron eliminados");
+      await refreshList(false);
+    } catch (e: any) {
+      toast.error(e?.message || "Error eliminando archivos de INBOX");
+    } finally {
+      setBulkDeletingInbox(false);
     }
   };
 
@@ -1442,8 +1539,28 @@ export default function ActasRenombrarClient() {
       )}
 
       <div className="rounded-xl border border-blue-200 bg-blue-50/40 dark:border-blue-800/60 dark:bg-blue-900/15">
-        <div className="border-b border-blue-200 px-3 py-2 text-sm font-semibold text-blue-900 dark:border-blue-800/60 dark:text-blue-100">
-          INBOX ({list?.inbox?.length ?? 0})
+        <div className="flex items-center justify-between gap-2 border-b border-blue-200 px-3 py-2 dark:border-blue-800/60">
+          <div className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+            INBOX ({list?.inbox?.length ?? 0})
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={reprocessAllInboxFiles}
+              disabled={bulkReprocessingInbox || (list?.inbox?.length ?? 0) === 0}
+              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {bulkReprocessingInbox ? "Procesando..." : "Procesar todos"}
+            </button>
+            <button
+              type="button"
+              onClick={deleteAllInboxFiles}
+              disabled={bulkDeletingInbox || (list?.inbox?.length ?? 0) === 0}
+              className="rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-700 dark:bg-slate-900 dark:text-rose-200"
+            >
+              {bulkDeletingInbox ? "Quitando..." : "Quitar todos"}
+            </button>
+          </div>
         </div>
         <div className="max-h-64 overflow-auto divide-y divide-blue-200 dark:divide-blue-800/50">
           {(list?.inbox || []).length === 0 ? (
@@ -1575,8 +1692,18 @@ export default function ActasRenombrarClient() {
         </div>
 
         <div className="rounded-xl border border-rose-200 bg-rose-50/50 dark:border-rose-800/60 dark:bg-rose-900/20">
-          <div className="border-b border-rose-200 px-3 py-2 text-sm font-semibold text-rose-900 dark:border-rose-800/60 dark:text-rose-100">
-            Resultado final ERROR ({list?.errorFiles?.length ?? 0})
+          <div className="flex items-center justify-between gap-2 border-b border-rose-200 px-3 py-2 dark:border-rose-800/60">
+            <div className="text-sm font-semibold text-rose-900 dark:text-rose-100">
+              Resultado final ERROR ({list?.errorFiles?.length ?? 0})
+            </div>
+            <button
+              type="button"
+              onClick={moveAllErrorToInbox}
+              disabled={bulkMovingErrorToInbox || (list?.errorFiles?.length ?? 0) === 0}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              {bulkMovingErrorToInbox ? "Moviendo..." : "Mover todos a INBOX"}
+            </button>
           </div>
           <div className="max-h-[460px] overflow-auto divide-y divide-rose-200 dark:divide-rose-800/50">
             {(list?.errorFiles || []).length === 0 ? (

@@ -577,7 +577,11 @@ export async function corregirOrdenAction(_: any, formData: FormData): Promise<C
       const ord = ordSnap.data() as any;
       const inst = instSnap.data() as any;
       const liqEstado = String(ord?.liquidacion?.estado || "").toUpperCase();
-      const liquidada = liqEstado === "LIQUIDADO" || !!ord?.liquidadoAt;
+      const instLiqEstado = String(inst?.liquidacion?.estado || "").toUpperCase();
+      const liquidada =
+        liqEstado === "LIQUIDADO" ||
+        !!ord?.liquidadoAt ||
+        (instLiqEstado === "LIQUIDADO" && !inst?.correccionPendiente);
       if (!liquidada) throw new Error("ORDEN_NO_LIQUIDADA");
       if (!!ord?.correccionPendiente) throw new Error("ORDEN_YA_CORREGIDA_PENDIENTE");
 
@@ -719,4 +723,3 @@ export async function corregirOrdenAction(_: any, formData: FormData): Promise<C
     return { ok: false, error: { formErrors: [msg] } };
   }
 }
-

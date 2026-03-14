@@ -218,8 +218,7 @@ export async function GET(req: Request) {
 
       const instCorr = !!inst?.correccionPendiente;
       const instLiqEstado = String(inst?.liquidacion?.estado || "").toUpperCase();
-      const instLiqAt = !!inst?.liquidacion?.at;
-      const instLiquidado = (instLiqEstado === "LIQUIDADO" || instLiqAt) && !instCorr;
+      const instLiquidado = instLiqEstado === "LIQUIDADO" && !instCorr;
 
       return {
         ...r,

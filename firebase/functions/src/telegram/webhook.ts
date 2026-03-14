@@ -31,7 +31,7 @@ const PRELIQ_RETRY_COLLECTION = "telegram_preliquidacion_retries";
 const CUADRILLA_RESPONSABLES_COLLECTION = "telegram_cuadrilla_responsables";
 const ORDENES_COLLECTION = "ordenes";
 const FOUND_GUARDS_COLLECTION = "telegram_found_guards";
-const PRELIQ_RETRY_MAX_ATTEMPTS = 5;
+const PRELIQ_RETRY_MAX_ATTEMPTS = 10;
 const PRELIQ_RETRY_INTERVAL_MS = 30 * 60 * 1000;
 const PRELIQ_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const RESPONSABLE_CONFIDENCE_MIN_MENTION = 45;
@@ -176,6 +176,26 @@ function resolveTramoNombre(...hmCandidates: Array<unknown>): string {
 
 function cleanValue(value: unknown): string {
   return String(value || "").replace(/`/g, "'").trim();
+}
+
+function isLikelyTemplateText(text: string): boolean {
+  const normalized = normalizeTextKey(text);
+  if (!normalized) return false;
+  const keywordMatches = [
+    "PEDIDO",
+    "COD DE PEDIDO",
+    "CODIGO DE PEDIDO",
+    "CTO",
+    "NAP",
+    "PUERTO",
+    "POTENCIA",
+    "ONT",
+    "MESH",
+    "BOX",
+    "FONO",
+    "FONOWIN",
+  ].filter((keyword) => normalized.includes(keyword)).length;
+  return keywordMatches >= 2;
 }
 
 function cleanSeriesList(values: unknown, maxItems = 4): string[] {
@@ -420,7 +440,9 @@ async function fetchOrdenByPedido(pedido: string): Promise<{
   return candidates[0];
 }
 
-async function fetchOrdenesFinalizadasByYmd(ymd: string): Promise<OrdenResumen[]> {
+async function fetchOrdenesFinalizadasDocsByYmd(
+  ymd: string
+): Promise<Array<Record<string, unknown>>> {
   let snap = await db
     .collection(ORDENES_COLLECTION)
     .where("fSoliYmd", "==", ymd)
@@ -434,9 +456,13 @@ async function fetchOrdenesFinalizadasByYmd(ymd: string): Promise<OrdenResumen[]
       .limit(5000)
       .get();
   }
-  const rows = snap.docs
+  return snap.docs
     .map((doc) => (doc.data() || {}) as Record<string, unknown>)
-    .filter((orden) => isOrdenConsiderada(orden) && isOrdenEstadoFinalizada(orden.estado))
+    .filter((orden) => isOrdenConsiderada(orden) && isOrdenEstadoFinalizada(orden.estado));
+}
+
+async function fetchOrdenesFinalizadasByYmd(ymd: string): Promise<OrdenResumen[]> {
+  const rows = (await fetchOrdenesFinalizadasDocsByYmd(ymd))
     .map((orden) => buildOrdenResumen(orden))
     .filter((row) => !!row.pedido);
   return dedupeListByPedido(rows);
@@ -446,14 +472,47 @@ async function fetchTelegramFoundByYmd(
   chatId: string,
   ymd: string
 ): Promise<OrdenResumen[]> {
-  const snap = await db
-    .collection(UPDATES_COLLECTION)
+  const ordenes = await fetchOrdenesFinalizadasDocsByYmd(ymd);
+  const preliqSnap = await db
+    .collection(PRELIQ_COLLECTION)
     .where("chatId", "==", chatId)
+    .where("ymd", "==", ymd)
     .limit(5000)
     .get();
-  const rows: OrdenResumen[] = snap.docs
-    .map((doc) => doc.data() as Record<string, unknown>)
-    .filter((row) => row.status === "FOUND" && row.ymd === ymd)
+  const codigos = Array.from(
+    new Set(
+      ordenes
+        .map((orden) => cleanValue(orden.codiSeguiClien || orden.ordenId || ""))
+        .filter(Boolean)
+    )
+  );
+  const instRefs = codigos.map((codigo) => db.collection("instalaciones").doc(codigo));
+  const instSnaps = codigos.length ? await db.getAll(...instRefs) : [];
+  const instMap = new Map<string, Record<string, unknown>>(
+    instSnaps
+      .filter((snap) => snap.exists)
+      .map((snap) => [snap.id, (snap.data() || {}) as Record<string, unknown>])
+  );
+
+  const rows = ordenes
+    .filter((orden) => {
+      const codigo = cleanValue(orden.codiSeguiClien || orden.ordenId || "");
+      const inst = codigo ? instMap.get(codigo) : null;
+      const ordenLiquidada =
+        String((orden.liquidacion as Record<string, unknown> | undefined)?.estado || "")
+          .trim()
+          .toUpperCase() === "LIQUIDADO" || !!orden.liquidadoAt;
+      const instLiquidada =
+        String((inst?.liquidacion as Record<string, unknown> | undefined)?.estado || "")
+          .trim()
+          .toUpperCase() === "LIQUIDADO" && !inst?.correccionPendiente;
+      return ordenLiquidada || instLiquidada;
+    })
+    .map((orden) => buildOrdenResumen(orden))
+    .filter((row) => !!row.pedido);
+
+  const preliqRows = preliqSnap.docs
+    .map((doc) => (doc.data() || {}) as Record<string, unknown>)
     .map((row) => ({
       pedido: cleanValue(row.pedido || ""),
       cliente: cleanValue(row.cliente || "-"),
@@ -463,7 +522,8 @@ async function fetchTelegramFoundByYmd(
       cuadrillaNombre: cleanValue(row.cuadrillaNombre || "SIN_CUADRILLA"),
     }))
     .filter((row) => !!row.pedido);
-  return dedupeListByPedido(rows);
+
+  return dedupeListByPedido([...preliqRows, ...rows]);
 }
 
 function foundGuardDocId(chatId: string, pedido: string, ymd: string): string {
@@ -878,6 +938,23 @@ function parseResumenCommand(text: string): string | null {
   return parseFlexibleDateToYmd(dateRaw);
 }
 
+function parseRetryPedidoCommand(text: string): string | null {
+  const raw = String(text || "").trim();
+  const m = /^(?:procesar|reintentar|retry)\s+pedido\s+(\d+)$/i.exec(raw);
+  if (!m) return null;
+  return cleanValue(m[1] || "").replace(/\D/g, "") || null;
+}
+
+function parseRetryAllCommand(text: string): boolean {
+  const raw = String(text || "").trim();
+  return /^(?:procesar|reintentar|retry)\s+(?:cola|pendientes|todos)$/i.test(raw);
+}
+
+function parseViewQueueCommand(text: string): boolean {
+  const raw = String(text || "").trim();
+  return /^ver\s+cola$/i.test(raw);
+}
+
 function parseBareCuadrillaCommand(text: string): { cuadrilla: string; ymd: string } | null {
   const raw = String(text || "").trim();
   const m = /^k\s*(\d+)\s+(moto|residencial)(?:\s+(\S+))?$/i.exec(raw);
@@ -1167,6 +1244,260 @@ async function clearPreliqRetry(pedido: string) {
   } catch {}
 }
 
+async function processPreliqRetryDoc(
+  docSnap: FirebaseFirestore.QueryDocumentSnapshot,
+  token: string,
+  manualChatId?: string
+): Promise<
+  | { outcome: "FAILED_FINAL"; reason: string; pedido: string }
+  | { outcome: "PENDING"; reason: string; pedido: string }
+  | { outcome: "RESOLVED"; pedido: string; ymd: string }
+> {
+  const row = (docSnap.data() || {}) as Record<string, unknown>;
+  const pedido = cleanValue(row.pedido || "");
+  if (!pedido) {
+    await docSnap.ref.set(
+      {
+        status: "FAILED_FINAL",
+        lastError: "PEDIDO_EMPTY",
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    return { outcome: "FAILED_FINAL", reason: "PEDIDO_EMPTY", pedido: "" };
+  }
+
+  const attempts = Number(row.attempts || 0);
+  const createdAtMs = toMillis(row.createdAt);
+  const expiredByWindow =
+    createdAtMs > 0 && Date.now() - createdAtMs >= PRELIQ_RETRY_WINDOW_MS;
+  if (expiredByWindow) {
+    await docSnap.ref.set(
+      {
+        status: "FAILED_FINAL",
+        lastError: "RETRY_WINDOW_EXPIRED",
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    return { outcome: "FAILED_FINAL", reason: "RETRY_WINDOW_EXPIRED", pedido };
+  }
+
+  if (attempts >= PRELIQ_RETRY_MAX_ATTEMPTS) {
+    await docSnap.ref.set(
+      {
+        status: "FAILED_FINAL",
+        lastError: "MAX_ATTEMPTS_REACHED",
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    return { outcome: "FAILED_FINAL", reason: "MAX_ATTEMPTS_REACHED", pedido };
+  }
+
+  const orderResult = await fetchOrdenByPedido(pedido);
+  if (!orderResult) {
+    const nextAttempts = attempts + 1;
+    const failFinal = nextAttempts >= PRELIQ_RETRY_MAX_ATTEMPTS;
+    await docSnap.ref.set(
+      {
+        attempts: nextAttempts,
+        status: failFinal ? "FAILED_FINAL" : "PENDING_ORDER",
+        lastError: "ORDER_NOT_FOUND",
+        nextRetryAt: new Date(Date.now() + PRELIQ_RETRY_INTERVAL_MS),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    return {
+      outcome: failFinal ? "FAILED_FINAL" : "PENDING",
+      reason: "ORDER_NOT_FOUND",
+      pedido,
+    };
+  }
+
+  const parsed = parsedFromRecord((row.parsedFields || {}) as Record<string, unknown>);
+  if (!parsed) {
+    await docSnap.ref.set(
+      {
+        status: "FAILED_FINAL",
+        lastError: "PARSED_FIELDS_INVALID",
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    return { outcome: "FAILED_FINAL", reason: "PARSED_FIELDS_INVALID", pedido };
+  }
+
+  const orderMeta = buildOrdenResumen(orderResult.data);
+  const operacionYmd = resolveOperacionYmdFromOrden(orderResult.data);
+  await upsertPreliquidacion({
+    chatId: cleanValue(row.chatId || ""),
+    fromId: cleanValue(row.fromId || ""),
+    pedido,
+    ymd: operacionYmd,
+    orderDocId: orderResult.id,
+    orderMeta,
+    parsed,
+  });
+  await docSnap.ref.set(
+    {
+      status: "RESOLVED",
+      resolvedAt: FieldValue.serverTimestamp(),
+      orderDocId: orderResult.id,
+      ymdResolved: operacionYmd,
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  const targetChatId = cleanValue(row.chatId || "");
+  if (token && targetChatId) {
+    const resumen = buildClienteLiquidadoBlock({
+      pedido,
+      orden: orderResult.data,
+      ctoNap: parsed.ctoNap,
+      puerto: parsed.puerto,
+      potenciaCtoNapDbm: parsed.potenciaCtoNapDbm,
+      snOnt: parsed.snOnt,
+      meshes: parsed.meshes,
+      boxes: parsed.boxes,
+      snFono: parsed.snFono,
+    });
+    await sendTelegramMessage({
+      token,
+      chatId: targetChatId,
+      text: resumen,
+    });
+    await sendTelegramMessage({
+      token,
+      chatId: targetChatId,
+      text:
+        `Orden ${pedido}: ya fue ubicada en el sistema y su preliquidacion se proceso automaticamente.\n` +
+        "Gracias por su gestion.",
+    });
+  }
+
+  if (manualChatId && manualChatId !== targetChatId) {
+    await sendTelegramMessage({
+      token,
+      chatId: manualChatId,
+      text:
+        `Pedido ${pedido}: se encontro la orden y la preliquidacion ya fue procesada.\n` +
+        `Fecha operativa: ${operacionYmd}.`,
+    });
+  }
+
+  return { outcome: "RESOLVED", pedido, ymd: operacionYmd };
+}
+
+async function processPreliqRetryByPedido(
+  pedido: string,
+  token: string,
+  manualChatId: string
+): Promise<"NOT_QUEUED" | "PENDING" | "FAILED_FINAL" | "RESOLVED"> {
+  const ref = db.collection(PRELIQ_RETRY_COLLECTION).doc(preliqRetryDocId(pedido));
+  const snap = await ref.get();
+  if (!snap.exists) return "NOT_QUEUED";
+  const row = (snap.data() || {}) as Record<string, unknown>;
+  const status = cleanValue(row.status || "");
+  if (status === "RESOLVED") return "RESOLVED";
+  const result = await processPreliqRetryDoc(
+    snap as FirebaseFirestore.QueryDocumentSnapshot,
+    token,
+    manualChatId
+  );
+  return result.outcome === "PENDING"
+    ? "PENDING"
+    : result.outcome === "FAILED_FINAL"
+      ? "FAILED_FINAL"
+      : "RESOLVED";
+}
+
+async function processAllPendingPreliqRetries(
+  token: string,
+  manualChatId: string
+): Promise<{
+  total: number;
+  resolved: string[];
+  pending: string[];
+  failed: string[];
+}> {
+  const snap = await db
+    .collection(PRELIQ_RETRY_COLLECTION)
+    .where("status", "==", "PENDING_ORDER")
+    .limit(100)
+    .get();
+
+  const summary = {
+    total: snap.size,
+    resolved: [] as string[],
+    pending: [] as string[],
+    failed: [] as string[],
+  };
+
+  for (const docSnap of snap.docs) {
+    try {
+      const result = await processPreliqRetryDoc(docSnap, token, manualChatId);
+      if (result.outcome === "RESOLVED") {
+        summary.resolved.push(result.pedido);
+      } else if (result.outcome === "PENDING") {
+        summary.pending.push(result.pedido);
+      } else {
+        summary.failed.push(result.pedido);
+      }
+    } catch (error) {
+      const row = (docSnap.data() || {}) as Record<string, unknown>;
+      const attempts = Number(row.attempts || 0);
+      const pedido = cleanValue(row.pedido || "");
+      await docSnap.ref.set(
+        {
+          attempts: attempts + 1,
+          status: attempts + 1 >= PRELIQ_RETRY_MAX_ATTEMPTS ? "FAILED_FINAL" : "PENDING_ORDER",
+          lastError: String((error as Error)?.message || error),
+          nextRetryAt: new Date(Date.now() + PRELIQ_RETRY_INTERVAL_MS),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      if (pedido) summary.failed.push(pedido);
+    }
+  }
+
+  return summary;
+}
+
+async function viewPendingPreliqRetries(): Promise<{
+  total: number;
+  pedidos: Array<{ pedido: string; attempts: number; nextRetryAtMs: number }>;
+}> {
+  const snap = await db
+    .collection(PRELIQ_RETRY_COLLECTION)
+    .where("status", "==", "PENDING_ORDER")
+    .limit(100)
+    .get();
+
+  const pedidos = snap.docs
+    .map((docSnap) => {
+      const row = (docSnap.data() || {}) as Record<string, unknown>;
+      return {
+        pedido: cleanValue(row.pedido || ""),
+        attempts: Number(row.attempts || 0) || 0,
+        nextRetryAtMs: toMillis(row.nextRetryAt),
+      };
+    })
+    .filter((row) => row.pedido)
+    .sort((a, b) => {
+      if (a.nextRetryAtMs !== b.nextRetryAtMs) return a.nextRetryAtMs - b.nextRetryAtMs;
+      return a.pedido.localeCompare(b.pedido);
+    });
+
+  return {
+    total: pedidos.length,
+    pedidos,
+  };
+}
+
 async function handleCallback(update: TelegramUpdate, token: string) {
   const callback = update.callback_query;
   if (!callback) return;
@@ -1231,6 +1562,9 @@ function isQueryCommandText(text: string): boolean {
   if (!text) return false;
   if (String(text).trim().toLowerCase() === "miid") return false;
   if (parseResumenCommand(text)) return true;
+  if (parseRetryPedidoCommand(text)) return true;
+  if (parseRetryAllCommand(text)) return true;
+  if (parseViewQueueCommand(text)) return true;
   if (parseModeDateOnlyCommand(text)) return true;
   if (parseCuadrillaDetailCommand(text)) return true;
   if (parseBareCuadrillaCommand(text)) return true;
@@ -1362,6 +1696,130 @@ export const telegramWebhook = onRequest(
       return;
     }
 
+    const retryPedido = parseRetryPedidoCommand(text);
+    if (retryPedido) {
+      const retryResult = await processPreliqRetryByPedido(retryPedido, token, chatId);
+      if (retryResult === "NOT_QUEUED") {
+        await sendTelegramMessage({
+          token,
+          chatId,
+          text:
+            `Pedido ${retryPedido}: no tiene un reproceso pendiente en cola.\n` +
+            "Si la orden ya fue actualizada en base, puedes reenviar la plantilla.",
+        });
+      } else if (retryResult === "PENDING") {
+        await sendTelegramMessage({
+          token,
+          chatId,
+          text:
+            `Pedido ${retryPedido}: aun no aparece en la base de ordenes.\n` +
+            "Se mantendra en cola y se volvera a revisar automaticamente.",
+        });
+      } else if (retryResult === "FAILED_FINAL") {
+        await sendTelegramMessage({
+          token,
+          chatId,
+          text:
+            `Pedido ${retryPedido}: el reproceso automatico ya termino sin encontrar la orden.\n` +
+            "Revisa si el codigo de pedido en la base es exactamente el mismo.",
+        });
+      } else if (retryResult === "RESOLVED") {
+        await sendTelegramMessage({
+          token,
+          chatId,
+          text: `Orden ${retryPedido}: ya figura como preliquidada.`,
+        });
+      }
+      res.status(200).json({ ok: true, handled: "RETRY_PEDIDO_CMD", retryResult });
+      return;
+    }
+
+    if (parseRetryAllCommand(text)) {
+      const summary = await processAllPendingPreliqRetries(token, chatId);
+      if (summary.total === 0) {
+        await sendTelegramMessage({
+          token,
+          chatId,
+          text: "No hay pedidos pendientes en cola para reprocesar.",
+        });
+      } else {
+        const lines = [
+          "Reproceso manual de cola completado.",
+          `Total revisados: ${summary.total}`,
+          `Resueltos: ${summary.resolved.length}`,
+          `Siguen pendientes: ${summary.pending.length}`,
+          `Fallidos finales: ${summary.failed.length}`,
+        ];
+        if (summary.resolved.length) {
+          lines.push(
+            "Las ordenes resueltas ya fueron retiradas del conteo de pendientes y ahora figuran como liquidadas."
+          );
+        }
+        if (summary.resolved.length) {
+          lines.push(`Resueltos: ${summary.resolved.slice(0, 15).join(", ")}`);
+        }
+        if (summary.pending.length) {
+          lines.push(`Pendientes: ${summary.pending.slice(0, 15).join(", ")}`);
+        }
+        if (summary.failed.length) {
+          lines.push(`Fallidos: ${summary.failed.slice(0, 15).join(", ")}`);
+        }
+        if (
+          summary.resolved.length > 15 ||
+          summary.pending.length > 15 ||
+          summary.failed.length > 15
+        ) {
+          lines.push("La lista fue recortada a 15 pedidos por grupo.");
+        }
+        await sendTelegramMessage({
+          token,
+          chatId,
+          text: lines.join("\n"),
+        });
+      }
+      res.status(200).json({ ok: true, handled: "RETRY_ALL_CMD", total: summary.total });
+      return;
+    }
+
+    if (parseViewQueueCommand(text)) {
+      const queue = await viewPendingPreliqRetries();
+      if (queue.total === 0) {
+        await sendTelegramMessage({
+          token,
+          chatId,
+          text: "No hay pedidos pendientes en cola.",
+        });
+      } else {
+        const lines = [
+          `Pedidos pendientes en cola: ${queue.total}`,
+          ...queue.pedidos.slice(0, 30).map((row) => {
+            const nextRetryLabel = row.nextRetryAtMs
+              ? new Intl.DateTimeFormat("es-PE", {
+                  timeZone: "America/Lima",
+                  year: "numeric",
+                  month: "2-digit",
+                  day: "2-digit",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: false,
+                }).format(new Date(row.nextRetryAtMs))
+              : "sin fecha";
+            return `Pedido ${row.pedido} | intentos: ${row.attempts} | proximo: ${nextRetryLabel}`;
+          }),
+        ];
+        if (queue.total > 30) {
+          lines.push("La lista fue recortada a 30 pedidos.");
+        }
+        await sendTelegramMessage({
+          token,
+          chatId,
+          text: lines.join("\n"),
+        });
+      }
+      res.status(200).json({ ok: true, handled: "VIEW_QUEUE_CMD", total: queue.total });
+      return;
+    }
+
     const modeDateCmd = parseModeDateOnlyCommand(text);
     if (modeDateCmd) {
       await sendResumenCount(
@@ -1460,13 +1918,15 @@ export const telegramWebhook = onRequest(
       }
     }
     if (!parsed) {
-      await sendTelegramMessage({
-        token,
-        chatId,
-        text:
-          "No pude detectar el codigo de pedido en la plantilla. " +
-          "Verifica que incluya 'PEDIDO' o 'Cod. de Pedido' con numero.",
-      });
+      if (isLikelyTemplateText(text)) {
+        await sendTelegramMessage({
+          token,
+          chatId,
+          text:
+            "No pude identificar el codigo de pedido en la plantilla.\n" +
+            "Por favor verifica que incluya 'Pedido' o 'Cod. de Pedido' con su numero.",
+        });
+      }
       await updateRef.set(
         {
           status: "IGNORED",
@@ -1486,7 +1946,11 @@ export const telegramWebhook = onRequest(
       await sendTelegramMessage({
         token,
         chatId,
-        text: `Pedido ${parsed.pedido}: NO ENCONTRADO.`,
+        text:
+          `Orden ${parsed.pedido}: aun no aparece en la base de ordenes.\n` +
+          "Tu plantilla ya fue recibida y quedara en cola.\n" +
+          "Cuando la orden se actualice, se preliquidara automaticamente.\n" +
+          "No es necesario reenviarla. Gracias por su gestion.",
       });
       await updateRef.set(
         {
@@ -1538,7 +2002,9 @@ export const telegramWebhook = onRequest(
       await sendTelegramMessage({
         token,
         chatId,
-        text: "CLIENTE YA LIQUIDADO",
+        text:
+          `Orden ${parsed.pedido}: ya fue preliquidada anteriormente.\n` +
+          "No es necesario volver a enviarla. Gracias por su gestion.",
       });
       await sendCuadrillaStatus(
         chatId,
@@ -1633,6 +2099,13 @@ export const telegramWebhook = onRequest(
           ymd: operacionYmd,
         });
       }
+      await sendTelegramMessage({
+        token,
+        chatId,
+        text:
+          `Orden ${parsed.pedido}: preliquidacion registrada correctamente.\n` +
+          "Gracias por su gestion.",
+      });
       await sendCuadrillaStatus(
         chatId,
         token,
@@ -1705,124 +2178,11 @@ export const telegramPreliqRetryWorker = onSchedule(
       .get();
 
     for (const docSnap of snap.docs) {
-      const row = (docSnap.data() || {}) as Record<string, unknown>;
-      const pedido = cleanValue(row.pedido || "");
-      if (!pedido) {
-        await docSnap.ref.set(
-          {
-            status: "FAILED_FINAL",
-            lastError: "PEDIDO_EMPTY",
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-        continue;
-      }
-
-      const attempts = Number(row.attempts || 0);
-      const createdAtMs = toMillis(row.createdAt);
-      const expiredByWindow =
-        createdAtMs > 0 && Date.now() - createdAtMs >= PRELIQ_RETRY_WINDOW_MS;
-      if (expiredByWindow) {
-        await docSnap.ref.set(
-          {
-            status: "FAILED_FINAL",
-            lastError: "RETRY_WINDOW_EXPIRED",
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-        continue;
-      }
-
-      if (attempts >= PRELIQ_RETRY_MAX_ATTEMPTS) {
-        await docSnap.ref.set(
-          {
-            status: "FAILED_FINAL",
-            lastError: "MAX_ATTEMPTS_REACHED",
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-        continue;
-      }
-
-      const orderResult = await fetchOrdenByPedido(pedido);
-      if (!orderResult) {
-        const nextAttempts = attempts + 1;
-        const failFinal = nextAttempts >= PRELIQ_RETRY_MAX_ATTEMPTS;
-        await docSnap.ref.set(
-          {
-            attempts: nextAttempts,
-            status: failFinal ? "FAILED_FINAL" : "PENDING_ORDER",
-            lastError: "ORDER_NOT_FOUND",
-            nextRetryAt: new Date(Date.now() + PRELIQ_RETRY_INTERVAL_MS),
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-        continue;
-      }
-
-      const parsed = parsedFromRecord((row.parsedFields || {}) as Record<string, unknown>);
-      if (!parsed) {
-        await docSnap.ref.set(
-          {
-            status: "FAILED_FINAL",
-            lastError: "PARSED_FIELDS_INVALID",
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-        continue;
-      }
-
-      const orderMeta = buildOrdenResumen(orderResult.data);
-      const operacionYmd = resolveOperacionYmdFromOrden(orderResult.data);
       try {
-        await upsertPreliquidacion({
-          chatId: cleanValue(row.chatId || ""),
-          fromId: cleanValue(row.fromId || ""),
-          pedido,
-          ymd: operacionYmd,
-          orderDocId: orderResult.id,
-          orderMeta,
-          parsed,
-        });
-        await docSnap.ref.set(
-          {
-            status: "RESOLVED",
-            resolvedAt: FieldValue.serverTimestamp(),
-            orderDocId: orderResult.id,
-            ymdResolved: operacionYmd,
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-        if (token && cleanValue(row.chatId || "")) {
-          const resumen = buildClienteLiquidadoBlock({
-            pedido,
-            orden: orderResult.data,
-            ctoNap: parsed.ctoNap,
-            puerto: parsed.puerto,
-            potenciaCtoNapDbm: parsed.potenciaCtoNapDbm,
-            snOnt: parsed.snOnt,
-            meshes: parsed.meshes,
-            boxes: parsed.boxes,
-            snFono: parsed.snFono,
-          });
-          await sendTelegramMessage({
-            token,
-            chatId: cleanValue(row.chatId || ""),
-            text: resumen,
-          });
-          await sendTelegramMessage({
-            token,
-            chatId: cleanValue(row.chatId || ""),
-            text: `Pedido ${pedido}: PRELIQUIDACION REPROCESADA OK.`,
-          });
-        }
+        await processPreliqRetryDoc(docSnap, token);
       } catch (error) {
+        const row = (docSnap.data() || {}) as Record<string, unknown>;
+        const attempts = Number(row.attempts || 0);
         await docSnap.ref.set(
           {
             attempts: attempts + 1,
@@ -1900,5 +2260,3 @@ export const telegramPendientesReminder = onSchedule(
     }
   }
 );
-
-

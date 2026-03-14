@@ -43,6 +43,23 @@ function todayLimaYm() {
   }).format(new Date());
 }
 
+function daysInMonth(ym: string): string[] {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(ym || "").trim());
+  if (!m) return [];
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return [];
+
+  const lastDay = new Date(year, month, 0).getDate();
+  const out: string[] = [];
+  for (let day = 1; day <= lastDay; day += 1) {
+    out.push(
+      `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+    );
+  }
+  return out;
+}
+
 function shortName(name: string) {
   const parts = String(name || "")
     .trim()
@@ -76,19 +93,24 @@ export async function GET(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const ym = String(searchParams.get("ym") || todayLimaYm()); // YYYY-MM
-    const startYmd = `${ym}-01`;
-    const endYmd = `${ym}-31`;
+    const ymds = daysInMonth(ym);
+    const dailySnaps = await Promise.all(
+      ymds.map((ymd) =>
+        adminDb()
+          .collection("ordenes")
+          .where("fSoliYmd", "==", ymd)
+          .limit(3000)
+          .get()
+      )
+    );
 
-    const snap = await adminDb()
-      .collection("ordenes")
-      .where("fSoliYmd", ">=", startYmd)
-      .where("fSoliYmd", "<=", endYmd)
-      .limit(1500)
-      .get();
-
-    let docs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-
-
+    const docsById = new Map<string, any>();
+    for (const snap of dailySnaps) {
+      for (const d of snap.docs) {
+        docsById.set(d.id, { id: d.id, ...(d.data() as any) });
+      }
+    }
+    const docs = Array.from(docsById.values());
     const onlyGarantias = docs.filter((x) => isGarantia(x));
     const finalizadasSinGarantia = docs.filter((x) => !isGarantia(x) && String(x?.estado || "").trim().toUpperCase() === "FINALIZADA").length;
 

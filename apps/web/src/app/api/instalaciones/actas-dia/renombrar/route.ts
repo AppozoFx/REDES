@@ -143,6 +143,10 @@ function stripPdf(v: string) {
   return String(v || "").replace(/\.pdf$/i, "");
 }
 
+function looksLikeIndexedCopy(fileName: string) {
+  return /\(\d+\)\.pdf$/i.test(String(fileName || "").trim());
+}
+
 function normalizeActa(raw: string) {
   const digits = String(raw || "").replace(/\D/g, "");
   if (!digits) return "";
@@ -1406,6 +1410,27 @@ async function resolveClienteFromActa(acta: string) {
   return { codigoCliente, cliente };
 }
 
+async function resolveActaFromCodigoCliente(codigoCliente: string) {
+  const codigo = String(codigoCliente || "").trim();
+  if (!codigo) return "";
+
+  const db = adminDb();
+  const instSnap = await db.collection("instalaciones").doc(codigo).get();
+  if (!instSnap.exists) return "";
+  const row = (instSnap.data() || {}) as Record<string, unknown>;
+  const acta = pickFirstActaRaw([
+    row.ACTA,
+    row.acta,
+    (row.materialesLiquidacion as Record<string, unknown> | undefined)?.acta,
+    (row.liquidacion as Record<string, unknown> | undefined)?.acta,
+    (row.orden as Record<string, unknown> | undefined)?.ACTA,
+    (row.orden as Record<string, unknown> | undefined)?.acta,
+    (row.orden as Record<string, unknown> | undefined)?.codigoActa,
+    (row.orden as Record<string, unknown> | undefined)?.codActa,
+  ]);
+  return normalizeActaStrict(acta);
+}
+
 async function moveToFolder(bucket: any, srcPath: string, folder: "ok" | "error", dateFolder: string, desiredName: string) {
   const dir = `${ROOT_PREFIX}/${folder}/${dateFolder}`;
   const dstPath = await ensureUniqueDestinationPath(bucket, dir, desiredName);
@@ -1918,7 +1943,16 @@ export async function GET(req: Request) {
     const okActasDetectadas = new Set<string>();
     const okSeenByActaDigits = new Set<string>();
 
-    okFiles.forEach((item: any) => {
+    const sortedOkFiles = [...okFiles].sort((a: any, b: any) => {
+      const aName = String(a?.name || "");
+      const bName = String(b?.name || "");
+      const aIndexed = looksLikeIndexedCopy(aName);
+      const bIndexed = looksLikeIndexedCopy(bName);
+      if (aIndexed !== bIndexed) return aIndexed ? 1 : -1;
+      return aName.localeCompare(bName, undefined, { numeric: true, sensitivity: "base" });
+    });
+
+    sortedOkFiles.forEach((item: any) => {
       const idx = indexByFinalPath.get(String(item.fullPath || ""));
       if (!idx?.acta) {
         okSinTrazabilidad.push({ fileName: item.name, fullPath: item.fullPath });
@@ -2791,14 +2825,18 @@ export async function PATCH(req: Request) {
       attempts: 0,
       trace: [],
     }));
+    const manualCodigoCliente = String(newName.split(" - ")[0] || "").trim();
+    const actaByCodigoCliente = await resolveActaFromCodigoCliente(manualCodigoCliente).catch(() => "");
+    const finalActa = actaByCodigoCliente || normalizeActaStrict(String(detected?.acta || ""));
+    const finalSource = actaByCodigoCliente ? "manual_name_lookup" : detected.source || null;
 
     const dstPath = await ensureUniqueDestinationPath(bucket, `${ROOT_PREFIX}/ok/${dateFolder}`, newName);
     await srcFile.move(dstPath);
-    if (detected?.acta) {
+    if (finalActa) {
       await saveResultIndex(dateFolder, fileHash, {
         status: "ok",
-        source: detected.source || null,
-        acta: detected.acta,
+        source: finalSource,
+        acta: finalActa,
         finalPath: dstPath,
         reason: "MOVE_ERROR_TO_OK_MANUAL",
       }).catch(() => undefined);

@@ -182,6 +182,15 @@ export default function AsignacionGestoresClient() {
     toast.success("Base aplicada para este dia");
   };
 
+  const limpiarGestoresDia = () => {
+    const next: AssignMap = {};
+    gestores.forEach((g) => {
+      next[g.value] = [];
+    });
+    setDayMap(next);
+    toast.success("Se limpiaron las asignaciones diarias de todos los gestores");
+  };
+
   const guardar = async () => {
     if (dupCount > 0) {
       toast.error("Hay cuadrillas asignadas a mas de una gestora");
@@ -231,6 +240,8 @@ export default function AsignacionGestoresClient() {
     });
   }, [cuadrillas, tab, programState]);
   const isTopGestor = (uid: string) => currentTop.includes(uid);
+  const cuadrillasActivasCount = visibleCuadrillas.length;
+  const cuadrillasBloqueadasCount = Math.max(0, cuadrillas.length - visibleCuadrillas.length);
 
   const selectStyles = useMemo(
     () =>
@@ -277,8 +288,8 @@ export default function AsignacionGestoresClient() {
   const renderCardList = (uid: string) => {
     const lista = listNames(asignadosPorGestor(uid));
     if (!lista.length) return <div className="text-xs text-slate-500 dark:text-slate-400">Sin cuadrillas</div>;
-  
-  return (
+
+    return (
       <div className="space-y-0.5 text-xs text-slate-700 dark:text-slate-200">
         {lista.map((x) => (
           <div key={x} className="truncate">- {x}</div>
@@ -337,157 +348,191 @@ export default function AsignacionGestoresClient() {
 
   return (
     <div className="space-y-4 p-4 text-slate-900 dark:text-slate-100">
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-[#30518c] dark:text-sky-300">Asignacion de Gestores</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Base permanente (actualiza cuadrillas.gestorUid) y cambios temporales por dia.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium">Fecha</label>
-            <input
-              type="date"
-              value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
-              className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
-            />
-            <span className="text-xs text-slate-500 dark:text-slate-400">
-              {dayjs(fecha, "YYYY-MM-DD").format("DD/MM/YYYY")}
-            </span>
-            <button
-              className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-slate-800"
-              onClick={() => setFecha(dayjs().format("YYYY-MM-DD"))}
-            >
-              Hoy
-            </button>
-            <button
-              className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-slate-800"
-              onClick={() => setFecha(dayjs().add(1, "day").format("YYYY-MM-DD"))}
-            >
-              Manana
-            </button>
+      <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="bg-[linear-gradient(135deg,#15386b_0%,#30518c_58%,#e7efff_58%,#f8fbff_100%)] px-5 py-5 dark:bg-[linear-gradient(135deg,#020617_0%,#0f172a_58%,#1e293b_58%,#334155_100%)]">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="text-white">
+              <div className="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]">
+                Operacion diaria
+              </div>
+              <h1 className="mt-3 text-3xl font-semibold tracking-tight">Asignacion de gestores</h1>
+              <p className="mt-2 max-w-2xl text-sm text-blue-50/90">
+                Base permanente y programacion por dia con mejor lectura para cuadrillas activas, cambios y pendientes.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/15 bg-white/10 p-3 backdrop-blur">
+              <div className="flex flex-wrap items-center gap-2 text-white">
+                <label className="text-sm font-medium text-blue-50/90">Fecha</label>
+                <input
+                  type="date"
+                  value={fecha}
+                  onChange={(e) => setFecha(e.target.value)}
+                  className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-white outline-none"
+                />
+                <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs text-blue-50/90">
+                  {dayjs(fecha, "YYYY-MM-DD").format("DD/MM/YYYY")}
+                </span>
+                <button
+                  className="rounded-lg border border-white/20 px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-white/10"
+                  onClick={() => setFecha(dayjs().format("YYYY-MM-DD"))}
+                >
+                  Hoy
+                </button>
+                <button
+                  className="rounded-lg border border-white/20 px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-white/10"
+                  onClick={() => setFecha(dayjs().add(1, "day").format("YYYY-MM-DD"))}
+                >
+                  Manana
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-2">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
-            <div className="text-xs text-slate-500 dark:text-slate-400">Gestores</div>
-            <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{resumen.totalGestores}</div>
+        <div className="grid grid-cols-2 gap-3 border-b border-slate-200 px-5 py-4 md:grid-cols-3 xl:grid-cols-6 dark:border-slate-700">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-950">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Gestores</div>
+            <div className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">{resumen.totalGestores}</div>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
-            <div className="text-xs text-slate-500 dark:text-slate-400">Cuadrillas</div>
-            <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{resumen.totalCuadrillas}</div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-950">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Cuadrillas</div>
+            <div className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">{resumen.totalCuadrillas}</div>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
-            <div className="text-xs text-slate-500 dark:text-slate-400">Asignadas</div>
-            <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{resumen.totalAsignadas}</div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-950">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Asignadas</div>
+            <div className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">{resumen.totalAsignadas}</div>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
-            <div className="text-xs text-slate-500 dark:text-slate-400">Sin asignar</div>
-            <div className={cls("text-lg font-semibold", unassignedCount > 0 ? "text-rose-700" : "text-slate-800")}>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-950">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Sin asignar</div>
+            <div className={cls("mt-1 text-2xl font-semibold", unassignedCount > 0 ? "text-rose-700 dark:text-rose-300" : "text-slate-900 dark:text-slate-100")}>
               {unassignedCount}
             </div>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
-            <div className="text-xs text-slate-500 dark:text-slate-400">TOP</div>
-            <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{resumen.totalTop}</div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-950">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Activas</div>
+            <div className="mt-1 text-2xl font-semibold text-emerald-700 dark:text-emerald-300">{cuadrillasActivasCount}</div>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-950">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">TOP</div>
+            <div className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">{resumen.totalTop}</div>
           </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setTab("dia")}
-            className={cls(
-              "px-3 py-1.5 rounded-full text-sm ring-1",
-              tab === "dia"
-                ? "bg-[#30518c] text-white ring-[#30518c]"
-                : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-800"
-            )}
-          >
-            Programacion diaria
-          </button>
-          {tab === "dia" && (
-            <span
-              className={cls(
-                "px-2 py-1 text-xs rounded border",
-                hasDay
-                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                : "bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-700"
+        <div className="grid gap-3 px-5 py-4 lg:grid-cols-[1.35fr,1fr]">
+          <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setTab("dia")}
+                className={cls(
+                  "rounded-full px-4 py-2 text-sm font-medium ring-1 transition",
+                  tab === "dia"
+                    ? "bg-[#30518c] text-white ring-[#30518c]"
+                    : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-800"
+                )}
+              >
+                Programacion diaria
+              </button>
+              <button
+                onClick={() => setTab("base")}
+                className={cls(
+                  "rounded-full px-4 py-2 text-sm font-medium ring-1 transition",
+                  tab === "base"
+                    ? "bg-[#30518c] text-white ring-[#30518c]"
+                    : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-800"
+                )}
+              >
+                Base permanente
+              </button>
+              {tab === "dia" && (
+                <span
+                  className={cls(
+                    "rounded-full border px-3 py-1 text-xs font-medium",
+                    hasDay
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
+                      : "border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                  )}
+                >
+                  {hasDay ? "Con programacion guardada" : "Usando base como referencia"}
+                </span>
               )}
-            >
-              {hasDay ? "Con programacion" : "Usando base"}
-            </span>
-          )}
-          <button
-            onClick={() => setTab("base")}
-            className={cls(
-              "px-3 py-1.5 rounded-full text-sm ring-1",
-              tab === "base"
-                ? "bg-[#30518c] text-white ring-[#30518c]"
-                : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-800"
-            )}
-          >
-            Base permanente
-          </button>
+            </div>
+            <div className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+              {tab === "dia"
+                ? `Solo se pueden elegir cuadrillas activas en asistencia programada. Bloqueadas para esta fecha: ${cuadrillasBloqueadasCount}.`
+                : "La base permanente actualiza el gestor principal de cada cuadrilla y sirve como referencia para la programacion diaria."}
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              {tab === "dia" && (
+                <button
+                  onClick={usarBaseParaDia}
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Usar base para este dia
+                </button>
+              )}
+              {tab === "dia" && (
+                <button
+                  onClick={limpiarGestoresDia}
+                  className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200 dark:hover:bg-rose-950/70"
+                >
+                  Limpiar gestores del dia
+                </button>
+              )}
+              {tab === "dia" && (
+                <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={soloCambios}
+                    onChange={(e) => setSoloCambios(e.target.checked)}
+                  />
+                  Solo con cambios
+                </label>
+              )}
+            </div>
+          </div>
 
-          {tab === "dia" && (
-            <button
-              onClick={usarBaseParaDia}
-              className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              Usar base para este dia
-            </button>
-          )}
-
-          {tab === "dia" && (
-            <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+          <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-950">
+            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Busqueda y guardado</div>
+            <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Filtra por gestor y guarda la configuracion visible cuando termines.
+            </div>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
               <input
-                type="checkbox"
-                checked={soloCambios}
-                onChange={(e) => setSoloCambios(e.target.checked)}
+                type="text"
+                placeholder="Buscar gestor..."
+                value={filtroGestor}
+                onChange={(e) => setFiltroGestor(e.target.value)}
+                className="flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
               />
-              Solo con cambios
-            </label>
-          )}
-
-          <div className="ml-auto flex items-center gap-2">
-            <input
-              type="text"
-              placeholder="Buscar gestor..."
-              value={filtroGestor}
-              onChange={(e) => setFiltroGestor(e.target.value)}
-              className="rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-            />
-                        <button
-              onClick={guardar}
-              disabled={saving}
-              className="px-4 py-2 rounded bg-emerald-600 text-white text-sm disabled:opacity-60"
-            >
-              {saving ? "Guardando..." : (tab === "base" ? "Guardar base" : "Guardar por dia")}
-            </button>
+              <button
+                onClick={guardar}
+                disabled={saving}
+                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
+              >
+                {saving ? "Guardando..." : (tab === "base" ? "Guardar base" : "Guardar por dia")}
+              </button>
+            </div>
           </div>
         </div>
 
         {dupCount > 0 && (
-          <div className="mt-3 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          <div className="mx-5 mb-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">
             Hay {dupCount} cuadrilla(s) asignadas a mas de una gestora. Corrige antes de guardar.
           </div>
         )}
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        <div className="flex items-center justify-between">
+      <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">Gestor TOP (ve todas las cuadrillas)</div>
+            <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">Gestor TOP</div>
             <div className="text-xs text-slate-500 dark:text-slate-400">
-              {tab === "dia" ? "Si no defines, se usa la base." : "Configuracion base"}
+              {tab === "dia" ? "Si no defines TOP para el dia, se reutiliza la base." : "Configuracion base de gestores con visibilidad total."}
             </div>
           </div>
           {tab === "dia" && (
             <button
-              className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
               onClick={() => setTopDay(null)}
             >
               Usar TOP base
@@ -495,7 +540,7 @@ export default function AsignacionGestoresClient() {
           )}
         </div>
 
-        <div className="mt-2 max-w-[520px]">
+        <div className="mt-3 max-w-[680px]">
           <Select
             isMulti
             options={gestores}
@@ -515,97 +560,63 @@ export default function AsignacionGestoresClient() {
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {cargando ? (
-          <div className="p-6 text-center text-slate-500 dark:text-slate-400">Cargando...</div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+            Cargando...
+          </div>
         ) : (
           gestoresVisible.map((g) => {
             const selected = asignadosPorGestor(g.value);
             const diff = diffSets(baseMap[g.value] || [], selected);
-          
-  const printResumenDiario = () => {
-    const ymd = dayjs(fecha, "YYYY-MM-DD").format("DD/MM/YYYY");
-    const rows = gestores
-      .map((g) => ({
-        nombre: g.label,
-        lista: listNames(asignadosPorGestor(g.value)),
-      }))
-      .filter((r) => r.lista.length > 0);
-
-    const html = `
-      <html>
-      <head>
-        <title>Resumen asignacion ${ymd}</title>
-        <style>
-          body { font-family: Arial, sans-serif; padding: 20px; }
-          h1 { font-size: 18px; margin-bottom: 4px; }
-          .meta { color: #666; font-size: 12px; margin-bottom: 16px; }
-          .card { border: 1px solid #ddd; border-radius: 8px; padding: 10px; margin-bottom: 10px; }
-          .name { font-weight: 700; margin-bottom: 6px; }
-          ul { margin: 0; padding-left: 18px; }
-          li { margin: 2px 0; }
-        </style>
-      </head>
-      <body>
-        <h1>Resumen asignacion de gestores</h1>
-        <div class="meta">Fecha: ${ymd}</div>
-        ${rows.map(r => `
-          <div class="card">
-            <div class="name">${r.nombre}</div>
-            <ul>${r.lista.map(c => `<li>${c}</li>`).join()}</ul>
-          </div>`).join()}
-      </body>
-      </html>`;
-
-    const w = window.open("", "_blank");
-    if (!w) return;
-    w.document.write(html);
-    w.document.close();
-    w.focus();
-    w.print();
-  };
-
-  return (
+            return (
               <div
                 key={g.value}
-                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900"
+                className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-700 dark:bg-slate-900"
                 style={{ minHeight: cardMinH }}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="text-sm text-slate-500 dark:text-slate-400">Gestor</div>
-                    <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{g.label}</div>
+                <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-700">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Gestor</div>
+                      <div className="mt-1 text-lg font-semibold text-slate-800 dark:text-slate-100">{g.label}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {isTopGestor(g.value) && (
+                        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-medium text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200">
+                          TOP
+                        </span>
+                      )}
+                      {tab === "dia" && diff.total > 0 && (
+                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                          +{diff.add} / -{diff.rem}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {isTopGestor(g.value) && (
-                      <span className="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-                        TOP
-                      </span>
-                    )}
-                    {tab === "dia" && diff.total > 0 && (
-                      <span className="text-xs px-2 py-1 rounded bg-amber-50 text-amber-700">
-                        +{diff.add} / -{diff.rem}
-                      </span>
-                    )}
+                  <div className="mt-3 flex items-center justify-between text-sm">
+                    <span className="text-slate-500 dark:text-slate-400">Cuadrillas asignadas</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-100">{selected.length}</span>
                   </div>
                 </div>
 
-                <div className="mt-3 rounded border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950">
-                  {renderCardList(g.value)}
-                </div>
+                <div className="px-5 py-4">
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950">
+                    {renderCardList(g.value)}
+                  </div>
 
-                <div className="mt-3 flex items-center gap-2">
-                  <button
-                    onClick={() => setModalGestor(g.value)}
-                    className="px-3 py-1.5 rounded bg-[#30518c] text-white text-xs"
-                  >
-                    Editar
-                  </button>
-                  <button
-                    onClick={() => copyResumenGestor(g.value)}
-                    className="rounded border border-slate-300 px-3 py-1.5 text-xs dark:border-slate-700 dark:text-slate-200"
-                  >
-                    Copiar resumen
-                  </button>
-                  <span className="ml-auto text-xs text-slate-500 dark:text-slate-400">{selected.length} cuadrillas</span>
+                  <div className="mt-4 flex items-center gap-2">
+                    <button
+                      onClick={() => setModalGestor(g.value)}
+                      className="rounded-xl bg-[#30518c] px-3 py-2 text-xs font-medium text-white shadow-sm transition hover:bg-[#203a66]"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => copyResumenGestor(g.value)}
+                      className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      Copiar resumen
+                    </button>
+                  </div>
                 </div>
               </div>
             );

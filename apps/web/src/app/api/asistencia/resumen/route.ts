@@ -66,6 +66,8 @@ export async function GET(req: Request) {
     cuadrillasRaw.forEach((c: any) => {
       if (c.gestorUid) uidSet.add(String(c.gestorUid));
       if (c.coordinadorUid) uidSet.add(String(c.coordinadorUid));
+      if (c.confirmadoBy) uidSet.add(String(c.confirmadoBy));
+      if (c.cerradoBy) uidSet.add(String(c.cerradoBy));
     });
     tecnicosRaw.forEach((t: any) => {
       if (t.tecnicoId) uidSet.add(String(t.tecnicoId));
@@ -89,10 +91,18 @@ export async function GET(req: Request) {
       const coordinadorNombre = c.coordinadorUid
         ? userMap.get(String(c.coordinadorUid)) || c.coordinadorUid
         : "";
+      const confirmadoPorNombre = c.confirmadoBy
+        ? userMap.get(String(c.confirmadoBy)) || c.confirmadoBy
+        : "";
+      const cerradoPorNombre = c.cerradoBy
+        ? userMap.get(String(c.cerradoBy)) || c.cerradoBy
+        : "";
       return {
         ...c,
         gestorNombre,
         coordinadorNombre,
+        confirmadoPorNombre,
+        cerradoPorNombre,
       };
     };
 
@@ -122,6 +132,10 @@ export async function GET(req: Request) {
           coordinadorNombre,
           zonaId: cuad?.zonaId || "",
           zonaNombre: cuad?.zonaNombre || "",
+          confirmadoBy: cuad?.confirmadoBy || "",
+          confirmadoPorNombre: cuad?.confirmadoPorNombre || "",
+          cerradoBy: cuad?.cerradoBy || "",
+          cerradoPorNombre: cuad?.cerradoPorNombre || "",
         };
       })
       .filter((t: any) => {

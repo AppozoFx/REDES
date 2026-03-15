@@ -36,6 +36,8 @@ type GestorDraft = {
 
 type Option = { value: string; label: string };
 
+const cls = (...x: (string | false | null | undefined)[]) => x.filter(Boolean).join(" ");
+
 const estados = [
   "asistencia",
   "falta",
@@ -46,6 +48,17 @@ const estados = [
   "recuperacion",
   "asistencia compensada",
 ];
+
+const estadoMeta = {
+  asistencia: { label: "Asistencia", short: "A" },
+  falta: { label: "Falta", short: "F" },
+  suspendida: { label: "Suspendida", short: "S" },
+  descanso: { label: "Descanso", short: "D" },
+  "descanso medico": { label: "Descanso medico", short: "DM" },
+  vacaciones: { label: "Vacaciones", short: "V" },
+  recuperacion: { label: "Recuperacion", short: "R" },
+  "asistencia compensada": { label: "Asistencia compensada", short: "AC" },
+} as const;
 
 const estadoColor = (e: string) => {
   switch ((e || "").toLowerCase()) {
@@ -60,6 +73,9 @@ const estadoColor = (e: string) => {
     default: return "text-slate-700 bg-slate-50 border-slate-200";
   }
 };
+
+const estadoSelectClass = (e: string) =>
+  `${estadoColor(e)} rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm transition`;
 
 export default function AsistenciaClient() {
   const [fecha, setFecha] = useState(dayjs().format("YYYY-MM-DD"));
@@ -217,6 +233,11 @@ export default function AsistenciaClient() {
     return gestorCards.filter((c) => c.estado === filtroEstadoGestor);
   }, [gestorCards, filtroEstadoGestor]);
 
+  const gestorActualLabel = useMemo(
+    () => gestores.find((g) => g.value === gestorUid)?.label || gestorUid || "Sin gestor seleccionado",
+    [gestores, gestorUid]
+  );
+
   const filtered = useMemo(() => {
     const q = filtroNombre.toLowerCase().trim();
     return rows.filter((r) => {
@@ -268,7 +289,7 @@ export default function AsistenciaClient() {
       });
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || "ERROR");
-      toast.success("Borrador guardado");
+      toast.success("Cambios guardados en el borrador");
       await cargar(gestorUid);
       await cargarDrafts();
     } catch (e: any) {
@@ -289,7 +310,7 @@ export default function AsistenciaClient() {
       });
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || "ERROR");
-      toast.success("Asistencia confirmada");
+      toast.success("Borrador confirmado y enviado a revision administrativa");
       await cargar(gestorUid);
       await cargarDrafts();
     } catch (e: any) {
@@ -309,7 +330,7 @@ export default function AsistenciaClient() {
       });
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || "ERROR");
-      toast.success("Asistencia cerrada");
+      toast.success("Asistencia cerrada correctamente");
       await cargar(uid || gestorUid);
       await cargarDrafts();
     } catch (e: any) {
@@ -328,7 +349,69 @@ export default function AsistenciaClient() {
     return acc;
   }, [filtered]);
 
-  const disabled = modoAdmin ? draftEstado === "CERRADO" : draftEstado !== "ABIERTO";
+  const draftStatusMeta = useMemo(() => {
+    if (draftEstado === "ABIERTO") {
+      return {
+        title: "Borrador abierto",
+        detail: "Puedes editar estados, tecnicos y observaciones antes de confirmar.",
+        tone: "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800/60 dark:bg-emerald-900/20 dark:text-emerald-100",
+      };
+    }
+    if (draftEstado === "CONFIRMADO") {
+      return {
+        title: "Borrador confirmado",
+        detail: "El gestor ya no puede editar. Queda pendiente de cierre administrativo o reapertura.",
+        tone: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-100",
+      };
+    }
+    if (draftEstado === "CERRADO") {
+      return {
+        title: "Registro cerrado",
+        detail: "La asistencia ya fue consolidada y no admite cambios desde esta pantalla.",
+        tone: "border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-100",
+      };
+    }
+    if (draftEstado === "SIN_SELECCION") {
+      return {
+        title: "Selecciona un gestor",
+        detail: "Primero elige un gestor para cargar cuadrillas y administrar su borrador.",
+        tone: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-100",
+      };
+    }
+    return {
+      title: `Estado: ${draftEstado || "-"}`,
+      detail: "Revisa el estado del borrador antes de continuar.",
+      tone: "border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-100",
+    };
+  }, [draftEstado]);
+
+  const adminNeedsGestor = modoAdmin && !gestorUid;
+  const disabled = adminNeedsGestor || (modoAdmin ? draftEstado === "CERRADO" : draftEstado !== "ABIERTO");
+
+  const reabrir = async () => {
+    if (!gestorUid) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/asistencia/borradores/reabrir", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fecha, gestorUid }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "ERROR");
+      toast.success("Borrador reabierto");
+      await cargar(gestorUid);
+      await cargarDrafts();
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo reabrir");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const recargarVista = async () => {
+    await Promise.all([cargar(gestorUid || undefined), cargarDrafts()]);
+  };
 
   return (
     <div className="space-y-4 text-slate-900 dark:text-slate-100">
@@ -359,7 +442,9 @@ export default function AsistenciaClient() {
               className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
             />
             <button
-              onClick={() => cargar(gestorUid)}
+              onClick={() => {
+                void recargarVista();
+              }}
               className="rounded-xl bg-[#30518c] px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-95"
             >
               Recargar
@@ -368,7 +453,7 @@ export default function AsistenciaClient() {
           <div className="flex flex-wrap gap-2">
             {Object.entries(resumen).map(([k, v]) => (
               <span key={k} className={`px-2 py-1 text-xs rounded border ${estadoColor(k)}`}>
-                {k}: {v}
+                {estadoMeta[k as keyof typeof estadoMeta]?.label || k}: {v}
               </span>
             ))}
             <span
@@ -384,40 +469,113 @@ export default function AsistenciaClient() {
         </div>
 
         {modoAdmin && (
-          <div className="mt-4 grid gap-3 md:grid-cols-4">
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
             <div className="px-3 py-2 rounded border text-sm flex items-center justify-between">
-              <span className="text-gray-500">Gestora</span>
+              <span className="text-gray-500">Gestor</span>
               <span className="font-medium">
-                {gestores.find((g) => g.value === gestorUid)?.label || gestorUid || "-"}
+                {gestorActualLabel}
               </span>
             </div>
             <div className="px-3 py-2 rounded border text-sm flex items-center justify-between">
               <span className="text-gray-500">Estado</span>
               <span className="font-medium">
-                {draftsMap.get(gestorUid)?.estado || "ABIERTO"}
+                {gestorUid ? draftsMap.get(gestorUid)?.estado || "ABIERTO" : "Seleccione un gestor"}
               </span>
             </div>
-            <select
-              value={filtroEstadoGestor}
-              onChange={(e) => setFiltroEstadoGestor(e.target.value)}
-              className="px-3 py-2 rounded border text-sm"
-            >
-              <option value="">Todos los estados</option>
-              <option value="SIN BORRADOR">Sin borrador</option>
-              <option value="ABIERTO">Abierto</option>
-              <option value="CONFIRMADO">Confirmado</option>
-              <option value="CERRADO">Cerrado</option>
-            </select>
-            <button
-              onClick={() => cerrar(gestorUid, false)}
-              className="px-3 py-2 rounded bg-rose-600 text-white text-sm"
-              disabled={closing}
-            >
-              Cerrar por gestora
-            </button>
+            <div className="grid gap-2 md:grid-cols-2 md:col-span-3">
+              <select
+                value={gestorUid}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setGestorUid(next);
+                  void cargar(next || undefined);
+                }}
+                className="px-3 py-2 rounded border text-sm"
+              >
+                <option value="">Seleccionar gestor</option>
+                {gestores.map((g) => (
+                  <option key={g.value} value={g.value}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={filtroEstadoGestor}
+                onChange={(e) => setFiltroEstadoGestor(e.target.value)}
+                className="px-3 py-2 rounded border text-sm"
+              >
+                <option value="">Todos los estados</option>
+                <option value="SIN BORRADOR">Sin borrador</option>
+                <option value="ABIERTO">Abierto</option>
+                <option value="CONFIRMADO">Confirmado</option>
+                <option value="CERRADO">Cerrado</option>
+              </select>
+            </div>
           </div>
         )}
       </div>
+
+      <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 dark:border-sky-800/60 dark:bg-sky-900/20 dark:text-sky-100">
+        <div className="font-medium">Flujo recomendado</div>
+        <div className="mt-1 text-xs text-sky-800/90 dark:text-sky-100/80">
+          1. Revisa la fecha y el gestor. 2. Actualiza estados, tecnicos y observaciones. 3. Guarda cambios. 4. Confirma el borrador cuando quede listo.
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+          <div className="text-xs text-slate-500">Gestor activo</div>
+          <div className="mt-1 text-sm font-semibold">{gestorActualLabel}</div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+          <div className="text-xs text-slate-500">Cuadrillas visibles</div>
+          <div className="mt-1 text-sm font-semibold">{filtered.length}</div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+          <div className="text-xs text-slate-500">Estado del borrador</div>
+          <div className="mt-1 text-sm font-semibold">{draftEstado}</div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+          <div className="text-xs text-slate-500">Fecha</div>
+          <div className="mt-1 text-sm font-semibold">{fecha}</div>
+        </div>
+      </div>
+
+      <div className={`rounded-xl border px-4 py-3 text-sm ${draftStatusMeta.tone}`}>
+        <div className="font-medium">{draftStatusMeta.title}</div>
+        <div className="mt-1 text-xs opacity-90">{draftStatusMeta.detail}</div>
+      </div>
+
+      {adminNeedsGestor && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-100">
+          Selecciona un gestor para cargar cuadrillas, editar el borrador o ejecutar acciones de cierre por gestor.
+        </div>
+      )}
+
+      {modoAdmin && gestorUid && (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/40">
+          <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">Acciones administrativas</div>
+          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Usa estas acciones solo para gestionar cierres, reaperturas o revisiones por gestor.
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              onClick={() => cerrar(gestorUid, false)}
+              className="px-3 py-2 rounded bg-rose-600 text-white text-sm disabled:opacity-60"
+              disabled={closing || draftEstado === "CERRADO" || !gestorUid}
+            >
+              Cerrar por gestor
+            </button>
+            <button
+              onClick={reabrir}
+              className="px-3 py-2 rounded border border-blue-300 bg-white text-blue-700 text-sm disabled:opacity-60 dark:border-blue-700 dark:bg-slate-900 dark:text-blue-200"
+              disabled={saving || draftEstado !== "CONFIRMADO"}
+            >
+              Reabrir borrador
+            </button>
+          </div>
+        </div>
+      )}
 
       {modoAdmin && gestorCards.length > 0 && (
         <div className="grid gap-3 md:grid-cols-3">
@@ -439,7 +597,7 @@ export default function AsistenciaClient() {
                   cargar(c.gestorUid);
                 }}
               >
-                <div className="text-xs text-gray-500">Gestora</div>
+                <div className="text-xs text-gray-500">Gestor</div>
                 <div className="text-sm font-semibold">{c.nombre}</div>
                 <div className="mt-2 text-xs">Estado: {c.estado}</div>
                 <div className="mt-1 text-[11px] text-gray-500">
@@ -503,11 +661,14 @@ export default function AsistenciaClient() {
                       value={r.estadoAsistencia || "asistencia"}
                       onChange={(e) => updateRow(r.id, { estadoAsistencia: e.target.value })}
                       disabled={disabled}
-                      className="rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                      className={cls(
+                        estadoSelectClass(r.estadoAsistencia || "asistencia"),
+                        "dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                      )}
                     >
                       {estados.map((e) => (
                         <option key={e} value={e}>
-                          {e}
+                          {estadoMeta[e as keyof typeof estadoMeta]?.label || e}
                         </option>
                       ))}
                     </select>
@@ -527,20 +688,25 @@ export default function AsistenciaClient() {
         </table>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">Acciones del gestor</div>
+        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Guarda tus cambios cuantas veces necesites. Cuando todo este correcto, confirma el borrador para enviarlo a revision administrativa.
+        </div>
+        <div className="mt-3 flex items-center gap-2">
         <button
           onClick={guardarBorrador}
           disabled={saving || disabled}
           className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-60"
         >
-          {saving ? "Guardando..." : "Guardar borrador"}
+          {saving ? "Guardando..." : "Guardar cambios"}
         </button>
         <button
           onClick={confirmar}
           disabled={saving || draftEstado !== "ABIERTO"}
           className="px-4 py-2 rounded bg-emerald-600 text-white disabled:opacity-60"
         >
-          Marcar conforme
+          Confirmar borrador
         </button>
         {modoAdmin && (
           <button
@@ -560,8 +726,22 @@ export default function AsistenciaClient() {
             {closing ? "Cerrando..." : "Cerrar todo el día"}
           </button>
         )}
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Tipificaciones</div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {estados.map((estado) => (
+              <span key={estado} className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${estadoColor(estado)}`}>
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white/80 px-1 text-[10px] shadow-sm dark:bg-slate-950/60">
+                  {estadoMeta[estado as keyof typeof estadoMeta]?.short || estado.slice(0, 2).toUpperCase()}
+                </span>
+                <span>{estadoMeta[estado as keyof typeof estadoMeta]?.label || estado}</span>
+              </span>
+            ))}
+          </div>
+        </div>
       </div>
-    </div>
   );
 }
-

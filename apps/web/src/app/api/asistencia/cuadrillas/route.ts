@@ -52,7 +52,7 @@ export async function GET(req: Request) {
     const gestorUidParam = String(searchParams.get("gestorUid") || "").trim();
     if (!fecha) return NextResponse.json({ ok: false, error: "FECHA_REQUIRED" }, { status: 400 });
 
-    const gestorUid = canAdmin ? (gestorUidParam || session.uid) : session.uid;
+    const gestorUid = canAdmin ? gestorUidParam : session.uid;
 
     const db = adminDb();
     let baseSnap = await db
@@ -81,6 +81,8 @@ export async function GET(req: Request) {
       const ids = resolveGestorIdsStrict(gestorUidParam, data);
       const setIds = new Set(ids.map((x: any) => String(x || "").trim()));
       docs = docs.filter((d) => setIds.has(d.id));
+    } else if (canAdmin && !gestorUidParam) {
+      docs = [];
     }
 
     const cuadrillas = docs.map((d: any) => {
@@ -110,14 +112,14 @@ export async function GET(req: Request) {
       })
     );
 
-    const draftId = `${fecha}_${gestorUid}`;
-    const draftRef = db.collection("asistencia_borradores").doc(draftId);
-    const draftSnap = await draftRef.get();
-    const draft = draftSnap.exists ? (draftSnap.data() as any) : null;
-    const draftEstado = String(draft?.estado || "ABIERTO");
+    const draftId = gestorUid ? `${fecha}_${gestorUid}` : "";
+    const draftRef = draftId ? db.collection("asistencia_borradores").doc(draftId) : null;
+    const draftSnap = draftRef ? await draftRef.get() : null;
+    const draft = draftSnap?.exists ? (draftSnap.data() as any) : null;
+    const draftEstado = gestorUid ? String(draft?.estado || "ABIERTO") : "SIN_SELECCION";
 
-    const itemsSnap = await draftRef.collection("cuadrillas").get();
-    const draftMap = new Map(itemsSnap.docs.map((d) => [d.id, d.data() as any]));
+    const itemsSnap = draftRef ? await draftRef.collection("cuadrillas").get() : null;
+    const draftMap = new Map((itemsSnap?.docs || []).map((d) => [d.id, d.data() as any]));
 
     const program = await getProgramForDate(fecha);
     const progItems = (program?.items || {}) as Record<string, Record<string, string>>;

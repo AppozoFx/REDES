@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 const BodySchema = z.object({
   fecha: z.string().min(1),
-  gestorUid: z.string().optional(),
+  gestorUid: z.string().min(1),
 });
 
 export async function POST(req: Request) {
@@ -21,31 +21,33 @@ export async function POST(req: Request) {
 
     const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
     const canAdmin = session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
-    const canGestor = roles.includes("GESTOR");
-    const canUse = canAdmin || canGestor || (session.access.areas || []).includes("INSTALACIONES");
-    if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
+    if (!canAdmin) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
-    const raw = await req.json();
+    const raw = await req.json().catch(() => ({}));
     const parsed = BodySchema.safeParse(raw);
     if (!parsed.success) return NextResponse.json({ ok: false, error: "FORM_INVALIDO" }, { status: 400 });
 
-    const data = parsed.data;
-    if (canAdmin && !data.gestorUid) {
-      return NextResponse.json({ ok: false, error: "GESTOR_REQUIRED" }, { status: 400 });
-    }
-    const gestorUid = canAdmin ? String(data.gestorUid || "").trim() : session.uid;
-    const draftId = `${data.fecha}_${gestorUid}`;
+    const { fecha, gestorUid } = parsed.data;
+    const draftId = `${fecha}_${gestorUid}`;
     const ref = adminDb().collection("asistencia_borradores").doc(draftId);
     const snap = await ref.get();
     if (!snap.exists) return NextResponse.json({ ok: false, error: "BORRADOR_NOT_FOUND" }, { status: 404 });
-    const estado = String((snap.data() as any)?.estado || "ABIERTO");
-    if (estado === "CERRADO") return NextResponse.json({ ok: false, error: "BORRADOR_CERRADO" }, { status: 400 });
+
+    const estado = String((snap.data() as any)?.estado || "ABIERTO").toUpperCase();
+    if (estado === "CERRADO") {
+      return NextResponse.json({ ok: false, error: "BORRADOR_CERRADO" }, { status: 400 });
+    }
+    if (estado !== "CONFIRMADO") {
+      return NextResponse.json({ ok: false, error: "BORRADOR_NO_REABRIBLE" }, { status: 400 });
+    }
 
     await ref.set(
       {
-        estado: "CONFIRMADO",
-        confirmadoAt: FieldValue.serverTimestamp(),
-        confirmadoBy: session.uid,
+        estado: "ABIERTO",
+        reabiertoAt: FieldValue.serverTimestamp(),
+        reabiertoBy: session.uid,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: session.uid,
       },
       { merge: true }
     );

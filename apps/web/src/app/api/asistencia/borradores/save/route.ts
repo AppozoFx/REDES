@@ -45,7 +45,10 @@ export async function POST(req: Request) {
     if (!parsed.success) return NextResponse.json({ ok: false, error: "FORM_INVALIDO" }, { status: 400 });
 
     const data = parsed.data;
-    const gestorUid = canAdmin ? (data.gestorUid || session.uid) : session.uid;
+    if (canAdmin && !data.gestorUid) {
+      return NextResponse.json({ ok: false, error: "GESTOR_REQUIRED" }, { status: 400 });
+    }
+    const gestorUid = canAdmin ? String(data.gestorUid || "").trim() : session.uid;
     const draftId = `${data.fecha}_${gestorUid}`;
 
     const db = adminDb();

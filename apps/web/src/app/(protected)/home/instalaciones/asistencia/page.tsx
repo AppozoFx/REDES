@@ -6,7 +6,7 @@ export default function AsistenciaPage() {
       <div>
         <h1 className="text-2xl font-bold">Asistencia de Cuadrillas</h1>
         <p className="text-sm text-muted-foreground">
-          Registro diario por gestoras y cierre por Gerencia/Almacén/RRHH.
+          Registro diario por gestores y cierre por Gerencia, Almacen o RRHH.
         </p>
       </div>
       <AsistenciaClient />

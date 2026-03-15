@@ -154,6 +154,15 @@ export default function AsignacionGestoresClient() {
     if (tab === "dia" && soloCambios) {
       list = list.filter((g) => diffSets(baseMap[g.value] || [], currentMap[g.value] || []).total > 0);
     }
+    if (tab === "dia") {
+      list = [...list].sort((a, b) => {
+        const aCount = (currentMap[a.value] || []).length;
+        const bCount = (currentMap[b.value] || []).length;
+        if (aCount === 0 && bCount > 0) return 1;
+        if (aCount > 0 && bCount === 0) return -1;
+        return a.label.localeCompare(b.label, "es", { sensitivity: "base" });
+      });
+    }
     return list;
   }, [gestores, filtroGestor, tab, soloCambios, baseMap, currentMap]);
 

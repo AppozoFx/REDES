@@ -35,6 +35,11 @@ type GestorDraft = {
 };
 
 type Option = { value: string; label: string };
+type GestoresDiaResponse = {
+  ok: boolean;
+  base?: Record<string, string[]>;
+  day?: Record<string, string[]>;
+};
 
 const cls = (...x: (string | false | null | undefined)[]) => x.filter(Boolean).join(" ");
 
@@ -93,6 +98,7 @@ export default function AsistenciaClient() {
   const [assignedAll, setAssignedAll] = useState<string[]>([]);
   const [tecnicos, setTecnicos] = useState<Option[]>([]);
   const [isDark, setIsDark] = useState(false);
+  const [gestoresConCuadrillasDia, setGestoresConCuadrillasDia] = useState<string[]>([]);
 
   const cargarTecnicos = async () => {
     const res = await fetch("/api/usuarios/by-role?role=TECNICO", { cache: "no-store" });
@@ -117,6 +123,25 @@ export default function AsistenciaClient() {
     } else {
       setModoAdmin(false);
       setDrafts([]);
+    }
+  };
+
+  const cargarGestoresConCuadrillasDia = async () => {
+    try {
+      const res = await fetch(`/api/instalaciones/asignacion-gestores?fecha=${encodeURIComponent(fecha)}`, { cache: "no-store" });
+      const data: GestoresDiaResponse = await res.json();
+      if (!res.ok || !data?.ok) {
+        setGestoresConCuadrillasDia([]);
+        return;
+      }
+      const source = Object.keys(data.day || {}).length > 0 ? (data.day || {}) : (data.base || {});
+      const activos = Object.entries(source)
+        .filter(([, cuadrillas]) => Array.isArray(cuadrillas) && cuadrillas.length > 0)
+        .map(([uid]) => String(uid || "").trim())
+        .filter(Boolean);
+      setGestoresConCuadrillasDia(activos);
+    } catch {
+      setGestoresConCuadrillasDia([]);
     }
   };
 
@@ -152,6 +177,7 @@ export default function AsistenciaClient() {
   useEffect(() => {
     cargarDrafts();
     cargar();
+    cargarGestoresConCuadrillasDia();
   }, [fecha]);
 
   useEffect(() => {
@@ -229,9 +255,13 @@ export default function AsistenciaClient() {
   }, [gestores, draftsMap]);
 
   const filteredCards = useMemo(() => {
-    if (!filtroEstadoGestor) return gestorCards;
-    return gestorCards.filter((c) => c.estado === filtroEstadoGestor);
-  }, [gestorCards, filtroEstadoGestor]);
+    const activos = new Set(gestoresConCuadrillasDia);
+    let list = gestorCards.filter((c) => activos.has(String(c.gestorUid || "").trim()));
+    if (filtroEstadoGestor) {
+      list = list.filter((c) => c.estado === filtroEstadoGestor);
+    }
+    return list;
+  }, [gestorCards, filtroEstadoGestor, gestoresConCuadrillasDia]);
 
   const gestorActualLabel = useMemo(
     () => gestores.find((g) => g.value === gestorUid)?.label || gestorUid || "Sin gestor seleccionado",

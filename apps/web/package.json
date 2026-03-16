@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:winbo": "node --experimental-strip-types src/lib/winbo/runTests.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "check:conflicts": "rg -n \"^(<<<<<<< .+|=======|>>>>>>> .+)$\" src || exit 0",
     "predeploy": "pnpm run check:conflicts && pnpm run lint && pnpm run typecheck",

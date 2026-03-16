@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 const BodySchema = z.object({
   ymd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  actas: z.array(z.string()).min(1).max(5000),
+  actas: z.array(z.string()).max(5000).default([]),
 });
 
 type MatchItem = {
@@ -19,6 +19,14 @@ type MatchItem = {
   acta: string;
   fechaOrdenYmd: string;
   fechaInstalacionYmd: string;
+};
+
+type DayItem = {
+  acta: string;
+  codigoCliente: string;
+  cliente: string;
+  cuadrillaNombre: string;
+  matches: MatchItem[];
 };
 
 function normalizeActa(raw: unknown) {
@@ -76,9 +84,6 @@ export async function POST(req: Request) {
     const ymd = parsed.data.ymd;
     const actasIn = parsed.data.actas.map((x) => normalizeActa(x)).filter(Boolean);
     const actasUnique = Array.from(new Set(actasIn));
-    if (!actasUnique.length) {
-      return NextResponse.json({ ok: false, error: "NO_ACTAS" }, { status: 400 });
-    }
 
     const db = adminDb();
     const [snapByOrden, snapByInstalacion] = await Promise.all([
@@ -87,9 +92,11 @@ export async function POST(req: Request) {
     ]);
 
     const docsMap = new Map<string, MatchItem>();
+    const docIds = new Set<string>();
 
     [...snapByOrden.docs, ...snapByInstalacion.docs].forEach((doc) => {
       const data = doc.data() as any;
+      docIds.add(doc.id);
       const item = toMatchItem(doc.id, data);
       if (!item) return;
       docsMap.set(`${doc.id}_${normalizeActaDigits(item.acta)}`, item);
@@ -103,6 +110,21 @@ export async function POST(req: Request) {
       list.push(item);
       byActaDigits.set(key, list);
     });
+
+    const dayItems: DayItem[] = Array.from(byActaDigits.entries())
+      .map(([_, matches]) => {
+        const sortedMatches = [...matches].sort((a, b) => a.codigoCliente.localeCompare(b.codigoCliente));
+        const primary = sortedMatches[0];
+        return {
+          acta: primary?.acta || "",
+          codigoCliente: primary?.codigoCliente || "",
+          cliente: primary?.cliente || "",
+          cuadrillaNombre: primary?.cuadrillaNombre || "",
+          matches: sortedMatches,
+        };
+      })
+      .filter((item) => item.acta)
+      .sort((a, b) => a.acta.localeCompare(b.acta, "es", { sensitivity: "base" }));
 
     const results = actasUnique.map((acta) => {
       const key = normalizeActaDigits(acta);
@@ -123,6 +145,11 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       ymd,
+      day: {
+        totalInstalaciones: docIds.size,
+        totalActasEsperadas: dayItems.length,
+        items: dayItems,
+      },
       summary: {
         totalEscaneadas: actasUnique.length,
         conCliente: matched,
@@ -136,4 +163,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }
 }
-

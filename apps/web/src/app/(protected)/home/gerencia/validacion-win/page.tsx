@@ -7,8 +7,8 @@ export const dynamic = "force-dynamic";
 export default async function ValidacionWinPage() {
   const session = await requireAuth();
   const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
-  const isGerencia = session.isAdmin || roles.includes("GERENCIA");
-  if (!isGerencia) redirect("/home");
+  const canUse = session.isAdmin || roles.includes("GERENCIA") || roles.includes("JEFATURA");
+  if (!canUse) redirect("/home");
 
   return (
     <div className="space-y-4">
@@ -17,4 +17,3 @@ export default async function ValidacionWinPage() {
     </div>
   );
 }
-

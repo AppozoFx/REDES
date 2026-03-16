@@ -104,7 +104,7 @@ export default function CuadrillasGestionClient() {
       : [];
     const isAdmin = Boolean(data.isAdmin);
     const isCoord = roles.includes("COORDINADOR");
-    const isPriv = roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
+    const isPriv = roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH") || roles.includes("SUPERVISOR") || roles.includes("SEGURIDAD");
     const isGestor = roles.includes("GESTOR");
     setCoordReadOnly(isCoord && !isAdmin && !isPriv && !isGestor);
   };

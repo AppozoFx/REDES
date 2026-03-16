@@ -3,7 +3,10 @@ import type { ServerSession } from "@/core/auth/session";
 const ROLE_HOME: Record<string, string> = {
   TI: "/home/ti",
   RRHH: "/home/rrhh",
+  SUPERVISOR: "/home/supervisor",
+  SEGURIDAD: "/home/seguridad",
   GERENCIA: "/home/gerencia",
+  JEFATURA: "/home/jefatura",
   ALMACEN: "/home/almacen",
   GESTOR: "/home/gestor",
   COORDINADOR: "/home/coordinador",
@@ -13,7 +16,10 @@ const ROLE_HOME: Record<string, string> = {
 const ROLE_PRIORITY: string[] = [
   "TI",
   "RRHH",
+  "SUPERVISOR",
+  "SEGURIDAD",
   "GERENCIA",
+  "JEFATURA",
   "ALMACEN",
   "GESTOR",
   "COORDINADOR",

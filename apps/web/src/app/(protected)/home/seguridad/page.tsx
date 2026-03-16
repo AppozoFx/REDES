@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireAuth } from "@/core/auth/guards";
 
-const rrhhLinks = [
+const seguridadLinks = [
   {
     title: "Dashboard Instalaciones",
     description: "Vista operativa consolidada de ordenes y liquidaciones.",
@@ -23,7 +23,7 @@ const rrhhLinks = [
   },
   {
     title: "Tecnicos Gestion",
-    description: "Revisa y actualiza el padrón operativo de tecnicos.",
+    description: "Revisa y actualiza el padron operativo de tecnicos.",
     href: "/home/tecnicos/gestion",
     tone: "from-amber-50 to-amber-100 text-amber-900",
   },
@@ -33,14 +33,20 @@ const rrhhLinks = [
     href: "/home/usuarios",
     tone: "from-sky-50 to-sky-100 text-sky-900",
   },
+  {
+    title: "Ordenes Mapa",
+    description: "Ubica las ordenes del dia y su distribucion geografica.",
+    href: "/home/ordenes/mapa",
+    tone: "from-rose-50 to-rose-100 text-rose-900",
+  },
 ];
 
 export const dynamic = "force-dynamic";
 
-export default async function RrhhHomePage() {
+export default async function SeguridadHomePage() {
   const session = await requireAuth();
   const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
-  const canUse = session.isAdmin || roles.includes("RRHH");
+  const canUse = session.isAdmin || roles.includes("SEGURIDAD");
   if (!canUse) redirect("/home");
 
   return (
@@ -49,11 +55,11 @@ export default async function RrhhHomePage() {
         <div className="grid gap-6 px-6 py-7 lg:grid-cols-[1.35fr_1fr]">
           <div className="text-white">
             <div className="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]">
-              RRHH
+              SEGURIDAD
             </div>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight">Inicio RRHH</h1>
+            <h1 className="mt-4 text-3xl font-semibold tracking-tight">Inicio Seguridad</h1>
             <p className="mt-3 max-w-2xl text-sm text-blue-50/90">
-              Accesos directos para seguimiento operativo, asistencia y administracion base.
+              Accesos directos para seguimiento operativo, asistencia, usuarios y monitoreo territorial.
             </p>
           </div>
 
@@ -66,13 +72,14 @@ export default async function RrhhHomePage() {
               <div>Resumen de asistencia consolidada</div>
               <div>Gestion de cuadrillas y tecnicos</div>
               <div>Administracion de usuarios</div>
+              <div>Consulta geografica de ordenes</div>
             </div>
           </div>
         </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {rrhhLinks.map((item) => (
+        {seguridadLinks.map((item) => (
           <Link
             key={item.href}
             href={item.href}
@@ -84,7 +91,7 @@ export default async function RrhhHomePage() {
                 <p className="mt-2 text-sm opacity-90">{item.description}</p>
               </div>
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/20 text-lg transition group-hover:translate-x-0.5">
-                →
+                {"->"}
               </span>
             </div>
           </Link>

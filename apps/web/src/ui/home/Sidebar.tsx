@@ -60,6 +60,7 @@ function getGroup(href: string): GroupKey {
     return "MANTENIMIENTO";
   }
   if (
+    href === "/home/jefatura" ||
     href === "/home/gerencia/coordinadores" ||
     href === "/home/gerencia/orden-compra" ||
     href === "/home/gerencia/ordenes-compra" ||
@@ -428,4 +429,3 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
     </motion.aside>
   );
 }
-

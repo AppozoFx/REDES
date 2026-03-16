@@ -32,7 +32,7 @@ export async function GET(req: Request) {
     const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
     const isGestor = roles.includes("GESTOR");
     const isCoord = roles.includes("COORDINADOR");
-    const isPriv = session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
+    const isPriv = session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH") || roles.includes("SUPERVISOR") || roles.includes("SEGURIDAD");
 
     const { searchParams } = new URL(req.url);
     const area = searchParams.get("area");
@@ -122,6 +122,4 @@ export async function GET(req: Request) {
     );
   }
 }
-
-
 

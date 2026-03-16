@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     }
 
     const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
-    const canAdmin = session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
+    const canAdmin = session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH") || roles.includes("SUPERVISOR") || roles.includes("SEGURIDAD");
     if (!canAdmin) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const raw = await req.json();

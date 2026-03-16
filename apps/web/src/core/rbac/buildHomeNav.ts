@@ -21,8 +21,12 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
   const roles = (session.access.roles ?? []).map((r) => String(r || "").toUpperCase());
   const isGestor = roles.includes("GESTOR");
   const isCoord = roles.includes("COORDINADOR");
-  const isPriv = roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
+  const isPriv = roles.includes("GERENCIA") || roles.includes("JEFATURA") || roles.includes("ALMACEN") || roles.includes("RRHH") || roles.includes("SUPERVISOR") || roles.includes("SEGURIDAD");
   const isGerencia = roles.includes("GERENCIA");
+  const isJefatura = roles.includes("JEFATURA");
+  const isRrhh = roles.includes("RRHH");
+  const isSupervisor = roles.includes("SUPERVISOR");
+  const isSeguridad = roles.includes("SEGURIDAD");
   const hasInstArea = hasArea(session, "INSTALACIONES");
 
   if (isGestor && !session.isAdmin && !isPriv) {
@@ -55,16 +59,16 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     { key: "COMUNICADOS", label: "Comunicados", href: "/home/comunicados" },
   ];
 
-  if (hasArea(session, "INSTALACIONES") || isCoord) {
+  if (hasArea(session, "INSTALACIONES") || isCoord || isRrhh || isSupervisor || isSeguridad) {
     const roles = (session.access.roles ?? []).map((r) => String(r || "").toUpperCase());
     const canAsistenciaResumen =
-      session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
+      session.isAdmin || roles.includes("GERENCIA") || roles.includes("JEFATURA") || roles.includes("ALMACEN") || roles.includes("RRHH") || roles.includes("SUPERVISOR") || roles.includes("SEGURIDAD");
     const coordOnly = isCoord && !isPriv && !session.isAdmin && !isGestor;
 
     items.push({ key: "INSTALACIONES", label: "Instalaciones", href: "/home/instalaciones" });
 
     if (!coordOnly) {
-      if (session.isAdmin || roles.includes("GERENCIA") || hasPerm(session, "ORDENES_LIQUIDAR")) {
+      if (session.isAdmin || roles.includes("GERENCIA") || roles.includes("JEFATURA") || hasPerm(session, "ORDENES_LIQUIDAR")) {
         items.push({
           key: "INSTALACIONES_DASHBOARD",
           label: "Instalaciones: Dashboard",
@@ -86,11 +90,13 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
         label: "Instalaciones: Actas por dia",
         href: "/home/instalaciones/actas-dia",
       });
-      items.push({
-        key: "INSTALACIONES_ACTAS",
-        label: "Recepcion de Actas",
-        href: "/home/instalaciones/actas",
-      });
+      if (!isJefatura) {
+        items.push({
+          key: "INSTALACIONES_ACTAS",
+          label: "Recepcion de Actas",
+          href: "/home/instalaciones/actas",
+        });
+      }
       items.push({
         key: "INSTALACIONES_ASISTENCIA",
         label: "Asistencia Cuadrillas",
@@ -98,14 +104,14 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
       });
     }
 
-    if (roles.includes("GERENCIA") || roles.includes("COORDINADOR")) {
+    if (roles.includes("GERENCIA") || roles.includes("JEFATURA") || roles.includes("COORDINADOR")) {
       items.push({
         key: "INSTALACIONES_ASIST_PROG",
         label: "Asistencia Programada",
         href: "/home/instalaciones/asistencia-programada",
       });
     }
-    if (roles.includes("GERENCIA")) {
+    if (roles.includes("GERENCIA") || roles.includes("JEFATURA")) {
       items.push({
         key: "INSTALACIONES_ASIG_GEST",
         label: "Asignacion de Gestores",
@@ -135,7 +141,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     items.push({ key: "USUARIOS", label: "Usuarios", href: "/home/usuarios" });
   }
 
-  if (session.isAdmin || (isGerencia && hasPerm(session, PERM_GERENCIA_COORDINADORES))) {
+  if (session.isAdmin || ((isGerencia || isJefatura) && hasPerm(session, PERM_GERENCIA_COORDINADORES))) {
     items.push({
       key: "GERENCIA_COORDINADORES",
       label: "Gerencia: Coordinadores",
@@ -156,7 +162,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     });
   }
 
-  if (session.isAdmin || isGerencia) {
+  if (session.isAdmin || isGerencia || isJefatura) {
     items.push({
       key: "GERENCIA_VALIDACION_WIN",
       label: "Gerencia: VALIDACION WIN",
@@ -197,7 +203,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     items.push({ key: "INCONCERT_GERENCIA", label: "InConcert: Gerencia", href: "/home/inconcert/gerencia" });
   }
 
-  if (hasPerm(session, "EQUIPOS_IMPORT")) {
+  if (!isJefatura && hasPerm(session, "EQUIPOS_IMPORT")) {
     items.push({ key: "EQUIPOS_IMPORT", label: "Equipos: Importar", href: "/home/equipos/import" });
   }
 
@@ -206,10 +212,13 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
   }
 
   if (
-    hasPerm(session, "EQUIPOS_DESPACHO") ||
-    hasPerm(session, "MATERIALES_TRANSFER_SERVICIO") ||
-    hasPerm(session, "EQUIPOS_DEVOLUCION") ||
-    hasPerm(session, "MATERIALES_DEVOLUCION")
+    !isJefatura &&
+    (
+      hasPerm(session, "EQUIPOS_DESPACHO") ||
+      hasPerm(session, "MATERIALES_TRANSFER_SERVICIO") ||
+      hasPerm(session, "EQUIPOS_DEVOLUCION") ||
+      hasPerm(session, "MATERIALES_DEVOLUCION")
+    )
   ) {
     items.push({ key: "TR_INST_DESP", label: "Despacho (Inst)", href: "/home/transferencias/instalaciones/despacho" });
     items.push({ key: "TR_INST_DEV", label: "Devoluciones (Inst)", href: "/home/transferencias/instalaciones/devoluciones" });
@@ -236,10 +245,11 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
       href: "/home/transferencias/mantenimiento/tecnicos-materiales",
     });
   }
-  if (hasPerm(session, "EQUIPOS_VIEW") || hasPerm(session, "EQUIPOS_EDIT")) {
+  if (!isJefatura && (hasPerm(session, "EQUIPOS_VIEW") || hasPerm(session, "EQUIPOS_EDIT"))) {
     items.push({ key: "TR_INST_EQ", label: "Equipos (Inst)", href: "/home/transferencias/instalaciones/equipos" });
   }
   if (
+    isJefatura ||
     hasArea(session, "INSTALACIONES") ||
     hasPerm(session, "EQUIPOS_VIEW") ||
     hasPerm(session, "EQUIPOS_EDIT")
@@ -259,7 +269,19 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     items.push({ key: "VENTAS_MANT", label: "Ventas: Despacho (Mantenimiento)", href: "/home/ventas/mantenimiento/despacho" });
   }
 
+  if ((isRrhh || isSupervisor || isSeguridad) && !session.isAdmin) {
+    const limitedAllowed = new Set([
+      "/home",
+      "/home/comunicados",
+      "/home/instalaciones/dashboard",
+      "/home/instalaciones/asistencia/resumen",
+      "/home/cuadrillas/gestion",
+      "/home/tecnicos/gestion",
+      "/home/usuarios",
+      ...((isSupervisor || isSeguridad) ? ["/home/ordenes/mapa"] : []),
+    ]);
+    return items.filter((item) => limitedAllowed.has(item.href));
+  }
+
   return items;
 }
-
-

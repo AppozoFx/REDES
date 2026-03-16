@@ -42,7 +42,9 @@ export async function GET(req: Request) {
     const canView =
       session.isAdmin ||
       session.permissions.includes(PERM_VIEW) ||
-      roles.includes("COORDINADOR");
+      roles.includes("COORDINADOR") ||
+      roles.includes("SUPERVISOR") ||
+      roles.includes("SEGURIDAD");
     if (!canView) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const { searchParams } = new URL(req.url);

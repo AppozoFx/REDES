@@ -10,7 +10,11 @@ const PERM_GERENCIA_COORDINADORES = "GERENCIA_COORDINADORES";
 
 function hasGerenciaAccess(session: NonNullable<Awaited<ReturnType<typeof getServerSession>>>) {
   const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
-  return session.isAdmin || (roles.includes("GERENCIA") && session.permissions.includes(PERM_GERENCIA_COORDINADORES));
+  return (
+    session.isAdmin ||
+    ((roles.includes("GERENCIA") || roles.includes("JEFATURA")) &&
+      session.permissions.includes(PERM_GERENCIA_COORDINADORES))
+  );
 }
 
 function toShortName(data: any, fallback: string) {
@@ -106,4 +110,3 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }
 }
-

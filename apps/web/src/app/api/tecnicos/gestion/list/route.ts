@@ -48,7 +48,7 @@ export async function GET(req: Request) {
 
     const isCoord = roles.includes("COORDINADOR");
     const isGestor = roles.includes("GESTOR");
-    const isPriv = session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
+    const isPriv = session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH") || roles.includes("SUPERVISOR") || roles.includes("SEGURIDAD");
 
     let visibleSet: Set<string> | null = null;
     if (isCoord && !isPriv && !session.isAdmin && !isGestor) {

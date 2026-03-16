@@ -32,7 +32,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, error: "ACCESS_DISABLED" }, { status: 403 });
     }
     const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
-    const canUse = session.isAdmin || roles.includes("GERENCIA");
+    const canUse = session.isAdmin || roles.includes("GERENCIA") || roles.includes("JEFATURA");
     if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const { searchParams } = new URL(req.url);

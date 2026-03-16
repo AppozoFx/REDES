@@ -392,8 +392,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "ACCESS_DISABLED" }, { status: 403 });
     }
     const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
-    const isGerencia = session.isAdmin || roles.includes("GERENCIA");
-    if (!isGerencia) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
+    const canUse = session.isAdmin || roles.includes("GERENCIA") || roles.includes("JEFATURA");
+    if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const form = await req.formData();
     const file = form.get("file");

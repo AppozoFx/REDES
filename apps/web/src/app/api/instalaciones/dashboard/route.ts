@@ -448,6 +448,9 @@ export async function GET(req: Request) {
     }
     const canUse =
       session.isAdmin ||
+      (session.access.roles || []).includes("RRHH") ||
+      (session.access.roles || []).includes("SUPERVISOR") ||
+      (session.access.roles || []).includes("SEGURIDAD") ||
       session.permissions.includes("ORDENES_LIQUIDAR") ||
       (session.access.areas || []).includes("INSTALACIONES");
     if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });

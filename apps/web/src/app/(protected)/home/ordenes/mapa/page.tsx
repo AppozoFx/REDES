@@ -20,7 +20,9 @@ export default async function Page() {
   const canView =
     session.isAdmin ||
     session.permissions.includes("ORDENES_MAPA_VIEW") ||
-    roles.includes("COORDINADOR");
+    roles.includes("COORDINADOR") ||
+    roles.includes("SUPERVISOR") ||
+    roles.includes("SEGURIDAD");
   if (!canView) redirect("/admin");
 
   return (

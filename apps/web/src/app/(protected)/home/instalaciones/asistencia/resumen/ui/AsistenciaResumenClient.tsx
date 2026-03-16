@@ -132,6 +132,32 @@ const estadoToCode = (estado?: string) => {
   }
 };
 
+const cuadrillaSortRank = (nombre?: string) => {
+  const value = String(nombre || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+  if (value.includes("RESIDENCIAL")) return 0;
+  if (value.includes("CONDOMINIO") || value.includes("CONDOMINO")) return 1;
+  if (value.includes("MOTO")) return 2;
+  return 3;
+};
+
+const extractCuadrillaIndex = (nombre?: string) => {
+  const match = String(nombre || "")
+    .toUpperCase()
+    .match(/\bK\s*(\d+)\b/);
+  return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
+};
+
+const compareCuadrillaNombre = (a?: string, b?: string) => {
+  const rankDiff = cuadrillaSortRank(a) - cuadrillaSortRank(b);
+  if (rankDiff !== 0) return rankDiff;
+  const indexDiff = extractCuadrillaIndex(a) - extractCuadrillaIndex(b);
+  if (indexDiff !== 0) return indexDiff;
+  return String(a || "").localeCompare(String(b || ""), "es", { sensitivity: "base" });
+};
+
 function EstadoPill({ estado }: { estado?: string }) {
   return <span className={cls("inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset", estadoToColor(estado || ""))}>{estado || "-"}</span>;
 }
@@ -185,7 +211,7 @@ export default function AsistenciaResumenClient() {
 
   const normRole = (s: string) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
   const roles = (accessRoles || []).map((r: string) => normRole(String(r)));
-  const puedeEditar = isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
+  const puedeEditar = isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH") || roles.includes("SUPERVISOR") || roles.includes("SEGURIDAD");
 
   useEffect(() => {
     const run = async () => {
@@ -279,7 +305,7 @@ export default function AsistenciaResumenClient() {
       row.observations[c.fecha] = Boolean(String(c.observacion || "").trim());
       map.set(key, row);
     });
-    return Array.from(map.values()).sort((a, b) => a.nombre.localeCompare(b.nombre));
+    return Array.from(map.values()).sort((a, b) => compareCuadrillaNombre(a.nombre, b.nombre));
   }, [cuadrillasFiltradas]);
 
   const tecnicosPorCuadrilla = useMemo(() => {

@@ -51,7 +51,7 @@ export async function GET(req: Request) {
     for (const doc of [...byActaSnap.docs, ...byMatActaSnap.docs]) {
       const x = doc.data() as any;
       const liqEstado = String(x?.liquidacion?.estado || "").toUpperCase();
-      const correccionPendiente = !!(x?.correccionPendiente || x?.corregido);
+      const correccionPendiente = !!x?.correccionPendiente;
       const liquidado = (liqEstado === "LIQUIDADO" || !!x?.liquidadoAt) && !correccionPendiente;
       rowsMap.set(doc.id, {
         id: doc.id,
@@ -99,4 +99,3 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }
 }
-

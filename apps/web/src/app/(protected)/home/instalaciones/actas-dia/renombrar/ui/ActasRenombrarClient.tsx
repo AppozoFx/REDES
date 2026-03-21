@@ -40,6 +40,7 @@ type ListResponse = {
       acta: string;
       codigoCliente: string;
       cliente: string;
+      fechaBaseYmd: string;
       fechaOrdenYmd: string;
       fechaInstalacionYmd: string;
     }>;
@@ -63,6 +64,7 @@ type ListResponse = {
       acta: string;
       codigoCliente: string;
       cliente: string;
+      fechaBaseYmd: string;
       fechaOrdenYmd: string;
       fechaInstalacionYmd: string;
     }>;
@@ -70,6 +72,7 @@ type ListResponse = {
       id: string;
       codigoCliente: string;
       cliente: string;
+      fechaBaseYmd: string;
       fechaOrdenYmd: string;
       fechaInstalacionYmd: string;
     }>;
@@ -352,7 +355,7 @@ export default function ActasRenombrarClient() {
       if (!res.ok || !data?.ok) throw new Error(data?.error || "No se pudo cargar archivos");
       setList((prev) => {
         if (!silent || data.actaAudit || !prev?.actaAudit) return data;
-        return { ...data, actaAudit: prev.actaAudit };
+        return { ...data, stats: prev.stats, actaAudit: prev.actaAudit };
       });
       if (!silent && dateFolder.startsWith(monthFilter)) {
         void refreshMonthSummary();
@@ -701,7 +704,13 @@ export default function ActasRenombrarClient() {
 
   const moveSobranteToSuggestedDate = async (item: NonNullable<ListResponse["actaAudit"]>["sobrantes"][number]) => {
     if (item.tipo !== "fuera_fecha") return;
-    const suggested = (item.fechasSugeridas || []).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x || "")));
+    const suggested = Array.from(
+      new Set(
+        (item.fechasSugeridas || []).filter(
+          (x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x || "")) && String(x || "").trim() !== dateFolder
+        )
+      )
+    );
     if (suggested.length !== 1) {
       return toast.error("Este archivo no tiene una unica fecha sugerida para mover automatico");
     }
@@ -1255,7 +1264,7 @@ export default function ActasRenombrarClient() {
                   <div>
                     Cliente esperado: {item.codigoCliente} - {item.cliente || "-"}
                   </div>
-                  <div>Orden: {item.fechaOrdenYmd || "-"} | Instalacion: {item.fechaInstalacionYmd || "-"}</div>
+                  <div>Fecha base: {item.fechaBaseYmd || item.fechaOrdenYmd || item.fechaInstalacionYmd || "-"}</div>
                 </div>
               ))
             )}
@@ -1276,7 +1285,7 @@ export default function ActasRenombrarClient() {
                   <div>
                     Cliente: {item.codigoCliente || "-"} - {item.cliente || "-"}
                   </div>
-                  <div>Orden: {item.fechaOrdenYmd || "-"} | Instalacion: {item.fechaInstalacionYmd || "-"}</div>
+                  <div>Fecha base: {item.fechaBaseYmd || item.fechaOrdenYmd || item.fechaInstalacionYmd || "-"}</div>
                 </div>
               ))
             )}
@@ -1364,7 +1373,13 @@ export default function ActasRenombrarClient() {
                           uploading ||
                           movingSobrantePath === item.fullPath ||
                           item.tipo !== "fuera_fecha" ||
-                          (item.fechasSugeridas || []).length !== 1
+                          Array.from(
+                            new Set(
+                              (item.fechasSugeridas || []).filter(
+                                (x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x || "")) && String(x || "").trim() !== dateFolder
+                              )
+                            )
+                          ).length !== 1
                         }
                         className="rounded-lg border border-amber-300 bg-white px-2 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-700 dark:bg-slate-900 dark:text-amber-200"
                       >

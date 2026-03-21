@@ -123,11 +123,23 @@ export async function POST(req: Request) {
     });
 
     await db.runTransaction(async (tx) => {
+      const stockRefs = parsed.map((it) => ({
+        materialId: it.materialId,
+        almRef: db.collection("almacen_stock").doc(it.materialId),
+        tecRef: db.collection("usuarios").doc(tecnicoUid).collection("stock_materiales").doc(it.materialId),
+        activoRef: db.collection("usuarios").doc(tecnicoUid).collection("activos_asignados").doc(it.materialId),
+      }));
+      const readEntries = await Promise.all(
+        stockRefs.map(async (entry) => ({
+          ...entry,
+          tecSnap: await tx.get(entry.tecRef),
+        }))
+      );
+
       for (const it of parsed) {
-        const almRef = db.collection("almacen_stock").doc(it.materialId);
-        const tecRef = db.collection("usuarios").doc(tecnicoUid).collection("stock_materiales").doc(it.materialId);
-        const activoRef = db.collection("usuarios").doc(tecnicoUid).collection("activos_asignados").doc(it.materialId);
-        const [tecSnap] = await Promise.all([tx.get(tecRef)]);
+        const entry = readEntries.find((row) => row.materialId === it.materialId);
+        if (!entry) throw new Error(`STOCK_TECNICO_NOT_FOUND ${it.materialId}`);
+        const { almRef, tecRef, activoRef, tecSnap } = entry;
         if (!tecSnap.exists) throw new Error(`STOCK_TECNICO_NOT_FOUND ${it.materialId}`);
         const tec = tecSnap.data() as any;
 

@@ -130,24 +130,50 @@ export async function GET(req: Request) {
       for (const d of snap.docs) docsById.set(d.id, d);
     };
 
+    const collectExactYmd = async (field: "fSoliYmd" | "fechaFinVisiYmd", value: string) => {
+      let cursor: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData> | undefined;
+      while (true) {
+        let query = q.where(field, "==", value).orderBy(field).limit(2000);
+        if (cursor) query = query.startAfter(cursor);
+        const snap = await query.get();
+        if (snap.empty) break;
+        collect(snap);
+        if (snap.size < 2000) break;
+        cursor = snap.docs[snap.docs.length - 1];
+      }
+    };
+
+    const collectMonthRange = async (
+      field: "fSoliYmd" | "fechaFinVisiYmd",
+      start: string,
+      end: string
+    ) => {
+      let cursor: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData> | undefined;
+      while (true) {
+        let query = q
+          .where(field, ">=", start)
+          .where(field, "<=", end)
+          .orderBy(field)
+          .limit(2000);
+        if (cursor) query = query.startAfter(cursor);
+        const snap = await query.get();
+        if (snap.empty) break;
+        collect(snap);
+        if (snap.size < 2000) break;
+        cursor = snap.docs[snap.docs.length - 1];
+      }
+    };
+
     if (ymd) {
-      collect(await q.where("fSoliYmd", "==", ymd).limit(3000).get());
-      collect(await q.where("fechaFinVisiYmd", "==", ymd).limit(3000).get());
+      await collectExactYmd("fSoliYmd", ymd);
+      await collectExactYmd("fechaFinVisiYmd", ymd);
     } else if (monthParsed) {
-      collect(await q
-        .where("fSoliYmd", ">=", monthParsed.start)
-        .where("fSoliYmd", "<=", monthParsed.end)
-        .limit(5000)
-        .get());
-      collect(await q
-        .where("fechaFinVisiYmd", ">=", monthParsed.start)
-        .where("fechaFinVisiYmd", "<=", monthParsed.end)
-        .limit(5000)
-        .get());
+      await collectMonthRange("fSoliYmd", monthParsed.start, monthParsed.end);
+      await collectMonthRange("fechaFinVisiYmd", monthParsed.start, monthParsed.end);
     } else {
       const today = todayLimaYmd();
-      collect(await q.where("fSoliYmd", "==", today).limit(3000).get());
-      collect(await q.where("fechaFinVisiYmd", "==", today).limit(3000).get());
+      await collectExactYmd("fSoliYmd", today);
+      await collectExactYmd("fechaFinVisiYmd", today);
     }
     const docs = Array.from(docsById.values());
 
@@ -166,10 +192,10 @@ export async function GET(req: Request) {
           ),
           cuadrillaId: String(x.cuadrillaId || ""),
           cuadrillaNombre: String(x.cuadrillaNombre || ""),
-          // Mantiene nombre de campo para compatibilidad de frontend,
-          // pero la fuente oficial para filtros es fSoli*.
-          fechaFinVisiYmd: String(x.fSoliYmd || ""),
-          fechaFinVisiHm: String(x.fSoliHm || ""),
+          // El frontend consume `fechaFinVisi*`; en historicos algunas ordenes
+          // solo tienen `fechaFinVisi*` y otras solo `fSoli*`.
+          fechaFinVisiYmd: String(x.fechaFinVisiYmd || x.fSoliYmd || ""),
+          fechaFinVisiHm: String(x.fechaFinVisiHm || x.fSoliHm || ""),
           fSoliHm: String(x.fSoliHm || ""),
           tipo: String(x.tipo || ""),
           tipoTraba: String(x.tipoTraba || ""),
@@ -223,8 +249,8 @@ export async function GET(req: Request) {
       return {
         ...r,
         correccionPendiente: r.correccionPendiente || instCorr,
-        correccionBy: r.correccionBy || String(inst?.correccionBy || ""),
-        correccionYmd: r.correccionYmd || String(inst?.correccionYmd || ""),
+        correccionBy: r.correccionBy || (instCorr ? String(inst?.correccionBy || "") : ""),
+        correccionYmd: r.correccionYmd || (instCorr ? String(inst?.correccionYmd || "") : ""),
         rotuloNapCto:
           r.rotuloNapCto ||
           String(inst?.liquidacion?.rotuloNapCto || ""),

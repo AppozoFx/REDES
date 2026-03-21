@@ -613,7 +613,7 @@ export async function GET(req: Request) {
           const tipoOrdenResolved = tipoOrdenFromInst || normalizeTipoOrden(x.tipoOrden);
           const liqEstado = String(inst?.liquidacion?.estado || "").toUpperCase();
           const liqAt = toIso(inst?.liquidacion?.at);
-          const correccionPendiente = !!(inst?.correccionPendiente || inst?.corregido);
+          const correccionPendiente = !!inst?.correccionPendiente;
           const liquidado = (liqEstado === "LIQUIDADO" || !!liqAt) && !correccionPendiente;
           const geoRaw = parseGeoRaw((x as any).georeferenciaRaw);
           const lat = parseCoord((x as any).lat) ?? geoRaw.lat;

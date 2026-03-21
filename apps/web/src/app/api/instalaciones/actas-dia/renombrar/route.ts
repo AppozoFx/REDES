@@ -54,6 +54,7 @@ type InstalacionActaItem = {
   actaDigits: string;
   codigoCliente: string;
   cliente: string;
+  fechaBaseYmd: string;
   fechaOrdenYmd: string;
   fechaInstalacionYmd: string;
 };
@@ -62,6 +63,7 @@ type InstalacionSinActaItem = {
   id: string;
   codigoCliente: string;
   cliente: string;
+  fechaBaseYmd: string;
   fechaOrdenYmd: string;
   fechaInstalacionYmd: string;
 };
@@ -120,6 +122,30 @@ function pickFirstActaRaw(values: unknown[]) {
     if (acta) return acta;
   }
   return "";
+}
+
+function resolveFechaOrdenYmd(data: any) {
+  return pickFirstYmd([
+    data?.fechaOrdenYmd,
+    data?.fechaOrden,
+    data?.orden?.fechaFinVisiYmd,
+    data?.orden?.fechaFinVisi,
+    data?.orden?.fSoliYmd,
+    data?.orden?.fSoli,
+  ]);
+}
+
+function resolveFechaInstalacionYmd(data: any) {
+  return pickFirstYmd([
+    data?.fechaInstalacionYmd,
+    data?.fechaInstalacion,
+    data?.liquidacion?.ymd,
+    data?.liquidacion?.fecha,
+  ]);
+}
+
+function resolveFechaBaseYmd(data: any) {
+  return resolveFechaOrdenYmd(data) || resolveFechaInstalacionYmd(data);
 }
 
 function sanitizeFileName(v: string) {
@@ -1624,26 +1650,17 @@ function mapInstalacionActaItem(docId: string, data: any): InstalacionActaItem |
   if (!actaRaw) return null;
   const acta = normalizeActaStrict(actaRaw) || actaRaw;
   const actaDigits = normalizeActaDigits(actaRaw);
+  const fechaOrdenYmd = resolveFechaOrdenYmd(data);
+  const fechaInstalacionYmd = resolveFechaInstalacionYmd(data);
   return {
     id: docId,
     acta,
     actaDigits,
     codigoCliente: String(data?.codigoCliente || data?.orden?.codiSeguiClien || docId || "").trim(),
     cliente: String(data?.cliente || data?.orden?.cliente || "").trim(),
-    fechaOrdenYmd: pickFirstYmd([
-      data?.fechaOrdenYmd,
-      data?.fechaOrden,
-      data?.orden?.fechaFinVisiYmd,
-      data?.orden?.fechaFinVisi,
-      data?.orden?.fSoliYmd,
-      data?.orden?.fSoli,
-    ]),
-    fechaInstalacionYmd: pickFirstYmd([
-      data?.fechaInstalacionYmd,
-      data?.fechaInstalacion,
-      data?.liquidacion?.ymd,
-      data?.liquidacion?.fecha,
-    ]),
+    fechaBaseYmd: fechaOrdenYmd || fechaInstalacionYmd,
+    fechaOrdenYmd,
+    fechaInstalacionYmd,
   };
 }
 
@@ -1678,8 +1695,14 @@ async function loadDaySnapshot(dateFolder: string): Promise<DaySnapshot> {
     db.collection("instalaciones").where("fechaInstalacionYmd", "==", dateFolder).select(...fields).limit(10000).get(),
   ]);
   const docById = new Map<string, any>();
-  [...byOrden.docs, ...byInst.docs].forEach((d) => {
+  byOrden.docs.forEach((d) => {
     if (!docById.has(d.id)) docById.set(d.id, d.data() as any);
+  });
+  byInst.docs.forEach((d) => {
+    if (docById.has(d.id)) return;
+    const data = d.data() as any;
+    if (resolveFechaOrdenYmd(data)) return;
+    docById.set(d.id, data);
   });
 
   const instalacionesConActa: InstalacionActaItem[] = [];
@@ -1693,20 +1716,9 @@ async function loadDaySnapshot(dateFolder: string): Promise<DaySnapshot> {
         id: docId,
         codigoCliente: String(data?.codigoCliente || data?.orden?.codiSeguiClien || docId || "").trim(),
         cliente: String(data?.cliente || data?.orden?.cliente || "").trim(),
-        fechaOrdenYmd: pickFirstYmd([
-          data?.fechaOrdenYmd,
-          data?.fechaOrden,
-          data?.orden?.fechaFinVisiYmd,
-          data?.orden?.fechaFinVisi,
-          data?.orden?.fSoliYmd,
-          data?.orden?.fSoli,
-        ]),
-        fechaInstalacionYmd: pickFirstYmd([
-          data?.fechaInstalacionYmd,
-          data?.fechaInstalacion,
-          data?.liquidacion?.ymd,
-          data?.liquidacion?.fecha,
-        ]),
+        fechaBaseYmd: resolveFechaBaseYmd(data),
+        fechaOrdenYmd: resolveFechaOrdenYmd(data),
+        fechaInstalacionYmd: resolveFechaInstalacionYmd(data),
       });
       return;
     }
@@ -1759,6 +1771,9 @@ async function lookupActaDateHints(acta: string) {
     if (d1) dates.add(d1);
     if (d2) dates.add(d2);
   });
+  if (dates.size) {
+    return Array.from(dates).sort((a, b) => a.localeCompare(b));
+  }
   const actaDoc = await db.collection("actas").doc(clean).get().catch(() => null);
   if (actaDoc?.exists) {
     const row = actaDoc.data() as any;
@@ -1927,6 +1942,7 @@ export async function GET(req: Request) {
       acta: string;
       codigoCliente: string;
       cliente: string;
+      fechaBaseYmd: string;
       fechaOrdenYmd: string;
       fechaInstalacionYmd: string;
     }> = [];
@@ -1985,6 +2001,7 @@ export async function GET(req: Request) {
           acta: idx.acta,
           codigoCliente: m.codigoCliente,
           cliente: m.cliente,
+          fechaBaseYmd: m.fechaBaseYmd,
           fechaOrdenYmd: m.fechaOrdenYmd,
           fechaInstalacionYmd: m.fechaInstalacionYmd,
         });
@@ -2012,6 +2029,7 @@ export async function GET(req: Request) {
             acta: idx.acta,
             codigoCliente: m.codigoCliente,
             cliente: m.cliente,
+            fechaBaseYmd: m.fechaBaseYmd,
             fechaOrdenYmd: m.fechaOrdenYmd,
             fechaInstalacionYmd: m.fechaInstalacionYmd,
           });
@@ -2038,37 +2056,12 @@ export async function GET(req: Request) {
     }> = [];
     okFueraFechaRaw.forEach((x) => {
       const fechasSugeridas = hintsByActaDigits.get(x.actaDigits) || [];
-      if (fechasSugeridas.includes(dateFolder)) {
-        if (okSeenByActaDigits.has(x.actaDigits)) {
-          okDuplicatesRaw.push({
-            fileName: x.fileName,
-            fullPath: x.fullPath,
-            acta: x.acta,
-            actaDigits: x.actaDigits,
-            codigoCliente: "-",
-            cliente: "-",
-          });
-          return;
-        }
-        okSeenByActaDigits.add(x.actaDigits);
-        okActasDetectadas.add(x.actaDigits);
-        okDentroFecha.push({
-          fileName: x.fileName,
-          fullPath: x.fullPath,
-          acta: x.acta,
-          codigoCliente: "-",
-          cliente: "-",
-          fechaOrdenYmd: dateFolder,
-          fechaInstalacionYmd: dateFolder,
-        });
-      } else {
-        okFueraFecha.push({
-          fileName: x.fileName,
-          fullPath: x.fullPath,
-          acta: x.acta,
-          fechasSugeridas,
-        });
-      }
+      okFueraFecha.push({
+        fileName: x.fileName,
+        fullPath: x.fullPath,
+        acta: x.acta,
+        fechasSugeridas,
+      });
     });
 
     const sobrantes = [
@@ -2110,15 +2103,16 @@ export async function GET(req: Request) {
         acta: row.acta,
         codigoCliente: row.codigoCliente,
         cliente: row.cliente,
+        fechaBaseYmd: row.fechaBaseYmd,
         fechaOrdenYmd: row.fechaOrdenYmd,
         fechaInstalacionYmd: row.fechaInstalacionYmd,
       }));
 
     const stats: DayStats = {
       instalacionesDia: daySnapshot.instalacionesDia,
-      actasOkDia: okFiles.length,
-      faltanActas: Math.max(0, daySnapshot.instalacionesDia - okFiles.length),
-      sobranActas: Math.max(0, okFiles.length - daySnapshot.instalacionesDia),
+      actasOkDia: okDentroFecha.length,
+      faltanActas: faltantes.length + daySnapshot.instalacionesSinActa.length,
+      sobranActas: sobrantes.length,
     };
 
     return NextResponse.json({
@@ -2132,7 +2126,7 @@ export async function GET(req: Request) {
         summary: {
           esperadasConActa: daySnapshot.instalacionesConActa.length,
           instalacionesSinActa: daySnapshot.instalacionesSinActa.length,
-          okConActa: okFiles.length - okSinTrazabilidad.length,
+          okConActa: okDentroFecha.length,
           okDentroFecha: okDentroFecha.length,
           okFueraFecha: okFueraFecha.length,
           sobrantes: sobrantes.length,

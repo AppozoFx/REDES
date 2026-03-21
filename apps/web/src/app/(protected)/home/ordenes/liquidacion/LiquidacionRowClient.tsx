@@ -514,7 +514,7 @@ export function LiquidacionRowClient({
         ) : null}
         </div>
       </div>
-      {orden.correccionPendiente || orden.correccionYmd ? (
+      {orden.correccionPendiente ? (
         <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
           Pendiente por corregir. Devuelve equipos y vuelve a liquidar con las series correctas.
           {orden.correccionYmd ? ` Corregida: ${orden.correccionYmd.split("-").reverse().join("/")}` : ""}
@@ -1047,4 +1047,3 @@ export function LiquidacionRowClient({
     </div>
   );
 }
-

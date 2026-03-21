@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import * as XLSX from "xlsx";
+import * as XLSX from "xlsx-js-style";
 import { toast } from "sonner";
 
 type Auditoria = {
@@ -38,6 +38,9 @@ type CoordinadorOpt = {
   label: string;
 };
 
+const FILL_MATCH_PRIMARY = { patternType: "solid", fgColor: { rgb: "FFFDE047" } };
+const FILL_MATCH_SECONDARY = { patternType: "solid", fgColor: { rgb: "FFFED7AA" } };
+
 function asStr(v: any) {
   return String(v || "").trim();
 }
@@ -69,6 +72,24 @@ function fmtDateTime(v: any) {
   const d = tsToDate(v);
   if (!d) return "";
   return d.toLocaleString("es-PE");
+}
+
+function formatearFecha(v: any) {
+  const d = tsToDate(v);
+  if (!d) return "";
+  const day = `${d.getDate()}`.padStart(2, "0");
+  const month = `${d.getMonth() + 1}`.padStart(2, "0");
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+function parseIntSafe(v: any) {
+  const n = parseInt(String(v ?? 0), 10);
+  return Number.isNaN(n) ? 0 : n;
+}
+
+function valorONulo(v: any) {
+  return v === undefined || v === null || v === "" ? "" : v;
 }
 
 function getFechaDespacho(e: EquipoRow) {
@@ -105,6 +126,79 @@ function addHyperlinksToColumn(ws: XLSX.WorkSheet, headerText: string) {
       const url = cell.v;
       ws[addr] = { f: `HYPERLINK("${url}","Ver foto")`, v: "Ver foto" } as any;
     }
+  }
+}
+
+function mergeFillStyle(cell: any, fill: any) {
+  const next = cell || {};
+  const s = typeof next.s === "object" && next.s ? next.s : {};
+  next.s = { ...s, fill };
+  return next;
+}
+
+function applyCellFill(ws: XLSX.WorkSheet, row0: number, col0: number, fill: any) {
+  const addr = XLSX.utils.encode_cell({ r: row0, c: col0 });
+  ws[addr] = mergeFillStyle(ws[addr], fill);
+}
+
+function highlightSnAuditoriaMatches(ws: XLSX.WorkSheet) {
+  const ref = ws["!ref"];
+  if (!ref) return;
+  const range = XLSX.utils.decode_range(ref);
+  const targets = new Set([
+    "SN_Auditoria",
+    "SN_ONT",
+    "proid",
+    "SN_MESH(1)",
+    "SN_MESH(2)",
+    "SN_MESH(3)",
+    "SN_MESH(4)",
+    "SN_BOX(1)",
+    "SN_BOX(2)",
+    "SN_BOX(3)",
+    "SN_BOX(4)",
+    "SN_FONO",
+  ]);
+
+  const headerMap = new Map<string, number>();
+  for (let c = 0; c <= range.e.c; c += 1) {
+    const addr = XLSX.utils.encode_cell({ r: 0, c });
+    const value = String(ws[addr]?.v || "").trim();
+    if (targets.has(value)) headerMap.set(value, c);
+  }
+
+  const snAudCol = headerMap.get("SN_Auditoria");
+  if (snAudCol == null) return;
+
+  const compareCols = [
+    "SN_ONT",
+    "proid",
+    "SN_MESH(1)",
+    "SN_MESH(2)",
+    "SN_MESH(3)",
+    "SN_MESH(4)",
+    "SN_BOX(1)",
+    "SN_BOX(2)",
+    "SN_BOX(3)",
+    "SN_BOX(4)",
+    "SN_FONO",
+  ]
+    .map((key) => headerMap.get(key))
+    .filter((c): c is number => c != null);
+
+  for (let r = 1; r <= range.e.r; r += 1) {
+    const snAddr = XLSX.utils.encode_cell({ r, c: snAudCol });
+    const sn = toSN(ws[snAddr]?.v);
+    if (!sn) continue;
+
+    let matched = false;
+    for (const col of compareCols) {
+      const addr = XLSX.utils.encode_cell({ r, c: col });
+      if (toSN(ws[addr]?.v) !== sn) continue;
+      matched = true;
+      applyCellFill(ws, r, col, FILL_MATCH_SECONDARY);
+    }
+    if (matched) applyCellFill(ws, r, snAudCol, FILL_MATCH_PRIMARY);
   }
 }
 
@@ -531,6 +625,96 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
       toast.success("Exportado (campo)");
       return;
     }
+
+    const dataInstalados = equiposFiltrados.map((e, idx) => {
+      const l = e.detalleInstalacion || {};
+      const fecha = tsToDate(l.fechaInstalacion);
+      const cat5 = parseIntSafe(l.cat5e);
+      const cat6 = parseIntSafe(l.cat6);
+      const puntos = cat5 + cat6;
+      const planTxt = asStr(l.planGamer);
+      const kitTxt = asStr(l.kitWifiPro);
+      const esGamer = planTxt.toUpperCase() === "GAMER" || planTxt.toUpperCase().includes("GAMER");
+      const esKit = kitTxt.toUpperCase() === "KIT WIFI PRO (AL CONTADO)";
+      const actaVal = Array.isArray(l.acta) ? l.acta.filter(Boolean).join(", ") : valorONulo(l.acta);
+
+      let obsContrata = "";
+      if (cat5 > 0) {
+        const extras: string[] = [];
+        if (esGamer) extras.push("Se realizo Plan Gamer Cat.6");
+        if (esKit) extras.push("KIT WIFI PRO");
+        obsContrata = `Se realizo ${cat5} Cableado UTP Cat.5e${extras.length ? ` + ${extras.join(" + ")}` : ""}`;
+      } else {
+        const extras: string[] = [];
+        if (esGamer) extras.push("Se realizo Plan Gamer Cat.6");
+        if (esKit) extras.push("KIT WIFI PRO");
+        obsContrata = extras.join(" + ");
+      }
+
+      const snMESH = (Array.isArray(l.snMESH) ? l.snMESH : []).filter(Boolean);
+      const snBOX = (Array.isArray(l.snBOX) ? l.snBOX : []).filter(Boolean);
+      const meshCols = {
+        "SN_MESH(1)": valorONulo(snMESH[0]),
+        "SN_MESH(2)": valorONulo(snMESH[1]),
+        "SN_MESH(3)": valorONulo(snMESH[2]),
+        "SN_MESH(4)": valorONulo(snMESH[3]),
+      };
+      const boxCols = {
+        "SN_BOX(1)": valorONulo(snBOX[0]),
+        "SN_BOX(2)": valorONulo(snBOX[1]),
+        "SN_BOX(3)": valorONulo(snBOX[2]),
+        "SN_BOX(4)": valorONulo(snBOX[3]),
+      };
+      const cantidadMesh = [snMESH[0], snMESH[1], snMESH[2], snMESH[3]].filter(Boolean).length;
+      const cat5Cell = cat5 === 0 ? "" : cat5;
+      const cat6Cell = cat6 === 0 ? "" : cat6;
+      const puntosCell = puntos === 0 ? "" : puntos;
+      const cableadoUTP = puntos > 0 ? puntos * 25 : "";
+
+      return {
+        "N°": idx + 1,
+        SN_Auditoria: valorONulo(e.SN || e.id),
+        "Fecha Instalación": formatearFecha(fecha),
+        "Tipo de Servicio": "INSTALACION",
+        "Nombre de Partida": "Ultima Milla",
+        Cuadrilla: valorONulo(l.cuadrillaNombre),
+        Acta: actaVal,
+        "Codigo Cliente": valorONulo(l.codigoCliente),
+        Documento: valorONulo(l.documento),
+        Cliente: valorONulo(l.cliente || e.cliente),
+        Direccion: valorONulo(l.direccion),
+        "Tipo Orden": valorONulo(l.tipoOrden),
+        Plan: valorONulo(l.plan),
+        SN_ONT: valorONulo(l.snONT),
+        proid: valorONulo(l.proidONT ?? l.proid),
+        ...meshCols,
+        ...boxCols,
+        SN_FONO: valorONulo(l.snFONO),
+        metraje_instalado: valorONulo(l.metraje_instalado ?? l.metrajeInstalado),
+        "Cantidad mesh": cantidadMesh,
+        rotuloNapCto: valorONulo(l.rotuloNapCto),
+        "Observacion de la contrata": obsContrata || "",
+        "Cableado UTP (MTS)": cableadoUTP,
+        Observacion: valorONulo(l.observacion),
+        "Plan Gamer": valorONulo(l.planGamer),
+        KitWifiPro: valorONulo(l.kitWifiPro),
+        "Servicio Cableado Mesh": valorONulo(l.servicioCableadoMesh),
+        Cat5e: cat5Cell,
+        Cat6: cat6Cell,
+        "Puntos UTP": puntosCell,
+        "Estado Auditoria": asStr(e.auditoria?.estado || "pendiente"),
+        "Observacion Auditoria": valorONulo(obsDraft[e.id] ?? e.observacion),
+        "FotoURL Auditoria": asStr(e.auditoria?.fotoURL),
+      };
+    });
+    const wsInstalados = XLSX.utils.json_to_sheet(dataInstalados);
+    highlightSnAuditoriaMatches(wsInstalados);
+    addHyperlinksToColumn(wsInstalados, "FotoURL Auditoria");
+    const wbInstalados = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wbInstalados, wsInstalados, "AUDITORIA_INSTALADOS");
+    XLSX.writeFile(wbInstalados, `AUDITORIA-INSTALADOS-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success("Exportado (instalados)");
+    return;
 
     const data = equiposFiltrados.map((e, idx) => {
       const l = e.detalleInstalacion || {};
@@ -1079,9 +1263,4 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
     </div>
   );
 }
-
-
-
-
-
 

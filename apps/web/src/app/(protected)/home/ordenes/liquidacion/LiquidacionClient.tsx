@@ -275,6 +275,14 @@ export function LiquidacionClient({ initialYmd, initialMonth }: { initialYmd?: s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoEnabled, loading, rows, ymd, reloadTick, autoRunning, autoRunKey]);
 
+  useEffect(() => {
+    if (!filterDate) return;
+    const expectedMonth = monthFromYmd(filterDate);
+    if (expectedMonth !== month) {
+      setMonth(expectedMonth);
+    }
+  }, [filterDate, month]);
+
   const filteredBase = useMemo(() => {
     const text = q.trim().toLowerCase();
     return rows.filter((r) => {
@@ -348,6 +356,9 @@ export function LiquidacionClient({ initialYmd, initialMonth }: { initialYmd?: s
           </div>
 
           <div className="p-4">
+            <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-200">
+              Filtro activo: mes {month || "-"} | fecha {filterDate || "(sin filtro por dia)"} | coincidencias {filteredBase.length}
+            </div>
             <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/40">
               <button
                 type="button"

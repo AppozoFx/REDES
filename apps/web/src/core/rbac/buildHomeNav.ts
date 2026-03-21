@@ -50,6 +50,9 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     if (hasPerm(session, "ORDENES_GARANTIAS_VIEW") || hasPerm(session, "ORDENES_GARANTIAS_EDIT")) {
       items.push({ key: "ORDENES_GARANTIAS", label: "Ordenes: Garantias", href: "/home/ordenes/garantias" });
     }
+    if (hasArea(session, "MANTENIMIENTO")) {
+      items.push({ key: "MANT_LIQ", label: "Mantenimiento: Liquidaciones", href: "/home/mantenimiento/liquidaciones" });
+    }
 
     return items;
   }
@@ -179,6 +182,9 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
   }
   if (hasPerm(session, "CUADRILLAS_MANAGE") && hasArea(session, "MANTENIMIENTO")) {
     items.push({ key: "CUADRILLAS_MANT", label: "Cuadrillas (Mant)", href: "/home/mantenimiento/cuadrillas" });
+  }
+  if (hasArea(session, "MANTENIMIENTO")) {
+    items.push({ key: "MANT_LIQ", label: "Mantenimiento: Liquidaciones", href: "/home/mantenimiento/liquidaciones" });
   }
 
   if (hasPerm(session, "ORDENES_IMPORT")) {

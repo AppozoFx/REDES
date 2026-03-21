@@ -84,6 +84,9 @@ export default function AsignacionGestoresClient() {
   const [programState, setProgramState] = useState<Record<string, string>>({});
   const [modalGestor, setModalGestor] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(false);
+  const [bulkFrom, setBulkFrom] = useState("");
+  const [bulkTo, setBulkTo] = useState("");
+  const [bulkSelected, setBulkSelected] = useState<string[]>([]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -125,6 +128,10 @@ export default function AsignacionGestoresClient() {
   useEffect(() => {
     cargar(fecha);
   }, [fecha]);
+
+  useEffect(() => {
+    setBulkSelected([]);
+  }, [fecha, tab]);
 
   const hasDay = Object.keys(dayMap).length > 0;
   const currentMap = tab === "base" ? baseMap : (hasDay ? dayMap : baseMap);
@@ -310,6 +317,64 @@ export default function AsignacionGestoresClient() {
   const availableFor = (uid: string) => {
     const selected = asignadosPorGestor(uid);
     return visibleCuadrillas.filter((c) => !assignedSet.has(c.value) || selected.includes(c.value));
+  };
+
+  const bulkSourceIds = useMemo(() => {
+    if (!bulkFrom) return [];
+    const selected = asignadosPorGestor(bulkFrom);
+    if (tab !== "dia") return selected;
+    const visibleSet = new Set(visibleCuadrillas.map((c) => c.value));
+    return selected.filter((id) => visibleSet.has(id));
+  }, [bulkFrom, tab, visibleCuadrillas, currentMap]);
+
+  const bulkSourceOptions = useMemo(() => {
+    return bulkSourceIds
+      .map((id) => ({
+        value: id,
+        label: cuadrillas.find((c) => c.value === id)?.label || id,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, "es", { sensitivity: "base" }));
+  }, [bulkSourceIds, cuadrillas]);
+
+  const applyBulkMove = (ids: string[], opts?: { replaceTarget?: boolean }) => {
+    const sourceUid = String(bulkFrom || "").trim();
+    const targetUid = String(bulkTo || "").trim();
+    const moveIds = uniq(ids);
+
+    if (!sourceUid) return toast.error("Selecciona gestora origen");
+    if (!targetUid) return toast.error("Selecciona gestora destino");
+    if (sourceUid === targetUid) return toast.error("La gestora destino debe ser distinta");
+    if (!moveIds.length) return toast.error("No hay cuadrillas para mover");
+
+    const sourceCurrent = asignadosPorGestor(sourceUid);
+    const targetCurrent = asignadosPorGestor(targetUid);
+    const moveSet = new Set(moveIds);
+
+    const nextMap: AssignMap = { ...currentMap };
+    nextMap[sourceUid] = sourceCurrent.filter((id) => !moveSet.has(id));
+    nextMap[targetUid] = opts?.replaceTarget ? uniq(moveIds) : uniq([...targetCurrent, ...moveIds]);
+
+    if (tab === "base") setBaseMap(nextMap);
+    else setDayMap(nextMap);
+
+    setBulkSelected([]);
+    toast.success(
+      opts?.replaceTarget
+        ? `${moveIds.length} cuadrilla(s) asignadas reemplazando destino`
+        : `${moveIds.length} cuadrilla(s) movidas a ${gestorLabel(targetUid)}`
+    );
+  };
+
+  const toggleBulkSelected = (cuadrillaId: string) => {
+    setBulkSelected((prev) =>
+      prev.includes(cuadrillaId) ? prev.filter((id) => id !== cuadrillaId) : [...prev, cuadrillaId]
+    );
+  };
+
+  const allBulkSelected = bulkSourceIds.length > 0 && bulkSelected.length === bulkSourceIds.length;
+
+  const toggleBulkSelectAll = () => {
+    setBulkSelected(allBulkSelected ? [] : bulkSourceIds);
   };
 
 
@@ -520,6 +585,139 @@ export default function AsignacionGestoresClient() {
               >
                 {saving ? "Guardando..." : (tab === "base" ? "Guardar base" : "Guardar por dia")}
               </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-5 pb-5">
+          <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Movimiento masivo</div>
+                <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  Mueve todas o solo algunas cuadrillas de una gestora a otra sin editar tarjeta por tarjeta.
+                </div>
+              </div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                {tab === "dia"
+                  ? `En programacion diaria solo se consideran cuadrillas activas para ${dayjs(fecha, "YYYY-MM-DD").format("DD/MM/YYYY")}.`
+                  : "En base permanente puedes mover cualquier cuadrilla asignada."}
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 lg:grid-cols-[1fr,1fr,auto]">
+              <div>
+                <label className="text-xs text-slate-500 dark:text-slate-400">Gestora origen</label>
+                <select
+                  value={bulkFrom}
+                  onChange={(e) => {
+                    setBulkFrom(e.target.value);
+                    setBulkSelected([]);
+                  }}
+                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                >
+                  <option value="">Selecciona origen...</option>
+                  {gestores.map((g) => (
+                    <option key={g.value} value={g.value}>
+                      {g.label} ({asignadosPorGestor(g.value).length})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs text-slate-500 dark:text-slate-400">Gestora destino</label>
+                <select
+                  value={bulkTo}
+                  onChange={(e) => setBulkTo(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                >
+                  <option value="">Selecciona destino...</option>
+                  {gestores
+                    .filter((g) => g.value !== bulkFrom)
+                    .map((g) => (
+                      <option key={g.value} value={g.value}>
+                        {g.label} ({asignadosPorGestor(g.value).length})
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => applyBulkMove(bulkSourceIds)}
+                  disabled={!bulkFrom || !bulkTo || !bulkSourceIds.length}
+                  className="rounded-xl bg-[#30518c] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  Mover todas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyBulkMove(bulkSelected)}
+                  disabled={!bulkFrom || !bulkTo || !bulkSelected.length}
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  Mover seleccionadas
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                    Cuadrillas de origen: {bulkFrom ? gestorLabel(bulkFrom) : "-"}
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    Disponibles para mover: {bulkSourceIds.length} | Seleccionadas: {bulkSelected.length}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={toggleBulkSelectAll}
+                    disabled={!bulkSourceIds.length}
+                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
+                  >
+                    {allBulkSelected ? "Quitar todas" : "Seleccionar todas"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBulkSelected([])}
+                    disabled={!bulkSelected.length}
+                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
+                  >
+                    Limpiar
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-3 max-h-60 overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
+                {bulkSourceOptions.length ? (
+                  <div className="divide-y divide-slate-200 dark:divide-slate-700">
+                    {bulkSourceOptions.map((opt) => (
+                      <label
+                        key={opt.value}
+                        className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+                      >
+                        <span className="min-w-0 truncate text-slate-700 dark:text-slate-200">{opt.label}</span>
+                        <input
+                          type="checkbox"
+                          checked={bulkSelected.includes(opt.value)}
+                          onChange={() => toggleBulkSelected(opt.value)}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-3 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
+                    {bulkFrom
+                      ? "No hay cuadrillas disponibles para mover con el filtro actual."
+                      : "Selecciona una gestora origen para ver sus cuadrillas."}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

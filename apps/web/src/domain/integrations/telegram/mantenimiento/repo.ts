@@ -9,6 +9,21 @@ function clean(value: unknown): string {
   return String(value || "").trim();
 }
 
+function addDays(date: Date, days: number) {
+  const out = new Date(date.getTime());
+  out.setDate(out.getDate() + days);
+  return out;
+}
+
+export function telegramMantExpireAtForStatus(statusRaw: unknown, baseDate = new Date()) {
+  const status = clean(statusRaw).toUpperCase();
+  if (status === "PARSE_FAILED") return addDays(baseDate, 7);
+  if (status === "MAPPING_MISSING") return addDays(baseDate, 15);
+  if (status === "READY_FOR_CREATE") return addDays(baseDate, 30);
+  if (status === "CREATED" || status === "CREATE_FAILED") return addDays(baseDate, 45);
+  return addDays(baseDate, 30);
+}
+
 export function buildTelegramMantKey(chatId: string, messageThreadId?: string | null) {
   const base = clean(chatId);
   const thread = clean(messageThreadId);
@@ -75,6 +90,7 @@ export async function registerTelegramMantIngreso(params: {
       source: "TELEGRAM",
       kind: "MANTENIMIENTO_TICKET",
       status: params.status,
+      expireAt: telegramMantExpireAtForStatus(params.status),
       telegram: params.telegram,
       parsing: params.parsing,
       mapping: params.mapping,
@@ -93,4 +109,42 @@ export async function registerTelegramMantIngreso(params: {
   });
 
   return { duplicated, ingresoId: ingresoRef.id };
+}
+
+export async function getTelegramMantIngresoById(id: string) {
+  const snap = await adminDb().collection(TELEGRAM_MANT_INGRESOS_COL).doc(clean(id)).get();
+  if (!snap.exists) return null;
+  return { id: snap.id, ...(snap.data() as any) };
+}
+
+export async function listTelegramMantIngresos(limit = 200) {
+  const snap = await adminDb()
+    .collection(TELEGRAM_MANT_INGRESOS_COL)
+    .orderBy("audit.createdAt", "desc")
+    .limit(Math.max(1, Math.min(500, Number(limit) || 200)))
+    .get();
+  return snap.docs.map((doc) => ({ id: doc.id, ...(doc.data() as any) }));
+}
+
+export async function markTelegramMantCreateTicketResult(params: {
+  ingresoId: string;
+  status: string;
+  attempted: boolean;
+  createdId?: string;
+  error?: string;
+}) {
+  const ref = adminDb().collection(TELEGRAM_MANT_INGRESOS_COL).doc(clean(params.ingresoId));
+  await ref.set(
+    {
+      status: clean(params.status),
+      expireAt: telegramMantExpireAtForStatus(params.status),
+      createTicket: {
+        attempted: Boolean(params.attempted),
+        createdId: clean(params.createdId),
+        error: clean(params.error),
+      },
+      "audit.updatedAt": FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
 }

@@ -40,6 +40,9 @@ dist/
 build/
 lib/
 coverage/
+!apps/web/src/lib/
+!apps/web/src/lib/**
+*.bak
 
 # Mac/Windows junk
 *.swp

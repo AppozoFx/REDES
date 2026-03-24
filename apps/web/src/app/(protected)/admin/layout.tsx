@@ -8,6 +8,8 @@ import TabSessionGuard from "@/ui/common/TabSessionGuard";
 import UserPresenceHeartbeat from "@/ui/common/UserPresenceHeartbeat";
 import { UserProvider } from "@/ui/common/UserProvider";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const session = await requireAdmin();
 

@@ -7,6 +7,8 @@ import UserPresenceHeartbeat from "@/ui/common/UserPresenceHeartbeat";
 import RouteProgressBar from "@/ui/common/RouteProgressBar";
 import { UserProvider } from "@/ui/common/UserProvider";
 
+export const dynamic = "force-dynamic";
+
 export default async function HomeLayout({
   children,
 }: {

@@ -119,6 +119,9 @@ export default function MantenimientoLiquidacionesListClient() {
             >
               Causas raiz
             </button>
+            <Link href="/home/mantenimiento/telegram" className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
+              Ingresos Telegram
+            </Link>
             <button
               type="button"
               disabled={exporting}

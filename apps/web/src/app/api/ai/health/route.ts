@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { openai } from "@/lib/ai/openai";
+import { getOpenAIClient } from "@/lib/ai/openai";
 
 export async function GET() {
   const model = "gpt-4.1-mini";
@@ -9,6 +9,7 @@ export async function GET() {
   const keyPrefix = keyPredespacho ? keyPredespacho.slice(0, 6) : "missing";
 
   try {
+    const openai = getOpenAIClient();
     const response = await openai.responses.create({
       model,
       input: "Responde solo: OK",

@@ -24,7 +24,8 @@
     "jspdf": "^2.5.2",
     "leaflet": "^1.9.4",
     "leaflet.markercluster": "^1.5.3",
-    "next": "15.1.9",
+    "next": "15.0.5",
+    "openai": "^6.32.0",
     "qrcode": "^1.5.4",
     "react": "19.0.0",
     "react-dom": "19.0.0",
@@ -44,7 +45,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "15.1.9",
+    "eslint-config-next": "15.0.5",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { headers } from "next/headers";
 import { getServerSession } from "@/core/auth/session";
 import { adminDb } from "@/lib/firebase/admin";
-import { openai } from "@/lib/ai/openai";
+import { getOpenAIClient } from "@/lib/ai/openai";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -283,6 +283,7 @@ async function requestAiStructuredJson(input: z.infer<typeof RequestSchema>, mod
     ? "\nRESPONDE SOLO JSON VALIDO Y NADA MAS. NO markdown, NO texto fuera del JSON."
     : "";
   const finalInput = `${buildAiPrompt(input)}${extra}`;
+  const openai = getOpenAIClient();
   try {
     return await openai.responses.create({
       model,

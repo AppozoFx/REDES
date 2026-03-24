@@ -52,12 +52,22 @@ function getIncomingText(message: TelegramMessage | null): string {
 }
 
 function parseAllowedChatIds(raw: string | undefined): Set<string> {
-  return new Set(
-    String(raw || "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean)
-  );
+  const out = new Set<string>();
+  for (const value of String(raw || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)) {
+    out.add(value);
+
+    // App Hosting/Firebase Console a veces termina guardando IDs de supergrupo sin el prefijo "-".
+    // Aceptamos ambas variantes para no perder mensajes por un error de configuración menor.
+    if (/^-100\d+$/.test(value)) {
+      out.add(value.slice(1));
+    } else if (/^100\d+$/.test(value)) {
+      out.add(`-${value}`);
+    }
+  }
+  return out;
 }
 
 function normalizeUpper(value: unknown): string {

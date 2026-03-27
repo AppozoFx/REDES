@@ -357,6 +357,10 @@ function sanitizeRequestId(raw: string) {
     .slice(0, 120);
 }
 
+function hasOpenAiConfigured() {
+  return Boolean(String(process.env.OPENAI_API_KEY_PREDESPACHO || process.env.OPENAI_API_KEY || "").trim());
+}
+
 async function writeProgress(requestId: string, payload: Record<string, any>) {
   const id = sanitizeRequestId(requestId);
   if (!id) return;
@@ -590,6 +594,14 @@ async function extractActaFromPdfByBarcodeDecoder(pdfBuffer: Buffer): Promise<Ac
 }
 
 async function extractActaFromImageByAi(imagePng: Buffer, modeLabel: string): Promise<ActaDetection> {
+  if (!hasOpenAiConfigured()) {
+    return {
+      acta: null,
+      source: null,
+      detail: `IA_NO_CONFIGURADA (${modeLabel})`,
+      attempts: 1,
+    };
+  }
   const model = process.env.OPENAI_PRELIQ_MODEL || process.env.PREDESPACHO_AI_MODEL || "gpt-4.1-mini";
   const imageDataUrl = `data:image/png;base64,${imagePng.toString("base64")}`;
   const response = await openai.responses.create({
@@ -657,14 +669,24 @@ async function extractActaFromPdfByAiImagePasses(fileName: string, pdfBuffer: Bu
     const sharp = require("sharp") as any;
     const raster = await rasterizePdfFirstPageToPng(pdfBuffer, 260);
     if (!raster?.png) {
-      return { acta: null, source: null, detail: `No se pudo rasterizar PDF (${fileName})`, attempts: 1 };
+      return {
+        acta: null,
+        source: null,
+        detail: `No se pudo rasterizar PDF (${fileName}); IA por imagen no disponible sin raster`,
+        attempts: 1,
+      };
     }
     const base = sharp(raster.png, { failOn: "none" }).flatten({ background: "#ffffff" });
     const meta = await base.metadata();
     const width = Number(meta.width || 0);
     const height = Number(meta.height || 0);
     if (!width || !height) {
-      return { acta: null, source: null, detail: `No se pudo rasterizar PDF (${fileName})`, attempts: 1 };
+      return {
+        acta: null,
+        source: null,
+        detail: `No se pudo rasterizar PDF (${fileName}); IA por imagen no disponible sin raster`,
+        attempts: 1,
+      };
     }
 
     const roiA = {
@@ -1068,8 +1090,10 @@ async function extractActaFromPdf(
     });
   }
   const tAiRoi = Date.now();
+  let aiRoiDetail = "";
   try {
     const ai = await extractActaFromPdfByAi(fileName, pdfBuffer, "roi");
+    aiRoiDetail = ai.detail;
     if (ai.acta) {
       return {
         ...ai,
@@ -1093,18 +1117,32 @@ async function extractActaFromPdf(
       Date.now() - tAiRoi,
       true
     );
+  } catch (e: any) {
+    aiRoiDetail = `Error IA PDF ROI: ${String(e?.message || "UNKNOWN_AI_ERROR")}`;
+    await pushTrace(
+      "ai_pdf_roi",
+      "Analizando PDF completo con IA (ROI)",
+      "error",
+      aiRoiDetail,
+      Date.now() - tAiRoi,
+      true
+    );
+  }
 
-    if (onProgress) {
-      await onProgress({
-        stageKey: "ai_pdf_full",
-        stageLabel: "Analizando PDF completo con IA (full page)",
-        stageStatus: "running",
-        detail: "Paso full page en archivo PDF",
-        useAi: true,
-      });
-    }
-    const tAiFull = Date.now();
+  if (onProgress) {
+    await onProgress({
+      stageKey: "ai_pdf_full",
+      stageLabel: "Analizando PDF completo con IA (full page)",
+      stageStatus: "running",
+      detail: "Paso full page en archivo PDF",
+      useAi: true,
+    });
+  }
+  const tAiFull = Date.now();
+  let aiFullDetail = "";
+  try {
     const aiRetry = await extractActaFromPdfByAi(fileName, pdfBuffer, "full");
+    aiFullDetail = aiRetry.detail;
     if (aiRetry.acta) {
       return {
         ...aiRetry,
@@ -1129,40 +1167,36 @@ async function extractActaFromPdf(
       Date.now() - tAiFull,
       true
     );
-    return {
-      acta: null,
-      source: null,
-      detail: `${zxing.detail}; ${aiImage.detail}; ${ai.detail}; ${aiRetry.detail}`,
-      attempts: 2,
-      trace,
-    };
   } catch (e: any) {
+    aiFullDetail = `Error IA PDF full: ${String(e?.message || "UNKNOWN_AI_ERROR")}`;
     await pushTrace(
-      "ai_pdf_roi",
-      "Analizando PDF completo con IA (ROI)",
+      "ai_pdf_full",
+      "Analizando PDF completo con IA (full page)",
       "error",
-      `Error IA PDF: ${String(e?.message || "UNKNOWN_AI_ERROR")}`,
-      Date.now() - tAiRoi,
+      aiFullDetail,
+      Date.now() - tAiFull,
       true
     );
-    return {
-      acta: null,
-      source: null,
-      detail: `${zxing.detail}; ${aiImage.detail}; Error IA PDF: ${String(e?.message || "UNKNOWN_AI_ERROR")}`,
-      attempts: 2,
-      trace,
-    };
   }
 
   return {
     acta: null,
     source: null,
-    detail: "No se detecto acta por heuristica deterministica ni por IA",
+    detail: `${zxing.detail}; ${aiImage.detail}; ${aiRoiDetail || "IA PDF ROI sin coincidencia"}; ${aiFullDetail || "IA PDF full sin coincidencia"}`,
+    attempts: 2,
     trace,
   };
 }
 
 async function extractActaFromPdfByAi(fileName: string, pdfBuffer: Buffer, mode: "roi" | "full"): Promise<ActaDetection> {
+  if (!hasOpenAiConfigured()) {
+    return {
+      acta: null,
+      source: null,
+      detail: `IA_NO_CONFIGURADA (${mode})`,
+      attempts: mode === "roi" ? 1 : 2,
+    };
+  }
   const file = new File([new Uint8Array(pdfBuffer)], String(fileName || "acta.pdf"), { type: "application/pdf" });
   const uploaded = await openai.files.create({
     file,
@@ -1247,6 +1281,7 @@ async function loadCachedResult(dateFolder: string, fileHash: string) {
   if (!snap.exists) return null;
   const data = snap.data() as any;
   if (!data?.finalPath) return null;
+  if (data.status !== "ok") return null;
   try {
     const bucket = adminStorageBucket();
     const [exists] = await bucket.file(String(data.finalPath)).exists();

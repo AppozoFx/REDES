@@ -2,7 +2,7 @@
 import { getServerSession } from "@/core/auth/session";
 import { requireAreaScope } from "@/core/auth/apiGuards";
 import { adminDb, adminStorageBucket } from "@/lib/firebase/admin";
-import { openai } from "@/lib/ai/openai";
+import { openai, resolveOpenAiApiKey } from "@/lib/ai/openai";
 import { createHash } from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -358,7 +358,7 @@ function sanitizeRequestId(raw: string) {
 }
 
 function hasOpenAiConfigured() {
-  return Boolean(String(process.env.OPENAI_API_KEY_PREDESPACHO || process.env.OPENAI_API_KEY || "").trim());
+  return Boolean(String(resolveOpenAiApiKey() || "").trim());
 }
 
 async function writeProgress(requestId: string, payload: Record<string, any>) {

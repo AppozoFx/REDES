@@ -1,6 +1,15 @@
 import OpenAI from "openai";
 
-export function getOpenAIClient(apiKey = process.env.OPENAI_API_KEY_PREDESPACHO || process.env.OPENAI_API_KEY) {
+export function resolveOpenAiApiKey() {
+  return (
+    process.env.OPENAI_API_KEY_PREDESPACHO ||
+    process.env.OPENAI_API_KEY_PRELIQUIDACION ||
+    process.env.OPENAI_API_KEY ||
+    ""
+  );
+}
+
+export function getOpenAIClient(apiKey = resolveOpenAiApiKey()) {
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY_MISSING");
   }

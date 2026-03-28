@@ -1,12 +1,20 @@
 import { NextResponse } from "next/server";
-import { getOpenAIClient } from "@/lib/ai/openai";
+import { getOpenAIClient, resolveOpenAiApiKey } from "@/lib/ai/openai";
 
 export async function GET() {
   const model = "gpt-4.1-mini";
   const keyPredespacho = process.env.OPENAI_API_KEY_PREDESPACHO || "";
   const keyPreliquidacion = process.env.OPENAI_API_KEY_PRELIQUIDACION || "";
   const keyGeneric = process.env.OPENAI_API_KEY || "";
-  const keyPrefix = keyPredespacho ? keyPredespacho.slice(0, 6) : "missing";
+  const resolvedKey = resolveOpenAiApiKey();
+  const keyPrefix = resolvedKey ? resolvedKey.slice(0, 6) : "missing";
+  const usingEnvVar = keyPredespacho
+    ? "OPENAI_API_KEY_PREDESPACHO"
+    : keyPreliquidacion
+    ? "OPENAI_API_KEY_PRELIQUIDACION"
+    : keyGeneric
+    ? "OPENAI_API_KEY"
+    : "missing";
 
   try {
     const openai = getOpenAIClient();
@@ -16,7 +24,7 @@ export async function GET() {
     });
 
     console.log("[ai/health] env verification", {
-      usingEnvVar: "OPENAI_API_KEY_PREDESPACHO",
+      usingEnvVar,
       hasPredespachoKey: !!keyPredespacho,
       predespachoKeyPrefix: keyPrefix,
       hasPreliquidacionKey: !!keyPreliquidacion,
@@ -30,7 +38,7 @@ export async function GET() {
     });
   } catch (error) {
     console.log("[ai/health] env verification (error path)", {
-      usingEnvVar: "OPENAI_API_KEY_PREDESPACHO",
+      usingEnvVar,
       hasPredespachoKey: !!keyPredespacho,
       predespachoKeyPrefix: keyPrefix,
       hasPreliquidacionKey: !!keyPreliquidacion,

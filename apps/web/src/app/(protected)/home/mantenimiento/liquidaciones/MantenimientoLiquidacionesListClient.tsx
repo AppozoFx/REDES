@@ -40,6 +40,8 @@ export default function MantenimientoLiquidacionesListClient() {
   const [error, setError] = useState("");
   const [q, setQ] = useState("");
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [day, setDay] = useState("");
+  const [cuadrilla, setCuadrilla] = useState("");
   const [estado, setEstado] = useState("");
   const [exporting, setExporting] = useState(false);
   const [causas, setCausas] = useState<CausaRaiz[]>([]);
@@ -47,6 +49,7 @@ export default function MantenimientoLiquidacionesListClient() {
   const [causaNombre, setCausaNombre] = useState("");
   const [editingCausaId, setEditingCausaId] = useState("");
   const [savingCausa, setSavingCausa] = useState(false);
+  const [deletingId, setDeletingId] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -81,16 +84,45 @@ export default function MantenimientoLiquidacionesListClient() {
     loadCausas().catch(() => {});
   }, [causasOpen]);
 
+  const cuadrillasMant = useMemo(() => {
+    return Array.from(new Set(rows.map((r) => String(r.cuadrillaNombre || "").trim()).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b, "es", { sensitivity: "base" })
+    );
+  }, [rows]);
+
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return rows.filter((r) => {
       if (month && String(r.fechaAtencionYmd || "").slice(0, 7) !== month) return false;
+      if (day && String(r.fechaAtencionYmd || "") !== day) return false;
+      if (cuadrilla && String(r.cuadrillaNombre || "") !== cuadrilla) return false;
       if (estado && String(r.estado || "") !== estado) return false;
       if (!needle) return true;
       const hay = `${r.ticketNumero} ${r.codigoCaja || ""} ${r.distrito || ""} ${r.cuadrillaNombre || ""}`.toLowerCase();
       return hay.includes(needle);
     });
-  }, [rows, q, month, estado]);
+  }, [rows, q, month, day, cuadrilla, estado]);
+
+  async function eliminarTicket(id: string) {
+    if (!window.confirm("Se eliminara este ticket abierto. Deseas continuar?")) return;
+    try {
+      setDeletingId(id);
+      setError("");
+      const res = await fetch("/api/mantenimiento/liquidaciones/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body?.ok) throw new Error(String(body?.error || "ERROR"));
+      setRows((curr) => curr.filter((row) => row.id !== id));
+    } catch (e: any) {
+      const code = String(e?.message || "ERROR");
+      setError(code === "SOLO_ABIERTO_ELIMINABLE" ? "Solo se pueden eliminar tickets en estado ABIERTO." : code);
+    } finally {
+      setDeletingId("");
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -176,9 +208,16 @@ export default function MantenimientoLiquidacionesListClient() {
       </div>
 
       <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-5">
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar ticket, caja, distrito, cuadrilla" className="rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" />
           <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" />
+          <input type="date" value={day} onChange={(e) => setDay(e.target.value)} className="rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" />
+          <select value={cuadrilla} onChange={(e) => setCuadrilla(e.target.value)} className="rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+            <option value="">Todas las cuadrillas</option>
+            {cuadrillasMant.map((nombre) => (
+              <option key={nombre} value={nombre}>{nombre}</option>
+            ))}
+          </select>
           <select value={estado} onChange={(e) => setEstado(e.target.value)} className="rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
             <option value="">Todos los estados</option>
             <option value="ABIERTO">ABIERTO</option>
@@ -231,9 +270,21 @@ export default function MantenimientoLiquidacionesListClient() {
                     </td>
                     <td className="p-2">{Array.isArray(r.materialesConsumidos) ? r.materialesConsumidos.length : 0}</td>
                     <td className="p-2">
-                      <Link href={`/home/mantenimiento/liquidaciones/${r.id}`} className="text-blue-700 hover:underline">
-                        Abrir
-                      </Link>
+                      <div className="flex items-center gap-3">
+                        <Link href={`/home/mantenimiento/liquidaciones/${r.id}`} className="text-blue-700 hover:underline">
+                          Abrir
+                        </Link>
+                        {r.estado === "ABIERTO" ? (
+                          <button
+                            type="button"
+                            onClick={() => eliminarTicket(r.id)}
+                            disabled={deletingId === r.id}
+                            className="text-red-600 hover:underline disabled:opacity-50"
+                          >
+                            {deletingId === r.id ? "Eliminando..." : "Eliminar"}
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))}

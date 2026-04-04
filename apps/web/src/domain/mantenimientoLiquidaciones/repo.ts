@@ -184,6 +184,26 @@ export async function updateMantenimientoLiquidacion(id: string, input: unknown,
   );
 }
 
+export async function deleteMantenimientoLiquidacion(id: string, actorUid: string) {
+  const db = adminDb();
+  const ref = col().doc(id);
+
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new Error("NOT_FOUND");
+    const curr = snap.data() as any;
+    const estado = normalizeEstadoLegacy(curr?.estado || "ABIERTO");
+    if (estado !== "ABIERTO") throw new Error("SOLO_ABIERTO_ELIMINABLE");
+
+    tx.delete(ref);
+
+    return {
+      id,
+      deletedBy: actorUid,
+    };
+  });
+}
+
 export async function liquidarMantenimientoLiquidacion(id: string, actorUid: string) {
   const db = adminDb();
   const ref = col().doc(id);

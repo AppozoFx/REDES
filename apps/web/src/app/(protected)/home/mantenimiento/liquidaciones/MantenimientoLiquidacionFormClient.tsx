@@ -539,6 +539,17 @@ export default function MantenimientoLiquidacionFormClient({
                 <label className="mb-1 block text-xs text-slate-500">Codigo caja</label>
                 <input value={form.codigoCaja} onChange={(e) => patch("codigoCaja", e.target.value)} disabled={locked} className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" />
               </div>
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-xs text-slate-500">Causa raiz</label>
+                <select value={form.causaRaiz} onChange={(e) => patch("causaRaiz", e.target.value)} disabled={locked} className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+                  <option value="">Selecciona una causa raiz...</option>
+                  {causasRaiz.map((causa) => (
+                    <option key={causa.id} value={causa.nombre}>
+                      {causa.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <label className="mb-1 block text-xs text-slate-500">Fecha <span className="text-red-500">*</span></label>
                 <input type="date" value={form.fechaAtencionYmd} onChange={(e) => patch("fechaAtencionYmd", e.target.value)} disabled={locked} className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" />
@@ -635,17 +646,6 @@ export default function MantenimientoLiquidacionFormClient({
               <div>
                 <label className="mb-1 block text-xs text-slate-500">Hora fin</label>
                 <input type="time" value={form.horaFin} onChange={(e) => patch("horaFin", e.target.value)} disabled={locked} className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" />
-              </div>
-              <div className="md:col-span-2">
-                <label className="mb-1 block text-xs text-slate-500">Causa raiz</label>
-                <select value={form.causaRaiz} onChange={(e) => patch("causaRaiz", e.target.value)} disabled={locked} className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
-                  <option value="">Selecciona una causa raiz...</option>
-                  {causasRaiz.map((causa) => (
-                    <option key={causa.id} value={causa.nombre}>
-                      {causa.nombre}
-                    </option>
-                  ))}
-                </select>
               </div>
               <div className="md:col-span-2">
                 <label className="mb-1 block text-xs text-slate-500">Solucion</label>

@@ -211,7 +211,14 @@ export default function AsistenciaResumenClient() {
 
   const normRole = (s: string) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
   const roles = (accessRoles || []).map((r: string) => normRole(String(r)));
-  const puedeEditar = isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH") || roles.includes("SUPERVISOR") || roles.includes("SEGURIDAD");
+  const puedeEditar =
+    isAdmin ||
+    roles.includes("GERENCIA") ||
+    roles.includes("JEFATURA") ||
+    roles.includes("ALMACEN") ||
+    roles.includes("RRHH") ||
+    roles.includes("SUPERVISOR") ||
+    roles.includes("SEGURIDAD");
 
   useEffect(() => {
     const run = async () => {

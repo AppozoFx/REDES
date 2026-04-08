@@ -609,6 +609,13 @@ export async function GET(req: Request) {
         .filter((x) => !x.isGarantia)
         .map((x) => {
           const inst = x.codiSeguiClien ? instMap.get(x.codiSeguiClien) : null;
+          const coordinadorUidResolved = String(
+            inst?.orden?.coordinadorCuadrilla ||
+              inst?.orden?.coordinador ||
+              inst?.orden?.gestorCuadrilla ||
+              x.coordinadorUid ||
+              ""
+          ).trim();
           const tipoOrdenFromInst = normalizeTipoOrden(inst?.orden?.tipoOrden || inst?.tipoOrden);
           const tipoOrdenResolved = tipoOrdenFromInst || normalizeTipoOrden(x.tipoOrden);
           const liqEstado = String(inst?.liquidacion?.estado || "").toUpperCase();
@@ -632,8 +639,10 @@ export async function GET(req: Request) {
             tipoTraba: x.tipoTraba,
             gestorUid: x.gestorUid,
             gestorNombre: x.gestorUid ? uidName.get(x.gestorUid) || x.gestorUid : "",
-            coordinadorUid: x.coordinadorUid,
-            coordinadorNombre: x.coordinadorUid ? uidName.get(x.coordinadorUid) || x.coordinadorUid : "",
+            coordinadorUid: coordinadorUidResolved,
+            coordinadorNombre: coordinadorUidResolved
+              ? uidName.get(coordinadorUidResolved) || coordinadorUidResolved
+              : "",
             regionOrden: x.regionOrden,
             distritoOrden: x.distritoOrden,
             lat,
@@ -661,7 +670,11 @@ export async function GET(req: Request) {
     const fRegionNorm = fRegionOrden ? norm(fRegionOrden) : "";
     const fDistritoNorm = fDistritoOrden ? norm(fDistritoOrden) : "";
 
-    const matchesFilters = (x: DetailItem, includeDistrito: boolean) => {
+    const matchesFilters = (
+      x: DetailItem,
+      includeDistrito: boolean,
+      options?: { ignoreCoordinador?: boolean }
+    ) => {
       if (fSearch) {
         const hay = `${x.ordenId || ""} ${x.codiSeguiClien || ""} ${x.cliente || ""} ${x.cuadrillaNombre || ""} ${x.cuadrillaId || ""}`;
         if (!norm(hay).includes(fSearchNorm)) return false;
@@ -673,13 +686,16 @@ export async function GET(req: Request) {
       if (fRegionOrden && norm(x.regionOrden) !== fRegionNorm) return false;
       if (includeDistrito && fDistritoOrden && norm(x.distritoOrden) !== fDistritoNorm) return false;
       if (fGestorUid && x.gestorUid !== fGestorUid) return false;
-      if (fCoordinadorUid && x.coordinadorUid !== fCoordinadorUid) return false;
+      if (!options?.ignoreCoordinador && fCoordinadorUid && x.coordinadorUid !== fCoordinadorUid) return false;
       if (fEstado && x.estado !== fEstado) return false;
       if (fTipoOrden && x.tipoOrden !== fTipoOrden) return false;
       if (soloNoLiquidadas && x.liquidado) return false;
       return true;
     };
     const filtered = enriched.filter((x) => matchesFilters(x, true));
+    const filteredForCoordinadores = enriched.filter((x) =>
+      matchesFilters(x, true, { ignoreCoordinador: true })
+    );
     const kpi = computeKpi(filtered);
     const kpiPrev =
       prevMaterializedMap && !hasAdvancedFilters
@@ -779,12 +795,6 @@ export async function GET(req: Request) {
       if (row.gestorUid && !gestoresMap.has(row.gestorUid)) {
         gestoresMap.set(row.gestorUid, { uid: row.gestorUid, nombre: row.gestorNombre || row.gestorUid });
       }
-      if (row.coordinadorUid && !coordinadoresMap.has(row.coordinadorUid)) {
-        coordinadoresMap.set(row.coordinadorUid, {
-          uid: row.coordinadorUid,
-          nombre: row.coordinadorNombre || row.coordinadorUid,
-        });
-      }
       const cuadrillaKey = row.cuadrillaId || row.cuadrillaNombre;
       if (cuadrillaKey && !cuadrillasMap.has(cuadrillaKey)) {
         cuadrillasMap.set(cuadrillaKey, { id: cuadrillaKey, nombre: row.cuadrillaNombre || row.cuadrillaId });
@@ -793,6 +803,15 @@ export async function GET(req: Request) {
       if (row.estado) estadosSet.add(row.estado);
       if (row.regionOrden) regionesSet.add(row.regionOrden);
       if (row.distritoOrden) distritosSet.add(row.distritoOrden);
+    }
+
+    for (const row of filteredForCoordinadores) {
+      if (row.coordinadorUid && !coordinadoresMap.has(row.coordinadorUid)) {
+        coordinadoresMap.set(row.coordinadorUid, {
+          uid: row.coordinadorUid,
+          nombre: row.coordinadorNombre || row.coordinadorUid,
+        });
+      }
     }
 
     const gestoresMeta = Array.from(gestoresMap.values()).sort((a, b) =>

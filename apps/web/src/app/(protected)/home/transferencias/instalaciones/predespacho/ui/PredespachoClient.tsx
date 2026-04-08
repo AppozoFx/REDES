@@ -39,12 +39,24 @@ function emptyCounts(): Counts {
 function emptyPrecon(): PreconCounts {
   return { PRECON_50: 0, PRECON_100: 0, PRECON_150: 0, PRECON_200: 0 };
 }
+function emptyAvailability() {
+  return { available: 0, planned: 0, remaining: 0, exceeded: false };
+}
 function emptyModelCounts(): ModelCounts {
   return { ONT_HUAWEI: 0, ONT_ZTE: 0, MESH_HUAWEI: 0, MESH_ZTE: 0, FONO: 0, BOX: 0 };
 }
 function n(v: any) {
   const x = Number(v);
   return Number.isFinite(x) ? x : 0;
+}
+function suggestedNeed(objetivoVal: number, consumoVal: number, promedioVal: number, stockVal: number) {
+  const objetivo = n(objetivoVal);
+  const consumo = n(consumoVal);
+  const promedio = n(promedioVal);
+  const stock = n(stockVal);
+  const recentNeed = Math.max(consumo, promedio);
+  const targetLevel = recentNeed > 0 ? Math.min(objetivo, recentNeed) : objetivo;
+  return Math.max(0, Math.ceil(targetLevel - stock));
 }
 function sumCounts(a: Counts, b: Counts): Counts {
   return {
@@ -142,7 +154,12 @@ export default function PredespachoClient() {
       setConsumoTotal(body.consumoTotal || emptyCounts());
       setPromedioTotal(body.consumoPromedioTotal || emptyCounts());
       setPeriodLabel(`${body?.period?.startYmd || "-"} -> ${body?.period?.endYmd || "-"}`);
-      setBatchIds(Array.isArray(body.batchIds) ? body.batchIds : []);
+      const nextBatchIds = Array.isArray(body.batchIds) ? body.batchIds : [];
+      setBatchIds(nextBatchIds);
+      if (selectedBatch && !nextBatchIds.includes(selectedBatch)) {
+        setSelectedBatch("");
+        if (estadoFiltro === "lote") setEstadoFiltro("todas");
+      }
 
       const pre = body.predespacho || {};
       const nextManual: Record<string, Partial<Counts>> = {};
@@ -311,12 +328,13 @@ export default function PredespachoClient() {
     for (const c of rowsForPlan) {
       const stock = stockForCuadrilla(c.id);
       // Base recomendada: objetivo operativo y consumo promedio del periodo.
+      const consumo = consumoCuadrilla[c.id] || emptyCounts();
       const prom = promedioCuadrilla[c.id] || emptyCounts();
       out[c.id] = {
-        ONT: Math.max(0, Math.ceil(Math.max(n(objetivo.ONT), n(prom.ONT)) - n(stock.ONT))),
-        MESH: Math.max(0, Math.ceil(Math.max(n(objetivo.MESH), n(prom.MESH)) - n(stock.MESH))),
-        FONO: Math.max(0, Math.ceil(Math.max(n(objetivo.FONO), n(prom.FONO)) - n(stock.FONO))),
-        BOX: Math.max(0, Math.ceil(Math.max(n(objetivo.BOX), n(prom.BOX)) - n(stock.BOX))),
+        ONT: suggestedNeed(objetivo.ONT, consumo.ONT, prom.ONT, stock.ONT),
+        MESH: suggestedNeed(objetivo.MESH, consumo.MESH, prom.MESH, stock.MESH),
+        FONO: suggestedNeed(objetivo.FONO, consumo.FONO, prom.FONO, stock.FONO),
+        BOX: suggestedNeed(objetivo.BOX, consumo.BOX, prom.BOX, stock.BOX),
       };
     }
 
@@ -335,14 +353,18 @@ export default function PredespachoClient() {
       let rem = disp - assigned;
       for (const c of activas) {
         if (!rem) break;
-        if (out[c.id][k] < Math.max(0, n(objetivo[k]) - n(stockForCuadrilla(c.id)[k]))) {
+        const consumo = consumoCuadrilla[c.id] || emptyCounts();
+        const prom = promedioCuadrilla[c.id] || emptyCounts();
+        const stock = stockForCuadrilla(c.id);
+        const desired = suggestedNeed(objetivo[k], consumo[k], prom[k], stock[k]);
+        if (out[c.id][k] < desired) {
           out[c.id][k] += 1;
           rem -= 1;
         }
       }
     }
     return out;
-  }, [baseRows, cuadrillaModelGroup, grupoDespacho, promedioCuadrilla, objetivo, stockAlmacenActivo, omitidas, stockCuadrilla, stockCuadrillaModel]);
+  }, [baseRows, cuadrillaModelGroup, grupoDespacho, consumoCuadrilla, promedioCuadrilla, objetivo, stockAlmacenActivo, omitidas, stockCuadrilla, stockCuadrillaModel]);
 
   const totalPreconAsignado = useMemo(() => {
     const t = emptyPrecon();
@@ -365,6 +387,50 @@ export default function PredespachoClient() {
     }
     return { plan };
   }, [baseRows, manual, sugerido, omitidas]);
+
+  const availability = useMemo(() => {
+    const out: Record<Eq, { available: number; planned: number; remaining: number; exceeded: boolean }> = {
+      ONT: emptyAvailability(),
+      MESH: emptyAvailability(),
+      FONO: emptyAvailability(),
+      BOX: emptyAvailability(),
+    };
+    for (const k of EQUIPOS) {
+      const available = n(stockAlmacenActivo[k]);
+      const planned = n(totals.plan[k]);
+      out[k] = {
+        available,
+        planned,
+        remaining: available - planned,
+        exceeded: planned > available,
+      };
+    }
+    return out;
+  }, [stockAlmacenActivo, totals.plan]);
+
+  const preconAvailability = useMemo(() => {
+    const out: Record<PreconId, { available: number; planned: number; remaining: number; exceeded: boolean }> = {
+      PRECON_50: emptyAvailability(),
+      PRECON_100: emptyAvailability(),
+      PRECON_150: emptyAvailability(),
+      PRECON_200: emptyAvailability(),
+    };
+    for (const p of PRECONS) {
+      const available = n(stockPrecon[p]);
+      const planned = n(totalPreconAsignado[p]);
+      out[p] = {
+        available,
+        planned,
+        remaining: available - planned,
+        exceeded: planned > available,
+      };
+    }
+    return out;
+  }, [stockPrecon, totalPreconAsignado]);
+
+  const exceededEquipos = useMemo(() => EQUIPOS.filter((k) => availability[k].exceeded), [availability]);
+  const exceededPrecons = useMemo(() => PRECONS.filter((p) => preconAvailability[p].exceeded), [preconAvailability]);
+  const hasAvailabilityIssues = exceededEquipos.length > 0 || exceededPrecons.length > 0;
 
   const aiSummary = useMemo(() => {
     const recommendationTotal = aiRecommendation.data?.recommendation?.total || emptyCounts();
@@ -505,10 +571,17 @@ export default function PredespachoClient() {
       const batchId = new Date().toISOString();
       const rows = buildRowsForPersist(uiRows);
       if (!rows.length) throw new Error("NO_ROWS_TO_SAVE");
+      if (hasAvailabilityIssues) throw new Error("STOCK_INSUFFICIENT");
       const res = await fetch("/api/instalaciones/predespacho/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ anchor, rows, batchId }),
+        body: JSON.stringify({
+          anchor,
+          rows,
+          batchId,
+          availableStock: stockAlmacenActivo,
+          availablePrecon: stockPrecon,
+        }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok || !body?.ok) throw new Error(String(body?.error || "ERROR"));
@@ -517,10 +590,20 @@ export default function PredespachoClient() {
       setSelectedBatch(String(body.batchId || batchId));
       await loadData(anchor);
     } catch (e: any) {
-      toast.error(e?.message || "No se pudo guardar predespacho");
+      if (String(e?.message || "") === "STOCK_INSUFFICIENT") {
+        toast.error("No puedes guardar un predespacho que excede el stock disponible");
+      } else {
+        toast.error(e?.message || "No se pudo guardar predespacho");
+      }
     } finally {
       setSaving(false);
     }
+  }
+
+  function modelDispatchForRow(cuadrillaId: string) {
+    if (grupoDespacho === "huawei") return "HUAWEI";
+    if (grupoDespacho === "zte") return "ZTE";
+    return (cuadrillaModelGroup[cuadrillaId] || "NEUTRO").toUpperCase();
   }
 
   function buildExportRows() {
@@ -534,9 +617,21 @@ export default function PredespachoClient() {
         FONO: Number.isFinite(Number(man.FONO)) ? n(man.FONO) : n(sug.FONO),
         BOX: Number.isFinite(Number(man.BOX)) ? n(man.BOX) : n(sug.BOX),
       };
+      const modelDispatch = modelDispatchForRow(c.id);
+      const finalOntHuawei = modelDispatch === "HUAWEI" ? final.ONT : 0;
+      const finalOntZte = modelDispatch === "ZTE" ? final.ONT : 0;
+      const finalMeshHuawei = modelDispatch === "HUAWEI" ? final.MESH : 0;
+      const finalMeshZte = modelDispatch === "ZTE" ? final.MESH : 0;
       return {
+        Modelo_Despacho: modelDispatch,
         Coordinador: c.coordinadorNombre || "",
         Cuadrilla: c.nombre || c.id,
+        Final_ONT_Total: final.ONT,
+        Final_ONT_Huawei: finalOntHuawei,
+        Final_ONT_ZTE: finalOntZte,
+        Final_MESH_Total: final.MESH,
+        Final_MESH_Huawei: finalMeshHuawei,
+        Final_MESH_ZTE: finalMeshZte,
         Final_ONT: final.ONT,
         Final_MESH: final.MESH,
         Final_FONO: final.FONO,
@@ -547,11 +642,44 @@ export default function PredespachoClient() {
         PRECON_200: n(preconAsignado[c.id]?.PRECON_200),
         Bobina_Resi: n(bobinaResi[c.id] || 0),
         Rollo_Condo: rolloCondo[c.id] ? "SI" : "NO",
-        Guardado_por: savedInfo[c.id]?.updatedByName || "",
-        Guardado_at: savedInfo[c.id]?.updatedAt || "",
-        Lote: savedInfo[c.id]?.saveBatchId || "",
       };
     });
+  }
+
+  function buildExportSummary(rows: ReturnType<typeof buildExportRows>) {
+    return rows.reduce(
+      (acc, row) => {
+        acc.ontTotal += n(row.Final_ONT_Total);
+        acc.ontHuawei += n(row.Final_ONT_Huawei);
+        acc.ontZte += n(row.Final_ONT_ZTE);
+        acc.meshTotal += n(row.Final_MESH_Total);
+        acc.meshHuawei += n(row.Final_MESH_Huawei);
+        acc.meshZte += n(row.Final_MESH_ZTE);
+        acc.fono += n(row.Final_FONO);
+        acc.box += n(row.Final_BOX);
+        acc.pre50 += n(row.PRECON_50);
+        acc.pre100 += n(row.PRECON_100);
+        acc.pre150 += n(row.PRECON_150);
+        acc.pre200 += n(row.PRECON_200);
+        acc.bobina += n(row.Bobina_Resi);
+        return acc;
+      },
+      {
+        ontTotal: 0,
+        ontHuawei: 0,
+        ontZte: 0,
+        meshTotal: 0,
+        meshHuawei: 0,
+        meshZte: 0,
+        fono: 0,
+        box: 0,
+        pre50: 0,
+        pre100: 0,
+        pre150: 0,
+        pre200: 0,
+        bobina: 0,
+      }
+    );
   }
 
   async function exportExcel() {
@@ -560,53 +688,250 @@ export default function PredespachoClient() {
       toast.error("No hay filas guardadas para exportar con el filtro actual");
       return;
     }
-    const XLSX = await import("xlsx");
-    const ws = XLSX.utils.json_to_sheet(data);
+    const summary = buildExportSummary(data);
+    const XLSX = await import("xlsx-js-style");
+    const aoa: any[][] = [
+      ["PREDESPACHO INSTALACIONES"],
+      [`Fecha base: ${anchor}`, `Ventana: ${periodLabel || "-"}`, `Modo: ${modeLabel}`, `Grupo despacho: ${grupoDespacho.toUpperCase()}`],
+      [`Cuadrillas exportadas: ${data.length}`, `ONT H/Z: ${summary.ontHuawei}/${summary.ontZte}`, `MESH H/Z: ${summary.meshHuawei}/${summary.meshZte}`, `FONO/BOX: ${summary.fono}/${summary.box}`],
+      [],
+      [
+        "Modelo",
+        "Coordinador",
+        "Cuadrilla",
+        "ONT Total",
+        "ONT Huawei",
+        "ONT ZTE",
+        "MESH Total",
+        "MESH Huawei",
+        "MESH ZTE",
+        "FONO",
+        "BOX",
+        "PRE 50",
+        "PRE 100",
+        "PRE 150",
+        "PRE 200",
+        "Bobina Resi",
+        "Rollo Condo",
+      ],
+      ...data.map((row) => [
+        row.Modelo_Despacho,
+        row.Coordinador,
+        row.Cuadrilla,
+        row.Final_ONT_Total,
+        row.Final_ONT_Huawei,
+        row.Final_ONT_ZTE,
+        row.Final_MESH_Total,
+        row.Final_MESH_Huawei,
+        row.Final_MESH_ZTE,
+        row.Final_FONO,
+        row.Final_BOX,
+        row.PRECON_50,
+        row.PRECON_100,
+        row.PRECON_150,
+        row.PRECON_200,
+        row.Bobina_Resi,
+        row.Rollo_Condo,
+      ]),
+      [
+        "TOTALES",
+        "",
+        "",
+        summary.ontTotal,
+        summary.ontHuawei,
+        summary.ontZte,
+        summary.meshTotal,
+        summary.meshHuawei,
+        summary.meshZte,
+        summary.fono,
+        summary.box,
+        summary.pre50,
+        summary.pre100,
+        summary.pre150,
+        summary.pre200,
+        summary.bobina,
+        "",
+      ],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = [
+      { wch: 12 }, { wch: 20 }, { wch: 28 }, { wch: 10 }, { wch: 11 }, { wch: 9 },
+      { wch: 11 }, { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 8 },
+      { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 11 }, { wch: 12 },
+    ];
+    ws["!freeze"] = { xSplit: 3, ySplit: 5 } as any;
+    const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
+    const titleStyle = {
+      font: { bold: true, sz: 15, color: { rgb: "0F172A" } },
+      fill: { fgColor: { rgb: "DBEAFE" } },
+      alignment: { horizontal: "center", vertical: "center" },
+    };
+    const metaStyle = {
+      font: { sz: 10, color: { rgb: "334155" } },
+      fill: { fgColor: { rgb: "F8FAFC" } },
+    };
+    const headerStyle = {
+      font: { bold: true, color: { rgb: "FFFFFF" } },
+      fill: { fgColor: { rgb: "30518C" } },
+      alignment: { horizontal: "center", vertical: "center" },
+      border: {
+        top: { style: "thin", color: { rgb: "CBD5E1" } },
+        bottom: { style: "thin", color: { rgb: "CBD5E1" } },
+        left: { style: "thin", color: { rgb: "CBD5E1" } },
+        right: { style: "thin", color: { rgb: "CBD5E1" } },
+      },
+    };
+    const bodyStyle = {
+      border: {
+        top: { style: "thin", color: { rgb: "E2E8F0" } },
+        bottom: { style: "thin", color: { rgb: "E2E8F0" } },
+        left: { style: "thin", color: { rgb: "E2E8F0" } },
+        right: { style: "thin", color: { rgb: "E2E8F0" } },
+      },
+      alignment: { vertical: "center" },
+    };
+    const totalStyle = {
+      font: { bold: true, color: { rgb: "0F172A" } },
+      fill: { fgColor: { rgb: "DCFCE7" } },
+      border: {
+        top: { style: "thin", color: { rgb: "86EFAC" } },
+        bottom: { style: "thin", color: { rgb: "86EFAC" } },
+        left: { style: "thin", color: { rgb: "86EFAC" } },
+        right: { style: "thin", color: { rgb: "86EFAC" } },
+      },
+    };
+    ws["A1"].s = titleStyle as any;
+    for (let c = 0; c <= range.e.c; c += 1) {
+      const meta1 = XLSX.utils.encode_cell({ r: 1, c });
+      const meta2 = XLSX.utils.encode_cell({ r: 2, c });
+      const header = XLSX.utils.encode_cell({ r: 4, c });
+      if (ws[meta1]) ws[meta1].s = metaStyle as any;
+      if (ws[meta2]) ws[meta2].s = metaStyle as any;
+      if (ws[header]) ws[header].s = headerStyle as any;
+    }
+    for (let r = 5; r <= range.e.r; r += 1) {
+      for (let c = 0; c <= range.e.c; c += 1) {
+        const cell = XLSX.utils.encode_cell({ r, c });
+        if (!ws[cell]) continue;
+        ws[cell].s = (r === range.e.r ? totalStyle : bodyStyle) as any;
+      }
+    }
+    ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 19 } }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Predespacho");
     XLSX.writeFile(wb, `predespacho_${anchor}.xlsx`);
   }
 
   async function exportPdf() {
-    const rows = uiRows.filter((r) => !!savedInfo[r.id]?.updatedAt);
-    if (!rows.length) {
+    const exportRows = buildExportRows();
+    if (!exportRows.length) {
       toast.error("No hay filas guardadas para exportar con el filtro actual");
       return;
     }
+    const summary = buildExportSummary(exportRows);
     const { jsPDF } = await import("jspdf");
-    const doc = new jsPDF({ orientation: "landscape" });
-    doc.setFontSize(11);
-    doc.text(`Predespacho guardado - ${anchor}`, 10, 10);
-    doc.setFontSize(8);
-    let y = 18;
-    const header = "Coordinador | Cuadrilla | ONT MESH FONO BOX | PRE50 PRE100 PRE150 PRE200 | Bobina | Rollo | Lote";
-    doc.text(header, 10, y);
-    y += 4;
-    for (const c of rows) {
-      const sug = sugerido[c.id] || emptyCounts();
-      const man = manual[c.id] || {};
-      const final: Counts = {
-        ONT: Number.isFinite(Number(man.ONT)) ? n(man.ONT) : n(sug.ONT),
-        MESH: Number.isFinite(Number(man.MESH)) ? n(man.MESH) : n(sug.MESH),
-        FONO: Number.isFinite(Number(man.FONO)) ? n(man.FONO) : n(sug.FONO),
-        BOX: Number.isFinite(Number(man.BOX)) ? n(man.BOX) : n(sug.BOX),
-      };
-      const line = [
-        c.coordinadorNombre || "-",
-        c.nombre || c.id,
-        `${final.ONT}/${final.MESH}/${final.FONO}/${final.BOX}`,
-        `${n(preconAsignado[c.id]?.PRECON_50)}/${n(preconAsignado[c.id]?.PRECON_100)}/${n(preconAsignado[c.id]?.PRECON_150)}/${n(preconAsignado[c.id]?.PRECON_200)}`,
-        String(n(bobinaResi[c.id] || 0)),
-        rolloCondo[c.id] ? "SI" : "NO",
-        savedInfo[c.id]?.saveBatchId || "-",
-      ].join(" | ");
-      doc.text(line, 10, y);
-      y += 4;
-      if (y > 190) {
-        doc.addPage();
-        y = 12;
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const pageWidth = 297;
+    const pageHeight = 210;
+    const margin = 10;
+    const columns = [
+      { key: "Modelo_Despacho", label: "Modelo", width: 18 },
+      { key: "Coordinador", label: "Coordinador", width: 35 },
+      { key: "Cuadrilla", label: "Cuadrilla", width: 34 },
+      { key: "Final_ONT_Huawei", label: "ONT H", width: 12 },
+      { key: "Final_ONT_ZTE", label: "ONT Z", width: 12 },
+      { key: "Final_MESH_Huawei", label: "MESH H", width: 14 },
+      { key: "Final_MESH_ZTE", label: "MESH Z", width: 14 },
+      { key: "Final_FONO", label: "FONO", width: 12 },
+      { key: "Final_BOX", label: "BOX", width: 10 },
+      { key: "PRECON_50", label: "P50", width: 12 },
+      { key: "PRECON_100", label: "P100", width: 14 },
+      { key: "PRECON_150", label: "P150", width: 14 },
+      { key: "PRECON_200", label: "P200", width: 14 },
+      { key: "Bobina_Resi", label: "Bobina", width: 12 },
+      { key: "Rollo_Condo", label: "Condo", width: 12 },
+    ] as const;
+    const drawHeader = () => {
+      doc.setFillColor(48, 81, 140);
+      doc.rect(margin, 10, pageWidth - margin * 2, 10, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(15);
+      doc.text("PREDESPACHO INSTALACIONES", margin + 3, 16.5);
+      doc.setTextColor(51, 65, 85);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.5);
+      doc.text(`Fecha base: ${anchor}`, margin, 25);
+      doc.text(`Ventana: ${periodLabel || "-"}`, margin + 45, 25);
+      doc.text(`Modo: ${modeLabel}`, margin + 105, 25);
+      doc.text(`Grupo despacho: ${grupoDespacho.toUpperCase()}`, margin + 165, 25);
+      doc.text(`Filas: ${exportRows.length}`, margin + 245, 25);
+      doc.setFillColor(239, 246, 255);
+      doc.roundedRect(margin, 29, 62, 12, 2, 2, "F");
+      doc.roundedRect(margin + 66, 29, 62, 12, 2, 2, "F");
+      doc.roundedRect(margin + 132, 29, 62, 12, 2, 2, "F");
+      doc.roundedRect(margin + 198, 29, 89, 12, 2, 2, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.text(`ONT H/Z: ${summary.ontHuawei}/${summary.ontZte}`, margin + 3, 34);
+      doc.text(`MESH H/Z: ${summary.meshHuawei}/${summary.meshZte}`, margin + 69, 34);
+      doc.text(`FONO/BOX: ${summary.fono}/${summary.box}`, margin + 135, 34);
+      doc.text(`PRE50/100/150/200: ${summary.pre50}/${summary.pre100}/${summary.pre150}/${summary.pre200}`, margin + 201, 34);
+    };
+    const drawTableHeader = (y: number) => {
+      doc.setFillColor(241, 245, 249);
+      doc.rect(margin, y, pageWidth - margin * 2, 8, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.5);
+      doc.setTextColor(15, 23, 42);
+      let x = margin;
+      for (const col of columns) {
+        doc.rect(x, y, col.width, 8);
+        doc.text(col.label, x + 1.5, y + 5.2);
+        x += col.width;
       }
+    };
+    const drawRow = (row: any, y: number) => {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.2);
+      doc.setTextColor(30, 41, 59);
+      let x = margin;
+      for (const col of columns) {
+        doc.rect(x, y, col.width, 7);
+        const raw = String(row[col.key] ?? "");
+        const text = doc.splitTextToSize(raw, col.width - 2).slice(0, 1);
+        doc.text(text, x + 1, y + 4.6);
+        x += col.width;
+      }
+    };
+    drawHeader();
+    let y = 45;
+    drawTableHeader(y);
+    y += 8;
+    for (const row of exportRows) {
+      if (y > pageHeight - 18) {
+        doc.addPage();
+        drawHeader();
+        y = 45;
+        drawTableHeader(y);
+        y += 8;
+      }
+      drawRow(row, y);
+      y += 7;
     }
+    if (y > pageHeight - 20) {
+      doc.addPage();
+      drawHeader();
+      y = 45;
+    }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(15, 23, 42);
+    doc.text(
+      `Totales -> ONT: ${summary.ontTotal} | MESH: ${summary.meshTotal} | FONO: ${summary.fono} | BOX: ${summary.box} | PRE50/100/150/200: ${summary.pre50}/${summary.pre100}/${summary.pre150}/${summary.pre200}`,
+      margin,
+      y + 6
+    );
     doc.save(`predespacho_${anchor}.pdf`);
   }
 
@@ -873,6 +1198,67 @@ export default function PredespachoClient() {
         </div>
       </section>
 
+      <section className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold">Control de despacho</div>
+            <div className="text-xs text-slate-500">Revision operativa antes de guardar. El sistema bloquea el guardado si el plan excede el stock disponible.</div>
+          </div>
+          <div className={`rounded-full px-3 py-1 text-xs font-semibold ${hasAvailabilityIssues ? "bg-rose-100 text-rose-700 dark:bg-rose-950/30 dark:text-rose-200" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200"}`}>
+            {hasAvailabilityIssues ? "Stock insuficiente" : "Stock validado"}
+          </div>
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-4">
+          {EQUIPOS.map((k) => (
+            <div key={`avail-${k}`} className={`rounded-xl border p-3 ${availability[k].exceeded ? "border-rose-300 bg-rose-50 dark:border-rose-900 dark:bg-rose-950/20" : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60"}`}>
+              <div className="text-[11px] uppercase tracking-wide text-slate-500">{k}</div>
+              <div className="mt-1 flex items-end justify-between gap-2">
+                <div>
+                  <div className="text-lg font-semibold">{availability[k].planned}</div>
+                  <div className="text-[11px] text-slate-500">Planificado</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-lg font-semibold">{availability[k].available}</div>
+                  <div className="text-[11px] text-slate-500">Disponible</div>
+                </div>
+              </div>
+              <div className={`mt-2 text-xs font-medium ${availability[k].remaining < 0 ? "text-rose-700 dark:text-rose-200" : "text-slate-600 dark:text-slate-300"}`}>
+                Saldo: {availability[k].remaining}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-4">
+          {PRECONS.map((p) => (
+            <div key={`precon-avail-${p}`} className={`rounded-xl border p-3 ${preconAvailability[p].exceeded ? "border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20" : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60"}`}>
+              <div className="text-[11px] uppercase tracking-wide text-slate-500">{p}</div>
+              <div className="mt-1 flex items-end justify-between gap-2">
+                <div>
+                  <div className="text-lg font-semibold">{preconAvailability[p].planned}</div>
+                  <div className="text-[11px] text-slate-500">Asignado</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-lg font-semibold">{preconAvailability[p].available}</div>
+                  <div className="text-[11px] text-slate-500">Disponible</div>
+                </div>
+              </div>
+              <div className={`mt-2 text-xs font-medium ${preconAvailability[p].remaining < 0 ? "text-amber-700 dark:text-amber-200" : "text-slate-600 dark:text-slate-300"}`}>
+                Saldo: {preconAvailability[p].remaining}
+              </div>
+            </div>
+          ))}
+        </div>
+        {hasAvailabilityIssues ? (
+          <div className="mt-3 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/20 dark:text-rose-200">
+            Ajusta cantidades manuales, filas omitidas o PRECON asignado antes de guardar. Excedidos: {[...exceededEquipos, ...exceededPrecons].join(", ")}
+          </div>
+        ) : (
+          <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-200">
+            El plan actual se encuentra dentro del stock disponible para despacho.
+          </div>
+        )}
+      </section>
+
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
           <div className="text-xs text-slate-500">Cuadrillas en alcance</div>
@@ -966,7 +1352,7 @@ export default function PredespachoClient() {
             <button type="button" onClick={exportExcel} className="rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">Exportar Excel</button>
             <button type="button" onClick={exportPdf} className="rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">Exportar PDF</button>
             {!readOnly && (
-              <button type="button" onClick={savePredespacho} className="rounded bg-[#30518c] px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-50" disabled={saving || loading || !uiRows.length}>
+              <button type="button" onClick={savePredespacho} className="rounded bg-[#30518c] px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-50" disabled={saving || loading || !uiRows.length || hasAvailabilityIssues}>
                 {saving ? "Guardando..." : "Guardar filas visibles"}
               </button>
             )}
@@ -1135,6 +1521,3 @@ export default function PredespachoClient() {
     </div>
   );
 }
-
-
-

@@ -127,12 +127,6 @@ function toInt(v: any) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function countFromArrayOrStr(v: any) {
-  if (Array.isArray(v)) return v.filter(Boolean).length;
-  if (typeof v === "string" && v.trim()) return 1;
-  return 0;
-}
-
 function parseCantidadMeshFromPlan(plan: any) {
   const s = String(plan || "");
   const m = s.match(/cantidad\s*de\s*mesh\s*:\s*(\d+)/i);
@@ -148,15 +142,25 @@ function parseCantidadBoxFromPlan(plan: any) {
 }
 
 function countONT(x: any) {
-  if (String(x?.snONT || "").trim()) return 1;
+  const fromEquipos = toSnListFromEquiposInstalados(x, "ONT").length;
+  if (fromEquipos) return fromEquipos;
+  const fromSeries = [
+    ...parseSnList(x?.snONT),
+    ...parseSnList(x?.snONTs),
+  ].filter(Boolean).length;
+  if (fromSeries) return fromSeries;
   if (String(x?.proidONT || "").trim()) return 1;
   if (String(x?.proid || "").trim()) return 1;
-  if (Array.isArray(x?.snONTs)) return x.snONTs.filter(Boolean).length;
-  return 0;
+  return String(x?.snONT || "").trim() ? 1 : 0;
 }
 
 function countMESH(x: any) {
-  const fromSeries = countFromArrayOrStr(x?.snMESH || x?.snMESHs);
+  const fromEquipos = toSnListFromEquiposInstalados(x, "MESH").length;
+  if (fromEquipos) return fromEquipos;
+  const fromSeries = [
+    ...parseSnList(x?.snMESH),
+    ...parseSnList(x?.snMESHs),
+  ].filter(Boolean).length;
   if (fromSeries) return fromSeries;
   const fromField = toInt(x?.cantMESHwin ?? x?.cantMeshwin ?? x?.cantidadMesh ?? x?.cantMesh ?? 0);
   if (fromField) return fromField;
@@ -165,7 +169,12 @@ function countMESH(x: any) {
 }
 
 function countBOX(x: any) {
-  const fromSeries = countFromArrayOrStr(x?.snBOX || x?.snBOXs);
+  const fromEquipos = toSnListFromEquiposInstalados(x, "BOX").length;
+  if (fromEquipos) return fromEquipos;
+  const fromSeries = [
+    ...parseSnList(x?.snBOX),
+    ...parseSnList(x?.snBOXs),
+  ].filter(Boolean).length;
   if (fromSeries) return fromSeries;
   const fromField = toInt(x?.cantBOXwin ?? x?.cantidadBox ?? x?.cantBox ?? 0);
   if (fromField) return fromField;
@@ -173,7 +182,12 @@ function countBOX(x: any) {
 }
 
 function countFONO(x: any) {
-  const fromSeries = countFromArrayOrStr(x?.snFONO || x?.snFONOs);
+  const fromEquipos = toSnListFromEquiposInstalados(x, "FONO").length;
+  if (fromEquipos) return fromEquipos;
+  const fromSeries = [
+    ...parseSnList(x?.snFONO),
+    ...parseSnList(x?.snFONOs),
+  ].filter(Boolean).length;
   if (fromSeries) return fromSeries;
   return toInt(x?.cantFONOwin ?? x?.cantidadFono ?? x?.cantFono ?? 0);
 }
@@ -188,6 +202,22 @@ function asStr(v: any) {
 
 function keyName(v: any) {
   return asStr(v).toUpperCase();
+}
+
+function cuadrillaCandidatesFromInst(inst: any) {
+  return [
+    inst?.cuadrillaId,
+    inst?.orden?.cuadrillaId,
+    inst?.cuadrilla,
+    inst?.orden?.cuadrilla,
+    inst?.cuadrillaNombre,
+    inst?.orden?.cuadrillaNombre,
+    inst?.orden?.cuadrillaRaw,
+    inst?.numeroCuadrilla,
+    inst?.orden?.numeroCuadrilla,
+  ]
+    .map((v) => asStr(v))
+    .filter(Boolean);
 }
 
 function normalizeText(v: any) {
@@ -245,7 +275,7 @@ function parseSnList(v: any): string[] {
   return [];
 }
 
-function toSnListFromEquiposInstalados(x: any, tipo: "ONT" | "MESH") {
+function toSnListFromEquiposInstalados(x: any, tipo: "ONT" | "MESH" | "BOX" | "FONO") {
   const arr = Array.isArray(x?.equiposInstalados) ? x.equiposInstalados : [];
   return arr
     .filter((e: any) => normalizeText(e?.tipo) === tipo)
@@ -556,14 +586,8 @@ export async function GET(req: Request) {
         !!x?.liquidadoAt;
       if (!isLiquid) continue;
 
-      const cuRaw =
-        x?.cuadrillaId ||
-        x?.cuadrillaNombre ||
-        x?.cuadrilla ||
-        x?.orden?.cuadrillaId ||
-        x?.orden?.cuadrillaNombre ||
-        "";
-      const cuId = byKey.get(keyName(cuRaw));
+      const cuCandidates = cuadrillaCandidatesFromInst(x);
+      const cuId = cuCandidates.map((raw) => byKey.get(keyName(raw))).find(Boolean);
       if (!cuId) continue;
 
       let ont = countONT(x);

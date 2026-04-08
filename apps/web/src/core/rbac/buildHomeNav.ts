@@ -144,7 +144,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     items.push({ key: "USUARIOS", label: "Usuarios", href: "/home/usuarios" });
   }
 
-  if (session.isAdmin || ((isGerencia || isJefatura) && hasPerm(session, PERM_GERENCIA_COORDINADORES))) {
+  if (session.isAdmin || isJefatura || (isGerencia && hasPerm(session, PERM_GERENCIA_COORDINADORES))) {
     items.push({
       key: "GERENCIA_COORDINADORES",
       label: "Gerencia: Coordinadores",

@@ -12,8 +12,8 @@ function hasGerenciaAccess(session: NonNullable<Awaited<ReturnType<typeof getSer
   const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
   return (
     session.isAdmin ||
-    ((roles.includes("GERENCIA") || roles.includes("JEFATURA")) &&
-      session.permissions.includes(PERM_GERENCIA_COORDINADORES))
+    roles.includes("JEFATURA") ||
+    (roles.includes("GERENCIA") && session.permissions.includes(PERM_GERENCIA_COORDINADORES))
   );
 }
 

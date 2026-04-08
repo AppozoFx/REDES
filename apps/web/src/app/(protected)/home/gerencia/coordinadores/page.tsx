@@ -11,8 +11,8 @@ export default async function GerenciaCoordinadoresPage() {
   const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
   const canUse =
     session.isAdmin ||
-    ((roles.includes("GERENCIA") || roles.includes("JEFATURA")) &&
-      session.permissions.includes(PERM_GERENCIA_COORDINADORES));
+    roles.includes("JEFATURA") ||
+    (roles.includes("GERENCIA") && session.permissions.includes(PERM_GERENCIA_COORDINADORES));
 
   if (!canUse) redirect("/home");
 

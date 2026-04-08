@@ -59,6 +59,11 @@ function asArray(v: any) {
   return Array.isArray(v) ? v.map((x) => String(x || "").trim()).filter(Boolean) : [];
 }
 
+function toInt(v: any) {
+  const n = Number(String(v ?? "").trim());
+  return Number.isFinite(n) ? n : 0;
+}
+
 export async function POST(req: Request) {
   try {
     const session = await getServerSession();
@@ -81,6 +86,8 @@ export async function POST(req: Request) {
     const anchor = asStr(body?.anchor) || toYmd(new Date());
     const rows = Array.isArray(body?.rows) ? body.rows : [];
     if (!rows.length) return NextResponse.json({ ok: false, error: "ROWS_REQUIRED" }, { status: 400 });
+    const availableStock = body?.availableStock || {};
+    const availablePrecon = body?.availablePrecon || {};
 
     const scope = resolveScope(roles, session.isAdmin);
     if (scope !== "all") {
@@ -107,12 +114,27 @@ export async function POST(req: Request) {
     const batchId = asStr(body?.batchId) || `${new Date().toISOString()}_${uid}`;
     const now = new Date().toISOString();
     const userName = asStr(body?.userName || uid);
+    const totalPlan = { ONT: 0, MESH: 0, FONO: 0, BOX: 0 };
+    const totalPrecon = { PRECON_50: 0, PRECON_100: 0, PRECON_150: 0, PRECON_200: 0 };
 
     let saved = 0;
     const batch = db.batch();
     for (const row of rows) {
       const cuadrillaId = asStr(row?.cuadrillaId);
       if (!cuadrillaId || !allowed.has(cuadrillaId)) continue;
+      const omitida = !!row?.omitida;
+      const final = row?.final || {};
+      const precon = row?.precon || {};
+      if (!omitida) {
+        totalPlan.ONT += toInt(final?.ONT);
+        totalPlan.MESH += toInt(final?.MESH);
+        totalPlan.FONO += toInt(final?.FONO);
+        totalPlan.BOX += toInt(final?.BOX);
+        totalPrecon.PRECON_50 += toInt(precon?.PRECON_50);
+        totalPrecon.PRECON_100 += toInt(precon?.PRECON_100);
+        totalPrecon.PRECON_150 += toInt(precon?.PRECON_150);
+        totalPrecon.PRECON_200 += toInt(precon?.PRECON_200);
+      }
       const ref = db.collection("instalaciones_predespacho").doc(`${period.periodKey}_${cuadrillaId}`);
       batch.set(ref, {
         periodKey: period.periodKey,
@@ -124,11 +146,11 @@ export async function POST(req: Request) {
         stock: row?.stock || {},
         sugerido: row?.sugerido || {},
         manual: row?.manual || {},
-        final: row?.final || {},
-        omitida: !!row?.omitida,
+        final,
+        omitida,
         bobinaResi: Number(row?.bobinaResi || 0),
         rolloCondo: !!row?.rolloCondo,
-        precon: row?.precon || {},
+        precon,
         nota: asStr(row?.nota || ""),
         saveBatchId: batchId,
         updatedAt: now,
@@ -139,11 +161,26 @@ export async function POST(req: Request) {
     }
 
     if (!saved) return NextResponse.json({ ok: false, error: "NO_ALLOWED_ROWS" }, { status: 400 });
+    if (
+      totalPlan.ONT > toInt(availableStock?.ONT) ||
+      totalPlan.MESH > toInt(availableStock?.MESH) ||
+      totalPlan.FONO > toInt(availableStock?.FONO) ||
+      totalPlan.BOX > toInt(availableStock?.BOX)
+    ) {
+      return NextResponse.json({ ok: false, error: "STOCK_INSUFFICIENT" }, { status: 400 });
+    }
+    if (
+      totalPrecon.PRECON_50 > toInt(availablePrecon?.PRECON_50) ||
+      totalPrecon.PRECON_100 > toInt(availablePrecon?.PRECON_100) ||
+      totalPrecon.PRECON_150 > toInt(availablePrecon?.PRECON_150) ||
+      totalPrecon.PRECON_200 > toInt(availablePrecon?.PRECON_200)
+    ) {
+      return NextResponse.json({ ok: false, error: "PRECON_STOCK_INSUFFICIENT" }, { status: 400 });
+    }
     await batch.commit();
     return NextResponse.json({ ok: true, saved, periodKey: period.periodKey, batchId });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }
 }
-
 

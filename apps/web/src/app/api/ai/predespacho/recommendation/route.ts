@@ -83,6 +83,16 @@ function toInt(v: any) {
   return Math.max(0, Math.floor(n));
 }
 
+function suggestedNeed(objetivoVal: number, consumoVal: number, promedioVal: number, stockVal: number) {
+  const objetivo = toInt(objetivoVal);
+  const consumo = toInt(consumoVal);
+  const promedio = toInt(promedioVal);
+  const stock = toInt(stockVal);
+  const recentNeed = Math.max(consumo, promedio);
+  const targetLevel = recentNeed > 0 ? Math.min(objetivo, recentNeed) : objetivo;
+  return Math.max(0, Math.ceil(targetLevel - stock));
+}
+
 function createRequestId() {
   return `ai_pred_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -169,10 +179,10 @@ function buildDeterministicSuggestion(input: z.infer<typeof RequestSchema>) {
       continue;
     }
     result[row.cuadrillaId] = {
-      ONT: Math.max(0, Math.ceil(Math.max(toInt(input.objetivo.ONT), toInt(row.promedio.ONT)) - toInt(row.stock.ONT))),
-      MESH: Math.max(0, Math.ceil(Math.max(toInt(input.objetivo.MESH), toInt(row.promedio.MESH)) - toInt(row.stock.MESH))),
-      FONO: Math.max(0, Math.ceil(Math.max(toInt(input.objetivo.FONO), toInt(row.promedio.FONO)) - toInt(row.stock.FONO))),
-      BOX: Math.max(0, Math.ceil(Math.max(toInt(input.objetivo.BOX), toInt(row.promedio.BOX)) - toInt(row.stock.BOX))),
+      ONT: suggestedNeed(input.objetivo.ONT, row.consumo.ONT, row.promedio.ONT, row.stock.ONT),
+      MESH: suggestedNeed(input.objetivo.MESH, row.consumo.MESH, row.promedio.MESH, row.stock.MESH),
+      FONO: suggestedNeed(input.objetivo.FONO, row.consumo.FONO, row.promedio.FONO, row.stock.FONO),
+      BOX: suggestedNeed(input.objetivo.BOX, row.consumo.BOX, row.promedio.BOX, row.stock.BOX),
     };
   }
   return capByStock(result, input.stockAlmacen, omitidas);
@@ -246,8 +256,10 @@ function buildAiPrompt(input: z.infer<typeof RequestSchema>) {
     "1) Solo ids presentes en rows.",
     "2) Enteros >= 0.",
     "3) Si omitida=true, todos 0.",
-    "4) Usa objetivo, consumo, promedio y stock para recomendar.",
-    "5) No incluyas explicaciones ni texto adicional.",
+    "4) Prioriza consumo reciente y promedio sobre el objetivo fijo.",
+    "5) Usa el objetivo como tope operativo, no como piso automatico.",
+    "6) Si el consumo reciente es bajo y la cuadrilla ya tiene stock, evita sobre-despachar.",
+    "7) No incluyas explicaciones ni texto adicional.",
     `DATA=${JSON.stringify(payload)}`,
   ].join("\n");
 }

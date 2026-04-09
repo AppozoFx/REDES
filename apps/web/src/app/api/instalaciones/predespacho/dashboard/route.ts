@@ -7,6 +7,7 @@ export const runtime = "nodejs";
 type Scope = "all" | "coordinador" | "tecnico";
 type ModelFilter = "ALL" | "HUAWEI" | "ZTE";
 type ModelGroup = "HUAWEI" | "ZTE" | "NEUTRO";
+type DispatchGroup = "ALL" | "HUAWEI" | "ZTE";
 const EQUIPOS = ["ONT", "MESH", "FONO", "BOX"] as const;
 const HUAWEI_DESC_HINTS = [
   "HUAWEI",
@@ -235,6 +236,13 @@ function parseModelFilter(v: string): ModelFilter {
   return "ALL";
 }
 
+function parseDispatchGroup(v: string): DispatchGroup {
+  const up = normalizeText(v);
+  if (up === "HUAWEI") return "HUAWEI";
+  if (up === "ZTE") return "ZTE";
+  return "ALL";
+}
+
 function modelFromDescripcion(descRaw: any): ModelFilter | null {
   const desc = normalizeText(descRaw);
   if (!desc) return null;
@@ -291,6 +299,95 @@ function isExcludedUbicacion(v: any) {
   return ["robo", "robado", "perdida", "averia", "garantia"].some((w) => s.includes(w));
 }
 
+function pickEqCounts(source: any) {
+  const x = source || {};
+  return {
+    ONT: toInt(x?.ONT),
+    MESH: toInt(x?.MESH),
+    FONO: toInt(x?.FONO),
+    BOX: toInt(x?.BOX),
+  };
+}
+
+function hasEqCount(source: any, key: "ONT" | "MESH" | "FONO" | "BOX") {
+  return !!source && Object.prototype.hasOwnProperty.call(source, key);
+}
+
+function resolveEqCount(primary: any, fallback: any, legacy: any, key: "ONT" | "MESH" | "FONO" | "BOX") {
+  if (hasEqCount(primary, key)) return toInt(primary?.[key]);
+  if (hasEqCount(fallback, key)) return toInt(fallback?.[key]);
+  if (hasEqCount(legacy, key)) return toInt(legacy?.[key]);
+  return 0;
+}
+
+function mergeEqCounts(
+  sharedSource: any,
+  modelSource: any,
+  legacySource: any,
+  dispatchGroup: DispatchGroup
+) {
+  const shared = pickEqCounts(sharedSource);
+  const model = pickEqCounts(modelSource);
+  const legacy = pickEqCounts(legacySource);
+  if (dispatchGroup === "ALL") {
+    return {
+      ONT: resolveEqCount(modelSource, null, legacySource, "ONT"),
+      MESH: resolveEqCount(modelSource, null, legacySource, "MESH"),
+      FONO: resolveEqCount(sharedSource, modelSource, legacySource, "FONO"),
+      BOX: resolveEqCount(sharedSource, modelSource, legacySource, "BOX"),
+    };
+  }
+  return {
+    ONT: resolveEqCount(modelSource, null, legacySource, "ONT"),
+    MESH: resolveEqCount(modelSource, null, legacySource, "MESH"),
+    FONO: resolveEqCount(sharedSource, legacySource, modelSource, "FONO"),
+    BOX: resolveEqCount(sharedSource, legacySource, modelSource, "BOX"),
+  };
+}
+
+function mergePredespachoRow(
+  legacyDoc: any,
+  sharedDoc: any,
+  modelDoc: any,
+  dispatchGroup: DispatchGroup
+) {
+  if (dispatchGroup === "ALL" && legacyDoc) {
+    return {
+      id: legacyDoc.id,
+      updatedAt: legacyDoc.updatedAt || null,
+      updatedByName: asStr(legacyDoc.updatedByName || ""),
+      saveBatchId: asStr(legacyDoc.saveBatchId || ""),
+      omitida: !!legacyDoc.omitida,
+      bobinaResi: toInt(legacyDoc.bobinaResi || 0),
+      rolloCondo: !!legacyDoc.rolloCondo,
+      precon: legacyDoc.precon || {},
+      manual: legacyDoc.manual || {},
+      final: legacyDoc.final || {},
+      sugerido: legacyDoc.sugerido || {},
+    };
+  }
+
+  const sharedBase = sharedDoc || legacyDoc || {};
+  const modelBase = modelDoc || legacyDoc || {};
+  const metaBase = modelDoc || sharedDoc || legacyDoc || {};
+  return {
+    id: asStr(modelBase?.id || sharedBase?.id || metaBase?.id),
+    updatedAt: metaBase?.updatedAt || null,
+    updatedByName: asStr(metaBase?.updatedByName || ""),
+    saveBatchId: asStr(metaBase?.saveBatchId || ""),
+    omitida: !!sharedBase?.omitida,
+    bobinaResi: toInt(sharedBase?.bobinaResi || 0),
+    rolloCondo: !!sharedBase?.rolloCondo,
+    precon: sharedBase?.precon || {},
+    objetivo: mergeEqCounts(sharedBase?.objetivo, modelBase?.objetivo, legacyDoc?.objetivo, dispatchGroup),
+    consumo: mergeEqCounts(sharedBase?.consumo, modelBase?.consumo, legacyDoc?.consumo, dispatchGroup),
+    stock: mergeEqCounts(sharedBase?.stock, modelBase?.stock, legacyDoc?.stock, dispatchGroup),
+    sugerido: mergeEqCounts(sharedBase?.sugerido, modelBase?.sugerido, legacyDoc?.sugerido, dispatchGroup),
+    manual: mergeEqCounts(sharedBase?.manual, modelBase?.manual, legacyDoc?.manual, dispatchGroup),
+    final: mergeEqCounts(sharedBase?.final, modelBase?.final, legacyDoc?.final, dispatchGroup),
+  };
+}
+
 function resolveScope(roles: string[], isAdmin: boolean): Scope {
   const isPrivileged =
     isAdmin ||
@@ -326,6 +423,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const anchor = String(searchParams.get("anchor") || "").trim() || toYmd(new Date());
     const modelFilter = parseModelFilter(String(searchParams.get("modelo") || ""));
+    const dispatchGroup = parseDispatchGroup(String(searchParams.get("grupo") || ""));
     const period = rollingAnchors(anchor);
 
     const db = adminDb();
@@ -402,6 +500,7 @@ export async function GET(req: Request) {
         .where("periodKey", "==", period.periodKey)
         .select(
           "cuadrillaId",
+          "dispatchGroup",
           "updatedAt",
           "updatedByName",
           "saveBatchId",
@@ -641,13 +740,22 @@ export async function GET(req: Request) {
     const visibleIds = new Set(cuadrillas.map((c) => c.id));
     const predespacho: Record<string, any> = {};
     const batchIds = new Set<string>();
+    const savedByCuadrilla = new Map<string, Partial<Record<DispatchGroup | "SHARED", any>>>();
     for (const d of savedSnap.docs) {
       const x = d.data() as any;
       const id = asStr(x?.cuadrillaId);
       if (!id || !visibleIds.has(id)) continue;
       const batchId = asStr(x?.saveBatchId || "");
       if (batchId) batchIds.add(batchId);
-      predespacho[id] = {
+      const rawGroup = normalizeText(x?.dispatchGroup || "");
+      const groupKey: DispatchGroup | "SHARED" =
+        rawGroup === "HUAWEI" || rawGroup === "ZTE" || rawGroup === "ALL"
+          ? (rawGroup as DispatchGroup)
+          : rawGroup === "SHARED"
+            ? "SHARED"
+            : "ALL";
+      const current = savedByCuadrilla.get(id) || {};
+      current[groupKey] = {
         id: d.id,
         updatedAt: x?.updatedAt || null,
         updatedByName: asStr(x?.updatedByName || ""),
@@ -656,10 +764,67 @@ export async function GET(req: Request) {
         bobinaResi: toInt(x?.bobinaResi || 0),
         rolloCondo: !!x?.rolloCondo,
         precon: x?.precon || {},
+        objetivo: x?.objetivo || {},
+        consumo: x?.consumo || {},
+        stock: x?.stock || {},
         manual: x?.manual || {},
         final: x?.final || {},
         sugerido: x?.sugerido || {},
       };
+      savedByCuadrilla.set(id, current);
+    }
+
+    for (const c of cuadrillas) {
+      const saved = savedByCuadrilla.get(c.id);
+      if (!saved) continue;
+      const legacyDoc = saved.ALL || null;
+      const sharedDoc = saved.SHARED || null;
+
+      if (dispatchGroup === "ALL") {
+        const hDoc = saved.HUAWEI || null;
+        const zDoc = saved.ZTE || null;
+        if (!sharedDoc && !hDoc && !zDoc) {
+          if (!legacyDoc) continue;
+          predespacho[c.id] = mergePredespachoRow(legacyDoc, null, null, dispatchGroup);
+          continue;
+        }
+        const aggregatedModelDoc = {
+          id: asStr(hDoc?.id || zDoc?.id || sharedDoc?.id),
+          updatedAt: hDoc?.updatedAt || zDoc?.updatedAt || sharedDoc?.updatedAt || null,
+          updatedByName: asStr(hDoc?.updatedByName || zDoc?.updatedByName || sharedDoc?.updatedByName || ""),
+          saveBatchId: asStr(hDoc?.saveBatchId || zDoc?.saveBatchId || sharedDoc?.saveBatchId || ""),
+          objetivo: {
+            ONT: toInt(hDoc?.objetivo?.ONT) + toInt(zDoc?.objetivo?.ONT),
+            MESH: toInt(hDoc?.objetivo?.MESH) + toInt(zDoc?.objetivo?.MESH),
+          },
+          consumo: {
+            ONT: toInt(hDoc?.consumo?.ONT) + toInt(zDoc?.consumo?.ONT),
+            MESH: toInt(hDoc?.consumo?.MESH) + toInt(zDoc?.consumo?.MESH),
+          },
+          stock: {
+            ONT: toInt(hDoc?.stock?.ONT) + toInt(zDoc?.stock?.ONT),
+            MESH: toInt(hDoc?.stock?.MESH) + toInt(zDoc?.stock?.MESH),
+          },
+          manual: {
+            ONT: toInt(hDoc?.manual?.ONT) + toInt(zDoc?.manual?.ONT),
+            MESH: toInt(hDoc?.manual?.MESH) + toInt(zDoc?.manual?.MESH),
+          },
+          final: {
+            ONT: toInt(hDoc?.final?.ONT) + toInt(zDoc?.final?.ONT),
+            MESH: toInt(hDoc?.final?.MESH) + toInt(zDoc?.final?.MESH),
+          },
+          sugerido: {
+            ONT: toInt(hDoc?.sugerido?.ONT) + toInt(zDoc?.sugerido?.ONT),
+            MESH: toInt(hDoc?.sugerido?.MESH) + toInt(zDoc?.sugerido?.MESH),
+          },
+        };
+        predespacho[c.id] = mergePredespachoRow(null, sharedDoc, aggregatedModelDoc, dispatchGroup);
+        continue;
+      }
+
+      const modelDoc = saved[dispatchGroup] || null;
+      if (!legacyDoc && !sharedDoc && !modelDoc) continue;
+      predespacho[c.id] = mergePredespachoRow(legacyDoc, sharedDoc, modelDoc, dispatchGroup);
     }
 
     const stockPrecon: Record<string, number> = {
@@ -690,6 +855,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: true,
       modelFilter,
+      dispatchGroup,
       scope,
       period,
       cuadrillas,

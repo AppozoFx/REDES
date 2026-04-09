@@ -130,12 +130,13 @@ export default function PredespachoClient() {
     return "MODO MANUAL";
   }, [aiRecommendation.status]);
 
-  async function loadData(nextAnchor = anchor, nextModelo = modeloFiltro) {
+  async function loadData(nextAnchor = anchor, nextModelo = modeloFiltro, nextGrupo = grupoDespacho) {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       params.set("anchor", nextAnchor);
       params.set("modelo", nextModelo);
+      params.set("grupo", nextGrupo);
       const res = await fetch(`/api/instalaciones/predespacho/dashboard?${params.toString()}`, { cache: "no-store" });
       const body = await res.json().catch(() => ({}));
       if (!res.ok || !body?.ok) throw new Error(String(body?.error || "ERROR"));
@@ -194,9 +195,9 @@ export default function PredespachoClient() {
   }
 
   useEffect(() => {
-    loadData(anchor, modeloFiltro);
+    loadData(anchor, modeloFiltro, grupoDespacho);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anchor, modeloFiltro]);
+  }, [anchor, modeloFiltro, grupoDespacho]);
 
   useEffect(() => {
     if (predespachoMode === "weekly") {
@@ -368,16 +369,16 @@ export default function PredespachoClient() {
 
   const totalPreconAsignado = useMemo(() => {
     const t = emptyPrecon();
-    for (const r of baseRows) {
+    for (const r of uiRows) {
       if (omitidas[r.id]) continue;
       for (const p of PRECONS) t[p] += n(preconAsignado[r.id]?.[p]);
     }
     return t;
-  }, [baseRows, omitidas, preconAsignado]);
+  }, [uiRows, omitidas, preconAsignado]);
 
   const totals = useMemo(() => {
     let plan = emptyCounts();
-    for (const c of baseRows) {
+    for (const c of uiRows) {
       if (omitidas[c.id]) continue;
       for (const k of EQUIPOS) {
         const mv = manual[c.id]?.[k];
@@ -386,7 +387,7 @@ export default function PredespachoClient() {
       }
     }
     return { plan };
-  }, [baseRows, manual, sugerido, omitidas]);
+  }, [uiRows, manual, sugerido, omitidas]);
 
   const availability = useMemo(() => {
     const out: Record<Eq, { available: number; planned: number; remaining: number; exceeded: boolean }> = {
@@ -579,6 +580,7 @@ export default function PredespachoClient() {
           anchor,
           rows,
           batchId,
+          dispatchGroup: grupoDespacho,
           availableStock: stockAlmacenActivo,
           availablePrecon: stockPrecon,
         }),
@@ -588,7 +590,7 @@ export default function PredespachoClient() {
       toast.success(`Predespacho guardado (${body.saved})`);
       setEstadoFiltro("lote");
       setSelectedBatch(String(body.batchId || batchId));
-      await loadData(anchor);
+      await loadData(anchor, modeloFiltro, grupoDespacho);
     } catch (e: any) {
       if (String(e?.message || "") === "STOCK_INSUFFICIENT") {
         toast.error("No puedes guardar un predespacho que excede el stock disponible");

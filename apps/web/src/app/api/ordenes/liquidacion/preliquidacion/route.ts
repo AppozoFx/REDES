@@ -26,6 +26,10 @@ function cleanSeries(values: unknown): string[] {
     .slice(0, 4);
 }
 
+function cleanValue(value: unknown): string {
+  return String(value || "").trim();
+}
+
 export async function GET(req: Request) {
   try {
     const session = await getServerSession();
@@ -54,8 +58,11 @@ export async function GET(req: Request) {
         snOnt: String(pre.snOnt || "").trim(),
         snMeshes: cleanSeries(pre.snMeshes),
         snBoxes: cleanSeries(pre.snBoxes),
-        snFono: String(pre.snFono || "").trim(),
-        rotuloNapCto: String(pre.rotuloNapCto || "").trim(),
+        snFono: cleanValue(pre.snFono),
+        rotuloNapCto: cleanValue(pre.rotuloNapCto),
+        receptorDocumento: cleanValue(pre.receptorDocumento),
+        receptorNombres: cleanValue(pre.receptorNombres),
+        receptorTelefono: cleanValue(pre.receptorTelefono),
       },
     });
   } catch (e: any) {

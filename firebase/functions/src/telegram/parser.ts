@@ -4,6 +4,9 @@ export type TelegramParsedTemplate = {
   puerto?: string;
   potenciaCtoNapDbm?: string;
   snOnt?: string;
+  receptorDocumento?: string;
+  receptorNombres?: string;
+  receptorTelefono?: string;
   meshes: string[];
   boxes: string[];
   snFono?: string;
@@ -85,6 +88,9 @@ export function parseTelegramTemplate(rawInput: string): TelegramParsedTemplate 
     matchLine(normalized, /^.*\bSN\s*ONT\s*:\s*(.+)\s*$/im) ||
     matchLine(normalized, /^.*\bS\s*\/\s*N\s*ONT\s*:\s*(.+)\s*$/im) ||
     matchLine(normalized, /^.*\bID\s*ONT\s*:\s*(.+)\s*$/im);
+  const receptorDocumento = matchLine(normalized, /^.*\bDOCUMENTO\s+DE\s+CONTACTO\s+RECEPTOR\s*:\s*:?\s*(.+)\s*$/im);
+  const receptorNombres = matchLine(normalized, /^.*\bNOMBRES\s+DE\s+CONTACTO\s+RECEPTOR\s*:\s*:?\s*(.+)\s*$/im);
+  const receptorTelefono = matchLine(normalized, /^.*\bTEL(?:E|É)FONO\s+DE\s+CONTACTO\s+RECEPTOR\s*:\s*:?\s*(.+)\s*$/im);
   const snFono =
     matchLine(normalized, /^.*\bFONOWIN\b\s*,?\s*N[UÚ]MERO\s+DE\s+SERIE\s*:\s*(.+)\s*$/im) ||
     matchLine(normalized, /^.*\bSN\s*FONO\s*:\s*(.+)\s*$/im);
@@ -121,6 +127,9 @@ export function parseTelegramTemplate(rawInput: string): TelegramParsedTemplate 
     puerto,
     potenciaCtoNapDbm,
     snOnt,
+    receptorDocumento,
+    receptorNombres,
+    receptorTelefono,
     meshes,
     boxes,
     snFono,

@@ -121,6 +121,28 @@ function parseExpectedCount(raw: unknown): number {
   return Math.max(0, Math.floor(n));
 }
 
+function preliqDocId(pedido: string, ymd: string): string {
+  const cleanPedido = String(pedido || "").trim().replace(/[\/\\\s]+/g, "_");
+  return `${cleanPedido}_${ymd}`;
+}
+
+function cleanAuditValue(value: unknown): string {
+  return String(value || "").trim();
+}
+
+function normalizeDigits(value: unknown): string {
+  return cleanAuditValue(value).replace(/\D/g, "");
+}
+
+function normalizeAuditName(value: unknown): string {
+  return cleanAuditValue(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+}
+
 const KIT_BASE_POR_INSTALACION: Record<string, number> = {
   ACTA: 1,
   CINTILLO_30: 4,
@@ -193,6 +215,22 @@ export async function liquidarOrdenAction(_: any, formData: FormData): Promise<L
       const ordenFechaYmd = String(ord?.fechaFinVisiYmd || ord?.fSoliYmd || d.ymd || "");
       const ordenFechaHm = String(ord?.fechaFinVisiHm || ord?.fSoliHm || d.hm || "");
       const fechaInstalacion = datePartsFromOrderYmdHm(ordenFechaYmd, ordenFechaHm, d);
+      const preliqRef = db
+        .collection("telegram_preliquidaciones")
+        .doc(preliqDocId(codigoCliente, ordenFechaYmd));
+      const preliqSnap = codigoCliente && ordenFechaYmd ? await tx.get(preliqRef) : null;
+      const preliqRow = (preliqSnap?.exists ? (preliqSnap.data() as any) : null) || null;
+      const preliq = (preliqRow?.preliquidacion as Record<string, unknown> | undefined) || {};
+      const contactoReceptor = {
+        documento: cleanAuditValue(preliq.receptorDocumento),
+        nombres: cleanAuditValue(preliq.receptorNombres),
+        telefono: cleanAuditValue(preliq.receptorTelefono),
+      };
+      const contactoReceptorNorm = {
+        documento: normalizeDigits(preliq.receptorDocumento),
+        nombres: normalizeAuditName(preliq.receptorNombres),
+        telefono: normalizeDigits(preliq.receptorTelefono),
+      };
       if (!codigoCliente) throw new Error("CODIGO_CLIENTE_REQUIRED");
       const cuadrillaRef = db.collection("cuadrillas").doc(cuadrillaId);
       const cuadrillaSnap = await tx.get(cuadrillaRef);
@@ -379,6 +417,8 @@ export async function liquidarOrdenAction(_: any, formData: FormData): Promise<L
             by: session.uid,
             rotuloNapCto: String(parsed.data.rotuloNapCto || ""),
             observacion: String(parsed.data.observacion || ""),
+              contactoReceptor,
+              contactoReceptorNorm,
               servicios: {
                 planGamer,
                 kitWifiPro,
@@ -436,6 +476,8 @@ export async function liquidarOrdenAction(_: any, formData: FormData): Promise<L
           itemsMateriales: materialesItems,
           observacion: String(parsed.data.observacion || ""),
           rotuloNapCto: String(parsed.data.rotuloNapCto || ""),
+          contactoReceptor,
+          contactoReceptorNorm,
           servicios: {
             planGamer: String(parsed.data.planGamer || ""),
             kitWifiPro: String(parsed.data.kitWifiPro || ""),
@@ -466,6 +508,8 @@ export async function liquidarOrdenAction(_: any, formData: FormData): Promise<L
             materialesCount: materialesItems.length,
             rotuloNapCto: String(parsed.data.rotuloNapCto || ""),
             observacion: String(parsed.data.observacion || ""),
+              contactoReceptor,
+              contactoReceptorNorm,
               servicios: {
                 planGamer: String(parsed.data.planGamer || ""),
                 kitWifiPro: String(parsed.data.kitWifiPro || ""),

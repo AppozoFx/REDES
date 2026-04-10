@@ -53,6 +53,9 @@ function normalizeParsed(raw: any, inputText: string): TelegramParsedTemplate | 
     puerto: cleanValue(raw?.puerto || "") || undefined,
     potenciaCtoNapDbm: cleanValue(raw?.potenciaCtoNapDbm || "") || undefined,
     snOnt: cleanValue(raw?.snOnt || "") || undefined,
+    receptorDocumento: cleanValue(raw?.receptorDocumento || "") || undefined,
+    receptorNombres: cleanValue(raw?.receptorNombres || "") || undefined,
+    receptorTelefono: cleanValue(raw?.receptorTelefono || "") || undefined,
     meshes: cleanSeries(raw?.meshes, 4),
     boxes: cleanSeries(raw?.boxes, 4),
     snFono: cleanValue(raw?.snFono || "") || undefined,
@@ -73,7 +76,7 @@ export async function parseTelegramTemplateWithAI(params: {
   const prompt = [
     "Extrae campos de plantilla de liquidacion tecnica.",
     "Devuelve SOLO JSON valido con estas keys:",
-    '{"pedido":"","ctoNap":"","puerto":"","potenciaCtoNapDbm":"","snOnt":"","meshes":[],"boxes":[],"snFono":""}',
+    '{"pedido":"","ctoNap":"","puerto":"","potenciaCtoNapDbm":"","snOnt":"","receptorDocumento":"","receptorNombres":"","receptorTelefono":"","meshes":[],"boxes":[],"snFono":""}',
     "Reglas:",
     "1) pedido solo digitos.",
     "2) si no encuentras un campo, deja string vacio o arreglo vacio.",
@@ -105,4 +108,3 @@ export async function parseTelegramTemplateWithAI(params: {
   if (!json) return null;
   return normalizeParsed(json, text);
 }
-

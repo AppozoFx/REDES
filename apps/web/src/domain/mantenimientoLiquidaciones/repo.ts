@@ -17,8 +17,15 @@ function normText(v: unknown) {
   return String(v || "").trim();
 }
 
-function ticketDocId(ticketNumero: string) {
-  return normText(ticketNumero).replace(/[\/\\#?\[\]]+/g, "_");
+function normalizeTicketNumero(ticketNumero: string) {
+  return normText(ticketNumero).replace(/\s+/g, " ").toUpperCase();
+}
+
+function buildLiquidacionId(ticketNumero: string) {
+  const normalized = normalizeTicketNumero(ticketNumero).replace(/[\/\\#?\[\]]+/g, "_").replace(/[^A-Z0-9_-]+/g, "_");
+  const stamp = Date.now().toString(36).toUpperCase();
+  const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `${normalized || "TICKET"}__${stamp}${rand}`;
 }
 
 function normCoord(v: unknown, min: number, max: number) {
@@ -39,6 +46,8 @@ function mapLiquidacionOut(id: string, data: any) {
     id,
     ...(data as any),
     estado: normalizeEstadoLegacy(data?.estado),
+    ticketNumeroNorm: normText(data?.ticketNumeroNorm || normalizeTicketNumero(data?.ticketNumero)),
+    ticketVisita: Math.max(1, Math.floor(Number(data?.ticketVisita || 1))),
   };
 }
 
@@ -88,6 +97,50 @@ function normalizeMateriales(items: MaterialLiquidacionInput[]) {
     });
 }
 
+async function findLiquidacionesByTicket(ticketNumero: string) {
+  const exact = normText(ticketNumero);
+  const norm = normalizeTicketNumero(ticketNumero);
+  const [byNormSnap, byExactSnap] = await Promise.all([
+    col().where("ticketNumeroNorm", "==", norm).get(),
+    col().where("ticketNumero", "==", exact).get(),
+  ]);
+  const seen = new Map<string, any>();
+  for (const snap of [byNormSnap, byExactSnap]) {
+    for (const doc of snap.docs) {
+      if (!seen.has(doc.id)) seen.set(doc.id, doc);
+    }
+  }
+  return Array.from(seen.values());
+}
+
+export async function getTicketVisitaPreview(ticketNumero: string, currentId?: string) {
+  const docs = await findLiquidacionesByTicket(ticketNumero);
+  const current = normText(currentId);
+  const related = current ? docs.filter((doc) => doc.id !== current) : docs;
+  const items = related
+    .map((doc) => mapLiquidacionOut(doc.id, doc.data()))
+    .sort((a: any, b: any) => {
+      const ay = String(a?.fechaAtencionYmd || "");
+      const by = String(b?.fechaAtencionYmd || "");
+      if (by !== ay) return by.localeCompare(ay);
+      return String(b?.id || "").localeCompare(String(a?.id || ""));
+    });
+
+  return {
+    ticketNumero: normText(ticketNumero),
+    ticketNumeroNorm: normalizeTicketNumero(ticketNumero),
+    previousCount: items.length,
+    nextVisita: Math.max(1, items.length + 1),
+    items: items.slice(0, 5).map((item: any) => ({
+      id: item.id,
+      ticketVisita: Math.max(1, Number(item.ticketVisita || 1)),
+      fechaAtencionYmd: String(item.fechaAtencionYmd || ""),
+      cuadrillaNombre: String(item.cuadrillaNombre || ""),
+      estado: String(item.estado || ""),
+    })),
+  };
+}
+
 export async function listMantenimientoLiquidaciones() {
   const snap = await col().orderBy("audit.createdAt", "desc").limit(500).get();
   return snap.docs.map((d) => mapLiquidacionOut(d.id, d.data()));
@@ -102,15 +155,18 @@ export async function getMantenimientoLiquidacionById(id: string) {
 export async function createMantenimientoLiquidacion(input: unknown, actorUid: string) {
   const parsed = MantenimientoLiquidacionCreateSchema.parse(input);
   const cuadrilla = await loadCuadrillaMant(parsed.cuadrillaId);
-  const docId = ticketDocId(parsed.ticketNumero);
-  if (!docId) throw new Error("TICKET_REQUIRED");
-  const ref = col().doc(docId);
-  const exists = await ref.get();
-  if (exists.exists) throw new Error("TICKET_DUPLICADO");
+  const ticketNumero = normText(parsed.ticketNumero);
+  const ticketNumeroNorm = normalizeTicketNumero(parsed.ticketNumero);
+  if (!ticketNumeroNorm) throw new Error("TICKET_REQUIRED");
+  const prevDocs = await findLiquidacionesByTicket(parsed.ticketNumero);
+  const ticketVisita = Math.max(1, prevDocs.length + 1);
+  const ref = col().doc(buildLiquidacionId(ticketNumero));
   const materialesConsumidos = normalizeMateriales(parsed.materialesConsumidos);
 
   await ref.set({
-    ticketNumero: normText(parsed.ticketNumero),
+    ticketNumero,
+    ticketNumeroNorm,
+    ticketVisita,
     codigoCaja: normText(parsed.codigoCaja),
     fechaAtencionYmd: normText(parsed.fechaAtencionYmd),
     distrito: normText(parsed.distrito),
@@ -152,14 +208,18 @@ export async function updateMantenimientoLiquidacion(id: string, input: unknown,
   if (!snap.exists) throw new Error("NOT_FOUND");
   const curr = snap.data() as any;
   if (normalizeEstadoLegacy(curr?.estado) === "LIQUIDADO") throw new Error("LIQUIDACION_YA_CONFIRMADA");
-  if (ticketDocId(parsed.ticketNumero) !== id) throw new Error("TICKET_ID_INMUTABLE");
 
   const cuadrilla = await loadCuadrillaMant(parsed.cuadrillaId);
   const materialesConsumidos = normalizeMateriales(parsed.materialesConsumidos);
+  const ticketNumero = normText(parsed.ticketNumero);
+  const ticketNumeroNorm = normalizeTicketNumero(parsed.ticketNumero);
+  if (!ticketNumeroNorm) throw new Error("TICKET_REQUIRED");
 
   await ref.set(
     {
-      ticketNumero: normText(parsed.ticketNumero),
+      ticketNumero,
+      ticketNumeroNorm,
+      ticketVisita: Math.max(1, Math.floor(Number(curr?.ticketVisita || 1))),
       codigoCaja: normText(parsed.codigoCaja),
       fechaAtencionYmd: normText(parsed.fechaAtencionYmd),
       distrito: normText(parsed.distrito),
@@ -287,6 +347,7 @@ export async function liquidarMantenimientoLiquidacion(id: string, actorUid: str
       tipo: "LIQUIDACION_MANTENIMIENTO",
       liquidacionId: ref.id,
       ticketNumero: normText(curr?.ticketNumero),
+      ticketNumeroNorm: normText(curr?.ticketNumeroNorm || normalizeTicketNumero(curr?.ticketNumero)),
       origen: { type: "CUADRILLA", id: cuadrillaId },
       destino: { type: "TICKET", id: normText(curr?.ticketNumero || ref.id) },
       itemsMateriales: snapshotItems,
@@ -435,6 +496,7 @@ export async function corregirMantenimientoLiquidacion(id: string, input: unknow
       tipo: "CORRECCION_LIQUIDACION_MANTENIMIENTO",
       liquidacionId: ref.id,
       ticketNumero: normText(parsed.ticketNumero || curr?.ticketNumero),
+      ticketNumeroNorm: normText(parsed.ticketNumero ? normalizeTicketNumero(parsed.ticketNumero) : curr?.ticketNumeroNorm || normalizeTicketNumero(curr?.ticketNumero)),
       origen: { type: "CUADRILLA", id: cuadrilla.id },
       destino: { type: "TICKET", id: normText(parsed.ticketNumero || curr?.ticketNumero || ref.id) },
       itemsMateriales: deltaItems,
@@ -447,6 +509,8 @@ export async function corregirMantenimientoLiquidacion(id: string, input: unknow
       ref,
       {
         ticketNumero: normText(parsed.ticketNumero),
+        ticketNumeroNorm: normalizeTicketNumero(parsed.ticketNumero),
+        ticketVisita: Math.max(1, Math.floor(Number(curr?.ticketVisita || 1))),
         codigoCaja: normText(parsed.codigoCaja),
         fechaAtencionYmd: normText(parsed.fechaAtencionYmd),
         distrito: normText(parsed.distrito),

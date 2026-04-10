@@ -25,6 +25,7 @@ type FormItem = {
 
 type FormState = {
   ticketNumero: string;
+  ticketVisita: number;
   codigoCaja: string;
   fechaAtencionYmd: string;
   distrito: string;
@@ -39,6 +40,18 @@ type FormState = {
   estado: string;
   origen: "MANUAL" | "TELEGRAM" | "IMPORTADO";
   materialesConsumidos: FormItem[];
+};
+
+type TicketPreview = {
+  previousCount: number;
+  nextVisita: number;
+  items: Array<{
+    id: string;
+    ticketVisita: number;
+    fechaAtencionYmd: string;
+    cuadrillaNombre: string;
+    estado: string;
+  }>;
 };
 
 const LIMA_DISTRITOS = [
@@ -89,6 +102,7 @@ const LIMA_DISTRITOS = [
 
 const emptyState: FormState = {
   ticketNumero: "",
+  ticketVisita: 1,
   codigoCaja: "",
   fechaAtencionYmd: new Date().toISOString().slice(0, 10),
   distrito: "",
@@ -135,6 +149,8 @@ export default function MantenimientoLiquidacionFormClient({
   const [correctionMode, setCorrectionMode] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [ticketPreview, setTicketPreview] = useState<TicketPreview | null>(null);
+  const [ticketPreviewLoading, setTicketPreviewLoading] = useState(false);
   const [coordenadasInput, setCoordenadasInput] = useState("");
   const [leaflet, setLeaflet] = useState<any | null>(null);
 
@@ -199,6 +215,7 @@ export default function MantenimientoLiquidacionFormClient({
         if (!cancelled) {
           setForm({
             ticketNumero: String(item.ticketNumero || ""),
+            ticketVisita: Math.max(1, Number(item.ticketVisita || 1)),
             codigoCaja: String(item.codigoCaja || ""),
             fechaAtencionYmd: String(item.fechaAtencionYmd || ""),
             distrito: String(item.distrito || ""),
@@ -262,6 +279,41 @@ export default function MantenimientoLiquidacionFormClient({
     }
     setCoordenadasInput(`${form.latitud}, ${form.longitud}`);
   }, [form.latitud, form.longitud]);
+
+  useEffect(() => {
+    const ticketNumero = String(form.ticketNumero || "").trim();
+    if (!ticketNumero) {
+      setTicketPreview(null);
+      setTicketPreviewLoading(false);
+      return;
+    }
+
+    const ctrl = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      try {
+        setTicketPreviewLoading(true);
+        const qs = new URLSearchParams({ ticketNumero });
+        if (mode === "edit" && id) qs.set("currentId", id);
+        const res = await fetch(`/api/mantenimiento/liquidaciones/ticket-preview?${qs.toString()}`, {
+          cache: "no-store",
+          signal: ctrl.signal,
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok || !body?.ok) throw new Error(String(body?.error || "ERROR"));
+        setTicketPreview(body.preview || null);
+      } catch (e: any) {
+        if (ctrl.signal.aborted) return;
+        setTicketPreview(null);
+      } finally {
+        if (!ctrl.signal.aborted) setTicketPreviewLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      ctrl.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [form.ticketNumero, mode, id]);
 
   const stockByMaterial = useMemo(() => {
     const map = new Map<string, StockItem>();
@@ -328,9 +380,6 @@ export default function MantenimientoLiquidacionFormClient({
     }
     if (raw === "COORDENADAS_INVALIDAS") {
       return "Las coordenadas deben tener el formato latitud, longitud.";
-    }
-    if (raw === "TICKET_DUPLICADO") {
-      return "Ya existe una liquidacion con ese numero de ticket.";
     }
     return raw;
   }
@@ -487,8 +536,8 @@ export default function MantenimientoLiquidacionFormClient({
               </h2>
               <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
                 {mode === "create"
-                  ? "Crea el borrador con los datos del ticket y completa materiales cuando corresponda."
-                  : "Controla el ticket, valida el stock de cuadrilla y confirma o corrige la liquidacion."}
+                  ? "Crea una atencion del ticket y completa materiales cuando corresponda."
+                  : "Controla la atencion, valida el stock de cuadrilla y confirma o corrige la liquidacion."}
               </p>
             </div>
           </div>
@@ -496,6 +545,11 @@ export default function MantenimientoLiquidacionFormClient({
             <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900">
               Estado actual: <span className="font-semibold">{form.estado || "-"}</span>
             </div>
+            {mode === "edit" ? (
+              <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                Visita: <span className="font-semibold">#{Math.max(1, Number(form.ticketVisita || 1))}</span>
+              </div>
+            ) : null}
             {mode === "edit" && form.estado === "LIQUIDADO" ? (
               <button
                 type="button"
@@ -534,6 +588,29 @@ export default function MantenimientoLiquidacionFormClient({
               <div>
                 <label className="mb-1 block text-xs text-slate-500">Ticket <span className="text-red-500">*</span></label>
                 <input value={form.ticketNumero} onChange={(e) => patch("ticketNumero", e.target.value)} disabled={locked} className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" />
+                {ticketPreviewLoading ? (
+                  <p className="mt-1 text-xs text-slate-500">Consultando historial del ticket...</p>
+                ) : null}
+                {!ticketPreviewLoading && ticketPreview ? (
+                  ticketPreview.previousCount > 0 ? (
+                    <div className="mt-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                      <div className="font-medium">
+                        Este ticket ya tiene {ticketPreview.previousCount} visita{ticketPreview.previousCount === 1 ? "" : "s"} registrada{ticketPreview.previousCount === 1 ? "" : "s"}.
+                        {mode === "create" ? ` Se creara como visita #${ticketPreview.nextVisita}.` : ` Esta atencion queda como visita #${ticketPreview.nextVisita}.`}
+                      </div>
+                      {ticketPreview.items.length ? (
+                        <div className="mt-1">
+                          Historial reciente:{" "}
+                          {ticketPreview.items
+                            .map((it) => `#${it.ticketVisita} ${it.fechaAtencionYmd || "-"} ${it.cuadrillaNombre || "-"} ${it.estado || "-"}`)
+                            .join(" | ")}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-xs text-emerald-700">No hay visitas previas. Se creara como visita #1.</p>
+                  )
+                ) : null}
               </div>
               <div>
                 <label className="mb-1 block text-xs text-slate-500">Codigo caja</label>

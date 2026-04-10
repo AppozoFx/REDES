@@ -178,6 +178,19 @@ function cleanValue(value: unknown): string {
   return String(value || "").replace(/`/g, "'").trim();
 }
 
+function normalizeDigits(value: unknown): string {
+  return cleanValue(value).replace(/\D/g, "");
+}
+
+function normalizeAuditName(value: unknown): string {
+  return cleanValue(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+}
+
 function isLikelyTemplateText(text: string): boolean {
   const normalized = normalizeTextKey(text);
   if (!normalized) return false;
@@ -301,6 +314,9 @@ function buildClienteLiquidadoBlock(args: {
   meshes: string[];
   boxes: string[];
   snFono?: string;
+  receptorDocumento?: string;
+  receptorNombres?: string;
+  receptorTelefono?: string;
 }): string {
   const fecha = cleanValue(args.orden.fSoliYmd || args.orden.fechaFinVisiYmd || "-");
   const tramo = resolveTramoNombre(args.orden.fSoliHm || "", args.orden.fechaFinVisiHm || "");
@@ -331,6 +347,15 @@ function buildClienteLiquidadoBlock(args: {
   if (args.puerto) lines.push(`Puerto: ${cleanValue(args.puerto)}`);
   if (args.potenciaCtoNapDbm) {
     lines.push(`Potencia CTO/NAP: ${cleanValue(args.potenciaCtoNapDbm)}`);
+  }
+  if (args.receptorDocumento) {
+    lines.push(`DOCUMENTO DE CONTACTO RECEPTOR: ${cleanValue(args.receptorDocumento)}`);
+  }
+  if (args.receptorNombres) {
+    lines.push(`NOMBRES DE CONTACTO RECEPTOR: ${cleanValue(args.receptorNombres)}`);
+  }
+  if (args.receptorTelefono) {
+    lines.push(`TELÉFONO DE CONTACTO RECEPTOR: ${cleanValue(args.receptorTelefono)}`);
   }
 
   return `\`\`\`\n${lines.join("\n")}\n\`\`\``;
@@ -392,6 +417,18 @@ function mergeParsedTemplate(base: ParsedTemplate, fromAi: ParsedTemplate): Pars
     meshes: mergeSeries(base.meshes || [], fromAi.meshes || [], 4),
     boxes: mergeSeries(base.boxes || [], fromAi.boxes || [], 4),
     snFono: cleanValue(base.snFono || "") || cleanValue(fromAi.snFono || "") || undefined,
+    receptorDocumento:
+      cleanValue(base.receptorDocumento || "") ||
+      cleanValue(fromAi.receptorDocumento || "") ||
+      undefined,
+    receptorNombres:
+      cleanValue(base.receptorNombres || "") ||
+      cleanValue(fromAi.receptorNombres || "") ||
+      undefined,
+    receptorTelefono:
+      cleanValue(base.receptorTelefono || "") ||
+      cleanValue(fromAi.receptorTelefono || "") ||
+      undefined,
     rawText: cleanValue(base.rawText || fromAi.rawText || ""),
   };
 }
@@ -1164,6 +1201,12 @@ async function upsertPreliquidacion(params: {
         rotuloNapCto: cleanValue(parsed.ctoNap || "") || null,
         puerto: cleanValue(parsed.puerto || "") || null,
         potenciaCtoNapDbm: cleanValue(parsed.potenciaCtoNapDbm || "") || null,
+        receptorDocumento: cleanValue(parsed.receptorDocumento || "") || null,
+        receptorNombres: cleanValue(parsed.receptorNombres || "") || null,
+        receptorTelefono: cleanValue(parsed.receptorTelefono || "") || null,
+        receptorDocumentoNorm: normalizeDigits(parsed.receptorDocumento || ""),
+        receptorNombresNorm: normalizeAuditName(parsed.receptorNombres || ""),
+        receptorTelefonoNorm: normalizeDigits(parsed.receptorTelefono || ""),
       },
       source: "TELEGRAM",
       updatedAt: FieldValue.serverTimestamp(),
@@ -1185,6 +1228,9 @@ function parsedFromRecord(record: Record<string, unknown>): ReturnType<typeof pa
     meshes: cleanSeriesList(record.meshes, 4),
     boxes: cleanSeriesList(record.boxes, 4),
     snFono: cleanValue(record.snFono || "") || undefined,
+    receptorDocumento: cleanValue(record.receptorDocumento || "") || undefined,
+    receptorNombres: cleanValue(record.receptorNombres || "") || undefined,
+    receptorTelefono: cleanValue(record.receptorTelefono || "") || undefined,
     rawText: cleanValue(record.rawText || ""),
   };
 }
@@ -1226,6 +1272,9 @@ async function enqueuePreliqRetry(params: {
           meshes: params.parsed.meshes || [],
           boxes: params.parsed.boxes || [],
           snFono: params.parsed.snFono || null,
+          receptorDocumento: params.parsed.receptorDocumento || null,
+          receptorNombres: params.parsed.receptorNombres || null,
+          receptorTelefono: params.parsed.receptorTelefono || null,
           rawText: params.parsed.rawText || "",
         },
         updatedAt: FieldValue.serverTimestamp(),
@@ -1363,6 +1412,9 @@ async function processPreliqRetryDoc(
       meshes: parsed.meshes,
       boxes: parsed.boxes,
       snFono: parsed.snFono,
+      receptorDocumento: parsed.receptorDocumento,
+      receptorNombres: parsed.receptorNombres,
+      receptorTelefono: parsed.receptorTelefono,
     });
     await sendTelegramMessage({
       token,
@@ -2052,6 +2104,9 @@ export const telegramWebhook = onRequest(
         meshes: parsed.meshes,
         boxes: parsed.boxes,
         snFono: parsed.snFono,
+        receptorDocumento: parsed.receptorDocumento,
+        receptorNombres: parsed.receptorNombres,
+        receptorTelefono: parsed.receptorTelefono,
       });
       const sent = await sendTelegramMessage({ token, chatId, text: resumen });
       if (!sent) throw new Error("TELEGRAM_SEND_FAILED");
@@ -2076,6 +2131,9 @@ export const telegramWebhook = onRequest(
             meshes: parsed.meshes,
             boxes: parsed.boxes,
             snFono: parsed.snFono || null,
+            receptorDocumento: parsed.receptorDocumento || null,
+            receptorNombres: parsed.receptorNombres || null,
+            receptorTelefono: parsed.receptorTelefono || null,
           },
           updatedAt: FieldValue.serverTimestamp(),
         },
@@ -2140,6 +2198,9 @@ export const telegramWebhook = onRequest(
             meshes: parsed.meshes,
             boxes: parsed.boxes,
             snFono: parsed.snFono || null,
+            receptorDocumento: parsed.receptorDocumento || null,
+            receptorNombres: parsed.receptorNombres || null,
+            receptorTelefono: parsed.receptorTelefono || null,
           },
           updatedAt: FieldValue.serverTimestamp(),
         },

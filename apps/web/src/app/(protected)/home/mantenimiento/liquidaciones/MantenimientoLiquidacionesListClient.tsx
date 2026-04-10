@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 type Row = {
   id: string;
   ticketNumero: string;
+  ticketVisita?: number;
   codigoCaja?: string;
   fechaAtencionYmd?: string;
   distrito?: string;
@@ -50,6 +51,8 @@ export default function MantenimientoLiquidacionesListClient() {
   const [editingCausaId, setEditingCausaId] = useState("");
   const [savingCausa, setSavingCausa] = useState(false);
   const [deletingId, setDeletingId] = useState("");
+  const [viewMode, setViewMode] = useState<"atenciones" | "tickets">("atenciones");
+  const [onlyRepeated, setOnlyRepeated] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,6 +93,16 @@ export default function MantenimientoLiquidacionesListClient() {
     );
   }, [rows]);
 
+  const repeatedCountByTicket = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of rows) {
+      const key = String(row.ticketNumero || "").trim();
+      if (!key) continue;
+      map.set(key, (map.get(key) || 0) + 1);
+    }
+    return map;
+  }, [rows]);
+
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return rows.filter((r) => {
@@ -97,11 +110,71 @@ export default function MantenimientoLiquidacionesListClient() {
       if (day && String(r.fechaAtencionYmd || "") !== day) return false;
       if (cuadrilla && String(r.cuadrillaNombre || "") !== cuadrilla) return false;
       if (estado && String(r.estado || "") !== estado) return false;
+      if (onlyRepeated && (repeatedCountByTicket.get(String(r.ticketNumero || "").trim()) || 0) < 2) return false;
       if (!needle) return true;
       const hay = `${r.ticketNumero} ${r.codigoCaja || ""} ${r.distrito || ""} ${r.cuadrillaNombre || ""}`.toLowerCase();
       return hay.includes(needle);
     });
-  }, [rows, q, month, day, cuadrilla, estado]);
+  }, [rows, q, month, day, cuadrilla, estado, onlyRepeated, repeatedCountByTicket]);
+
+  const groupedTickets = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        ticketNumero: string;
+        totalVisitas: number;
+        latestFecha: string;
+        latestEstado: string;
+        latestCuadrilla: string;
+        latestId: string;
+        latestCodigoCaja: string;
+        latestDistrito: string;
+        abiertas: number;
+        liquidadas: number;
+        rows: Row[];
+      }
+    >();
+
+    for (const row of filtered) {
+      const key = String(row.ticketNumero || "").trim() || row.id;
+      const current = map.get(key);
+      const rowFecha = String(row.fechaAtencionYmd || "");
+      if (!current) {
+        map.set(key, {
+          ticketNumero: key,
+          totalVisitas: 1,
+          latestFecha: rowFecha,
+          latestEstado: String(row.estado || ""),
+          latestCuadrilla: String(row.cuadrillaNombre || ""),
+          latestId: row.id,
+          latestCodigoCaja: String(row.codigoCaja || ""),
+          latestDistrito: String(row.distrito || ""),
+          abiertas: row.estado === "ABIERTO" ? 1 : 0,
+          liquidadas: row.estado === "LIQUIDADO" ? 1 : 0,
+          rows: [row],
+        });
+        continue;
+      }
+
+      current.totalVisitas += 1;
+      current.abiertas += row.estado === "ABIERTO" ? 1 : 0;
+      current.liquidadas += row.estado === "LIQUIDADO" ? 1 : 0;
+      current.rows.push(row);
+      if (rowFecha >= current.latestFecha) {
+        current.latestFecha = rowFecha;
+        current.latestEstado = String(row.estado || "");
+        current.latestCuadrilla = String(row.cuadrillaNombre || "");
+        current.latestId = row.id;
+        current.latestCodigoCaja = String(row.codigoCaja || "");
+        current.latestDistrito = String(row.distrito || "");
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => {
+      if (b.latestFecha !== a.latestFecha) return b.latestFecha.localeCompare(a.latestFecha);
+      return b.totalVisitas - a.totalVisitas;
+    });
+  }, [filtered]);
 
   async function eliminarTicket(id: string) {
     if (!window.confirm("Se eliminara este ticket abierto. Deseas continuar?")) return;
@@ -204,10 +277,44 @@ export default function MantenimientoLiquidacionesListClient() {
             <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-700">Liquidadas</div>
             <div className="text-xl font-semibold text-emerald-800">{rows.filter((x) => x.estado === "LIQUIDADO").length}</div>
           </div>
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-blue-700">Tickets repetidos</div>
+            <div className="text-xl font-semibold text-blue-800">
+              {Array.from(repeatedCountByTicket.values()).filter((count) => count >= 2).length}
+            </div>
+          </div>
         </div>
       </div>
 
       <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setViewMode("atenciones")}
+            className={`rounded-xl px-3 py-2 text-sm font-medium ${
+              viewMode === "atenciones"
+                ? "bg-slate-900 text-white"
+                : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            }`}
+          >
+            Ver atenciones
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("tickets")}
+            className={`rounded-xl px-3 py-2 text-sm font-medium ${
+              viewMode === "tickets"
+                ? "bg-slate-900 text-white"
+                : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            }`}
+          >
+            Ver tickets agrupados
+          </button>
+          <label className="ml-auto inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+            <input type="checkbox" checked={onlyRepeated} onChange={(e) => setOnlyRepeated(e.target.checked)} />
+            Solo multiples visitas
+          </label>
+        </div>
         <div className="grid gap-3 md:grid-cols-5">
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar ticket, caja, distrito, cuadrilla" className="rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" />
           <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" />
@@ -232,13 +339,14 @@ export default function MantenimientoLiquidacionesListClient() {
       <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
         {loading ? <div className="text-sm text-slate-500">Cargando...</div> : null}
         {error ? <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
-        {!loading && !error ? (
+        {!loading && !error && viewMode === "atenciones" ? (
           <div className="overflow-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 dark:bg-slate-800/60">
                 <tr className="text-left">
                   <th className="p-2">Fecha</th>
                   <th className="p-2">Ticket</th>
+                  <th className="p-2">Visita</th>
                   <th className="p-2">Caja</th>
                   <th className="p-2">Distrito</th>
                   <th className="p-2">Cuadrilla</th>
@@ -252,6 +360,11 @@ export default function MantenimientoLiquidacionesListClient() {
                   <tr key={r.id} className="border-t">
                     <td className="p-2">{r.fechaAtencionYmd || "-"}</td>
                     <td className="p-2 font-medium">{r.ticketNumero || r.id}</td>
+                    <td className="p-2">
+                      <span className="inline-flex rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                        #{Math.max(1, Number(r.ticketVisita || 1))}
+                      </span>
+                    </td>
                     <td className="p-2">{r.codigoCaja || "-"}</td>
                     <td className="p-2">{r.distrito || "-"}</td>
                     <td className="p-2">{r.cuadrillaNombre || "-"}</td>
@@ -290,7 +403,68 @@ export default function MantenimientoLiquidacionesListClient() {
                 ))}
                 {!filtered.length ? (
                   <tr>
-                    <td colSpan={8} className="p-4 text-center text-slate-500">Sin registros para mostrar.</td>
+                    <td colSpan={9} className="p-4 text-center text-slate-500">Sin registros para mostrar.</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+        {!loading && !error && viewMode === "tickets" ? (
+          <div className="overflow-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 dark:bg-slate-800/60">
+                <tr className="text-left">
+                  <th className="p-2">Ticket</th>
+                  <th className="p-2">Visitas</th>
+                  <th className="p-2">Ultima fecha</th>
+                  <th className="p-2">Caja</th>
+                  <th className="p-2">Distrito</th>
+                  <th className="p-2">Ultima cuadrilla</th>
+                  <th className="p-2">Estado actual</th>
+                  <th className="p-2">Resumen</th>
+                  <th className="p-2">Accion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupedTickets.map((ticket) => (
+                  <tr key={ticket.ticketNumero} className="border-t">
+                    <td className="p-2 font-medium">{ticket.ticketNumero}</td>
+                    <td className="p-2">
+                      <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${ticket.totalVisitas >= 2 ? "bg-blue-100 text-blue-800" : "bg-slate-100 text-slate-700"}`}>
+                        {ticket.totalVisitas}
+                      </span>
+                    </td>
+                    <td className="p-2">{ticket.latestFecha || "-"}</td>
+                    <td className="p-2">{ticket.latestCodigoCaja || "-"}</td>
+                    <td className="p-2">{ticket.latestDistrito || "-"}</td>
+                    <td className="p-2">{ticket.latestCuadrilla || "-"}</td>
+                    <td className="p-2">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${
+                          ticket.latestEstado === "LIQUIDADO"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : ticket.latestEstado === "ABIERTO"
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-slate-100 text-slate-700"
+                        }`}
+                      >
+                        {ticket.latestEstado || "-"}
+                      </span>
+                    </td>
+                    <td className="p-2 text-xs text-slate-600">
+                      Abiertas: {ticket.abiertas} | Liquidadas: {ticket.liquidadas}
+                    </td>
+                    <td className="p-2">
+                      <Link href={`/home/mantenimiento/liquidaciones/${ticket.latestId}`} className="text-blue-700 hover:underline">
+                        Abrir ultima
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+                {!groupedTickets.length ? (
+                  <tr>
+                    <td colSpan={9} className="p-4 text-center text-slate-500">Sin registros para mostrar.</td>
                   </tr>
                 ) : null}
               </tbody>

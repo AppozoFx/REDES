@@ -59,6 +59,7 @@ const LIMA_DISTRITOS = [
   "ATE",
   "BARRANCO",
   "BRENA",
+  "CALLAO",
   "CARABAYLLO",
   "CHACLACAYO",
   "CHORRILLOS",
@@ -96,6 +97,7 @@ const LIMA_DISTRITOS = [
   "SANTA ROSA",
   "SANTIAGO DE SURCO",
   "SURQUILLO",
+  "VENTANILLA",
   "VILLA EL SALVADOR",
   "VILLA MARIA DEL TRIUNFO",
 ];
@@ -666,7 +668,7 @@ export default function MantenimientoLiquidacionFormClient({
                     <option key={distrito} value={distrito} />
                   ))}
                 </datalist>
-                <p className="mt-1 text-xs text-slate-500">Catalogo de distritos de Lima en formato uniforme para filtros y dashboards.</p>
+                <p className="mt-1 text-xs text-slate-500">Catalogo de distritos de Lima y Callao en formato uniforme para filtros y dashboards.</p>
               </div>
               {coordenadasPreview ? (
                 <div className="md:col-span-2 overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">

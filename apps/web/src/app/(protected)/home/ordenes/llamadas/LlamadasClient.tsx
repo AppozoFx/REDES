@@ -1,9 +1,15 @@
 "use client";
 
+import * as XLSX from "xlsx";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 type OptionItem = { uid: string; nombre: string };
+type ScopeInfo = {
+  isCoordinatorScope?: boolean;
+  viewerCoordinatorUid?: string | null;
+  viewerCoordinatorNombre?: string | null;
+};
 
 type Row = {
   id: string;
@@ -115,6 +121,7 @@ export function LlamadasClient({
   const [canEdit, setCanEdit] = useState(initialCanEdit);
   const [gestores, setGestores] = useState<OptionItem[]>([]);
   const [coordinadores, setCoordinadores] = useState<OptionItem[]>([]);
+  const [scope, setScope] = useState<ScopeInfo>({});
   const [filters, setFilters] = useState<Filters>(emptyFilters);
   const [loading, setLoading] = useState(false);
   const [bootstrapped, setBootstrapped] = useState(false);
@@ -159,6 +166,7 @@ export function LlamadasClient({
           setRows(Array.isArray(data.items) ? data.items : []);
           setGestores(Array.isArray(data?.options?.gestores) ? data.options.gestores : []);
           setCoordinadores(Array.isArray(data?.options?.coordinadores) ? data.options.coordinadores : []);
+          setScope((data?.scope || {}) as ScopeInfo);
           setCanEdit(!!data?.canEdit);
           setBootstrapped(true);
         }
@@ -180,6 +188,13 @@ export function LlamadasClient({
       if (poll) clearInterval(poll);
     };
   }, [ymd, reloadTick, editId, bootstrapped]);
+
+  useEffect(() => {
+    if (!scope?.isCoordinatorScope) return;
+    const ownUid = String(scope.viewerCoordinatorUid || "").trim();
+    if (!ownUid) return;
+    setFilters((prev) => (prev.coordinadorUid === ownUid ? prev : { ...prev, coordinadorUid: ownUid }));
+  }, [scope]);
 
   const filtered = useMemo(() => {
     const cli = clienteDeb.trim().toLowerCase();
@@ -218,6 +233,31 @@ export function LlamadasClient({
     return filtered.slice(start, start + pageSize);
   }, [filtered, page]);
 
+  function downloadExcel() {
+    const rowsExport = filtered.map((r) => ({
+      Cliente: r.cliente || "",
+      Codigo: r.codigoCliente || "",
+      Documento: r.documento || "",
+      Plan: r.plan || "",
+      Direccion: r.direccion || "",
+      Telefono: r.telefono || "",
+      Cuadrilla: r.cuadrillaNombre || r.cuadrillaId || "",
+      Gestor: r.gestorNombre || "",
+      Coordinador: r.coordinadorNombre || "",
+      Tipo_Servicio: r.tipoServicio || "",
+      Tramo: r.tramoNombre || "",
+      Estado_Orden: r.estado || "",
+      Inicio_Llamada: r.horaInicioLlamada || "",
+      Fin_Llamada: r.horaFinLlamada || "",
+      Estado_Llamada: r.estadoLlamada || "No se llamo",
+      Observacion: r.observacionLlamada || "",
+    }));
+    const ws = XLSX.utils.json_to_sheet(rowsExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Llamadas");
+    XLSX.writeFile(wb, `ordenes_llamadas_${ymd}.xlsx`);
+  }
+
   async function handleSave(ordenId: string) {
     if (!canEdit) {
       toast.error("No tienes permiso para editar.");
@@ -249,7 +289,10 @@ export function LlamadasClient({
   }
 
   function resetFilters() {
-    setFilters(emptyFilters);
+    setFilters({
+      ...emptyFilters,
+      coordinadorUid: scope?.isCoordinatorScope ? String(scope.viewerCoordinatorUid || "") : "",
+    });
     setPage(1);
     setEditId("");
   }
@@ -299,8 +342,8 @@ export function LlamadasClient({
                 </div>
                 <div>
                   <label className="mb-1 block text-xs">Coordinador</label>
-                  <select value={filters.coordinadorUid} onChange={(e) => setFilters((f) => ({ ...f, coordinadorUid: e.target.value }))} className="ui-select-inline min-w-48 rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
-                    <option value="">Todos</option>
+                  <select value={filters.coordinadorUid} onChange={(e) => setFilters((f) => ({ ...f, coordinadorUid: e.target.value }))} disabled={!!scope?.isCoordinatorScope} className="ui-select-inline min-w-48 rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900">
+                    {!scope?.isCoordinatorScope ? <option value="">Todos</option> : null}
                     {coordinadores.map((c) => (
                       <option key={c.uid} value={c.uid}>
                         {c.nombre}
@@ -348,6 +391,9 @@ export function LlamadasClient({
                 </div>
                 <button type="button" className="rounded-xl bg-[#30518c] px-3 py-2 text-sm text-white" onClick={resetFilters}>
                   Limpiar filtros
+                </button>
+                <button type="button" className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700" onClick={downloadExcel}>
+                  Descargar Excel
                 </button>
               </div>
             </div>

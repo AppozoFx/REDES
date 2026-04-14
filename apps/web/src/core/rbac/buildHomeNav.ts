@@ -41,8 +41,11 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     if (hasPerm(session, "ORDENES_IMPORT")) {
       items.push({ key: "ORDENES_IMPORT", label: "Ordenes: Importar", href: "/home/ordenes/import" });
     }
-    if (hasPerm(session, "ORDENES_LLAMADAS_VIEW") || hasPerm(session, "ORDENES_LLAMADAS_EDIT")) {
+    if (hasPerm(session, "ORDENES_LLAMADAS_VIEW") || hasPerm(session, "ORDENES_LLAMADAS_EDIT") || isCoord) {
       items.push({ key: "ORDENES_CALLS", label: "Ordenes: Llamadas", href: "/home/ordenes/llamadas" });
+    }
+    if (hasPerm(session, "ORDENES_LIQUIDAR") || isCoord) {
+      items.push({ key: "ORDENES_PLANTILLAS", label: "Ordenes: Plantillas", href: "/home/ordenes/plantillas" });
     }
     if (hasPerm(session, "ORDENES_MAPA_VIEW") || roles.includes("COORDINADOR")) {
       items.push({ key: "ORDENES_MAPA", label: "Ordenes: Mapa", href: "/home/ordenes/mapa" });
@@ -190,11 +193,14 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
   if (hasPerm(session, "ORDENES_IMPORT")) {
     items.push({ key: "ORDENES_IMPORT", label: "Ordenes: Importar", href: "/home/ordenes/import" });
   }
-  if (hasPerm(session, "ORDENES_LLAMADAS_VIEW") || hasPerm(session, "ORDENES_LLAMADAS_EDIT")) {
+  if (hasPerm(session, "ORDENES_LLAMADAS_VIEW") || hasPerm(session, "ORDENES_LLAMADAS_EDIT") || isCoord) {
     items.push({ key: "ORDENES_CALLS", label: "Ordenes: Llamadas", href: "/home/ordenes/llamadas" });
   }
   if (hasPerm(session, "ORDENES_LIQUIDAR")) {
     items.push({ key: "ORDENES_LIQ", label: "Ordenes: Liquidacion", href: "/home/ordenes/liquidacion" });
+  }
+  if (hasPerm(session, "ORDENES_LIQUIDAR") || isCoord) {
+    items.push({ key: "ORDENES_PLANTILLAS", label: "Ordenes: Plantillas", href: "/home/ordenes/plantillas" });
   }
   if (hasPerm(session, "ORDENES_MAPA_VIEW") || roles.includes("COORDINADOR")) {
     items.push({ key: "ORDENES_MAPA", label: "Ordenes: Mapa", href: "/home/ordenes/mapa" });

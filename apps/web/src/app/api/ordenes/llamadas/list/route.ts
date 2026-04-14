@@ -80,16 +80,19 @@ export async function GET(req: Request) {
     if (session.access.estadoAcceso !== "HABILITADO") {
       return NextResponse.json({ ok: false, error: "ACCESS_DISABLED" }, { status: 403 });
     }
+    const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
+    const isCoordinatorScope =
+      !session.isAdmin && roles.includes("COORDINADOR") && !roles.includes("GESTOR");
     const canEdit =
-      session.isAdmin ||
+      !isCoordinatorScope &&
+      (session.isAdmin ||
       session.access.roles.includes("GESTOR") ||
-      session.permissions.includes(PERM_EDIT);
+      session.permissions.includes(PERM_EDIT));
     const canView =
       canEdit ||
+      isCoordinatorScope ||
       session.permissions.includes(PERM_VIEW);
     if (!canView) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
-
-    const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
     const isPriv = session.isAdmin || roles.includes("GERENCIA") || roles.includes("ALMACEN") || roles.includes("RRHH");
 
     const { searchParams } = new URL(req.url);
@@ -180,7 +183,7 @@ export async function GET(req: Request) {
       })
     );
 
-    const items: Row[] = resolvedRows.map((r: any) => {
+    const itemsBase: Row[] = resolvedRows.map((r: any) => {
       const { _tipo, _tipoTraba, _idenServi, _estado, ...clean } = r;
       const tramoBase = resolveTramoBase(r.fechaFinVisiHm);
       return {
@@ -191,7 +194,9 @@ export async function GET(req: Request) {
         tramoNombre: tramoNombreFromBase(tramoBase),
       };
     });
-
+    const items = isCoordinatorScope
+      ? itemsBase.filter((item) => item.coordinadorUid === session.uid)
+      : itemsBase;
 
     const gestores = Array.from(new Map(items.filter((i) => i.gestorUid).map((i) => [i.gestorUid, i.gestorNombre])))
       .map(([uid, nombre]) => ({ uid, nombre }))
@@ -208,6 +213,12 @@ export async function GET(req: Request) {
       items,
       options: { gestores, coordinadores },
       canEdit,
+      scope: {
+        isCoordinatorScope,
+        viewerCoordinatorUid: isCoordinatorScope ? session.uid : null,
+        viewerCoordinatorNombre:
+          isCoordinatorScope ? coordinadores.find((item) => item.uid === session.uid)?.nombre || session.uid : null,
+      },
     });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });

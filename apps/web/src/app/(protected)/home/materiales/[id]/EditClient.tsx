@@ -14,11 +14,28 @@ function roundUpToHalfSol(value: number) {
   return Math.ceil(value * 2) / 2;
 }
 
+function splitMinimoMetros(totalMetrosRaw: number, metrosPorUndRaw: number) {
+  const totalMetros = Math.max(0, Number(totalMetrosRaw || 0));
+  const metrosPorUnd = Math.max(0, Number(metrosPorUndRaw || 0));
+  if (!Number.isFinite(totalMetros) || totalMetros <= 0 || !Number.isFinite(metrosPorUnd) || metrosPorUnd <= 0) {
+    return { und: "", sueltos: "" };
+  }
+  const und = Math.floor(totalMetros / metrosPorUnd);
+  const sueltos = Number((totalMetros - und * metrosPorUnd).toFixed(2));
+  return {
+    und: und > 0 ? String(und) : "",
+    sueltos: sueltos > 0 ? String(sueltos) : "",
+  };
+}
+
 export default function EditClient({ initial }: { initial: any }) {
   const router = useRouter();
+  const initialUnidadTipo = initial?.unidadTipo === "METROS" ? "METROS" : "UND";
+  const initialMetrosPorUnd = initialUnidadTipo === "METROS" ? Number((initial?.metrosPorUndCm ?? 0) / 100) : 0;
+  const initialMinSplit = splitMinimoMetros(Number((initial?.minStockCm ?? 0) / 100), initialMetrosPorUnd);
   const [nombre, setNombre] = useState(initial?.nombre ?? "");
   const [descripcion, setDescripcion] = useState(initial?.descripcion ?? "");
-  const [unidadTipo] = useState<"UND" | "METROS">(initial?.unidadTipo ?? "UND");
+  const [unidadTipo, setUnidadTipo] = useState<"UND" | "METROS">(initialUnidadTipo);
   const [areas, setAreas] = useState<string[]>(initial?.areas ?? []);
   const [vendible, setVendible] = useState<boolean>(!!initial?.vendible);
   const [ventaUnidadTipos, setVentaUnidadTipos] = useState<Array<"UND" | "METROS">>(
@@ -39,9 +56,9 @@ export default function EditClient({ initial }: { initial: any }) {
         : ""
       : ""
   );
-  const [minUndUi, setMinUndUi] = useState<string>("");
-  const [minMetrosSueltosUi, setMinMetrosSueltosUi] = useState<string>("");
-  const [stockMetros, setStockMetros] = useState<string>(initial?.unidadTipo === "METROS" && initial?.stockMetros != null ? String(initial?.stockMetros) : "");
+  const [minUndUi, setMinUndUi] = useState<string>(initialUnidadTipo === "METROS" ? initialMinSplit.und : initial?.minStockUnd != null ? String(initial.minStockUnd) : "");
+  const [minMetrosSueltosUi, setMinMetrosSueltosUi] = useState<string>(initialUnidadTipo === "METROS" ? initialMinSplit.sueltos : "");
+  const [stockMetros, setStockMetros] = useState<string>(initialUnidadTipo === "METROS" && initial?.stockMetros != null ? String(initial?.stockMetros) : "");
 
   const [precioUnd, setPrecioUnd] = useState<string>(initial?.precioUndCents != null ? String((initial?.precioUndCents ?? 0) / 100) : "");
   const [minStockUnd, setMinStockUnd] = useState<string>(initial?.unidadTipo === "UND" && initial?.minStockUnd != null ? String(initial?.minStockUnd) : "");
@@ -49,7 +66,15 @@ export default function EditClient({ initial }: { initial: any }) {
 
   const [result, action, pending] = useActionState(updateMaterialAction as any, null as any);
   const shouldReturnRef = useRef(false);
+  const unidadInitRef = useRef(false);
   const [volverAlGuardar, setVolverAlGuardar] = useState(true);
+  const isUndToMetros = initialUnidadTipo === "UND" && unidadTipo === "METROS";
+  const stockMetrosConvertido = (() => {
+    const mpo = toNum(metrosPorUnd || "0");
+    const und = Math.max(0, Math.floor(Number(stockUnd || "0")));
+    if (!Number.isFinite(mpo) || mpo <= 0 || und <= 0) return "";
+    return String(Number((und * mpo).toFixed(2)));
+  })();
 
   useEffect(() => {
     if (!result) return;
@@ -81,6 +106,26 @@ export default function EditClient({ initial }: { initial: any }) {
     setPrecioPorMetro(calc.toFixed(2));
   }, [unidadTipo, vendible, precioUnd, metrosPorUnd]);
 
+  useEffect(() => {
+    if (!unidadInitRef.current) {
+      unidadInitRef.current = true;
+      return;
+    }
+    setVentaUnidadTipos(unidadTipo === "UND" ? ["UND"] : ["METROS"]);
+    if (unidadTipo === "METROS") {
+      if (initialUnidadTipo === "UND") {
+        setMinUndUi(initial?.minStockUnd != null ? String(initial.minStockUnd) : "");
+        setMinMetrosSueltosUi("");
+        setStockMetros("");
+      }
+    } else {
+      setMinStockUnd(initial?.minStockUnd != null ? String(initial.minStockUnd) : "");
+      setMinUndUi("");
+      setMinMetrosSueltosUi("");
+      setStockMetros("");
+    }
+  }, [unidadTipo, initialUnidadTipo, initial?.minStockUnd]);
+
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     shouldReturnRef.current = volverAlGuardar;
@@ -106,7 +151,7 @@ export default function EditClient({ initial }: { initial: any }) {
       const sueltos = Math.max(0, toNum(minMetrosSueltosUi || "0"));
       const totalMetros = und * mpo + sueltos;
       if (totalMetros > 0) fd.set("minStockMetros", String(totalMetros));
-      if (stockMetros !== "") fd.set("stockMetros", String(toNum(stockMetros)));
+      if (!isUndToMetros && stockMetros !== "") fd.set("stockMetros", String(toNum(stockMetros)));
     }
     startTransition(() => (action as any)(fd));
   }
@@ -125,7 +170,25 @@ export default function EditClient({ initial }: { initial: any }) {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Unidad</label>
-            <input value={unidadTipo} className="ui-input-inline ui-input-inline mt-1 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200" readOnly />
+            <div className="mt-1 flex gap-3 text-sm">
+              {(["UND", "METROS"] as const).map((u) => (
+                <label key={u} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700 dark:text-slate-200">
+                  <input
+                    type="radio"
+                    name="unidad"
+                    checked={unidadTipo === u}
+                    disabled={initialUnidadTipo === "METROS" && u === "UND"}
+                    onChange={() => {
+                      setUnidadTipo(u);
+                      setPrecioPorMetro("");
+                    }}
+                  />
+                  {u}
+                </label>
+              ))}
+            </div>
+            {initialUnidadTipo === "METROS" && <p className="mt-1 text-xs text-slate-500">Los materiales en metros no se pueden regresar a UND.</p>}
+            {initialUnidadTipo === "UND" && <p className="mt-1 text-xs text-slate-500">Puedes migrar este material de UND a METROS. El stock actual se convertira automaticamente.</p>}
           </div>
         </div>
       </section>
@@ -210,10 +273,20 @@ export default function EditClient({ initial }: { initial: any }) {
                   <input value={metrosPorUnd} onChange={(e) => setMetrosPorUnd(e.target.value)} className={fieldClass} inputMode="decimal" />
                   <p className="mt-1 text-xs text-slate-500">Ejemplo: si 1 UND equivale a 2.5 metros, escribe 2.5</p>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Stock actual (metros)</label>
-                  <input value={stockMetros} onChange={(e) => setStockMetros(e.target.value)} className={fieldClass} inputMode="decimal" />
-                </div>
+                {isUndToMetros ? (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Stock convertido</label>
+                    <input value={stockMetrosConvertido} className={`${fieldClass} bg-slate-50 dark:bg-slate-800/60`} readOnly />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Se convertiran {Math.max(0, Math.floor(Number(stockUnd || "0")))} UND a {stockMetrosConvertido || "0"} metros.
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Stock actual (metros)</label>
+                    <input value={stockMetros} onChange={(e) => setStockMetros(e.target.value)} className={fieldClass} inputMode="decimal" />
+                  </div>
+                )}
                 {vendible && (
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Precio por UND</label>
@@ -230,13 +303,23 @@ export default function EditClient({ initial }: { initial: any }) {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Minimo (UND)</label>
-                  <input value={minUndUi} onChange={(e) => setMinUndUi(e.target.value)} className={fieldClass} inputMode="numeric" />
+                  <input
+                    value={minUndUi}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      const n = Math.max(0, Math.floor(Number(String(v).replace(",", ".") || "0")));
+                      setMinUndUi(String(Number.isFinite(n) ? n : 0));
+                    }}
+                    className={fieldClass}
+                    inputMode="numeric"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Metros sueltos</label>
                   <input value={minMetrosSueltosUi} onChange={(e) => setMinMetrosSueltosUi(e.target.value)} className={fieldClass} inputMode="decimal" />
                 </div>
               </div>
+              <PreviewMinimo metrosPorUnd={metrosPorUnd} und={minUndUi} sueltos={minMetrosSueltosUi} />
             </div>
           )}
 
@@ -282,4 +365,13 @@ export default function EditClient({ initial }: { initial: any }) {
       </form>
     </div>
   );
+}
+
+function PreviewMinimo({ metrosPorUnd, und, sueltos }: { metrosPorUnd: string; und: string; sueltos: string }) {
+  const mpo = Number(String(metrosPorUnd ?? "").replace(",", "."));
+  const undN = Math.max(0, Math.floor(Number(und || "0")));
+  const su = Math.max(0, Number(String(sueltos ?? "").replace(",", ".")));
+  const total = undN * (Number.isFinite(mpo) ? mpo : 0) + (Number.isFinite(su) ? su : 0);
+  if (!mpo || total <= 0) return null;
+  return <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">Se guardara como {total} metros</div>;
 }

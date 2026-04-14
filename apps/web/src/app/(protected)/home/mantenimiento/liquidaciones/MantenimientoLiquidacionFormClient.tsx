@@ -362,12 +362,45 @@ export default function MantenimientoLiquidacionFormClient({
     setForm((curr) => ({ ...curr, [key]: value }));
   }
 
-  function normalizeDistrito(value: string) {
+function normalizeDistrito(value: string) {
     return String(value || "")
       .toUpperCase()
       .replace(/\s+/g, " ")
       .trimStart();
   }
+
+  function metrosPorUndMaterial(materialId: string) {
+    const material = materiales.find((m) => m.id === materialId) as any;
+    const cm = Number(material?.metrosPorUndCm || 0);
+    if (!Number.isFinite(cm) || cm <= 0) return 0;
+    return cm / 100;
+  }
+
+  useEffect(() => {
+    if (!materiales.length || !form.materialesConsumidos.length) return;
+    const nextItems = form.materialesConsumidos.map((it) => {
+      const catalogo = materiales.find((m) => m.id === it.materialId) as any;
+      const catalogUnidad = String(catalogo?.unidadTipo || it.unidadTipo || "UND").toUpperCase() === "METROS" ? "METROS" : "UND";
+      if (catalogUnidad !== "METROS" || it.unidadTipo === "METROS") return it;
+      const mpo = metrosPorUndMaterial(it.materialId);
+      const und = Math.max(0, Number(it.und || 0));
+      if (mpo <= 0 || und <= 0) {
+        return { ...it, unidadTipo: "METROS" as const, und: "", metros: it.metros || "" };
+      }
+      return {
+        ...it,
+        unidadTipo: "METROS" as const,
+        und: "",
+        metros: String(Number((und * mpo).toFixed(2))),
+      };
+    });
+    const changed = nextItems.some((it, idx) =>
+      it.unidadTipo !== form.materialesConsumidos[idx]?.unidadTipo ||
+      it.und !== form.materialesConsumidos[idx]?.und ||
+      it.metros !== form.materialesConsumidos[idx]?.metros
+    );
+    if (changed) patch("materialesConsumidos", nextItems);
+  }, [materiales, form.materialesConsumidos]);
 
   function mapFormError(errorValue: unknown) {
     const raw = String(errorValue || "ERROR");

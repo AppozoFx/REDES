@@ -15,6 +15,12 @@ type StockItem = {
   guia?: string;
 };
 
+function getMetrosPorUnd(material: any) {
+  const cm = Number(material?.metrosPorUndCm || 0);
+  if (!Number.isFinite(cm) || cm <= 0) return 0;
+  return cm / 100;
+}
+
 export async function GET(req: Request) {
   try {
     const session = await getServerSession({ forceAccessRefresh: true });
@@ -58,14 +64,13 @@ export async function GET(req: Request) {
     ]);
 
     const materialIds = stockSnap.docs.map((d) => d.id);
-    const materialNameMap = new Map<string, string>();
+    const materialMap = new Map<string, any>();
     if (materialIds.length) {
       const matRefs = materialIds.map((mid) => db.collection("materiales").doc(mid));
       const matSnaps = await db.getAll(...matRefs);
       for (const s of matSnaps) {
         const data = s.data() as any;
-        const nombre = String(data?.nombre || data?.descripcion || "").trim();
-        if (nombre) materialNameMap.set(s.id, nombre);
+        materialMap.set(s.id, data || {});
       }
     }
 
@@ -89,11 +94,18 @@ export async function GET(req: Request) {
     const materiales: StockItem[] = stockSnap.docs.map((doc) => {
       const data = doc.data() as any;
       const materialId = String(data?.materialId || doc.id);
-      const unidadTipo = String(data?.unidadTipo || "").toUpperCase();
-      const item: StockItem = { id: materialId, nombre: materialNameMap.get(materialId), tipo: unidadTipo || undefined };
-      if (unidadTipo === "METROS") {
-        const cm = Number(data?.stockCm || 0);
-        item.metros = cm / 100;
+      const material = materialMap.get(materialId) || {};
+      const nombre = String(material?.nombre || material?.descripcion || "").trim();
+      const catalogUnidad = String(material?.unidadTipo || "").toUpperCase() === "METROS" ? "METROS" : "UND";
+      const stockUnidad = String(data?.unidadTipo || "").toUpperCase();
+      const item: StockItem = { id: materialId, nombre: nombre || undefined, tipo: catalogUnidad || stockUnidad || undefined };
+      if (catalogUnidad === "METROS") {
+        const directCm = Number(data?.stockCm || 0);
+        const legacyUnd = Number(data?.stockUnd || 0);
+        const metrosPorUnd = getMetrosPorUnd(material);
+        const effectiveMetros =
+          directCm > 0 ? directCm / 100 : legacyUnd > 0 && metrosPorUnd > 0 ? Number((legacyUnd * metrosPorUnd).toFixed(2)) : 0;
+        item.metros = effectiveMetros;
       } else {
         item.cantidad = Number(data?.stockUnd || 0);
       }

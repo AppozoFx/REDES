@@ -17,6 +17,7 @@ export default function ListClient() {
   const [savingStockId, setSavingStockId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [editDraft, setEditDraft] = useState<any | null>(null);
   const [data, run, pending] = useActionState(listMaterialesActionWithPrev as any, { ok: true, items: [] } as any);
 
@@ -100,6 +101,17 @@ export default function ListClient() {
     return lines.length ? lines.join(" | ") : "-";
   };
 
+  const getMinimo = (m: any) => (m.unidadTipo === "METROS" ? Number(m.minStockCm || 0) / 100 : Number(m.minStockUnd || 0));
+  const getStockActual = (m: any) => (m.unidadTipo === "METROS" ? Number(m.stockMetros || 0) : Number(m.stockUnd || 0));
+  const getEstadoReposicion = (m: any) => {
+    const minimo = getMinimo(m);
+    const actual = getStockActual(m);
+    if (minimo <= 0) return "SIN_MINIMO";
+    if (actual <= 0) return "CRITICO";
+    if (actual < minimo) return "REPONER";
+    return "OK";
+  };
+
   const toNum = (v: string) => Number(String(v ?? "").replace(",", "."));
 
   const startQuickEdit = (m: any) => {
@@ -112,6 +124,7 @@ export default function ListClient() {
       descripcion: String(m.descripcion || ""),
       areas: Array.isArray(m.areas) ? m.areas : [],
       vendible: !!m.vendible,
+      initialUnidadTipo: String(m.unidadTipo || "UND"),
       unidadTipo: String(m.unidadTipo || "UND"),
       ventaUnidadTipos:
         m.unidadTipo === "METROS"
@@ -232,6 +245,237 @@ export default function ListClient() {
     }
   };
 
+  const exportExcel = async () => {
+    if (!items.length || exporting) return;
+    setExporting(true);
+    try {
+      const XLSX = await import("xlsx-js-style");
+      const today = new Date();
+      const dateLabel = new Intl.DateTimeFormat("es-PE", { dateStyle: "medium", timeStyle: "short" }).format(today);
+      const stamp = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}_${String(today.getHours()).padStart(2, "0")}${String(today.getMinutes()).padStart(2, "0")}`;
+
+      const total = items.length;
+      const criticos = items.filter((m: any) => getEstadoReposicion(m) === "CRITICO").length;
+      const reponer = items.filter((m: any) => getEstadoReposicion(m) === "REPONER").length;
+      const ok = items.filter((m: any) => getEstadoReposicion(m) === "OK").length;
+      const reposicionItems = items
+        .filter((m: any) => {
+          const estado = getEstadoReposicion(m);
+          return estado === "CRITICO" || estado === "REPONER";
+        })
+        .sort((a: any, b: any) => {
+          const rank = (x: any) => (getEstadoReposicion(x) === "CRITICO" ? 0 : 1);
+          return rank(a) - rank(b) || String(a.nombre || "").localeCompare(String(b.nombre || ""));
+        });
+
+      const summaryRows = [
+        ["REDES M&D S.A.C", "", "", ""],
+        ["Reporte Ejecutivo de Stock de Materiales", "", "", ""],
+        ["Generado", dateLabel, "", ""],
+        ["Total materiales", total, "Filtrados", hasFilters ? "SI" : "NO"],
+        ["Criticos", criticos, "Reponer", reponer],
+        ["OK", ok, "Vendibles", stats.vendibles],
+      ];
+      const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+      wsSummary["!merges"] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 3 } },
+      ];
+      wsSummary["!cols"] = [{ wch: 22 }, { wch: 18 }, { wch: 18 }, { wch: 14 }];
+
+      const detailHeader = [[
+        "Estado",
+        "Codigo",
+        "Nombre",
+        "Unidad",
+        "Stock actual",
+        "Minimo",
+        "Diferencia",
+        "Stock equiv. UND",
+        "Vendible",
+        "Precio",
+        "Areas",
+        "Descripcion",
+      ]];
+      const detailRows: Array<Array<string | number>> = items
+        .slice()
+        .sort((a: any, b: any) => {
+          const rank = (x: any) => (getEstadoReposicion(x) === "CRITICO" ? 0 : getEstadoReposicion(x) === "REPONER" ? 1 : 2);
+          return rank(a) - rank(b) || String(a.nombre || "").localeCompare(String(b.nombre || ""));
+        })
+        .map((m: any) => {
+          const actual = getStockActual(m);
+          const minimo = getMinimo(m);
+          const estado = getEstadoReposicion(m);
+          const diferencia = minimo > 0 ? Number((actual - minimo).toFixed(2)) : "";
+          return [
+            estado,
+            String(m.id || ""),
+            String(m.nombre || ""),
+            m.unidadTipo === "METROS" ? "METROS" : "UND",
+            Number(actual.toFixed ? actual.toFixed(2) : actual),
+            minimo > 0 ? Number(minimo.toFixed ? minimo.toFixed(2) : minimo) : "",
+            diferencia,
+            stockUndEquivalente(m),
+            m.vendible ? "SI" : "NO",
+            formatPrecio(m),
+            Array.isArray(m.areas) ? m.areas.join(", ") : "",
+            String(m.descripcion || ""),
+          ];
+        });
+      const wsDetail = XLSX.utils.aoa_to_sheet([...detailHeader, ...detailRows]);
+      wsDetail["!cols"] = [
+        { wch: 12 }, { wch: 18 }, { wch: 34 }, { wch: 12 }, { wch: 14 }, { wch: 14 },
+        { wch: 14 }, { wch: 16 }, { wch: 12 }, { wch: 22 }, { wch: 22 }, { wch: 42 },
+      ];
+      wsDetail["!autofilter"] = { ref: "A1:L1" };
+      wsDetail["!freeze"] = { xSplit: 0, ySplit: 1 };
+
+      const reposicionHeader = [[
+        "Prioridad",
+        "Estado",
+        "Codigo",
+        "Nombre",
+        "Unidad",
+        "Stock actual",
+        "Minimo",
+        "Faltante",
+        "Sugerencia reposicion",
+        "Areas",
+        "Descripcion",
+      ]];
+      const reposicionRows: Array<Array<string | number>> = reposicionItems.map((m: any) => {
+        const actual = getStockActual(m);
+        const minimo = getMinimo(m);
+        const faltante = minimo > 0 ? Math.max(0, Number((minimo - actual).toFixed(2))) : "";
+        const estado = getEstadoReposicion(m);
+        const prioridad = estado === "CRITICO" ? "ALTA" : "MEDIA";
+        return [
+          prioridad,
+          estado,
+          String(m.id || ""),
+          String(m.nombre || ""),
+          m.unidadTipo === "METROS" ? "METROS" : "UND",
+          Number(actual.toFixed ? actual.toFixed(2) : actual),
+          minimo > 0 ? Number(minimo.toFixed ? minimo.toFixed(2) : minimo) : "",
+          faltante,
+          faltante !== "" ? `Reponer ${faltante} ${m.unidadTipo === "METROS" ? "m" : "UND"}` : "Definir minimo",
+          Array.isArray(m.areas) ? m.areas.join(", ") : "",
+          String(m.descripcion || ""),
+        ];
+      });
+      const wsReposicion = XLSX.utils.aoa_to_sheet([
+        ["REDES M&D S.A.C", "", "", "", "", "", "", "", "", "", ""],
+        ["Materiales por Reponer", "", "", "", "", "", "", "", "", "", ""],
+        ...reposicionHeader,
+        ...reposicionRows,
+      ]);
+      wsReposicion["!merges"] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 10 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 10 } },
+      ];
+      wsReposicion["!cols"] = [
+        { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 34 }, { wch: 12 }, { wch: 14 },
+        { wch: 14 }, { wch: 14 }, { wch: 24 }, { wch: 22 }, { wch: 42 },
+      ];
+      wsReposicion["!autofilter"] = { ref: "A3:K3" };
+      wsReposicion["!freeze"] = { xSplit: 0, ySplit: 3 };
+
+      const titleStyle = {
+        font: { bold: true, sz: 16, color: { rgb: "FFFFFF" } },
+        fill: { fgColor: { rgb: "0F3D5E" } },
+        alignment: { horizontal: "center", vertical: "center" },
+      };
+      const subtitleStyle = {
+        font: { bold: true, sz: 13, color: { rgb: "0F172A" } },
+        fill: { fgColor: { rgb: "DBEAFE" } },
+        alignment: { horizontal: "center", vertical: "center" },
+      };
+      const labelStyle = {
+        font: { bold: true, color: { rgb: "0F172A" } },
+        fill: { fgColor: { rgb: "E2E8F0" } },
+      };
+      const headerStyle = {
+        font: { bold: true, color: { rgb: "FFFFFF" } },
+        fill: { fgColor: { rgb: "1D4ED8" } },
+        alignment: { horizontal: "center", vertical: "center" },
+        border: {
+          top: { style: "thin", color: { rgb: "BFDBFE" } },
+          bottom: { style: "thin", color: { rgb: "BFDBFE" } },
+          left: { style: "thin", color: { rgb: "BFDBFE" } },
+          right: { style: "thin", color: { rgb: "BFDBFE" } },
+        },
+      };
+      const borderStyle = {
+        top: { style: "thin", color: { rgb: "E2E8F0" } },
+        bottom: { style: "thin", color: { rgb: "E2E8F0" } },
+        left: { style: "thin", color: { rgb: "E2E8F0" } },
+        right: { style: "thin", color: { rgb: "E2E8F0" } },
+      };
+
+      ["A1", "A2", "A3", "C3", "A4", "C4", "A5", "C5", "A6", "C6"].forEach((ref) => {
+        if (wsSummary[ref]) wsSummary[ref].s = ref === "A1" ? titleStyle : ref === "A2" ? subtitleStyle : labelStyle;
+      });
+      if (wsSummary["A1"]) wsSummary["A1"].s = titleStyle;
+      if (wsSummary["A2"]) wsSummary["A2"].s = subtitleStyle;
+
+      for (let c = 0; c < 12; c += 1) {
+        const ref = XLSX.utils.encode_cell({ r: 0, c });
+        if (wsDetail[ref]) wsDetail[ref].s = headerStyle;
+      }
+      detailRows.forEach((row: Array<string | number>, idx: number) => {
+        const excelRow = idx + 1;
+        const estado = String(row[0] || "");
+        const fill =
+          estado === "CRITICO" ? "FEE2E2" :
+          estado === "REPONER" ? "FEF3C7" :
+          estado === "OK" ? "DCFCE7" : "F8FAFC";
+        for (let c = 0; c < 12; c += 1) {
+          const ref = XLSX.utils.encode_cell({ r: excelRow, c });
+          if (!wsDetail[ref]) continue;
+          wsDetail[ref].s = {
+            border: borderStyle,
+            fill: { fgColor: { rgb: fill } },
+            alignment: { vertical: "center", horizontal: c === 11 ? "left" : "center", wrapText: true },
+          };
+        }
+      });
+
+      if (wsReposicion["A1"]) wsReposicion["A1"].s = titleStyle;
+      if (wsReposicion["A2"]) wsReposicion["A2"].s = subtitleStyle;
+      for (let c = 0; c < 11; c += 1) {
+        const ref = XLSX.utils.encode_cell({ r: 2, c });
+        if (wsReposicion[ref]) wsReposicion[ref].s = headerStyle;
+      }
+      reposicionRows.forEach((row: Array<string | number>, idx: number) => {
+        const excelRow = idx + 3;
+        const prioridad = String(row[0] || "");
+        const fill = prioridad === "ALTA" ? "FECACA" : "FEF3C7";
+        for (let c = 0; c < 11; c += 1) {
+          const ref = XLSX.utils.encode_cell({ r: excelRow, c });
+          if (!wsReposicion[ref]) continue;
+          wsReposicion[ref].s = {
+            border: borderStyle,
+            fill: { fgColor: { rgb: fill } },
+            alignment: { vertical: "center", horizontal: c >= 9 ? "left" : "center", wrapText: true },
+            font: c === 0 || c === 1 ? { bold: true, color: { rgb: "7F1D1D" } } : undefined,
+          };
+        }
+      });
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, wsSummary, "Resumen");
+      XLSX.utils.book_append_sheet(wb, wsReposicion, "Reposicion");
+      XLSX.utils.book_append_sheet(wb, wsDetail, "Materiales");
+      XLSX.writeFile(wb, `stock_materiales_${stamp}.xlsx`, { cellStyles: true });
+      toast.success("Excel exportado");
+    } catch (e: any) {
+      toast.error(String(e?.message || "No se pudo exportar el Excel"));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -256,19 +500,29 @@ export default function ListClient() {
       <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Filtros</h2>
-          <button
-            type="button"
-            onClick={() => {
-              setQ("");
-              setUnidadTipo("");
-              setArea("");
-              setVendible("");
-            }}
-            disabled={!hasFilters}
-            className="h-9 rounded-lg border border-slate-300 px-3 text-sm text-slate-700 dark:text-slate-200 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Limpiar filtros
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={exportExcel}
+              disabled={!items.length || exporting || pending}
+              className="inline-flex h-9 items-center rounded-lg bg-emerald-600 px-3 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {exporting ? "Exportando..." : "Exportar Excel"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setQ("");
+                setUnidadTipo("");
+                setArea("");
+                setVendible("");
+              }}
+              disabled={!hasFilters}
+              className="h-9 rounded-lg border border-slate-300 px-3 text-sm text-slate-700 dark:text-slate-200 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Limpiar filtros
+            </button>
+          </div>
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por código o nombre" className={fieldClass} />
@@ -414,6 +668,30 @@ export default function ListClient() {
                                 <option value="false">No</option>
                               </select>
                             </label>
+                            <label className="text-xs text-slate-600 dark:text-slate-300">
+                              <span className="mb-1 block font-medium">Unidad</span>
+                              <select
+                                value={editDraft.unidadTipo}
+                                onChange={(e) =>
+                                  setEditDraft((prev: any) => {
+                                    const nextUnidad = e.target.value === "METROS" ? "METROS" : "UND";
+                                    return {
+                                      ...prev,
+                                      unidadTipo: nextUnidad,
+                                      ventaUnidadTipos: nextUnidad === "UND" ? ["UND"] : ["METROS"],
+                                      metrosPorUnd: nextUnidad === "METROS" ? prev.metrosPorUnd : "",
+                                      precioPorMetro: nextUnidad === "METROS" ? prev.precioPorMetro : "",
+                                      minStockMetros: nextUnidad === "METROS" ? prev.minStockMetros : "",
+                                      minStockUnd: nextUnidad === "UND" ? prev.minStockUnd : "",
+                                    };
+                                  })
+                                }
+                                className={fieldClass}
+                              >
+                                <option value="UND" disabled={editDraft.initialUnidadTipo === "METROS"}>UND</option>
+                                <option value="METROS">METROS</option>
+                              </select>
+                            </label>
                             <div className="text-xs text-slate-600 dark:text-slate-300">
                               <span className="mb-1 block font-medium">Áreas</span>
                               <div className="flex h-10 items-center gap-3 rounded-lg border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-900">
@@ -461,6 +739,11 @@ export default function ListClient() {
                             </div>
                           ) : (
                             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                              {editDraft.initialUnidadTipo === "UND" && (
+                                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                                  Al guardar, el stock actual de almacen se convertira automaticamente usando la equivalencia definida.
+                                </div>
+                              )}
                               <label className="text-xs text-slate-600 dark:text-slate-300">
                                 <span className="mb-1 block font-medium">Metros por UND</span>
                                 <input
@@ -538,4 +821,3 @@ export default function ListClient() {
     </div>
   );
 }
-

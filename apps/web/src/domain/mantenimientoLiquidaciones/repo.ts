@@ -97,6 +97,37 @@ function normalizeMateriales(items: MaterialLiquidacionInput[]) {
     });
 }
 
+function getMetrosPorUnd(material: any) {
+  const cm = Number(material?.metrosPorUndCm || 0);
+  if (!Number.isFinite(cm) || cm <= 0) return 0;
+  return cm / 100;
+}
+
+function normalizeLineaForCatalog(
+  item: { materialId?: string; descripcion?: string; unidadTipo?: "UND" | "METROS" | string; und?: number; metros?: number },
+  material: any
+) {
+  const catalogUnidad = String(material?.unidadTipo || "").toUpperCase() === "METROS" ? "METROS" : "UND";
+  const und = Math.max(0, Math.floor(Number(item?.und || 0)));
+  const metros = Math.max(0, Number(item?.metros || 0));
+  if (catalogUnidad === "UND") {
+    return { unidadTipo: "UND" as const, und, metros: 0 };
+  }
+
+  const metrosPorUnd = getMetrosPorUnd(material);
+  const convertedMetros = metros > 0 ? metros : und > 0 && metrosPorUnd > 0 ? Number((und * metrosPorUnd).toFixed(2)) : 0;
+  return { unidadTipo: "METROS" as const, und: 0, metros: convertedMetros };
+}
+
+function resolveStockCmForMetros(stock: any, material: any) {
+  const directCm = Number(stock?.stockCm || 0);
+  if (Number.isFinite(directCm) && directCm > 0) return directCm;
+  const legacyUnd = Number(stock?.stockUnd || 0);
+  const metrosPorUnd = getMetrosPorUnd(material);
+  if (!Number.isFinite(legacyUnd) || legacyUnd <= 0 || metrosPorUnd <= 0) return 0;
+  return metersToCm(legacyUnd * metrosPorUnd);
+}
+
 async function findLiquidacionesByTicket(ticketNumero: string) {
   const exact = normText(ticketNumero);
   const norm = normalizeTicketNumero(ticketNumero);
@@ -300,25 +331,32 @@ export async function liquidarMantenimientoLiquidacion(id: string, actorUid: str
       const mSnap = matMap.get(it.materialId);
       if (!mSnap?.exists) throw new Error(`MATERIAL_NOT_FOUND ${it.materialId}`);
       const m = mSnap.data() as any;
-      const unidadTipo = String(m?.unidadTipo || "").toUpperCase() === "METROS" ? "METROS" : "UND";
+      const normalized = normalizeLineaForCatalog(it, m);
+      const unidadTipo = normalized.unidadTipo;
       const descripcion = normText(m?.nombre || m?.descripcion || it.descripcion || it.materialId);
       const stock = stockMap.get(it.materialId)?.data() as any;
 
       if (unidadTipo === "UND") {
         const available = Number(stock?.stockUnd || 0);
-        if (available - it.und < 0) throw new Error(`STOCK_INSUFICIENTE_CUADRILLA ${it.materialId}`);
+        if (available - normalized.und < 0) throw new Error(`STOCK_INSUFICIENTE_CUADRILLA ${it.materialId}`);
         tx.set(
           cuadrillaRef.collection("stock").doc(it.materialId),
-          { materialId: it.materialId, unidadTipo: "UND", stockUnd: FieldValue.increment(-it.und), updatedAt: FieldValue.serverTimestamp() },
+          { materialId: it.materialId, unidadTipo: "UND", stockUnd: FieldValue.increment(-normalized.und), updatedAt: FieldValue.serverTimestamp() },
           { merge: true }
         );
       } else {
-        const availableCm = Number(stock?.stockCm || 0);
-        const needCm = metersToCm(it.metros);
+        const availableCm = resolveStockCmForMetros(stock, m);
+        const needCm = metersToCm(normalized.metros);
         if (availableCm - needCm < 0) throw new Error(`STOCK_INSUFICIENTE_CUADRILLA ${it.materialId}`);
         tx.set(
           cuadrillaRef.collection("stock").doc(it.materialId),
-          { materialId: it.materialId, unidadTipo: "METROS", stockCm: FieldValue.increment(-needCm), updatedAt: FieldValue.serverTimestamp() },
+          {
+            materialId: it.materialId,
+            unidadTipo: "METROS",
+            stockCm: availableCm - needCm,
+            stockUnd: 0,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
           { merge: true }
         );
       }
@@ -327,14 +365,17 @@ export async function liquidarMantenimientoLiquidacion(id: string, actorUid: str
         unidadTipo === "METROS"
           ? Number(m?.precioPorMetroCents || 0) / 100
           : Number(m?.precioUndCents || 0) / 100;
-      const total = unidadTipo === "METROS" ? Number((it.metros * precioUnitario).toFixed(2)) : Number((it.und * precioUnitario).toFixed(2));
+      const total =
+        unidadTipo === "METROS"
+          ? Number((normalized.metros * precioUnitario).toFixed(2))
+          : Number((normalized.und * precioUnitario).toFixed(2));
 
       return {
         materialId: it.materialId,
         descripcion,
         unidadTipo,
-        und: unidadTipo === "UND" ? it.und : 0,
-        metros: unidadTipo === "METROS" ? it.metros : 0,
+        und: unidadTipo === "UND" ? normalized.und : 0,
+        metros: unidadTipo === "METROS" ? normalized.metros : 0,
         precioUnitario,
         total,
         status: "OK",
@@ -431,8 +472,10 @@ export async function corregirMantenimientoLiquidacion(id: string, input: unknow
       const descripcion = normText(m?.nombre || m?.descripcion || nextMap.get(materialId)?.descripcion || materialId);
       const stock = stockMap.get(materialId)?.data() as any;
 
-      const prev = prevMap.get(materialId) || { unidadTipo, und: 0, metros: 0 };
-      const next = nextMap.get(materialId) || { unidadTipo, und: 0, metros: 0 };
+      const prevRaw = prevMap.get(materialId) || { unidadTipo, und: 0, metros: 0 };
+      const nextRaw = nextMap.get(materialId) || { unidadTipo, und: 0, metros: 0 };
+      const prev = normalizeLineaForCatalog(prevRaw, m);
+      const next = normalizeLineaForCatalog(nextRaw, m);
 
       if (unidadTipo === "UND") {
         const delta = Math.max(0, Math.floor(Number(next.und || 0))) - Math.max(0, Math.floor(Number(prev.und || 0)));
@@ -463,11 +506,17 @@ export async function corregirMantenimientoLiquidacion(id: string, input: unknow
         const delta = Math.max(0, Number(next.metros || 0)) - Math.max(0, Number(prev.metros || 0));
         if (delta !== 0) {
           const deltaCm = metersToCm(Math.abs(delta));
-          const availableCm = Number(stock?.stockCm || 0);
+          const availableCm = resolveStockCmForMetros(stock, m);
           if (delta > 0 && availableCm - deltaCm < 0) throw new Error(`STOCK_INSUFICIENTE_CUADRILLA ${materialId}`);
           tx.set(
             cuadrillaRef.collection("stock").doc(materialId),
-            { materialId, unidadTipo: "METROS", stockCm: FieldValue.increment(delta > 0 ? -deltaCm : deltaCm), updatedAt: FieldValue.serverTimestamp() },
+            {
+              materialId,
+              unidadTipo: "METROS",
+              stockCm: delta > 0 ? availableCm - deltaCm : availableCm + deltaCm,
+              stockUnd: 0,
+              updatedAt: FieldValue.serverTimestamp(),
+            },
             { merge: true }
           );
           deltaItems.push({ materialId, descripcion, unidadTipo: "METROS", undDelta: 0, metrosDelta: delta });

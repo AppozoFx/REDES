@@ -158,6 +158,11 @@ export async function updateMaterialAction(arg1: any, arg2?: any) {
     if (payload && "_stockMetros" in payload) delete (payload as any)._stockMetros;
 
     const parsed = MaterialUpdateInputSchema.parse(payload);
+    const current = await getMaterial(parsed.id);
+    if (!current) {
+      return { ok: false, error: { formErrors: ["MATERIAL_NOT_FOUND"] } } as const;
+    }
+    const isUndToMetros = current.unidadTipo === "UND" && parsed.unidadTipo === "METROS";
     await updateMaterial(parsed, session.uid);
     // Sync almacen_stock if provided
     const stockRef = adminDb().collection("almacen_stock").doc(parsed.id);
@@ -172,6 +177,18 @@ export async function updateMaterialAction(arg1: any, arg2?: any) {
       if (typeof stockMetros === "number") {
         await stockRef.set(
           { materialId: parsed.id, unidadTipo: "METROS", stockCm: metersToCm(Math.max(0, stockMetros)) },
+          { merge: true }
+        );
+      } else if (isUndToMetros) {
+        const stockSnap = await stockRef.get();
+        const currentStockUnd = Math.max(0, Math.floor(Number(stockSnap.data()?.stockUnd || 0)));
+        await stockRef.set(
+          {
+            materialId: parsed.id,
+            unidadTipo: "METROS",
+            stockCm: metersToCm(currentStockUnd * Number(parsed.metrosPorUnd || 0)),
+            stockUnd: 0,
+          },
           { merge: true }
         );
       }

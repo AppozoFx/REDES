@@ -6,7 +6,18 @@ import { toast } from "sonner";
 
 type CoordinadorOpt = { uid: string; label: string };
 type CuadrillaOpt = { id: string; nombre: string; coordinadorUid?: string };
-type TecnicoOpt = { id: string; nombreCorto: string; cuadrillaId?: string; cuadrillaNombre?: string };
+type DestinatarioOpt = {
+  id: string;
+  nombreCorto: string;
+  nombres?: string;
+  apellidos?: string;
+  roles?: string[];
+  areas?: string[];
+  cuadrillaId?: string;
+  cuadrillaNombre?: string;
+  coordinadorUid?: string;
+  coordinadorNombre?: string;
+};
 type MaterialOpt = { id: string; nombre?: string; unidadTipo?: "UND" | "METROS" | null };
 
 type ItemForm = {
@@ -53,14 +64,20 @@ function normalizePhone(raw: string) {
   return noPrefix.length >= 9 ? noPrefix : "";
 }
 
-async function obtenerCelularTecnico(tecnicoUid: string) {
-  if (!tecnicoUid) return "";
-  const res = await fetch(`/api/usuarios/phones?uids=${encodeURIComponent(tecnicoUid)}`, { cache: "no-store" });
-  if (!res.ok) return "";
+async function obtenerCelularesUsuarios(uids: string[]) {
+  const clean = Array.from(new Set((uids || []).map((uid) => String(uid || "").trim()).filter(Boolean)));
+  if (!clean.length) return new Map<string, string>();
+  const res = await fetch(`/api/usuarios/phones?uids=${encodeURIComponent(clean.join(","))}`, { cache: "no-store" });
+  if (!res.ok) return new Map<string, string>();
   const data = await res.json().catch(() => ({}));
   const items = Array.isArray(data?.items) ? data.items : [];
-  const celular = normalizePhone(String(items[0]?.celular || ""));
-  return celular || "";
+  const out = new Map<string, string>();
+  items.forEach((item: any) => {
+    const uid = String(item?.uid || "").trim();
+    if (!uid) return;
+    out.set(uid, normalizePhone(String(item?.celular || "")));
+  });
+  return out;
 }
 
 async function makeQrDataUrl(value: string) {
@@ -99,7 +116,7 @@ function printThermalBlobTwice(pdf: jsPDF) {
 function generarPdfGuiaTecnico80mm(args: {
   guia: string;
   modo: "ENTREGA" | "DEVOLUCION";
-  tecnicoNombre: string;
+  destinatarioNombre: string;
   cuadrillaNombre: string;
   coordinadorNombre: string;
   usuarioNombre: string;
@@ -119,12 +136,12 @@ function generarPdfGuiaTecnico80mm(args: {
   pdf.text("RUC: 20601345979", 40, y, C); y += 6;
   pdf.setFont("helvetica", "bold");
   pdf.text(`GUIA: ${args.guia}`, 40, y, C); y += 5;
-  pdf.text(args.modo === "ENTREGA" ? "ENTREGA A TECNICO" : "DEVOLUCION DE TECNICO", 40, y, C); y += 5;
+  pdf.text(args.modo === "ENTREGA" ? "ENTREGA DE MATERIALES" : "DEVOLUCION DE MATERIALES", 40, y, C); y += 5;
   pdf.setFont("helvetica", "normal");
   pdf.text(`FECHA: ${new Date().toLocaleString("es-PE")}`, 40, y, C); y += 5;
   pdf.text(`USUARIO: ${args.usuarioNombre || "-"}`, 40, y, C); y += 5;
   pdf.setFont("helvetica", "bold");
-  pdf.text(`TECNICO: ${args.tecnicoNombre || "-"}`, 40, y, C); y += 5;
+  pdf.text(`DESTINATARIO: ${args.destinatarioNombre || "-"}`, 40, y, C); y += 5;
   pdf.setFont("helvetica", "normal");
   if (args.cuadrillaNombre) {
     pdf.text(`CUADRILLA: ${args.cuadrillaNombre}`, 40, y, C);
@@ -165,7 +182,7 @@ function generarPdfGuiaTecnico80mm(args: {
   pdf.line(10, y, 40, y);
   pdf.line(45, y, 75, y);
   y += 8;
-  pdf.text(args.tecnicoNombre || "Tecnico", 25, y, { align: "center" });
+  pdf.text(args.destinatarioNombre || "Destinatario", 25, y, { align: "center" });
   pdf.text(args.usuarioNombre || "Almacen", 60, y, { align: "center" });
 
   return pdf;
@@ -196,18 +213,20 @@ function enviarWhatsApp(numero: string, mensaje: string, preOpen?: Window | null
 }
 
 export default function TecnicosMaterialesClient() {
+  const [tipoDestino, setTipoDestino] = useState<"TECNICO" | "USUARIO">("TECNICO");
   const [coordinadores, setCoordinadores] = useState<CoordinadorOpt[]>([]);
   const [cuadrillas, setCuadrillas] = useState<CuadrillaOpt[]>([]);
-  const [tecnicos, setTecnicos] = useState<TecnicoOpt[]>([]);
+  const [destinatarios, setDestinatarios] = useState<DestinatarioOpt[]>([]);
   const [materiales, setMateriales] = useState<MaterialOpt[]>([]);
 
   const [coordinadorUid, setCoordinadorUid] = useState("");
   const [cuadrillaId, setCuadrillaId] = useState("");
-  const [tecnicoUid, setTecnicoUid] = useState("");
+  const [destinatarioUid, setDestinatarioUid] = useState("");
 
   const [modo, setModo] = useState<"ENTREGA" | "DEVOLUCION">("ENTREGA");
   const [observacion, setObservacion] = useState("");
   const [materialSearch, setMaterialSearch] = useState("");
+  const [usuarioSearch, setUsuarioSearch] = useState("");
   const [items, setItems] = useState<ItemForm[]>([]);
   const [guardando, setGuardando] = useState(false);
 
@@ -217,7 +236,16 @@ export default function TecnicosMaterialesClient() {
   const [loadingHist, setLoadingHist] = useState(false);
   const waWindowRef = useRef<Window | null>(null);
 
-  const tecnicoActual = useMemo(() => tecnicos.find((t) => t.id === tecnicoUid) || null, [tecnicos, tecnicoUid]);
+  const destinatarioActual = useMemo(
+    () => destinatarios.find((t) => t.id === destinatarioUid) || null,
+    [destinatarios, destinatarioUid]
+  );
+  const coordinadorSeleccionadoUid = destinatarioActual?.coordinadorUid || coordinadorUid;
+  const coordinadorSeleccionadoNombre =
+    destinatarioActual?.coordinadorNombre || coordinadores.find((c) => c.uid === coordinadorSeleccionadoUid)?.label || "";
+  const cuadrillaSeleccionadaId = destinatarioActual?.cuadrillaId || cuadrillaId;
+  const cuadrillaSeleccionadaNombre =
+    destinatarioActual?.cuadrillaNombre || cuadrillas.find((c) => c.id === cuadrillaSeleccionadaId)?.nombre || "";
 
   const cuadrillasFiltradas = useMemo(() => {
     if (!coordinadorUid) return cuadrillas;
@@ -225,10 +253,41 @@ export default function TecnicosMaterialesClient() {
   }, [cuadrillas, coordinadorUid]);
 
   const tecnicosFiltrados = useMemo(() => {
-    let base = tecnicos;
+    let base = destinatarios;
+    base = base.filter((t) => {
+      const roles = Array.isArray(t.roles) ? t.roles.map((r) => String(r || "").toUpperCase()) : [];
+      return roles.includes("TECNICO");
+    });
+    if (coordinadorUid) base = base.filter((t) => String(t.coordinadorUid || "") === coordinadorUid);
     if (cuadrillaId) base = base.filter((t) => String(t.cuadrillaId || "") === cuadrillaId);
     return base;
-  }, [tecnicos, cuadrillaId]);
+  }, [destinatarios, cuadrillaId, coordinadorUid]);
+
+  const otrosUsuariosFiltrados = useMemo(() => {
+    return destinatarios.filter((t) => {
+      const roles = Array.isArray(t.roles) ? t.roles.map((r) => String(r || "").toUpperCase()) : [];
+      return !roles.includes("TECNICO");
+    });
+  }, [destinatarios]);
+
+  const otrosUsuariosBuscados = useMemo(() => {
+    const q = usuarioSearch.trim().toLowerCase();
+    if (!q) return otrosUsuariosFiltrados.slice(0, 25);
+    return otrosUsuariosFiltrados
+      .filter((t) =>
+        [
+          t.nombreCorto,
+          (t.roles || []).join(" "),
+          t.id,
+          t.nombres,
+          t.apellidos,
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(q)
+      )
+      .slice(0, 25);
+  }, [otrosUsuariosFiltrados, usuarioSearch]);
 
   const materialesFiltrados = useMemo(() => {
     const q = materialSearch.trim().toLowerCase();
@@ -268,7 +327,7 @@ export default function TecnicosMaterialesClient() {
     }
     setLoadingHist(true);
     try {
-      const res = await fetch(`/api/instalaciones/tecnicos-materiales/historial?tecnicoUid=${encodeURIComponent(uid)}`, { cache: "no-store" });
+      const res = await fetch(`/api/instalaciones/tecnicos-materiales/historial?destinatarioUid=${encodeURIComponent(uid)}`, { cache: "no-store" });
       const body = await res.json();
       if (!res.ok || !body?.ok) throw new Error(String(body?.error || "ERROR"));
       setHistorial(Array.isArray(body.historial) ? body.historial : []);
@@ -290,7 +349,7 @@ export default function TecnicosMaterialesClient() {
         const [cRes, qRes, tRes, mRes] = await Promise.all([
           fetch("/api/usuarios/by-role?role=COORDINADOR", { cache: "no-store" }),
           fetch("/api/cuadrillas/list?area=INSTALACIONES", { cache: "no-store" }),
-          fetch("/api/tecnicos/gestion/list", { cache: "no-store" }),
+          fetch("/api/usuarios/materiales-destinatarios/list?area=INSTALACIONES", { cache: "no-store" }),
           fetch("/api/materiales/list?area=INSTALACIONES", { cache: "no-store" }),
         ]);
         const [cBody, qBody, tBody, mBody] = await Promise.all([
@@ -301,7 +360,7 @@ export default function TecnicosMaterialesClient() {
         ]);
         setCoordinadores(Array.isArray(cBody?.items) ? cBody.items : []);
         setCuadrillas(Array.isArray(qBody?.items) ? qBody.items : []);
-        setTecnicos(Array.isArray(tBody?.items) ? tBody.items : []);
+        setDestinatarios(Array.isArray(tBody?.items) ? tBody.items : []);
         setMateriales(Array.isArray(mBody?.items) ? mBody.items : []);
       } catch {
         toast.error("No se pudo cargar catalogos");
@@ -310,11 +369,26 @@ export default function TecnicosMaterialesClient() {
   }, []);
 
   useEffect(() => {
-    loadHistorial(tecnicoUid);
-  }, [tecnicoUid]);
+    loadHistorial(destinatarioUid);
+  }, [destinatarioUid]);
+
+  useEffect(() => {
+    setDestinatarioUid("");
+    setUsuarioSearch("");
+    if (tipoDestino === "USUARIO") {
+      setCoordinadorUid("");
+      setCuadrillaId("");
+    }
+  }, [tipoDestino]);
+
+  useEffect(() => {
+    if (tipoDestino !== "USUARIO") return;
+    if (!destinatarioActual) return;
+    setUsuarioSearch(destinatarioActual.nombreCorto || "");
+  }, [tipoDestino, destinatarioActual]);
 
   const submit = async () => {
-    if (!tecnicoUid) return toast.error("Selecciona tecnico");
+    if (!destinatarioUid) return toast.error("Selecciona destinatario");
     if (!items.length) return toast.error("Agrega materiales");
 
     const payloadItems: PayloadItem[] = items.map((it) => {
@@ -352,12 +426,14 @@ export default function TecnicosMaterialesClient() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tecnicoUid,
-          tecnicoNombre: tecnicoActual?.nombreCorto || tecnicoUid,
-          coordinadorUid,
-          coordinadorNombre: coordinadores.find((c) => c.uid === coordinadorUid)?.label || "",
-          cuadrillaId,
-          cuadrillaNombre: cuadrillas.find((c) => c.id === cuadrillaId)?.nombre || "",
+          destinatarioUid,
+          destinatarioNombre: destinatarioActual?.nombreCorto || destinatarioUid,
+          tecnicoUid: destinatarioUid,
+          tecnicoNombre: destinatarioActual?.nombreCorto || destinatarioUid,
+          coordinadorUid: coordinadorSeleccionadoUid,
+          coordinadorNombre: coordinadorSeleccionadoNombre,
+          cuadrillaId: cuadrillaSeleccionadaId,
+          cuadrillaNombre: cuadrillaSeleccionadaNombre,
           observacion,
           items: payloadItems,
         }),
@@ -381,9 +457,9 @@ export default function TecnicosMaterialesClient() {
         const pdf = generarPdfGuiaTecnico80mm({
           guia,
           modo,
-          tecnicoNombre: tecnicoActual?.nombreCorto || tecnicoUid,
-          cuadrillaNombre: cuadrillas.find((c) => c.id === cuadrillaId)?.nombre || "",
-          coordinadorNombre: coordinadores.find((c) => c.uid === coordinadorUid)?.label || "",
+          destinatarioNombre: destinatarioActual?.nombreCorto || destinatarioUid,
+          cuadrillaNombre: cuadrillaSeleccionadaNombre,
+          coordinadorNombre: coordinadorSeleccionadoNombre,
           usuarioNombre: usuarioNombre || "Usuario",
           observacion,
           items: payloadItems,
@@ -402,12 +478,28 @@ export default function TecnicosMaterialesClient() {
         if (!upRes.ok) throw new Error("NO_SE_PUDO_SUBIR_LA_GUIA");
         printThermalBlobTwice(pdf);
 
-        const celularTecnico = await obtenerCelularTecnico(tecnicoUid);
+        const roles = Array.isArray(destinatarioActual?.roles)
+          ? destinatarioActual.roles.map((r) => String(r || "").toUpperCase())
+          : [];
+        const isTecnico = roles.includes("TECNICO");
+        const whatsappUid = isTecnico && destinatarioActual?.coordinadorUid
+          ? destinatarioActual.coordinadorUid
+          : destinatarioUid;
+        const phones = await obtenerCelularesUsuarios([
+          destinatarioUid,
+          coordinadorSeleccionadoUid,
+        ]);
+        const whatsappNumero = phones.get(whatsappUid) || "";
+        const whatsappNombre =
+          whatsappUid === destinatarioUid
+            ? (destinatarioActual?.nombreCorto || destinatarioUid)
+            : (destinatarioActual?.coordinadorNombre || coordinadores.find((c) => c.uid === whatsappUid)?.label || whatsappUid);
         const lines: string[] = [];
         lines.push(`*${modo === "ENTREGA" ? "Entrega de Materiales" : "Devolucion de Materiales"}*`);
         lines.push(`Guia: ${guia}`);
-        lines.push(`Tecnico: ${tecnicoActual?.nombreCorto || tecnicoUid}`);
-        if (cuadrillaId) lines.push(`Cuadrilla: ${cuadrillas.find((c) => c.id === cuadrillaId)?.nombre || cuadrillaId}`);
+        lines.push(`Destinatario: ${destinatarioActual?.nombreCorto || destinatarioUid}`);
+        if (cuadrillaSeleccionadaId) lines.push(`Cuadrilla: ${cuadrillaSeleccionadaNombre || cuadrillaSeleccionadaId}`);
+        if (whatsappUid !== destinatarioUid) lines.push(`Notificar a: ${whatsappNombre}`);
         lines.push(`Registrado por: ${usuarioNombre || "Usuario"}`);
         lines.push(`Fecha/Hora: ${new Date().toLocaleString("es-PE")}`);
         lines.push("");
@@ -422,8 +514,14 @@ export default function TecnicosMaterialesClient() {
           lines.push("Comprobante:");
           lines.push(directUrl);
         }
-        const sent = enviarWhatsApp(celularTecnico, lines.join("\n"), waWindowRef.current);
-        if (!sent) toast.message("No se encontro celular del tecnico");
+        const sent = enviarWhatsApp(whatsappNumero, lines.join("\n"), waWindowRef.current);
+        if (!sent) {
+          toast.message(
+            whatsappUid === destinatarioUid
+              ? "No se encontro celular del destinatario"
+              : "No se encontro celular del coordinador"
+          );
+        }
       } else if (waWindowRef.current && !waWindowRef.current.closed) {
         waWindowRef.current.close();
       }
@@ -431,7 +529,7 @@ export default function TecnicosMaterialesClient() {
       toast.success(`${modo === "ENTREGA" ? "Entrega" : "Devolucion"} registrada`);
       setItems([]);
       setObservacion("");
-      await loadHistorial(tecnicoUid);
+      await loadHistorial(destinatarioUid);
     } catch (e: any) {
       if (waWindowRef.current && !waWindowRef.current.closed) waWindowRef.current.close();
       toast.error(e?.message || "No se pudo registrar el movimiento");
@@ -444,55 +542,146 @@ export default function TecnicosMaterialesClient() {
   return (
     <div className="space-y-4">
       <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4">
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="space-y-3">
           <div>
-            <label className="text-xs text-slate-500">Coordinador</label>
-            <select
-              value={coordinadorUid}
-              onChange={(e) => {
-                setCoordinadorUid(e.target.value);
-                setCuadrillaId("");
-                setTecnicoUid("");
-              }}
-              className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-            >
-              <option value="">Todos</option>
-              {coordinadores.map((c) => (
-                <option key={c.uid} value={c.uid}>{c.label}</option>
-              ))}
-            </select>
+            <label className="text-xs text-slate-500">Despachar a</label>
+            <div className="mt-1 inline-flex rounded-xl border border-slate-300 bg-slate-50 p-1 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-950">
+              <button
+                type="button"
+                onClick={() => setTipoDestino("TECNICO")}
+                className={`rounded-lg px-4 py-2 font-medium transition ${
+                  tipoDestino === "TECNICO"
+                    ? "bg-slate-900 text-white shadow dark:bg-slate-100 dark:text-slate-900"
+                    : "text-slate-700 hover:bg-white dark:text-slate-200 dark:hover:bg-slate-900"
+                }`}
+              >
+                Tecnico
+              </button>
+              <button
+                type="button"
+                onClick={() => setTipoDestino("USUARIO")}
+                className={`rounded-lg px-4 py-2 font-medium transition ${
+                  tipoDestino === "USUARIO"
+                    ? "bg-slate-900 text-white shadow dark:bg-slate-100 dark:text-slate-900"
+                    : "text-slate-700 hover:bg-white dark:text-slate-200 dark:hover:bg-slate-900"
+                }`}
+              >
+                Otro usuario
+              </button>
+            </div>
           </div>
-          <div>
-            <label className="text-xs text-slate-500">Cuadrilla</label>
-            <select
-              value={cuadrillaId}
-              onChange={(e) => {
-                setCuadrillaId(e.target.value);
-                setTecnicoUid("");
-              }}
-              className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-            >
-              <option value="">Todas</option>
-              {cuadrillasFiltradas.map((c) => (
-                <option key={c.id} value={c.id}>{c.nombre || c.id}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-slate-500">Tecnico</label>
-            <select
-              value={tecnicoUid}
-              onChange={(e) => setTecnicoUid(e.target.value)}
-              className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-            >
-              <option value="">Selecciona tecnico...</option>
-              {tecnicosFiltrados.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.nombreCorto} {t.cuadrillaNombre ? `| ${t.cuadrillaNombre}` : ""}
-                </option>
-              ))}
-            </select>
-          </div>
+
+          {tipoDestino === "TECNICO" ? (
+            <div className="grid gap-3 md:grid-cols-3">
+              <div>
+                <label className="text-xs text-slate-500">Coordinador</label>
+                <select
+                  value={coordinadorUid}
+                  onChange={(e) => {
+                    setCoordinadorUid(e.target.value);
+                    setCuadrillaId("");
+                    setDestinatarioUid("");
+                  }}
+                  className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                >
+                  <option value="">Todos</option>
+                  {coordinadores.map((c) => (
+                    <option key={c.uid} value={c.uid}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-slate-500">Cuadrilla</label>
+                <select
+                  value={cuadrillaId}
+                  onChange={(e) => {
+                    setCuadrillaId(e.target.value);
+                    setDestinatarioUid("");
+                  }}
+                  className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                >
+                  <option value="">Todas</option>
+                  {cuadrillasFiltradas.map((c) => (
+                    <option key={c.id} value={c.id}>{c.nombre || c.id}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-slate-500">Tecnico</label>
+                <select
+                  value={destinatarioUid}
+                  onChange={(e) => {
+                    const nextUid = e.target.value;
+                    setDestinatarioUid(nextUid);
+                    const next = destinatarios.find((item) => item.id === nextUid);
+                    if (!nextUid) return;
+                    if (next?.coordinadorUid) setCoordinadorUid(next.coordinadorUid);
+                    if (next?.cuadrillaId) setCuadrillaId(next.cuadrillaId);
+                  }}
+                  className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                >
+                  <option value="">Selecciona tecnico...</option>
+                  {tecnicosFiltrados.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.nombreCorto}
+                      {t.cuadrillaNombre ? ` | ${t.cuadrillaNombre}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-1">
+              <div>
+                <label className="text-xs text-slate-500">Usuario</label>
+                <input
+                  value={usuarioSearch}
+                  onChange={(e) => {
+                    setUsuarioSearch(e.target.value);
+                    setDestinatarioUid("");
+                  }}
+                  placeholder="Escribe nombre, rol o UID..."
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                />
+                <div className="mt-2 max-h-56 overflow-auto rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                  {otrosUsuariosBuscados.map((t) => {
+                    const selected = t.id === destinatarioUid;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          setDestinatarioUid(t.id);
+                          setUsuarioSearch(t.nombreCorto || t.id);
+                        }}
+                        className={`w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 dark:border-slate-800 ${
+                          selected
+                            ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                            : "hover:bg-slate-50 dark:hover:bg-slate-800"
+                        }`}
+                      >
+                        <div className="font-medium">{t.nombreCorto}</div>
+                        <div className={`text-xs ${selected ? "text-slate-200 dark:text-slate-700" : "text-slate-500 dark:text-slate-400"}`}>
+                          {t.roles?.length ? t.roles.join("/") : "Sin rol"} | {t.id}
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {!otrosUsuariosBuscados.length && (
+                    <div className="px-3 py-4 text-sm text-slate-500 dark:text-slate-400">
+                      No hay usuarios para ese texto.
+                    </div>
+                  )}
+                </div>
+                {destinatarioActual && tipoDestino === "USUARIO" && (
+                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    Seleccionado: <b>{destinatarioActual.nombreCorto}</b>
+                    {destinatarioActual.roles?.length ? ` | ${destinatarioActual.roles.join("/")}` : ""}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
@@ -517,7 +706,7 @@ export default function TecnicosMaterialesClient() {
           <button
             type="button"
             onClick={submit}
-            disabled={guardando || !tecnicoUid || !items.length}
+            disabled={guardando || !destinatarioUid || !items.length}
             className="rounded bg-emerald-700 px-3 py-2 text-sm text-white disabled:opacity-50"
           >
             {guardando ? "Registrando..." : `Registrar ${modo}`}
@@ -669,12 +858,12 @@ export default function TecnicosMaterialesClient() {
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4">
-        <h2 className="text-lg font-semibold">Historial del tecnico</h2>
-        {!tecnicoUid && <p className="mt-2 text-sm text-slate-500">Selecciona un tecnico para ver su historial.</p>}
-        {tecnicoUid && (
+        <h2 className="text-lg font-semibold">Historial del destinatario</h2>
+        {!destinatarioUid && <p className="mt-2 text-sm text-slate-500">Selecciona un destinatario para ver su historial.</p>}
+        {destinatarioUid && (
           <div className="mt-3 grid gap-3 lg:grid-cols-2">
             <div className="rounded border p-3">
-              <div className="mb-2 text-sm font-semibold">Stock actual del tecnico</div>
+              <div className="mb-2 text-sm font-semibold">Stock actual del destinatario</div>
               <div className="max-h-56 overflow-auto text-sm">
                 {stock.map((s: any) => (
                   <div key={s.id} className="border-b py-1">
@@ -700,7 +889,7 @@ export default function TecnicosMaterialesClient() {
           </div>
         )}
 
-        {tecnicoUid && (
+        {destinatarioUid && (
           <div className="mt-3 overflow-x-auto rounded border">
             <table className="min-w-full border-collapse text-sm">
               <thead className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
@@ -740,8 +929,3 @@ export default function TecnicosMaterialesClient() {
     </div>
   );
 }
-
-
-
-
-

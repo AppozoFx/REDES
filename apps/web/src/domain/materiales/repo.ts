@@ -171,7 +171,10 @@ export async function updateMaterial(input: MaterialUpdateInput, actorUid: strin
   const curr = snap.data() as MaterialDoc;
 
   // Validar unidad: no permitir cambiar tipo (migración aparte)
-  if (curr.unidadTipo !== input.unidadTipo) throw new Error("UNIT_TYPE_CHANGE_NOT_ALLOWED");
+  const isUnitTransition = curr.unidadTipo !== input.unidadTipo;
+  if (isUnitTransition && !(curr.unidadTipo === "UND" && input.unidadTipo === "METROS")) {
+    throw new Error("UNIT_TYPE_CHANGE_NOT_ALLOWED");
+  }
 
   const norm = nombreNorm(input.nombre);
   // Verificar duplicidad de nombreNorm en otros docs
@@ -192,9 +195,13 @@ export async function updateMaterial(input: MaterialUpdateInput, actorUid: strin
     },
   };
 
-  if (curr.unidadTipo === "UND") {
+  if (input.unidadTipo === "UND") {
+    base.unidadTipo = "UND";
     base.ventaUnidadTipos = ["UND"];
     if (typeof input.minStockUnd === "number") base.minStockUnd = Math.max(0, Math.floor(input.minStockUnd));
+    base.metrosPorUndCm = FieldValue.delete();
+    base.minStockCm = FieldValue.delete();
+    base.stockCm = FieldValue.delete();
     if (input.vendible) {
       if (typeof input.precioUnd !== "number") throw new Error("PRECIO_UND_REQUIRED");
       base.precioUndCents = moneyToCents(input.precioUnd);
@@ -202,11 +209,17 @@ export async function updateMaterial(input: MaterialUpdateInput, actorUid: strin
       base.precioUndCents = FieldValue.delete();
     }
   } else {
+    base.unidadTipo = "METROS";
     const ventaUnidadTipos = normalizeVentaUnidadTipos("METROS", input.ventaUnidadTipos as Array<"UND" | "METROS"> | undefined);
     base.ventaUnidadTipos = ventaUnidadTipos;
     if (typeof input.metrosPorUnd !== "number" || input.metrosPorUnd <= 0) throw new Error("METROS_POR_UND_REQUIRED");
     base.metrosPorUndCm = metersToCm(input.metrosPorUnd);
     if (typeof input.minStockMetros === "number") base.minStockCm = Math.max(0, metersToCm(input.minStockMetros));
+    base.minStockUnd = FieldValue.delete();
+    base.stockUnd = FieldValue.delete();
+    if (curr.unidadTipo === "UND") {
+      base.stockCm = metersToCm(Math.max(0, Number((curr as any).stockUnd || 0)) * input.metrosPorUnd);
+    }
     if (input.vendible) {
       if (ventaUnidadTipos.includes("UND")) {
         if (typeof input.precioUnd !== "number") throw new Error("PRECIO_UND_REQUIRED");

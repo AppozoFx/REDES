@@ -18,14 +18,14 @@ export async function GET(req: Request) {
     if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const { searchParams } = new URL(req.url);
-    const tecnicoUid = String(searchParams.get("tecnicoUid") || "").trim();
-    if (!tecnicoUid) return NextResponse.json({ ok: false, error: "TECNICO_REQUIRED" }, { status: 400 });
+    const destinatarioUid = String(searchParams.get("destinatarioUid") || searchParams.get("tecnicoUid") || "").trim();
+    if (!destinatarioUid) return NextResponse.json({ ok: false, error: "DESTINATARIO_REQUIRED" }, { status: 400 });
 
     const db = adminDb();
     const [histSnap, stockSnap, activosSnap] = await Promise.all([
-      db.collection("usuarios").doc(tecnicoUid).collection("materiales_historial").orderBy("createdAt", "desc").limit(120).get(),
-      db.collection("usuarios").doc(tecnicoUid).collection("stock_materiales").orderBy("materialId", "asc").limit(300).get(),
-      db.collection("usuarios").doc(tecnicoUid).collection("activos_asignados").orderBy("materialId", "asc").limit(300).get(),
+      db.collection("usuarios").doc(destinatarioUid).collection("materiales_historial").orderBy("createdAt", "desc").limit(120).get(),
+      db.collection("usuarios").doc(destinatarioUid).collection("stock_materiales").orderBy("materialId", "asc").limit(300).get(),
+      db.collection("usuarios").doc(destinatarioUid).collection("activos_asignados").orderBy("materialId", "asc").limit(300).get(),
     ]);
 
     const historial = histSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
@@ -37,4 +37,3 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }
 }
-

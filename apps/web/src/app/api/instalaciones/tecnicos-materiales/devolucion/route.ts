@@ -76,6 +76,8 @@ export async function POST(req: Request) {
     if (!canUse) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const raw = (await req.json().catch(() => ({}))) as {
+      destinatarioUid?: string;
+      destinatarioNombre?: string;
       tecnicoUid?: string;
       tecnicoNombre?: string;
       coordinadorUid?: string;
@@ -85,12 +87,21 @@ export async function POST(req: Request) {
       observacion?: string;
       items?: DevolucionItem[];
     };
-    const tecnicoUid = String(raw?.tecnicoUid || "").trim();
-    if (!tecnicoUid) return NextResponse.json({ ok: false, error: "TECNICO_REQUIRED" }, { status: 400 });
+    const destinatarioUid = String(raw?.destinatarioUid || raw?.tecnicoUid || "").trim();
+    if (!destinatarioUid) return NextResponse.json({ ok: false, error: "DESTINATARIO_REQUIRED" }, { status: 400 });
+    const destinatarioNombre = String(raw?.destinatarioNombre || raw?.tecnicoNombre || destinatarioUid).trim();
     const items = Array.isArray(raw?.items) ? raw.items : [];
     if (!items.length) return NextResponse.json({ ok: false, error: "ITEMS_REQUIRED" }, { status: 400 });
 
     const db = adminDb();
+    const destinatarioAccess = await db.collection("usuarios_access").doc(destinatarioUid).get();
+    if (!destinatarioAccess.exists) return NextResponse.json({ ok: false, error: "DESTINATARIO_NOT_FOUND" }, { status: 404 });
+    const roles = ((destinatarioAccess.data() as any)?.roles || []).map((r: any) => String(r || "").toUpperCase());
+    const estadoAcceso = String((destinatarioAccess.data() as any)?.estadoAcceso || "").toUpperCase();
+    if (estadoAcceso !== "HABILITADO") {
+      return NextResponse.json({ ok: false, error: "DESTINATARIO_DISABLED" }, { status: 400 });
+    }
+    const isTecnico = roles.includes("TECNICO");
 
     const materialIds = Array.from(new Set(items.map((i) => String(i.materialId || "").trim()).filter(Boolean)));
     const matRefs = materialIds.map((id) => db.collection("materiales").doc(id));
@@ -126,8 +137,8 @@ export async function POST(req: Request) {
       const stockRefs = parsed.map((it) => ({
         materialId: it.materialId,
         almRef: db.collection("almacen_stock").doc(it.materialId),
-        tecRef: db.collection("usuarios").doc(tecnicoUid).collection("stock_materiales").doc(it.materialId),
-        activoRef: db.collection("usuarios").doc(tecnicoUid).collection("activos_asignados").doc(it.materialId),
+        tecRef: db.collection("usuarios").doc(destinatarioUid).collection("stock_materiales").doc(it.materialId),
+        activoRef: db.collection("usuarios").doc(destinatarioUid).collection("activos_asignados").doc(it.materialId),
       }));
       const readEntries = await Promise.all(
         stockRefs.map(async (entry) => ({
@@ -188,12 +199,15 @@ export async function POST(req: Request) {
 
     await movRef.set({
       area: "INSTALACIONES",
-      tipo: "DEVOLUCION_TECNICO",
+      tipo: isTecnico ? "DEVOLUCION_TECNICO" : "DEVOLUCION_USUARIO",
       guia,
-      origen: { type: "TECNICO", id: tecnicoUid },
+      origen: { type: "USUARIO", id: destinatarioUid },
       destino: { type: "ALMACEN", id: "ALMACEN" },
-      tecnicoUid,
-      tecnicoNombre: String(raw?.tecnicoNombre || tecnicoUid),
+      destinatarioUid,
+      destinatarioNombre,
+      destinatarioRoles: roles,
+      tecnicoUid: destinatarioUid,
+      tecnicoNombre: destinatarioNombre,
       coordinadorUid: String(raw?.coordinadorUid || ""),
       coordinadorNombre: String(raw?.coordinadorNombre || ""),
       cuadrillaId: String(raw?.cuadrillaId || ""),
@@ -206,13 +220,16 @@ export async function POST(req: Request) {
       ymd,
     });
 
-    const histRef = db.collection("usuarios").doc(tecnicoUid).collection("materiales_historial").doc();
+    const histRef = db.collection("usuarios").doc(destinatarioUid).collection("materiales_historial").doc();
     await histRef.set({
       movId: movRef.id,
       tipo: "DEVOLUCION",
       guia,
-      tecnicoUid,
-      tecnicoNombre: String(raw?.tecnicoNombre || tecnicoUid),
+      destinatarioUid,
+      destinatarioNombre,
+      destinatarioRoles: roles,
+      tecnicoUid: destinatarioUid,
+      tecnicoNombre: destinatarioNombre,
       items: payloadItems,
       observacion: String(raw?.observacion || ""),
       createdAt: FieldValue.serverTimestamp(),
@@ -223,12 +240,12 @@ export async function POST(req: Request) {
 
     try {
       await addGlobalNotification({
-        title: "Devolucion de Tecnico",
-        message: `${actorNombre} registro devolucion de ${payloadItems.length} material(es) del tecnico ${String(raw?.tecnicoNombre || tecnicoUid)}`,
+        title: isTecnico ? "Devolucion de Tecnico" : "Devolucion de Usuario",
+        message: `${actorNombre} registro devolucion de ${payloadItems.length} material(es) de ${destinatarioNombre}`,
         type: "success",
         scope: "ALL",
         createdBy: session.uid,
-        entityType: "DEVOLUCION_TECNICO",
+        entityType: isTecnico ? "DEVOLUCION_TECNICO" : "DEVOLUCION_USUARIO",
         entityId: movRef.id,
         action: "CREATE",
         estado: "ACTIVO",

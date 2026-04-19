@@ -5,6 +5,12 @@ import { buildBaseFromCuadrillas, getAsignacionData } from "@/lib/gestorAsignaci
 
 export const runtime = "nodejs";
 
+function canManageAsignacion(session: Awaited<ReturnType<typeof getServerSession>>) {
+  if (!session) return false;
+  const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
+  return session.isAdmin || roles.includes("GERENCIA") || roles.includes("JEFATURA");
+}
+
 function shortName(full: string, fallback: string) {
   const parts = String(full || "")
     .trim()
@@ -37,9 +43,7 @@ export async function GET(req: Request) {
     if (session.access.estadoAcceso !== "HABILITADO") {
       return NextResponse.json({ ok: false, error: "ACCESS_DISABLED" }, { status: 403 });
     }
-    const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
-    const canAdmin = session.isAdmin || roles.includes("GERENCIA");
-    if (!canAdmin) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
+    if (!canManageAsignacion(session)) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const { searchParams } = new URL(req.url);
     const fecha = String(searchParams.get("fecha") || "").trim();
@@ -102,9 +106,7 @@ export async function POST(req: Request) {
     if (session.access.estadoAcceso !== "HABILITADO") {
       return NextResponse.json({ ok: false, error: "ACCESS_DISABLED" }, { status: 403 });
     }
-    const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
-    const canAdmin = session.isAdmin || roles.includes("GERENCIA");
-    if (!canAdmin) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
+    if (!canManageAsignacion(session)) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const body = await req.json();
     const tipo = String(body?.tipo || "").trim();

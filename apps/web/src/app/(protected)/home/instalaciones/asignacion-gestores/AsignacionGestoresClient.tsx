@@ -32,6 +32,8 @@ const uniq = (arr: string[]) => Array.from(new Set((arr || []).filter(Boolean)))
 const sortCuads = (list: Opt[]) =>
   [...list].sort((a, b) => String(a.label).localeCompare(String(b.label), "es", { sensitivity: "base" }));
 
+const ACTIVE_PROGRAM_STATES = new Set(["asistencia"]);
+
 function normalizeMap(map: AssignMap): AssignMap {
   const out: AssignMap = {};
   Object.entries(map || {}).forEach(([k, v]) => {
@@ -252,9 +254,16 @@ export default function AsignacionGestoresClient() {
     if (!programState || Object.keys(programState).length === 0) return cuadrillas;
     return cuadrillas.filter((c) => {
       const v = String(programState?.[c.value] || "descanso").toLowerCase();
-      return v === "asistencia";
+      return ACTIVE_PROGRAM_STATES.has(v);
     });
   }, [cuadrillas, tab, programState]);
+  const carryOverCuadrillasDia = useMemo(() => {
+    if (tab !== "dia") return cuadrillas;
+    const keep = new Set<string>();
+    Object.values(baseMap).forEach((arr) => (arr || []).forEach((id) => keep.add(id)));
+    Object.values(currentMap).forEach((arr) => (arr || []).forEach((id) => keep.add(id)));
+    return cuadrillas.filter((c) => keep.has(c.value));
+  }, [baseMap, currentMap, cuadrillas, tab]);
   const isTopGestor = (uid: string) => currentTop.includes(uid);
   const cuadrillasActivasCount = visibleCuadrillas.length;
   const cuadrillasBloqueadasCount = Math.max(0, cuadrillas.length - visibleCuadrillas.length);
@@ -316,7 +325,17 @@ export default function AsignacionGestoresClient() {
 
   const availableFor = (uid: string) => {
     const selected = asignadosPorGestor(uid);
-    return visibleCuadrillas.filter((c) => !assignedSet.has(c.value) || selected.includes(c.value));
+    const pool = tab === "dia"
+      ? uniq([
+          ...visibleCuadrillas.map((c) => c.value),
+          ...carryOverCuadrillasDia.map((c) => c.value),
+        ])
+      : cuadrillas.map((c) => c.value);
+
+    return pool
+      .map((id) => cuadrillas.find((c) => c.value === id))
+      .filter((c): c is Opt => !!c)
+      .filter((c) => !assignedSet.has(c.value) || selected.includes(c.value));
   };
 
   const bulkSourceIds = useMemo(() => {
@@ -441,7 +460,7 @@ export default function AsignacionGestoresClient() {
                   type="date"
                   value={fecha}
                   onChange={(e) => setFecha(e.target.value)}
-                  className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-white outline-none"
+                  className="rounded-xl border border-slate-300/80 bg-white/90 px-3 py-2 text-slate-900 outline-none [color-scheme:light] dark:border-white/20 dark:bg-white/10 dark:text-white dark:[color-scheme:dark]"
                 />
                 <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs text-blue-50/90">
                   {dayjs(fecha, "YYYY-MM-DD").format("DD/MM/YYYY")}
@@ -859,7 +878,7 @@ export default function AsignacionGestoresClient() {
                 styles={{ ...(selectStyles || {}), menuPortal: (base) => ({ ...base, zIndex: 9999 }) }}
               />
               <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                Solo se muestran cuadrillas libres o ya asignadas a esta gestora.
+                En programacion diaria se priorizan cuadrillas activas y tambien se conservan visibles las que ya estaban en base o en la asignacion del dia para poder reasignarlas.
               </div>
             </div>
 

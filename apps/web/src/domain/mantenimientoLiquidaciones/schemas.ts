@@ -35,6 +35,8 @@ export const MantenimientoLiquidacionCreateSchema = z.object({
   causaRaiz: z.string().optional().default(""),
   solucion: z.string().optional().default(""),
   observacion: z.string().optional().default(""),
+  sinMateriales: z.coerce.boolean().optional().default(false),
+  motivoSinMateriales: z.string().optional().default(""),
   origen: MantenimientoLiquidacionOrigenSchema.default("MANUAL"),
   materialesConsumidos: z.array(MaterialLiquidacionInputSchema).default([]),
 });

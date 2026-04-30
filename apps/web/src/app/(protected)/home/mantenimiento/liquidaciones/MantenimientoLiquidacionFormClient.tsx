@@ -37,6 +37,8 @@ type FormState = {
   causaRaiz: string;
   solucion: string;
   observacion: string;
+  sinMateriales: boolean;
+  motivoSinMateriales: string;
   estado: string;
   origen: "MANUAL" | "TELEGRAM" | "IMPORTADO";
   materialesConsumidos: FormItem[];
@@ -116,6 +118,8 @@ const emptyState: FormState = {
   causaRaiz: "",
   solucion: "",
   observacion: "",
+  sinMateriales: false,
+  motivoSinMateriales: "",
   estado: "ABIERTO",
   origen: "MANUAL",
   materialesConsumidos: [],
@@ -229,6 +233,8 @@ export default function MantenimientoLiquidacionFormClient({
             causaRaiz: String(item.causaRaiz || ""),
             solucion: String(item.solucion || ""),
             observacion: String(item.observacion || ""),
+            sinMateriales: Boolean(item.sinMateriales),
+            motivoSinMateriales: String(item.motivoSinMateriales || ""),
             estado: String(item.estado || "ABIERTO"),
             origen: (String(item.origen || "MANUAL") as any) || "MANUAL",
             materialesConsumidos: Array.isArray(item.materialesConsumidos)
@@ -358,6 +364,12 @@ export default function MantenimientoLiquidacionFormClient({
       .sort((a, b) => a.nombre.localeCompare(b.nombre));
   }, [form.cuadrillaId, stock, materiales]);
 
+  const hasValidMateriales = useMemo(() => {
+    return form.materialesConsumidos.some((it) =>
+      it.unidadTipo === "METROS" ? Number(it.metros || 0) > 0 : Number(it.und || 0) > 0
+    );
+  }, [form.materialesConsumidos]);
+
   function patch<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((curr) => ({ ...curr, [key]: value }));
   }
@@ -416,6 +428,9 @@ function normalizeDistrito(value: string) {
     if (raw === "COORDENADAS_INVALIDAS") {
       return "Las coordenadas deben tener el formato latitud, longitud.";
     }
+    if (raw === "MOTIVO_SIN_MATERIALES_REQUIRED") {
+      return "Debes indicar el motivo cuando liquidas sin materiales.";
+    }
     return raw;
   }
 
@@ -463,13 +478,15 @@ function normalizeDistrito(value: string) {
         ...form,
         latitud: coords.latitud ? Number(coords.latitud) : null,
         longitud: coords.longitud ? Number(coords.longitud) : null,
-        materialesConsumidos: form.materialesConsumidos.map((it) => ({
-          materialId: it.materialId,
-          descripcion: it.descripcion,
-          unidadTipo: it.unidadTipo,
-          und: Number(it.und || 0),
-          metros: Number(it.metros || 0),
-        })),
+        materialesConsumidos: form.sinMateriales
+          ? []
+          : form.materialesConsumidos.map((it) => ({
+              materialId: it.materialId,
+              descripcion: it.descripcion,
+              unidadTipo: it.unidadTipo,
+              und: Number(it.und || 0),
+              metros: Number(it.metros || 0),
+            })),
       };
       const endpoint = mode === "create" ? "/api/mantenimiento/liquidaciones/create" : "/api/mantenimiento/liquidaciones/update";
       const body = mode === "create" ? payload : { id, ...payload };
@@ -503,7 +520,11 @@ function normalizeDistrito(value: string) {
       const res = await fetch("/api/mantenimiento/liquidaciones/liquidar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({
+          id,
+          sinMateriales: form.sinMateriales,
+          motivoSinMateriales: form.motivoSinMateriales,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) throw new Error(String(data?.error || "ERROR"));
@@ -536,13 +557,15 @@ function normalizeDistrito(value: string) {
           ...form,
           latitud: coords.latitud ? Number(coords.latitud) : null,
           longitud: coords.longitud ? Number(coords.longitud) : null,
-          materialesConsumidos: form.materialesConsumidos.map((it) => ({
-            materialId: it.materialId,
-            descripcion: it.descripcion,
-            unidadTipo: it.unidadTipo,
-            und: Number(it.und || 0),
-            metros: Number(it.metros || 0),
-          })),
+          materialesConsumidos: form.sinMateriales
+            ? []
+            : form.materialesConsumidos.map((it) => ({
+                materialId: it.materialId,
+                descripcion: it.descripcion,
+                unidadTipo: it.unidadTipo,
+                und: Number(it.und || 0),
+                metros: Number(it.metros || 0),
+              })),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -771,11 +794,47 @@ function normalizeDistrito(value: string) {
           </section>
 
           <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <div className="mb-4 grid gap-3 md:grid-cols-2">
+              <label className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={form.sinMateriales}
+                  disabled={locked}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setForm((curr) => ({
+                      ...curr,
+                      sinMateriales: checked,
+                      motivoSinMateriales: checked ? curr.motivoSinMateriales : "",
+                      materialesConsumidos: checked ? [] : curr.materialesConsumidos,
+                    }));
+                    if (checked) setSelectedMaterialId("");
+                  }}
+                />
+                Liquidar sin consumo de materiales
+              </label>
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">Motivo sin materiales</label>
+                <input
+                  value={form.motivoSinMateriales}
+                  onChange={(e) => patch("motivoSinMateriales", e.target.value)}
+                  disabled={locked || !form.sinMateriales}
+                  placeholder="Ej. Diagnostico, visita de validacion, regularizacion"
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+                />
+              </div>
+            </div>
             <div className="mb-3 flex flex-wrap items-end gap-3">
               <div className="min-w-72 flex-1">
                 <label className="mb-1 block text-xs text-slate-500">Agregar material</label>
-                <select value={selectedMaterialId} onChange={(e) => setSelectedMaterialId(e.target.value)} disabled={locked || !form.cuadrillaId} className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
-                  <option value="">{form.cuadrillaId ? "Selecciona un material del stock..." : "Primero selecciona una cuadrilla..."}</option>
+                <select value={selectedMaterialId} onChange={(e) => setSelectedMaterialId(e.target.value)} disabled={locked || !form.cuadrillaId || form.sinMateriales} className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+                  <option value="">
+                    {form.sinMateriales
+                      ? "Desactiva 'sin materiales' para agregar consumo..."
+                      : form.cuadrillaId
+                      ? "Selecciona un material del stock..."
+                      : "Primero selecciona una cuadrilla..."}
+                  </option>
                   {materialesDisponibles.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.id} - {m.nombre || m.id} ({m.unidadTipo}) | Stock: {m.stockLabel}
@@ -783,7 +842,7 @@ function normalizeDistrito(value: string) {
                   ))}
                 </select>
               </div>
-              <button type="button" onClick={addMaterial} disabled={locked || !selectedMaterialId} className="rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800">
+              <button type="button" onClick={addMaterial} disabled={locked || form.sinMateriales || !selectedMaterialId} className="rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800">
                 Agregar
               </button>
             </div>
@@ -840,7 +899,7 @@ function normalizeDistrito(value: string) {
           </section>
 
           <div className="flex flex-wrap items-center gap-3">
-            <div className="text-xs text-slate-500">Campos obligatorios: Ticket, Fecha y Cuadrilla.</div>
+            <div className="text-xs text-slate-500">Campos obligatorios: Ticket, Fecha y Cuadrilla. Si marcas "sin materiales", debes indicar el motivo.</div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -858,7 +917,7 @@ function normalizeDistrito(value: string) {
               <button
                 type="button"
                 onClick={liquidar}
-                disabled={locked || saving || !form.materialesConsumidos.length}
+                disabled={locked || saving || (!form.sinMateriales && !hasValidMateriales) || (form.sinMateriales && !String(form.motivoSinMateriales || "").trim())}
                 className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-600 disabled:opacity-50 dark:bg-emerald-600 dark:hover:bg-emerald-500"
               >
                 {liquidating ? "Liquidando..." : "Confirmar liquidacion"}
@@ -868,7 +927,7 @@ function normalizeDistrito(value: string) {
               <button
                 type="button"
                 onClick={corregir}
-                disabled={correcting || !form.materialesConsumidos.length}
+                disabled={correcting || (!form.sinMateriales && !hasValidMateriales) || (form.sinMateriales && !String(form.motivoSinMateriales || "").trim())}
                 className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-500 disabled:opacity-50"
               >
                 {correcting ? "Corrigiendo..." : "Aplicar correccion"}

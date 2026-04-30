@@ -192,7 +192,7 @@ export async function createMantenimientoLiquidacion(input: unknown, actorUid: s
   const prevDocs = await findLiquidacionesByTicket(parsed.ticketNumero);
   const ticketVisita = Math.max(1, prevDocs.length + 1);
   const ref = col().doc(buildLiquidacionId(ticketNumero));
-  const materialesConsumidos = normalizeMateriales(parsed.materialesConsumidos);
+  const materialesConsumidos = parsed.sinMateriales ? [] : normalizeMateriales(parsed.materialesConsumidos);
 
   await ref.set({
     ticketNumero,
@@ -212,6 +212,8 @@ export async function createMantenimientoLiquidacion(input: unknown, actorUid: s
     causaRaiz: normText(parsed.causaRaiz),
     solucion: normText(parsed.solucion),
     observacion: normText(parsed.observacion),
+    sinMateriales: Boolean(parsed.sinMateriales),
+    motivoSinMateriales: normText(parsed.motivoSinMateriales),
     estado: "ABIERTO",
     origen: parsed.origen,
     materialesConsumidos,
@@ -241,7 +243,7 @@ export async function updateMantenimientoLiquidacion(id: string, input: unknown,
   if (normalizeEstadoLegacy(curr?.estado) === "LIQUIDADO") throw new Error("LIQUIDACION_YA_CONFIRMADA");
 
   const cuadrilla = await loadCuadrillaMant(parsed.cuadrillaId);
-  const materialesConsumidos = normalizeMateriales(parsed.materialesConsumidos);
+  const materialesConsumidos = parsed.sinMateriales ? [] : normalizeMateriales(parsed.materialesConsumidos);
   const ticketNumero = normText(parsed.ticketNumero);
   const ticketNumeroNorm = normalizeTicketNumero(parsed.ticketNumero);
   if (!ticketNumeroNorm) throw new Error("TICKET_REQUIRED");
@@ -265,6 +267,8 @@ export async function updateMantenimientoLiquidacion(id: string, input: unknown,
       causaRaiz: normText(parsed.causaRaiz),
       solucion: normText(parsed.solucion),
       observacion: normText(parsed.observacion),
+      sinMateriales: Boolean(parsed.sinMateriales),
+      motivoSinMateriales: normText(parsed.motivoSinMateriales),
       origen: parsed.origen,
       estado: normalizeEstadoLegacy(parsed.estado || curr?.estado || "ABIERTO"),
       materialesConsumidos,
@@ -295,7 +299,11 @@ export async function deleteMantenimientoLiquidacion(id: string, actorUid: strin
   });
 }
 
-export async function liquidarMantenimientoLiquidacion(id: string, actorUid: string) {
+export async function liquidarMantenimientoLiquidacion(
+  id: string,
+  actorUid: string,
+  options?: { sinMateriales?: boolean; motivoSinMateriales?: string }
+) {
   const db = adminDb();
   const ref = col().doc(id);
 
@@ -310,15 +318,40 @@ export async function liquidarMantenimientoLiquidacion(id: string, actorUid: str
     const cuadrillaId = normText(curr?.cuadrillaId);
     if (!cuadrillaId) throw new Error("CUADRILLA_REQUIRED");
 
+    const sinMateriales = Boolean(options?.sinMateriales);
+    const motivoSinMateriales = normText(options?.motivoSinMateriales);
+    if (sinMateriales && !motivoSinMateriales) throw new Error("MOTIVO_SIN_MATERIALES_REQUIRED");
+
     const cuadrillaRef = db.collection("cuadrillas").doc(cuadrillaId);
     const cuadrillaSnap = await tx.get(cuadrillaRef);
     if (!cuadrillaSnap.exists) throw new Error("CUADRILLA_NOT_FOUND");
     const cuadrilla = cuadrillaSnap.data() as any;
     if (String(cuadrilla?.area || "") !== "MANTENIMIENTO") throw new Error("INVALID_CUADRILLA");
 
-    const materialesBase = Array.isArray(curr?.materialesConsumidos) ? curr.materialesConsumidos : [];
+    const materialesBase = sinMateriales ? [] : Array.isArray(curr?.materialesConsumidos) ? curr.materialesConsumidos : [];
     const materiales = normalizeMateriales(materialesBase);
-    if (!materiales.length) throw new Error("MATERIALES_REQUIRED");
+    if (!sinMateriales && !materiales.length) throw new Error("MATERIALES_REQUIRED");
+
+    if (sinMateriales) {
+      tx.set(
+        ref,
+        {
+          estado: "LIQUIDADO",
+          sinMateriales: true,
+          motivoSinMateriales,
+          materialesConsumidos: [],
+          materialesSnapshot: [],
+          movimientoInventarioId: "",
+          liquidadoAt: FieldValue.serverTimestamp(),
+          liquidadoBy: actorUid,
+          "audit.updatedAt": FieldValue.serverTimestamp(),
+          "audit.updatedBy": actorUid,
+        },
+        { merge: true }
+      );
+
+      return { movimientoInventarioId: "" };
+    }
 
     const materialIds = materiales.map((it) => it.materialId);
     const matRefs = materialIds.map((mid) => db.collection("materiales").doc(mid));
@@ -401,6 +434,8 @@ export async function liquidarMantenimientoLiquidacion(id: string, actorUid: str
       ref,
       {
         estado: "LIQUIDADO",
+        sinMateriales: false,
+        motivoSinMateriales: "",
         materialesSnapshot: snapshotItems,
         movimientoInventarioId: movRef.id,
         liquidadoAt: FieldValue.serverTimestamp(),
@@ -427,8 +462,11 @@ export async function corregirMantenimientoLiquidacion(id: string, input: unknow
     if (normalizeEstadoLegacy(curr?.estado) !== "LIQUIDADO") throw new Error("LIQUIDACION_NO_CONFIRMADA");
 
     const cuadrilla = await loadCuadrillaMant(parsed.cuadrillaId);
-    const nextMateriales = normalizeMateriales(parsed.materialesConsumidos);
-    if (!nextMateriales.length) throw new Error("MATERIALES_REQUIRED");
+    const nextSinMateriales = Boolean(parsed.sinMateriales);
+    const motivoSinMateriales = normText(parsed.motivoSinMateriales);
+    if (nextSinMateriales && !motivoSinMateriales) throw new Error("MOTIVO_SIN_MATERIALES_REQUIRED");
+    const nextMateriales = nextSinMateriales ? [] : normalizeMateriales(parsed.materialesConsumidos);
+    if (!nextSinMateriales && !nextMateriales.length) throw new Error("MATERIALES_REQUIRED");
 
     const prevSnapshot = Array.isArray(curr?.materialesSnapshot) ? curr.materialesSnapshot : [];
     const prevMap = new Map<string, { unidadTipo: "UND" | "METROS"; und: number; metros: number }>(
@@ -537,56 +575,93 @@ export async function corregirMantenimientoLiquidacion(id: string, input: unknow
       }
     }
 
-    if (!deltaItems.length) throw new Error("SIN_CAMBIOS");
+    const nextTicketNumero = normText(parsed.ticketNumero);
+    const nextTicketNumeroNorm = normalizeTicketNumero(parsed.ticketNumero);
+    const nextCodigoCaja = normText(parsed.codigoCaja);
+    const nextFechaAtencionYmd = normText(parsed.fechaAtencionYmd);
+    const nextDistrito = normText(parsed.distrito);
+    const nextLatitud = normCoord(parsed.latitud, -90, 90);
+    const nextLongitud = normCoord(parsed.longitud, -180, 180);
+    const nextHoraInicio = normText(parsed.horaInicio);
+    const nextHoraFin = normText(parsed.horaFin);
+    const nextCausaRaiz = normText(parsed.causaRaiz);
+    const nextSolucion = normText(parsed.solucion);
+    const nextObservacion = normText(parsed.observacion);
+    const nextOrigen = parsed.origen;
 
-    const movRef = db.collection("movimientos_inventario").doc();
-    tx.set(movRef, {
-      area: "MANTENIMIENTO",
-      tipo: "CORRECCION_LIQUIDACION_MANTENIMIENTO",
-      liquidacionId: ref.id,
-      ticketNumero: normText(parsed.ticketNumero || curr?.ticketNumero),
-      ticketNumeroNorm: normText(parsed.ticketNumero ? normalizeTicketNumero(parsed.ticketNumero) : curr?.ticketNumeroNorm || normalizeTicketNumero(curr?.ticketNumero)),
-      origen: { type: "CUADRILLA", id: cuadrilla.id },
-      destino: { type: "TICKET", id: normText(parsed.ticketNumero || curr?.ticketNumero || ref.id) },
-      itemsMateriales: deltaItems,
-      observacion: normText(parsed.observacion || curr?.observacion),
-      createdAt: FieldValue.serverTimestamp(),
-      createdBy: actorUid,
-    });
+    const metaChanged =
+      nextTicketNumero !== normText(curr?.ticketNumero) ||
+      nextTicketNumeroNorm !== normText(curr?.ticketNumeroNorm || normalizeTicketNumero(curr?.ticketNumero)) ||
+      nextCodigoCaja !== normText(curr?.codigoCaja) ||
+      nextFechaAtencionYmd !== normText(curr?.fechaAtencionYmd) ||
+      nextDistrito !== normText(curr?.distrito) ||
+      nextLatitud !== normCoord(curr?.latitud, -90, 90) ||
+      nextLongitud !== normCoord(curr?.longitud, -180, 180) ||
+      cuadrilla.id !== normText(curr?.cuadrillaId) ||
+      cuadrilla.nombre !== normText(curr?.cuadrillaNombre) ||
+      nextHoraInicio !== normText(curr?.horaInicio) ||
+      nextHoraFin !== normText(curr?.horaFin) ||
+      nextCausaRaiz !== normText(curr?.causaRaiz) ||
+      nextSolucion !== normText(curr?.solucion) ||
+      nextObservacion !== normText(curr?.observacion) ||
+      nextOrigen !== curr?.origen ||
+      nextSinMateriales !== Boolean(curr?.sinMateriales) ||
+      motivoSinMateriales !== normText(curr?.motivoSinMateriales);
+
+    if (!deltaItems.length && !metaChanged) throw new Error("SIN_CAMBIOS");
+
+    const movRef = deltaItems.length ? db.collection("movimientos_inventario").doc() : null;
+    if (movRef) {
+      tx.set(movRef, {
+        area: "MANTENIMIENTO",
+        tipo: "CORRECCION_LIQUIDACION_MANTENIMIENTO",
+        liquidacionId: ref.id,
+        ticketNumero: nextTicketNumero || normText(curr?.ticketNumero),
+        ticketNumeroNorm: nextTicketNumeroNorm || normText(curr?.ticketNumeroNorm || normalizeTicketNumero(curr?.ticketNumero)),
+        origen: { type: "CUADRILLA", id: cuadrilla.id },
+        destino: { type: "TICKET", id: nextTicketNumero || normText(curr?.ticketNumero || ref.id) },
+        itemsMateriales: deltaItems,
+        observacion: nextObservacion || normText(curr?.observacion),
+        createdAt: FieldValue.serverTimestamp(),
+        createdBy: actorUid,
+      });
+    }
 
     tx.set(
       ref,
       {
-        ticketNumero: normText(parsed.ticketNumero),
-        ticketNumeroNorm: normalizeTicketNumero(parsed.ticketNumero),
+        ticketNumero: nextTicketNumero,
+        ticketNumeroNorm: nextTicketNumeroNorm,
         ticketVisita: Math.max(1, Math.floor(Number(curr?.ticketVisita || 1))),
-        codigoCaja: normText(parsed.codigoCaja),
-        fechaAtencionYmd: normText(parsed.fechaAtencionYmd),
-        distrito: normText(parsed.distrito),
-        latitud: normCoord(parsed.latitud, -90, 90),
-        longitud: normCoord(parsed.longitud, -180, 180),
+        codigoCaja: nextCodigoCaja,
+        fechaAtencionYmd: nextFechaAtencionYmd,
+        distrito: nextDistrito,
+        latitud: nextLatitud,
+        longitud: nextLongitud,
         cuadrillaId: cuadrilla.id,
         cuadrillaNombre: cuadrilla.nombre,
         coordinadorUid: cuadrilla.coordinadorUid,
         coordinadorNombre: cuadrilla.coordinadorNombre,
-        horaInicio: normText(parsed.horaInicio),
-        horaFin: normText(parsed.horaFin),
-        causaRaiz: normText(parsed.causaRaiz),
-        solucion: normText(parsed.solucion),
-        observacion: normText(parsed.observacion),
-        origen: parsed.origen,
+        horaInicio: nextHoraInicio,
+        horaFin: nextHoraFin,
+        causaRaiz: nextCausaRaiz,
+        solucion: nextSolucion,
+        observacion: nextObservacion,
+        sinMateriales: nextSinMateriales,
+        motivoSinMateriales,
+        origen: nextOrigen,
         materialesConsumidos: nextMateriales,
         materialesSnapshot: snapshotItems,
         correccionPendiente: false,
         correccionAt: FieldValue.serverTimestamp(),
         correccionBy: actorUid,
-        correccionMovimientoInventarioId: movRef.id,
+        correccionMovimientoInventarioId: movRef?.id || "",
         "audit.updatedAt": FieldValue.serverTimestamp(),
         "audit.updatedBy": actorUid,
       },
       { merge: true }
     );
 
-    return { movimientoInventarioId: movRef.id };
+    return { movimientoInventarioId: movRef?.id || "" };
   });
 }

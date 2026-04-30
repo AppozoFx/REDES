@@ -21,7 +21,7 @@ export async function POST(req: Request) {
         ? 401
         : msg === "ACCESS_DISABLED" || msg === "AREA_FORBIDDEN"
         ? 403
-        : msg === "ID_REQUIRED" || msg === "MATERIALES_REQUIRED" || msg === "SIN_CAMBIOS" || msg === "LIQUIDACION_NO_CONFIRMADA"
+        : msg === "ID_REQUIRED" || msg === "MATERIALES_REQUIRED" || msg === "MOTIVO_SIN_MATERIALES_REQUIRED" || msg === "SIN_CAMBIOS" || msg === "LIQUIDACION_NO_CONFIRMADA"
         ? 400
         : 500;
     return NextResponse.json({ ok: false, error: msg }, { status });

@@ -10,6 +10,7 @@ import {
   getExistingSNs,
   normalizeUbicacion,
   parseExcelDateToDate,
+  timestampFromLimaParts,
   toDatePartsLima,
 } from "@/domain/equipos/repo";
 
@@ -17,9 +18,38 @@ const PERM = "EQUIPOS_IMPORT";
 
 type ImportFail = { ok: false; error: { formErrors: string[] } };
 
+export type NormalizedImportRow = {
+  SN: string;
+  equipo: "ONT" | "MESH" | "FONO" | "BOX";
+  descripcion: string;
+  proId?: string | null;
+  ubicacion: string;
+  estado: string;
+  f_ingresoYmd: string | null;
+  f_ingresoHm: string | null;
+  f_despachoYmd: string | null;
+  f_despachoHm: string | null;
+  f_devolucionYmd: string | null;
+  f_devolucionHm: string | null;
+  f_instaladoYmd: string | null;
+  f_instaladoHm: string | null;
+  guia_ingreso: string;
+  guia_despacho: string;
+  guia_devolucion: string;
+  cliente: string;
+  codigoCliente: string;
+  caso: string;
+  observacion: string;
+  tecnicos: string[];
+  pri_tec: "SI" | "NO";
+  tec_liq: "SI" | "NO";
+  inv: "SI" | "NO";
+};
+
 type ParseOk = {
   ok: true;
   data: {
+    fileFingerprint: string;
     nuevos: { SN: string; equipo: string; descripcion: string; ubicacion: string; estado: string }[];
     duplicadosBD: { SN: string; equipo?: string; descripcion?: string; ubicacion?: string }[];
     duplicadosInternosExcel: number;
@@ -27,19 +57,16 @@ type ParseOk = {
     ubicacionesInvalidas: number;
     conteoPorEquipo: Record<string, number>;
     totalNuevos: number;
+    importRows: NormalizedImportRow[];
   };
 };
 
-type SaveOk = {
+type SaveChunkOk = {
   ok: true;
   data: {
-    nuevos: number;
-    duplicadosBD: { SN: string; equipo?: string; descripcion?: string; ubicacion?: string }[];
-    duplicadosInternosExcel: number;
-    invalidas: number;
-    ubicacionesInvalidas: number;
-    conteoPorEquipo: Record<string, number>;
-    totalGuardados: number;
+    requested: number;
+    created: number;
+    alreadyExists: number;
   };
 };
 
@@ -56,7 +83,7 @@ function hasHeaders(headers: string[], required: string[]): boolean {
 
 function normalizeEquipo(v: any): "ONT" | "MESH" | "FONO" | "BOX" | null {
   const t = String(v ?? "").trim().toUpperCase();
-  if (t === "ONT" || t === "MESH" || t === "FONO" || t === "BOX") return t as any;
+  if (t === "ONT" || t === "MESH" || t === "FONO" || t === "BOX") return t;
   return null;
 }
 
@@ -65,12 +92,55 @@ function normalizeYesNo(v: any): "SI" | "NO" {
   return s === "SI" ? "SI" : "NO";
 }
 
+function fileFingerprintFromFormData(formData: FormData): string {
+  const explicit = formData.get("fileFingerprint");
+  if (typeof explicit === "string" && explicit.trim()) return explicit.trim();
+  const file = formData.get("file");
+  if (!file || typeof file === "string") return "unknown";
+  const typedFile = file as File;
+  return [typedFile.name || "file", typedFile.size || 0, typedFile.lastModified || 0].join(":");
+}
+
+function normalizedRowToDoc(row: NormalizedImportRow): Omit<EquipoDoc, "audit"> {
+  return {
+    SN: row.SN,
+    equipo: row.equipo,
+    descripcion: row.descripcion,
+    proId: row.proId ?? undefined,
+    ubicacion: row.ubicacion,
+    estado: row.estado,
+    f_ingresoAt: timestampFromLimaParts(row.f_ingresoYmd, row.f_ingresoHm),
+    f_ingresoYmd: row.f_ingresoYmd,
+    f_ingresoHm: row.f_ingresoHm,
+    f_despachoAt: timestampFromLimaParts(row.f_despachoYmd, row.f_despachoHm),
+    f_despachoYmd: row.f_despachoYmd,
+    f_despachoHm: row.f_despachoHm,
+    f_devolucionAt: timestampFromLimaParts(row.f_devolucionYmd, row.f_devolucionHm),
+    f_devolucionYmd: row.f_devolucionYmd,
+    f_devolucionHm: row.f_devolucionHm,
+    f_instaladoAt: timestampFromLimaParts(row.f_instaladoYmd, row.f_instaladoHm),
+    f_instaladoYmd: row.f_instaladoYmd,
+    f_instaladoHm: row.f_instaladoHm,
+    guia_ingreso: row.guia_ingreso,
+    guia_despacho: row.guia_despacho,
+    guia_devolucion: row.guia_devolucion,
+    cliente: row.cliente,
+    codigoCliente: row.codigoCliente,
+    caso: row.caso,
+    observacion: row.observacion,
+    tecnicos: row.tecnicos,
+    pri_tec: row.pri_tec,
+    tec_liq: row.tec_liq,
+    inv: row.inv,
+  };
+}
+
 async function parseArrayBuffer(arrayBuf: ArrayBuffer): Promise<{
   duplicadosInternosExcel: number;
   invalidas: number;
   ubicacionesInvalidas: number;
   duplicadosBD: { SN: string; equipo?: string; descripcion?: string; ubicacion?: string }[];
-  nuevosItems: { SN: string; equipo: string; doc: Partial<EquipoDoc> }[];
+  nuevosItems: { SN: string; equipo: "ONT" | "MESH" | "FONO" | "BOX"; doc: NormalizedImportRow }[];
   conteoPorEquipo: Record<string, number>;
 }> {
   const wb = XLSX.read(arrayBuf, { type: "array", cellDates: true });
@@ -90,7 +160,7 @@ async function parseArrayBuffer(arrayBuf: ArrayBuffer): Promise<{
   let ubicacionesInvalidas = 0;
 
   const firstBySN = new Set<string>();
-  const candidates: Map<string, { SN: string; equipo: string; doc: any }> = new Map();
+  const candidates: Map<string, { SN: string; equipo: "ONT" | "MESH" | "FONO" | "BOX"; doc: NormalizedImportRow }> = new Map();
 
   for (const r of rowsRaw) {
     const raw: Record<string, any> = {
@@ -142,17 +212,9 @@ async function parseArrayBuffer(arrayBuf: ArrayBuffer): Promise<{
     const dIns = toDatePartsLima(parseExcelDateToDate(raw.f_instalado));
 
     const proIdRaw = String(raw.proId ?? "").trim();
-    const proId = equipo === "ONT" ? (proIdRaw ? proIdRaw : null) : undefined;
+    const proId = equipo === "ONT" ? (proIdRaw || null) : undefined;
 
     const toS = (v: any) => String(v ?? "").trim();
-    const guia_ingreso = toS(raw.guia_ingreso);
-    const guia_despacho = toS(raw.guia_despacho);
-    const guia_devolucion = toS(raw.guia_devolucion);
-    const cliente = toS(raw.cliente);
-    const codigoCliente = toS(raw.codigoCliente);
-    const caso = toS(raw.caso);
-    const observacion = toS(raw.observacion);
-
     const tecnicosCsv = String(raw.tecnicos ?? "");
     const tecnicos = tecnicosCsv
       ? tecnicosCsv
@@ -161,47 +223,33 @@ async function parseArrayBuffer(arrayBuf: ArrayBuffer): Promise<{
           .filter(Boolean)
       : [];
 
-    const pri_tec = normalizeYesNo(raw.pri_tec);
-    const tec_liq = normalizeYesNo(raw.tec_liq);
-    const inv = normalizeYesNo(raw.inv);
-
-    const doc: Partial<EquipoDoc> = {
+    const doc: NormalizedImportRow = {
       SN,
       equipo,
       descripcion,
       proId,
       ubicacion: loc.ubicacion,
       estado: loc.estado,
-
-      f_ingresoAt: dIng.at,
       f_ingresoYmd: dIng.ymd,
       f_ingresoHm: dIng.hm,
-
-      f_despachoAt: dDes.at,
       f_despachoYmd: dDes.ymd,
       f_despachoHm: dDes.hm,
-
-      f_devolucionAt: dDev.at,
       f_devolucionYmd: dDev.ymd,
       f_devolucionHm: dDev.hm,
-
-      f_instaladoAt: dIns.at,
       f_instaladoYmd: dIns.ymd,
       f_instaladoHm: dIns.hm,
-
-      guia_ingreso,
-      guia_despacho,
-      guia_devolucion,
-      cliente,
-      codigoCliente,
-      caso,
-      observacion,
+      guia_ingreso: toS(raw.guia_ingreso),
+      guia_despacho: toS(raw.guia_despacho),
+      guia_devolucion: toS(raw.guia_devolucion),
+      cliente: toS(raw.cliente),
+      codigoCliente: toS(raw.codigoCliente),
+      caso: toS(raw.caso),
+      observacion: toS(raw.observacion),
       tecnicos,
-
-      pri_tec,
-      tec_liq,
-      inv,
-    } as any;
+      pri_tec: normalizeYesNo(raw.pri_tec),
+      tec_liq: normalizeYesNo(raw.tec_liq),
+      inv: normalizeYesNo(raw.inv),
+    };
 
     firstBySN.add(SN);
     candidates.set(SN, { SN, equipo, doc });
@@ -212,15 +260,20 @@ async function parseArrayBuffer(arrayBuf: ArrayBuffer): Promise<{
   const duplicadosBD: { SN: string; equipo?: string; descripcion?: string; ubicacion?: string }[] = [];
 
   existing.forEach((id) => {
-    const c = candidates.get(id);
-    duplicadosBD.push({ SN: id, equipo: c?.equipo, descripcion: (c?.doc as any)?.descripcion, ubicacion: (c?.doc as any)?.ubicacion });
+    const candidate = candidates.get(id);
+    duplicadosBD.push({
+      SN: id,
+      equipo: candidate?.equipo,
+      descripcion: candidate?.doc.descripcion,
+      ubicacion: candidate?.doc.ubicacion,
+    });
     candidates.delete(id);
   });
 
   const nuevosItems = Array.from(candidates.values());
-  const conteoPorEquipo: Record<string, number> = { ONT: 0, MESH: 0, FONO: 0, BOX: 0 } as any;
+  const conteoPorEquipo: Record<string, number> = { ONT: 0, MESH: 0, FONO: 0, BOX: 0 };
   for (const item of nuevosItems) {
-    if (item.equipo && conteoPorEquipo[item.equipo] !== undefined) conteoPorEquipo[item.equipo]++;
+    conteoPorEquipo[item.equipo]++;
   }
 
   return { duplicadosInternosExcel, invalidas, ubicacionesInvalidas, duplicadosBD, nuevosItems, conteoPorEquipo };
@@ -239,12 +292,13 @@ export async function parseEquiposAction(arg1: any, arg2?: any): Promise<ParseOk
     return {
       ok: true,
       data: {
+        fileFingerprint: fileFingerprintFromFormData(formData),
         nuevos: nuevosItems.map((x) => ({
           SN: x.SN,
           equipo: x.equipo,
-          descripcion: (x.doc as any)?.descripcion ?? "",
-          ubicacion: (x.doc as any)?.ubicacion ?? "",
-          estado: (x.doc as any)?.estado ?? "",
+          descripcion: x.doc.descripcion,
+          ubicacion: x.doc.ubicacion,
+          estado: x.doc.estado,
         })),
         duplicadosBD,
         duplicadosInternosExcel,
@@ -252,6 +306,7 @@ export async function parseEquiposAction(arg1: any, arg2?: any): Promise<ParseOk
         ubicacionesInvalidas,
         conteoPorEquipo,
         totalNuevos: nuevosItems.length,
+        importRows: nuevosItems.map((x) => x.doc),
       },
     };
   } catch (e: any) {
@@ -266,48 +321,29 @@ export async function parseEquiposAction(arg1: any, arg2?: any): Promise<ParseOk
   }
 }
 
-export async function saveEquiposAction(arg1: any, arg2?: any): Promise<SaveOk | ImportFail> {
+export async function saveEquiposChunkAction(formData: FormData): Promise<SaveChunkOk | ImportFail> {
   const session = await requireServerPermission(PERM);
-  const formData = resolveFormData(arg1, arg2);
   try {
-    const file = formData.get("file");
-    if (!file || typeof file === "string") return { ok: false, error: { formErrors: ["FILE_REQUIRED"] } };
-    const arrayBuf = await (file as File).arrayBuffer();
+    const rowsJson = formData.get("rows");
+    if (typeof rowsJson !== "string") return { ok: false, error: { formErrors: ["INVALID_FORMDATA"] } };
+    const rows = JSON.parse(rowsJson) as NormalizedImportRow[];
+    if (!Array.isArray(rows)) return { ok: false, error: { formErrors: ["INVALID_FORMDATA"] } };
 
-    const { duplicadosInternosExcel, invalidas, ubicacionesInvalidas, duplicadosBD, nuevosItems, conteoPorEquipo } =
-      await parseArrayBuffer(arrayBuf);
+    let created = 0;
+    let alreadyExists = 0;
 
-    let saved = 0;
-    for (const item of nuevosItems) {
-      await createEquipo(item.doc as any, session.uid);
-      saved++;
+    for (const row of rows) {
+      const result = await createEquipo(normalizedRowToDoc(row), session.uid);
+      if (result === "created") created++;
+      else alreadyExists++;
     }
-
-    await addGlobalNotification({
-      title: "Equipos importados",
-      message: `Nuevos: ${saved}, Duplicados: ${duplicadosBD.length}`,
-      type: "success",
-      scope: "ALL",
-      createdBy: session.uid,
-      entityType: "EQUIPOS",
-      entityId: `import:${Date.now()}`,
-      action: "CREATE",
-      estado: "ACTIVO",
-    });
-
-    revalidatePath("/home/equipos/import");
-    revalidatePath("/home");
 
     return {
       ok: true,
       data: {
-        nuevos: nuevosItems.length,
-        duplicadosBD,
-        duplicadosInternosExcel,
-        invalidas,
-        ubicacionesInvalidas,
-        conteoPorEquipo,
-        totalGuardados: saved,
+        requested: rows.length,
+        created,
+        alreadyExists,
       },
     };
   } catch (e: any) {
@@ -315,114 +351,22 @@ export async function saveEquiposAction(arg1: any, arg2?: any): Promise<SaveOk |
     if (code === "UNAUTHENTICATED" || code === "ACCESS_DISABLED" || code === "FORBIDDEN") {
       return { ok: false, error: { formErrors: [code] } };
     }
-    if (code === "INVALID_FORMDATA" || code === "INVALID_HEADERS" || code === "SHEET_NOT_FOUND" || code === "FILE_REQUIRED") {
+    if (code === "INVALID_FORMDATA") {
       return { ok: false, error: { formErrors: [code] } };
     }
     return { ok: false, error: { formErrors: [code] } };
   }
 }
 
-export async function saveEquiposChunkAction(formData: FormData): Promise<{ ok: true; saved: number } | ImportFail> {
+export async function notifyEquiposImportAction(summary: { totalGuardados: number; duplicados: number; yaExistian?: number }) {
   const session = await requireServerPermission(PERM);
-  try {
-    const file = formData.get("file");
-    const snsJson = formData.get("sns");
-    if (!file || typeof file === "string") return { ok: false, error: { formErrors: ["FILE_REQUIRED"] } };
-    if (typeof snsJson !== "string") return { ok: false, error: { formErrors: ["INVALID_FORMDATA"] } };
-    const sns: string[] = (JSON.parse(snsJson) as any[])
-      .map((v) => String(v ?? "").trim().toUpperCase())
-      .filter(Boolean);
-    const arrayBuf = await (file as File).arrayBuffer();
-    const { nuevosItems } = await (async () => {
-      const wb = XLSX.read(arrayBuf, { type: "array", cellDates: true });
-      const sheet = wb.Sheets["Hoja de Datos"] ?? wb.Sheets[wb.SheetNames[0]];
-      if (!sheet) throw new Error("SHEET_NOT_FOUND");
-      const rowsRaw: Record<string, any>[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-      const firstBySN = new Set<string>();
-      const candidates: Map<string, { SN: string; equipo: string; doc: any }> = new Map();
-      for (const r of rowsRaw) {
-        const SN = String(r["SN"] ?? "").trim().toUpperCase();
-        if (!SN) continue;
-        if (firstBySN.has(SN)) continue;
-        const equipo = normalizeEquipo(r["equipo"]);
-        const descripcion = String(r["descripcion"] ?? "").trim();
-        if (!equipo || !descripcion) continue;
-        const loc = normalizeUbicacion(r["ubicacion"]);
-        const dIng = toDatePartsLima(parseExcelDateToDate(r["f_ingreso"]));
-        const dDes = toDatePartsLima(parseExcelDateToDate(r["f_despacho"]));
-        const dDev = toDatePartsLima(parseExcelDateToDate(r["f_devolucion"]));
-        const dIns = toDatePartsLima(parseExcelDateToDate(r["f_instalado"]));
-        const proIdRaw = String(r["proId"] ?? "").trim();
-        const proId = equipo === "ONT" ? (proIdRaw ? proIdRaw : null) : undefined;
-        const toS = (v: any) => String(v ?? "").trim();
-        const tecnicosCsv = String(r["tecnicos"] ?? "");
-        const tecnicos = tecnicosCsv ? tecnicosCsv.split(",").map((s) => s.trim()).filter(Boolean) : [];
-        const pri_tec = normalizeYesNo(r["pri_tec"]);
-        const tec_liq = normalizeYesNo(r["tec_liq"]);
-        const inv = normalizeYesNo(r["inv"]);
-        const doc: Partial<EquipoDoc> = {
-          SN,
-          equipo,
-          descripcion,
-          proId,
-          ubicacion: loc.ubicacion,
-          estado: loc.estado,
-          f_ingresoAt: dIng.at,
-          f_ingresoYmd: dIng.ymd,
-          f_ingresoHm: dIng.hm,
-          f_despachoAt: dDes.at,
-          f_despachoYmd: dDes.ymd,
-          f_despachoHm: dDes.hm,
-          f_devolucionAt: dDev.at,
-          f_devolucionYmd: dDev.ymd,
-          f_devolucionHm: dDev.hm,
-          f_instaladoAt: dIns.at,
-          f_instaladoYmd: dIns.ymd,
-          f_instaladoHm: dIns.hm,
-          guia_ingreso: toS(r["guia_ingreso"]),
-          guia_despacho: toS(r["guia_despacho"]),
-          guia_devolucion: toS(r["guia_devolucion"]),
-          cliente: toS(r["cliente"]),
-          codigoCliente: toS(r["codigoCliente"]),
-          caso: toS(r["caso"]),
-          observacion: toS(r["observacion"]),
-          tecnicos,
-          pri_tec,
-          tec_liq,
-          inv,
-        } as any;
-        firstBySN.add(SN);
-        candidates.set(SN, { SN, equipo, doc });
-      }
-      return { nuevosItems: Array.from(candidates.values()) };
-    })();
+  const createdPart = `Nuevos: ${summary.totalGuardados}`;
+  const duplicatesPart = `Duplicados iniciales: ${summary.duplicados}`;
+  const alreadyExistsPart = `Ya existentes al guardar: ${summary.yaExistian ?? 0}`;
 
-    let saved = 0;
-    // Save only requested SNs (intersection)
-    for (const sn of sns) {
-      const item = nuevosItems.find((x) => x.SN === sn);
-      if (!item) continue;
-      await createEquipo(item.doc as any, session.uid);
-      saved++;
-    }
-    return { ok: true, saved };
-  } catch (e: any) {
-    const code = String(e?.message ?? "ERROR");
-    if (code === "UNAUTHENTICATED" || code === "ACCESS_DISABLED" || code === "FORBIDDEN") {
-      return { ok: false, error: { formErrors: [code] } };
-    }
-    if (code === "INVALID_FORMDATA" || code === "INVALID_HEADERS" || code === "SHEET_NOT_FOUND" || code === "FILE_REQUIRED") {
-      return { ok: false, error: { formErrors: [code] } };
-    }
-    return { ok: false, error: { formErrors: [code] } };
-  }
-}
-
-export async function notifyEquiposImportAction(summary: { totalGuardados: number; duplicados: number }) {
-  const session = await requireServerPermission(PERM);
   await addGlobalNotification({
     title: "Equipos importados",
-    message: `Nuevos: ${summary.totalGuardados}, Duplicados: ${summary.duplicados}`,
+    message: `${createdPart}, ${duplicatesPart}, ${alreadyExistsPart}`,
     type: "success",
     scope: "ALL",
     createdBy: session.uid,
@@ -434,5 +378,3 @@ export async function notifyEquiposImportAction(summary: { totalGuardados: numbe
   revalidatePath("/home/equipos/import");
   revalidatePath("/home");
 }
-// Backward-compat alias (if any consumer expects this name)
-export const importEquiposAction = saveEquiposAction;

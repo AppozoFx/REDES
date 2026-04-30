@@ -42,6 +42,15 @@ function limaLocalTimestampFrom(d: Date): Timestamp {
   return Timestamp.fromMillis(utcMillis);
 }
 
+export function timestampFromLimaParts(ymd: string | null | undefined, hm?: string | null): Timestamp | null {
+  if (!ymd) return null;
+  const [y, m, day] = String(ymd).split("-").map(Number);
+  if (!y || !m || !day) return null;
+  const [hh, mm] = String(hm || "00:00").split(":").map(Number);
+  const utcMillis = Date.UTC(y, m - 1, day, (hh || 0) + 5, mm || 0, 0, 0);
+  return Timestamp.fromMillis(utcMillis);
+}
+
 export function parseExcelDateToDate(v: any): Date | null {
   if (v == null || v === "") return null;
   if (v instanceof Date) return v;
@@ -122,12 +131,16 @@ export async function getExistingSNs(sns: string[]): Promise<Set<string>> {
   return out;
 }
 
-export async function createEquipo(doc: Omit<EquipoDoc, "audit">, actorUid: string): Promise<void> {
+function isAlreadyExistsError(error: unknown): boolean {
+  const code = String((error as { code?: unknown })?.code ?? "");
+  const message = String((error as { message?: unknown })?.message ?? "").toUpperCase();
+  return code === "6" || code === "already-exists" || message.includes("ALREADY_EXISTS");
+}
+
+export async function createEquipo(doc: Omit<EquipoDoc, "audit">, actorUid: string): Promise<"created" | "already_exists"> {
   const id = String(doc.SN || "").trim().toUpperCase();
-  if (!id) return;
+  if (!id) return "already_exists";
   const ref = equiposCol().doc(id);
-  const snap = await ref.get();
-  if (snap.exists) return; // create-only
 
   const sn_tail = doc.sn_tail || id.slice(-6);
   const payload: Partial<EquipoDoc> = {
@@ -142,5 +155,11 @@ export async function createEquipo(doc: Omit<EquipoDoc, "audit">, actorUid: stri
     },
   } as any;
 
-  await ref.set(payload);
+  try {
+    await ref.create(payload);
+    return "created";
+  } catch (error) {
+    if (isAlreadyExistsError(error)) return "already_exists";
+    throw error;
+  }
 }

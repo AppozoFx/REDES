@@ -20,6 +20,15 @@ type CausaRaiz = {
   nombre: string;
 };
 
+function formatYmdToDmy(value?: string) {
+  const raw = String(value || "").trim();
+  if (!raw) return "-";
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return raw;
+  const [, year, month, day] = match;
+  return `${day}-${month}-${year}`;
+}
+
 function causaErrorMessage(code: string) {
   switch (code) {
     case "CAUSA_EN_USO":
@@ -116,6 +125,26 @@ export default function MantenimientoLiquidacionesListClient() {
       return hay.includes(needle);
     });
   }, [rows, q, month, day, cuadrilla, estado, onlyRepeated, repeatedCountByTicket]);
+
+  const sortedFiltered = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      const fechaA = String(a.fechaAtencionYmd || "");
+      const fechaB = String(b.fechaAtencionYmd || "");
+      if (fechaB !== fechaA) return fechaB.localeCompare(fechaA);
+
+      const cuadrillaA = String(a.cuadrillaNombre || "").trim();
+      const cuadrillaB = String(b.cuadrillaNombre || "").trim();
+      const byCuadrilla = cuadrillaA.localeCompare(cuadrillaB, "es", { sensitivity: "base" });
+      if (byCuadrilla !== 0) return byCuadrilla;
+
+      const ticketA = String(a.ticketNumero || "").trim();
+      const ticketB = String(b.ticketNumero || "").trim();
+      const byTicket = ticketA.localeCompare(ticketB, "es", { sensitivity: "base" });
+      if (byTicket !== 0) return byTicket;
+
+      return Number(a.ticketVisita || 1) - Number(b.ticketVisita || 1);
+    });
+  }, [filtered]);
 
   const groupedTickets = useMemo(() => {
     const map = new Map<
@@ -356,9 +385,9 @@ export default function MantenimientoLiquidacionesListClient() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((r) => (
+                {sortedFiltered.map((r) => (
                   <tr key={r.id} className="border-t">
-                    <td className="p-2">{r.fechaAtencionYmd || "-"}</td>
+                    <td className="p-2">{formatYmdToDmy(r.fechaAtencionYmd)}</td>
                     <td className="p-2 font-medium">{r.ticketNumero || r.id}</td>
                     <td className="p-2">
                       <span className="inline-flex rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
@@ -401,7 +430,7 @@ export default function MantenimientoLiquidacionesListClient() {
                     </td>
                   </tr>
                 ))}
-                {!filtered.length ? (
+                {!sortedFiltered.length ? (
                   <tr>
                     <td colSpan={9} className="p-4 text-center text-slate-500">Sin registros para mostrar.</td>
                   </tr>

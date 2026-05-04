@@ -132,6 +132,46 @@ const valueStyle = {
   border: borderThin,
 };
 
+function buildMaterialAgg(rows: Row[]) {
+  const materialAgg = new Map<string, { tipo: string; nombre: string; unidad: string; cantidad: number; precio: number; total: number }>();
+  for (const row of rows) {
+    for (const mat of row.materiales) {
+      const nombre = toStr(mat?.descripcion || mat?.materialId);
+      if (!nombre) continue;
+      const unidadTipo = toStr(mat?.unidadTipo || "UND").toUpperCase();
+      const key = `${nombre}__${unidadTipo}`;
+      const qty = materialQty(mat);
+      const precio = toNum(mat?.precioUnitario);
+      const prev = materialAgg.get(key) || {
+        tipo: unidadTipo === "METROS" ? "FIBRA_OPTICA" : "EQUIPO",
+        nombre,
+        unidad: unidadTipo === "METROS" ? "MTS" : "UND",
+        cantidad: 0,
+        precio,
+        total: 0,
+      };
+      prev.cantidad += qty;
+      prev.total = Number((prev.total + toNum(mat?.total)).toFixed(2));
+      if (!prev.precio && precio) prev.precio = precio;
+      materialAgg.set(key, prev);
+    }
+  }
+  return Array.from(materialAgg.values()).sort((a, b) => a.nombre.localeCompare(b.nombre));
+}
+
+function sanitizeSheetName(name: string, used: Set<string>) {
+  const base = toStr(name).replace(/[\\\/\?\*\[\]\:]/g, " ").replace(/\s+/g, " ").trim() || "Sin cuadrilla";
+  let candidate = base.slice(0, 31);
+  let index = 2;
+  while (used.has(candidate)) {
+    const suffix = ` (${index})`;
+    candidate = `${base.slice(0, Math.max(0, 31 - suffix.length))}${suffix}`;
+    index += 1;
+  }
+  used.add(candidate);
+  return candidate;
+}
+
 function buildResumenSheet(rows: Row[], month: string) {
   const ws: XLSX.WorkSheet = {};
   ws["!cols"] = [
@@ -212,31 +252,7 @@ function buildResumenSheet(rows: Row[], month: string) {
   const serviceQty = cuadrillaStats.size;
   const serviceUnitPrice = 15000;
 
-  const materialAgg = new Map<string, { tipo: string; nombre: string; unidad: string; cantidad: number; precio: number; total: number }>();
-  for (const row of rows) {
-    for (const mat of row.materiales) {
-      const nombre = toStr(mat?.descripcion || mat?.materialId);
-      if (!nombre) continue;
-      const unidadTipo = toStr(mat?.unidadTipo || "UND").toUpperCase();
-      const key = `${nombre}__${unidadTipo}`;
-      const qty = materialQty(mat);
-      const precio = toNum(mat?.precioUnitario);
-      const prev = materialAgg.get(key) || {
-        tipo: unidadTipo === "METROS" ? "FIBRA_OPTICA" : "EQUIPO",
-        nombre,
-        unidad: unidadTipo === "METROS" ? "MTS" : "UND",
-        cantidad: 0,
-        precio,
-        total: 0,
-      };
-      prev.cantidad += qty;
-      prev.total = Number((prev.total + toNum(mat?.total)).toFixed(2));
-      if (!prev.precio && precio) prev.precio = precio;
-      materialAgg.set(key, prev);
-    }
-  }
-
-  const materialRows = Array.from(materialAgg.values()).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const materialRows = buildMaterialAgg(rows);
   const materialTotal = materialRows.reduce((acc, it) => acc + it.total, 0);
   const serviceSubtotal = serviceQty * serviceUnitPrice;
 
@@ -313,7 +329,7 @@ function buildResumenSheet(rows: Row[], month: string) {
   });
 
   setCell(ws, 62, 1, "RESUMEN DE TRABAJOS", sectionTitleStyle);
-  ["FECHA DE ATENCION", "DISTRITO", "CODIGO DE CAJA", "INICIO DE TRABAJOS", "FIN DE TRABAJOS", "CAUSA RAIZ MOTIVO", "SOLUCION", "CUADRILLA", "MATERIALES"].forEach((label, idx) => {
+  ["FECHA DE ATENCION", "DISTRITO", "CODIGO DE TICKET", "INICIO DE TRABAJOS", "FIN DE TRABAJOS", "CAUSA RAIZ MOTIVO", "SOLUCION", "CUADRILLA", "MATERIALES"].forEach((label, idx) => {
     const col = idx + 2;
     setCell(ws, 64, col, label, headerStyle);
   });
@@ -322,7 +338,7 @@ function buildResumenSheet(rows: Row[], month: string) {
   for (const row of rows) {
     setCell(ws, detailRow, 2, row.fechaAtencionYmd, bodyStyle);
     setCell(ws, detailRow, 3, row.distrito, bodyStyle);
-    setCell(ws, detailRow, 4, row.codigoCaja, bodyStyle);
+    setCell(ws, detailRow, 4, row.ticketNumero, bodyStyle);
     setCell(ws, detailRow, 5, row.horaInicio, bodyStyle);
     setCell(ws, detailRow, 6, row.horaFin, bodyStyle);
     setCell(ws, detailRow, 7, row.causaRaiz, bodyStyle);
@@ -420,6 +436,77 @@ function buildTotalesSheet(rows: Row[]) {
   return ws;
 }
 
+function buildCuadrillaConsumoSheet(cuadrilla: string, rows: Row[]) {
+  const ws: XLSX.WorkSheet = {};
+  ws["!cols"] = [
+    { wch: 16 },
+    { wch: 20 },
+    { wch: 16 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 16 },
+    { wch: 24 },
+    { wch: 18 },
+  ];
+
+  setCell(ws, 1, 0, `CONSUMO DE MATERIALES - ${cuadrilla || "SIN CUADRILLA"}`, sectionTitleStyle);
+  ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }];
+
+  setCell(ws, 3, 0, "CUADRILLA", labelStyle);
+  setCell(ws, 3, 1, cuadrilla || "SIN CUADRILLA", valueStyle);
+  setCell(ws, 3, 3, "TICKETS", labelStyle);
+  setCell(ws, 3, 4, rows.length, valueStyle);
+
+  setCell(ws, 5, 0, "RESUMEN DE CONSUMO", sectionTitleStyle);
+  ws["!merges"].push({ s: { r: 4, c: 0 }, e: { r: 4, c: 7 } });
+
+  ["ITEM", "TIPO", "DESCRIPCION", "UNIDAD", "CANTIDAD", "PRECIO UNITARIO", "TOTAL"].forEach((label, idx) => {
+    setCell(ws, 6, idx, label, headerStyle);
+  });
+
+  const materialRows = buildMaterialAgg(rows);
+  let row1 = 7;
+  materialRows.forEach((mat, index) => {
+    setCell(ws, row1, 0, index + 1, bodyStyle);
+    setCell(ws, row1, 1, mat.tipo, bodyStyle);
+    setCell(ws, row1, 2, mat.nombre, bodyStyle);
+    setCell(ws, row1, 3, mat.unidad, bodyStyle);
+    setCell(ws, row1, 4, Number(mat.cantidad.toFixed(2)), bodyStyle);
+    setCell(ws, row1, 5, Number(mat.precio.toFixed(2)), bodyStyle);
+    setCell(ws, row1, 6, Number(mat.total.toFixed(2)), bodyStyle);
+    row1 += 1;
+  });
+
+  const materialTotal = materialRows.reduce((acc, it) => acc + it.total, 0);
+  setCell(ws, row1, 2, "TOTAL", { ...bodyStyle, font: { bold: true } });
+  setCell(ws, row1, 6, Number(materialTotal.toFixed(2)), { ...bodyStyle, font: { bold: true } });
+  row1 += 2;
+
+  setCell(ws, row1, 0, "DETALLE POR TICKET", sectionTitleStyle);
+  ws["!merges"].push({ s: { r: row1 - 1, c: 0 }, e: { r: row1 - 1, c: 7 } });
+  row1 += 1;
+
+  ["FECHA", "TICKET", "DISTRITO", "CAUSA RAIZ", "SOLUCION", "MATERIALES", "TOTAL MATERIALES"].forEach((label, idx) => {
+    setCell(ws, row1, idx, label, headerStyle);
+  });
+  row1 += 1;
+
+  for (const row of rows) {
+    const rowTotal = row.materiales.reduce((acc, mat) => acc + toNum(mat?.total), 0);
+    setCell(ws, row1, 0, row.fechaAtencionYmd, bodyStyle);
+    setCell(ws, row1, 1, row.ticketNumero, bodyStyle);
+    setCell(ws, row1, 2, row.distrito, bodyStyle);
+    setCell(ws, row1, 3, row.causaRaiz, bodyStyle);
+    setCell(ws, row1, 4, row.solucion, bodyStyle);
+    setCell(ws, row1, 5, materialesTexto(row.materiales), bodyStyle);
+    setCell(ws, row1, 6, Number(rowTotal.toFixed(2)), bodyStyle);
+    row1 += 1;
+  }
+
+  ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(1, row1 - 1), c: 7 } });
+  return ws;
+}
+
 export async function GET(req: Request) {
   try {
     const session = await getServerSession();
@@ -450,6 +537,18 @@ export async function GET(req: Request) {
     XLSX.utils.book_append_sheet(wb, buildResumenSheet(rows, month), "Resumen de liquidaciones");
     XLSX.utils.book_append_sheet(wb, buildInternoSheet(rows), "Interno");
     XLSX.utils.book_append_sheet(wb, buildTotalesSheet(rows), "Totales");
+    const usedSheetNames = new Set(wb.SheetNames);
+    const rowsByCuadrilla = new Map<string, Row[]>();
+    for (const row of rows) {
+      const key = row.cuadrillaNombre || "Sin cuadrilla";
+      const items = rowsByCuadrilla.get(key) || [];
+      items.push(row);
+      rowsByCuadrilla.set(key, items);
+    }
+    for (const [cuadrilla, items] of Array.from(rowsByCuadrilla.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
+      const sheetName = sanitizeSheetName(cuadrilla, usedSheetNames);
+      XLSX.utils.book_append_sheet(wb, buildCuadrillaConsumoSheet(cuadrilla, items), sheetName);
+    }
 
     const out = XLSX.write(wb, { type: "buffer", bookType: "xlsx", cellStyles: true });
     const name = `mantenimiento_liquidaciones_${month || "all"}.xlsx`;

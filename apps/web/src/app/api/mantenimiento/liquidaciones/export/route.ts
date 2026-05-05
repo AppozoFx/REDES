@@ -3,10 +3,12 @@ import * as XLSX from "xlsx-js-style";
 import { getServerSession } from "@/core/auth/session";
 import { requireAreaScope } from "@/core/auth/apiGuards";
 import { listMantenimientoLiquidaciones } from "@/domain/mantenimientoLiquidaciones/repo";
+import { adminDb } from "@/lib/firebase/admin";
 
 export const runtime = "nodejs";
 
 type Row = {
+  cuadrillaId: string;
   fechaAtencionYmd: string;
   distrito: string;
   codigoCaja: string;
@@ -19,6 +21,18 @@ type Row = {
   ticketNumero: string;
   estado: string;
   materiales: any[];
+};
+
+type DispatchItem = {
+  cuadrillaId: string;
+  cuadrillaNombre: string;
+  guia: string;
+  fecha: string;
+  materialId: string;
+  nombre: string;
+  unidadTipo: string;
+  cantidad: number;
+  observacion: string;
 };
 
 function toStr(v: unknown) {
@@ -40,6 +54,27 @@ function formatMonthDisplay(month: string) {
   const m = String(month || "").match(/^(\d{4})-(\d{2})$/);
   if (!m) return month || "";
   return `${m[2]}/${m[1]}`;
+}
+
+function formatDateTimeDisplay(date: Date) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mi = String(date.getMinutes()).padStart(2, "0");
+  return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
+}
+
+function monthRange(month: string): { from: Date; to: Date } | null {
+  const m = String(month || "").match(/^(\d{4})-(\d{2})$/);
+  if (!m) return null;
+  const year = Number(m[1]);
+  const monthIdx = Number(m[2]) - 1;
+  if (!Number.isFinite(year) || !Number.isFinite(monthIdx) || monthIdx < 0 || monthIdx > 11) return null;
+  return {
+    from: new Date(year, monthIdx, 1, 0, 0, 0, 0),
+    to: new Date(year, monthIdx + 1, 1, 0, 0, 0, 0),
+  };
 }
 
 function materialesBase(it: any): any[] {
@@ -537,6 +572,68 @@ function buildTotalesSheet(rows: Row[]) {
   return ws;
 }
 
+async function listDispatchItemsByCuadrilla(cuadrillaIds: string[], month: string): Promise<Map<string, DispatchItem[]>> {
+  const result = new Map<string, DispatchItem[]>();
+  const cleanIds = Array.from(new Set(cuadrillaIds.map((it) => toStr(it)).filter(Boolean)));
+  if (!cleanIds.length) return result;
+
+  const range = monthRange(month);
+  const db = adminDb();
+
+  for (let i = 0; i < cleanIds.length; i += 10) {
+    const batch = cleanIds.slice(i, i + 10);
+    const snap = await db
+      .collection("movimientos_inventario")
+      .where("area", "==", "MANTENIMIENTO")
+      .where("tipo", "==", "DESPACHO")
+      .where("destino.id", "in", batch)
+      .get();
+
+    for (const doc of snap.docs) {
+      const data = doc.data() as any;
+      const cuadrillaId = toStr(data?.destino?.id || data?.cuadrillaId);
+      if (!cuadrillaId) continue;
+
+      const createdAt = data?.createdAt?.toDate?.() instanceof Date ? data.createdAt.toDate() : null;
+      if (range && createdAt && (createdAt < range.from || createdAt >= range.to)) continue;
+      if (range && !createdAt) continue;
+
+      const fecha = createdAt ? formatDateTimeDisplay(createdAt) : "";
+      const guia = toStr(data?.guia);
+      const observacion = toStr(data?.observacion);
+      const cuadrillaNombre = toStr(data?.cuadrillaNombre || cuadrillaId);
+      const itemsMateriales = Array.isArray(data?.itemsMateriales) ? data.itemsMateriales : [];
+
+      for (const item of itemsMateriales) {
+        const unidadTipo = toStr(item?.unidadTipo || "UND").toUpperCase();
+        const cantidad = unidadTipo === "METROS" ? toNum(item?.metros) : toNum(item?.und);
+        if (!cantidad) continue;
+        const row: DispatchItem = {
+          cuadrillaId,
+          cuadrillaNombre,
+          guia,
+          fecha,
+          materialId: toStr(item?.materialId),
+          nombre: toStr(item?.nombre || item?.materialId),
+          unidadTipo,
+          cantidad,
+          observacion,
+        };
+        const arr = result.get(cuadrillaId) || [];
+        arr.push(row);
+        result.set(cuadrillaId, arr);
+      }
+    }
+  }
+
+  for (const [key, arr] of result.entries()) {
+    arr.sort((a, b) => `${a.fecha} ${a.guia} ${a.nombre}`.localeCompare(`${b.fecha} ${b.guia} ${b.nombre}`));
+    result.set(key, arr);
+  }
+
+  return result;
+}
+
 function buildMaterialesFlatSheet(rows: Row[]) {
   const ws: XLSX.WorkSheet = {};
   const baseHeaders = [
@@ -596,7 +693,7 @@ function buildMaterialesFlatSheet(rows: Row[]) {
   return ws;
 }
 
-function buildCuadrillaConsumoSheet(cuadrilla: string, rows: Row[]) {
+function buildCuadrillaConsumoSheet(cuadrilla: string, rows: Row[], dispatches: DispatchItem[]) {
   const ws: XLSX.WorkSheet = {};
   ws["!cols"] = [
     { wch: 16 },
@@ -642,6 +739,67 @@ function buildCuadrillaConsumoSheet(cuadrilla: string, rows: Row[]) {
   setCell(ws, row1, 6, Number(materialTotal.toFixed(2)), { ...bodyStyle, font: { bold: true } });
   row1 += 2;
 
+  setCell(ws, row1, 0, "RESUMEN DE DESPACHO", sectionTitleStyle);
+  ws["!merges"].push({ s: { r: row1 - 1, c: 0 }, e: { r: row1 - 1, c: 7 } });
+  row1 += 1;
+
+  ["ITEM", "MATERIAL", "UNIDAD", "TOTAL DESPACHADO", "GUIAS", "", "", ""].forEach((label, idx) => {
+    if (label) setCell(ws, row1, idx, label, headerStyle);
+  });
+  row1 += 1;
+
+  const dispatchAgg = new Map<string, { nombre: string; unidad: string; cantidad: number; guias: Set<string> }>();
+  for (const item of dispatches) {
+    const key = `${item.nombre}__${item.unidadTipo}`;
+    const prev = dispatchAgg.get(key) || { nombre: item.nombre, unidad: item.unidadTipo === "METROS" ? "MTS" : "UND", cantidad: 0, guias: new Set<string>() };
+    prev.cantidad += item.cantidad;
+    if (item.guia) prev.guias.add(item.guia);
+    dispatchAgg.set(key, prev);
+  }
+
+  let dispatchIdx = 1;
+  for (const agg of Array.from(dispatchAgg.values()).sort((a, b) => a.nombre.localeCompare(b.nombre))) {
+    setCell(ws, row1, 0, dispatchIdx, bodyStyle);
+    setCell(ws, row1, 1, agg.nombre, bodyStyle);
+    setCell(ws, row1, 2, agg.unidad, bodyStyle);
+    setCell(ws, row1, 3, Number(agg.cantidad.toFixed(2)), bodyStyle);
+    setCell(ws, row1, 4, Array.from(agg.guias).sort().join("\n"), bodyStyle);
+    row1 += 1;
+    dispatchIdx += 1;
+  }
+  if (!dispatchAgg.size) {
+    setCell(ws, row1, 0, "Sin despachos registrados para esta cuadrilla en el periodo.", bodyStyle);
+    ws["!merges"].push({ s: { r: row1 - 1, c: 0 }, e: { r: row1 - 1, c: 7 } });
+    row1 += 1;
+  }
+  row1 += 1;
+
+  setCell(ws, row1, 0, "DETALLE DE DESPACHOS", sectionTitleStyle);
+  ws["!merges"].push({ s: { r: row1 - 1, c: 0 }, e: { r: row1 - 1, c: 7 } });
+  row1 += 1;
+
+  ["FECHA", "GUIA", "MATERIAL", "UNIDAD", "CANTIDAD", "OBSERVACION", "", ""].forEach((label, idx) => {
+    if (label) setCell(ws, row1, idx, label, headerStyle);
+  });
+  row1 += 1;
+
+  if (dispatches.length) {
+    for (const item of dispatches) {
+      setCell(ws, row1, 0, item.fecha, bodyStyle);
+      setCell(ws, row1, 1, item.guia, bodyStyle);
+      setCell(ws, row1, 2, item.nombre, bodyStyle);
+      setCell(ws, row1, 3, item.unidadTipo === "METROS" ? "MTS" : "UND", bodyStyle);
+      setCell(ws, row1, 4, Number(item.cantidad.toFixed(2)), bodyStyle);
+      setCell(ws, row1, 5, item.observacion, bodyStyle);
+      row1 += 1;
+    }
+  } else {
+    setCell(ws, row1, 0, "Sin detalle de despachos.", bodyStyle);
+    ws["!merges"].push({ s: { r: row1 - 1, c: 0 }, e: { r: row1 - 1, c: 7 } });
+    row1 += 1;
+  }
+  row1 += 1;
+
   setCell(ws, row1, 0, "DETALLE POR TICKET", sectionTitleStyle);
   ws["!merges"].push({ s: { r: row1 - 1, c: 0 }, e: { r: row1 - 1, c: 7 } });
   row1 += 1;
@@ -680,6 +838,7 @@ export async function GET(req: Request) {
       .filter((it: any) => !month || toStr(it.fechaAtencionYmd).slice(0, 7) === month)
       .sort((a: any, b: any) => toStr(a.fechaAtencionYmd).localeCompare(toStr(b.fechaAtencionYmd)))
       .map((it: any) => ({
+        cuadrillaId: toStr(it.cuadrillaId),
         fechaAtencionYmd: toStr(it.fechaAtencionYmd),
         distrito: toStr(it.distrito),
         codigoCaja: toStr(it.codigoCaja),
@@ -693,6 +852,11 @@ export async function GET(req: Request) {
         estado: toStr(it.estado),
         materiales: materialesBase(it),
       }));
+
+    const dispatchesByCuadrilla = await listDispatchItemsByCuadrilla(
+      Array.from(new Set(rows.map((row) => row.cuadrillaId).filter(Boolean))),
+      month
+    );
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, buildResumenSheet(rows, month), "Resumen de liquidaciones");
@@ -708,8 +872,10 @@ export async function GET(req: Request) {
       rowsByCuadrilla.set(key, items);
     }
     for (const [cuadrilla, items] of Array.from(rowsByCuadrilla.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
+      const cuadrillaId = items[0]?.cuadrillaId || "";
+      const dispatches = cuadrillaId ? dispatchesByCuadrilla.get(cuadrillaId) || [] : [];
       const sheetName = sanitizeSheetName(cuadrilla, usedSheetNames);
-      XLSX.utils.book_append_sheet(wb, buildCuadrillaConsumoSheet(cuadrilla, items), sheetName);
+      XLSX.utils.book_append_sheet(wb, buildCuadrillaConsumoSheet(cuadrilla, items, dispatches), sheetName);
     }
 
     const out = XLSX.write(wb, { type: "buffer", bookType: "xlsx", cellStyles: true });

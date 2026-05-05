@@ -14,6 +14,7 @@ type Row = {
   horaFin: string;
   causaRaiz: string;
   solucion: string;
+  observacion: string;
   cuadrillaNombre: string;
   ticketNumero: string;
   estado: string;
@@ -66,8 +67,13 @@ function materialQty(it: any) {
   return toStr(it?.unidadTipo).toUpperCase() === "METROS" ? toNum(it?.metros) : toNum(it?.und);
 }
 
-function colRange(start: number, end: number) {
-  return XLSX.utils.encode_range({ s: { r: 0, c: start }, e: { r: 0, c: end } });
+function solucionConObservacion(row: Row) {
+  const solucion = toStr(row.solucion);
+  const observacion = toStr(row.observacion);
+  if (solucion && observacion) return `${solucion}\nObservacion: ${observacion}`;
+  if (solucion) return solucion;
+  if (observacion) return `Observacion: ${observacion}`;
+  return "";
 }
 
 function ensureCell(ws: XLSX.WorkSheet, row1: number, col0: number) {
@@ -342,7 +348,7 @@ function buildResumenSheet(rows: Row[], month: string) {
     setCell(ws, detailRow, 5, row.horaInicio, bodyStyle);
     setCell(ws, detailRow, 6, row.horaFin, bodyStyle);
     setCell(ws, detailRow, 7, row.causaRaiz, bodyStyle);
-    setCell(ws, detailRow, 8, row.solucion, bodyStyle);
+    setCell(ws, detailRow, 8, solucionConObservacion(row), bodyStyle);
     setCell(ws, detailRow, 9, row.cuadrillaNombre, bodyStyle);
     setCell(ws, detailRow, 10, materialesTexto(row.materiales), bodyStyle);
     detailRow += 1;
@@ -497,7 +503,7 @@ function buildCuadrillaConsumoSheet(cuadrilla: string, rows: Row[]) {
     setCell(ws, row1, 1, row.ticketNumero, bodyStyle);
     setCell(ws, row1, 2, row.distrito, bodyStyle);
     setCell(ws, row1, 3, row.causaRaiz, bodyStyle);
-    setCell(ws, row1, 4, row.solucion, bodyStyle);
+    setCell(ws, row1, 4, solucionConObservacion(row), bodyStyle);
     setCell(ws, row1, 5, materialesTexto(row.materiales), bodyStyle);
     setCell(ws, row1, 6, Number(rowTotal.toFixed(2)), bodyStyle);
     row1 += 1;
@@ -527,6 +533,7 @@ export async function GET(req: Request) {
         horaFin: toStr(it.horaFin),
         causaRaiz: toStr(it.causaRaiz),
         solucion: toStr(it.solucion),
+        observacion: toStr(it.observacion),
         cuadrillaNombre: toStr(it.cuadrillaNombre),
         ticketNumero: toStr(it.ticketNumero),
         estado: toStr(it.estado),

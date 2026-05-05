@@ -67,6 +67,92 @@ function materialQty(it: any) {
   return toStr(it?.unidadTipo).toUpperCase() === "METROS" ? toNum(it?.metros) : toNum(it?.und);
 }
 
+const MATERIALES_SHEET_HEADERS = [
+  "CABLE DE FIBRA OPTICA ADSS MONOMODO 48 HILOS",
+  "CABLE DE FIBRA OPTICA ADSS MONOMODO 24 HILOS",
+  "CABLE DE FIBRA OPTICA ADSS MONOMODO 12 HILOS",
+  "Fibra Drop 4H",
+  "Acerado PVC 3/16: ",
+  "MUFA DE 144H TIPO DOMO",
+  "CAJA DE EMPALME CTO DE 16 CORE",
+  "Caja NAP (8 core): ",
+  "BANDEJA DE EMPALME PARA MUFA",
+  "PROTECTOR DE EMPALME TERMOCONTRAIBLE",
+  "PIGTAIL",
+  "ACOPLADOR DE FIBRA ÓPTICA MONOMODO SC/APC SIMPLEX VERDE",
+  "SPLITTER 1x16",
+  "SPLITTER 1x8",
+  "SPLITTER 1x4",
+  "SPLITTER 1x2",
+  "FLEJES DE 1/2\"",
+  "HEBILLAS DE 1/2 \"",
+  "PREFORMADO DE 2 HILOS PARA FIBRA DE 96H",
+  "PREFORMADO DE 2 HILOS PARA FIBRA DE 48H",
+  "PREFORMADO DE 2 HILOS PARA FIBRA DE 24H",
+  "PREFORMADO DE 2 HILOS PARA FIBRA DE 12H",
+  "CLEVIS + AISLADORES",
+  "Brazo 0.4 MT",
+  "Brazo 0.6 MT",
+  "Brazo 0.8 MT",
+  "Brazo 1.0 MT",
+  "SOPORTE TIPO J",
+  "CHAPA TENSORA DE 3 PERNOS",
+  "CINTILLO DE 10CM",
+  "CINTILLO DE 30CM",
+  "ETIQUETA PARA F.O COLOR NARANJA CON LAMINA DE PROTECCION",
+  "CINTA AISLANTE",
+] as const;
+
+function normalizeMaterialMatchName(v: unknown) {
+  return toStr(v)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const MATERIALES_SHEET_ALIAS_TO_HEADER = new Map<string, string>([
+  ["CABLE DE FIBRA ADSS 48H", "CABLE DE FIBRA OPTICA ADSS MONOMODO 48 HILOS"],
+  ["CABLE DE FIBRA ADSS 24H", "CABLE DE FIBRA OPTICA ADSS MONOMODO 24 HILOS"],
+  ["CABLE DE FIBRA ADSS 12H", "CABLE DE FIBRA OPTICA ADSS MONOMODO 12 HILOS"],
+  ["CAJA CTO", "CAJA DE EMPALME CTO DE 16 CORE"],
+  ["CAJA NAP", "Caja NAP (8 core): "],
+  ["BANDEJA DE MUFA", "BANDEJA DE EMPALME PARA MUFA"],
+  ["BANDEJA DE MUFA", "BANDEJA DE EMPALME PARA MUFA"],
+  ["PROTECTOR SMOV", "PROTECTOR DE EMPALME TERMOCONTRAIBLE"],
+  ["PIGTEL", "PIGTAIL"],
+  ["ACOPLADOR", "ACOPLADOR DE FIBRA ÓPTICA MONOMODO SC/APC SIMPLEX VERDE"],
+  ["SPLITER 1X16", "SPLITTER 1x16"],
+  ["SPLITER 1 8", "SPLITTER 1x8"],
+  ["SPLITER 1X4", "SPLITTER 1x4"],
+  ["CINTA BANDI 1 2", "FLEJES DE 1/2\""],
+  ["HEBILLA 1 2", "HEBILLAS DE 1/2 \""],
+  ["PREFORME 24H", "PREFORMADO DE 2 HILOS PARA FIBRA DE 24H"],
+  ["CLEVI", "CLEVIS + AISLADORES"],
+  ["AISLADOR", "CLEVIS + AISLADORES"],
+  ["BRAZO DE EXTENCION 60CM", "Brazo 0.6 MT"],
+  ["BRAZO DE EXTENCION 80CM", "Brazo 0.8 MT"],
+  ["SOPORTE J", "SOPORTE TIPO J"],
+  ["CINTILLO 10", "CINTILLO DE 10CM"],
+  ["CINTILLO 30", "CINTILLO DE 30CM"],
+  ["CINTA AISLANTE", "CINTA AISLANTE"],
+]);
+
+function resolveMaterialesSheetHeader(mat: any): string | null {
+  const candidates = [
+    normalizeMaterialMatchName(mat?.descripcion),
+    normalizeMaterialMatchName(mat?.nombre),
+    normalizeMaterialMatchName(mat?.materialId),
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    const mapped = MATERIALES_SHEET_ALIAS_TO_HEADER.get(candidate);
+    if (mapped) return mapped;
+  }
+  return null;
+}
+
 function solucionConObservacion(row: Row) {
   const solucion = toStr(row.solucion);
   const observacion = toStr(row.observacion);
@@ -120,6 +206,15 @@ const headerStyle = {
   alignment: { horizontal: "center", vertical: "center", wrapText: true },
   fill: { patternType: "solid", fgColor: { rgb: "FF1F4E79" } },
   border: borderThin,
+};
+
+const verticalHeaderStyle = {
+  ...headerStyle,
+  alignment: {
+    ...headerStyle.alignment,
+    textRotation: 90,
+    wrapText: true,
+  },
 };
 
 const bodyStyle = {
@@ -442,6 +537,65 @@ function buildTotalesSheet(rows: Row[]) {
   return ws;
 }
 
+function buildMaterialesFlatSheet(rows: Row[]) {
+  const ws: XLSX.WorkSheet = {};
+  const baseHeaders = [
+    "FECHA DE ATENCION",
+    "DISTRITO",
+    "CODIGO DE CAJA",
+    "INICIO DE TRABAJOS",
+    "FIN DE TRABAJOS",
+    "CAUSA RAIZ MOTIVO",
+    "SOLUCION",
+    "CUADRILLA",
+  ];
+  const headers = [...baseHeaders, ...MATERIALES_SHEET_HEADERS];
+
+  ws["!cols"] = headers.map((header, idx) => {
+    if (idx === 0) return { wch: 16 };
+    if (idx === 1) return { wch: 20 };
+    if (idx === 2) return { wch: 18 };
+    if (idx === 3 || idx === 4) return { wch: 14 };
+    if (idx === 5) return { wch: 28 };
+    if (idx === 6) return { wch: 60 };
+    if (idx === 7) return { wch: 24 };
+    return { wch: 5 };
+  });
+  ws["!rows"] = [{ hpt: 140 }];
+
+  headers.forEach((header, idx) => setCell(ws, 1, idx, header, idx >= 8 ? verticalHeaderStyle : headerStyle));
+
+  let row1 = 2;
+  for (const row of rows) {
+    const materialValues = new Map<string, number>();
+    for (const mat of row.materiales) {
+      const header = resolveMaterialesSheetHeader(mat);
+      if (!header) continue;
+      const prev = materialValues.get(header) || 0;
+      materialValues.set(header, Number((prev + materialQty(mat)).toFixed(2)));
+    }
+
+    setCell(ws, row1, 0, row.fechaAtencionYmd, bodyStyle);
+    setCell(ws, row1, 1, row.distrito, bodyStyle);
+    setCell(ws, row1, 2, row.codigoCaja || row.ticketNumero, bodyStyle);
+    setCell(ws, row1, 3, row.horaInicio, bodyStyle);
+    setCell(ws, row1, 4, row.horaFin, bodyStyle);
+    setCell(ws, row1, 5, row.causaRaiz, bodyStyle);
+    setCell(ws, row1, 6, solucionConObservacion(row), bodyStyle);
+    setCell(ws, row1, 7, row.cuadrillaNombre, bodyStyle);
+
+    MATERIALES_SHEET_HEADERS.forEach((header, idx) => {
+      const value = materialValues.get(header);
+      setCell(ws, row1, 8 + idx, value ? Number(value.toFixed(2)) : "", bodyStyle);
+    });
+
+    row1 += 1;
+  }
+
+  ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(1, row1 - 1), c: headers.length - 1 } });
+  return ws;
+}
+
 function buildCuadrillaConsumoSheet(cuadrilla: string, rows: Row[]) {
   const ws: XLSX.WorkSheet = {};
   ws["!cols"] = [
@@ -542,6 +696,7 @@ export async function GET(req: Request) {
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, buildResumenSheet(rows, month), "Resumen de liquidaciones");
+    XLSX.utils.book_append_sheet(wb, buildMaterialesFlatSheet(rows), "MATERIALES");
     XLSX.utils.book_append_sheet(wb, buildInternoSheet(rows), "Interno");
     XLSX.utils.book_append_sheet(wb, buildTotalesSheet(rows), "Totales");
     const usedSheetNames = new Set(wb.SheetNames);

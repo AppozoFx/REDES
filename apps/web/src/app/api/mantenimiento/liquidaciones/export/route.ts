@@ -641,7 +641,7 @@ function buildMaterialesFlatSheet(rows: Row[]) {
   const baseHeaders = [
     "FECHA DE ATENCION",
     "DISTRITO",
-    "CODIGO DE CAJA",
+    "CODIGO DE TICKET",
     "INICIO DE TRABAJOS",
     "FIN DE TRABAJOS",
     "CAUSA RAIZ MOTIVO",
@@ -676,7 +676,7 @@ function buildMaterialesFlatSheet(rows: Row[]) {
 
     setCell(ws, row1, 0, row.fechaAtencionYmd, bodyStyle);
     setCell(ws, row1, 1, row.distrito, bodyStyle);
-    setCell(ws, row1, 2, row.codigoCaja || row.ticketNumero, bodyStyle);
+    setCell(ws, row1, 2, row.ticketNumero, bodyStyle);
     setCell(ws, row1, 3, row.horaInicio, bodyStyle);
     setCell(ws, row1, 4, row.horaFin, bodyStyle);
     setCell(ws, row1, 5, row.causaRaiz, bodyStyle);

@@ -6,6 +6,7 @@ import {
   allocateOrderConsumption,
   buildInstallationConceptTotals,
   buildInstallationSnapshot,
+  type PendingInstallation,
   loadPendingInstallations,
   requestedConceptTotalsFromItems,
 } from "@/core/gerencia/ordenCompraLedger";
@@ -22,6 +23,8 @@ type OcItem = {
   precio: number;
   total: number;
 };
+
+type TipoOc = "INSTALACIONES" | "MANTENIMIENTO";
 
 function hasGerenciaOcAccess(session: NonNullable<Awaited<ReturnType<typeof getServerSession>>>) {
   const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
@@ -54,6 +57,10 @@ function ymFromYmd(v: string) {
   return String(v || "").slice(0, 7);
 }
 
+function defaultObservacion(tipoOc: TipoOc, year: number) {
+  return `${tipoOc} ${year}`;
+}
+
 export async function POST(req: Request) {
   try {
     const session = await getServerSession();
@@ -71,9 +78,15 @@ export async function POST(req: Request) {
           coordinadorNombre?: string;
           razonSocial?: string;
           ruc?: string;
+          tipoOc?: TipoOc;
           periodo?: { desde?: string; hasta?: string };
           items?: unknown;
           observaciones?: string;
+          mantenimiento?: {
+            cuadrillas?: Array<{ id?: string; nombre?: string; faltas?: number }>;
+            tarifaMensual?: number;
+            descuentoPorFalta?: number;
+          };
         }
       | null;
 
@@ -81,9 +94,10 @@ export async function POST(req: Request) {
     const coordinadorNombre = String(body?.coordinadorNombre || "").trim();
     const razonSocial = String(body?.razonSocial || "").trim();
     const ruc = String(body?.ruc || "").replace(/\D/g, "");
+    const tipoOc = String(body?.tipoOc || "INSTALACIONES").trim().toUpperCase() === "MANTENIMIENTO" ? "MANTENIMIENTO" : "INSTALACIONES";
     const desde = String(body?.periodo?.desde || "").trim();
     const hasta = String(body?.periodo?.hasta || "").trim();
-    const observaciones = String(body?.observaciones || "").trim();
+    const observacionesInput = String(body?.observaciones || "").trim();
     const items = toSafeItems(body?.items);
 
     if (!coordinadorUid) return NextResponse.json({ ok: false, error: "COORDINADOR_REQUIRED" }, { status: 400 });
@@ -98,31 +112,58 @@ export async function POST(req: Request) {
     const igv = Number((subtotal * 0.18).toFixed(2));
     const total = Number((subtotal + igv).toFixed(2));
     const year = new Date().getFullYear();
+    const observaciones = observacionesInput || defaultObservacion(tipoOc, year);
     const periodoYm = ymFromYmd(desde);
     const periodoYear = Number(desde.slice(0, 4));
-    const requestedConcepts = requestedConceptTotalsFromItems(items);
-    const { pending, summary } = await loadPendingInstallations({ coordinadorUid, desde, hasta });
-    if (requestedConcepts.residencial > summary.residencial) {
-      return NextResponse.json({ ok: false, error: "RESIDENCIAL_PENDING_EXCEEDED" }, { status: 409 });
-    }
-    if (requestedConcepts.condominio > summary.condominio) {
-      return NextResponse.json({ ok: false, error: "CONDOMINIO_PENDING_EXCEEDED" }, { status: 409 });
-    }
-    if (requestedConcepts.cat5e > summary.cat5e) {
-      return NextResponse.json({ ok: false, error: "CAT5E_PENDING_EXCEEDED" }, { status: 409 });
-    }
-    if (requestedConcepts.cat6 > summary.cat6) {
-      return NextResponse.json({ ok: false, error: "CAT6_PENDING_EXCEEDED" }, { status: 409 });
-    }
+    const mantenimientoPayload = {
+      cuadrillas: Array.isArray(body?.mantenimiento?.cuadrillas)
+        ? body.mantenimiento.cuadrillas.map((row) => ({
+            id: String(row?.id || "").trim(),
+            nombre: String(row?.nombre || "").trim(),
+            faltas: Number(row?.faltas || 0),
+          })).filter((row) => row.id && row.nombre)
+        : [],
+      tarifaMensual: Number(body?.mantenimiento?.tarifaMensual || 0),
+      descuentoPorFalta: Number(body?.mantenimiento?.descuentoPorFalta || 0),
+    };
 
-    const allocationPlan = allocateOrderConsumption(pending, requestedConcepts);
-    if (
-      allocationPlan.remaining.residencial > 0 ||
-      allocationPlan.remaining.condominio > 0 ||
-      allocationPlan.remaining.cat5e > 0 ||
-      allocationPlan.remaining.cat6 > 0
-    ) {
-      return NextResponse.json({ ok: false, error: "PENDING_ALLOCATION_CONFLICT" }, { status: 409 });
+    let allocationPlan:
+      | {
+          allocations: Array<
+            PendingInstallation & {
+              consumos: { residencial: number; condominio: number; cat5e: number; cat6: number };
+            }
+          >;
+          remaining: { residencial: number; condominio: number; cat5e: number; cat6: number };
+        }
+      | null = null;
+    const requestedConcepts = tipoOc === "INSTALACIONES" ? requestedConceptTotalsFromItems(items) : null;
+    const pendingData =
+      tipoOc === "INSTALACIONES" ? await loadPendingInstallations({ coordinadorUid, desde, hasta }) : null;
+    if (tipoOc === "INSTALACIONES" && requestedConcepts && pendingData) {
+      const { pending, summary } = pendingData;
+      if (requestedConcepts.residencial > summary.residencial) {
+        return NextResponse.json({ ok: false, error: "RESIDENCIAL_PENDING_EXCEEDED" }, { status: 409 });
+      }
+      if (requestedConcepts.condominio > summary.condominio) {
+        return NextResponse.json({ ok: false, error: "CONDOMINIO_PENDING_EXCEEDED" }, { status: 409 });
+      }
+      if (requestedConcepts.cat5e > summary.cat5e) {
+        return NextResponse.json({ ok: false, error: "CAT5E_PENDING_EXCEEDED" }, { status: 409 });
+      }
+      if (requestedConcepts.cat6 > summary.cat6) {
+        return NextResponse.json({ ok: false, error: "CAT6_PENDING_EXCEEDED" }, { status: 409 });
+      }
+
+      allocationPlan = allocateOrderConsumption(pending, requestedConcepts);
+      if (
+        allocationPlan.remaining.residencial > 0 ||
+        allocationPlan.remaining.condominio > 0 ||
+        allocationPlan.remaining.cat5e > 0 ||
+        allocationPlan.remaining.cat6 > 0
+      ) {
+        return NextResponse.json({ ok: false, error: "PENDING_ALLOCATION_CONFLICT" }, { status: 409 });
+      }
     }
 
     const db = adminDb();
@@ -141,8 +182,9 @@ export async function POST(req: Request) {
         throw new Error("OC_CODE_COLLISION");
       }
 
-      const installationRefs = allocationPlan.allocations.map((row) => db.collection("instalaciones").doc(row.instalacionId));
-      const consumptionRefs = allocationPlan.allocations.map((row) => db.collection("ordenes_compra_consumo").doc(row.instalacionId));
+      const allocationRows = allocationPlan?.allocations || [];
+      const installationRefs = allocationRows.map((row) => db.collection("instalaciones").doc(row.instalacionId));
+      const consumptionRefs = allocationRows.map((row) => db.collection("ordenes_compra_consumo").doc(row.instalacionId));
       const docsToLoad = [...installationRefs, ...consumptionRefs];
       const loadedSnaps = docsToLoad.length ? await tx.getAll(...docsToLoad) : [];
       const installationSnaps = loadedSnaps.slice(0, installationRefs.length);
@@ -184,6 +226,9 @@ export async function POST(req: Request) {
         periodo: { desde, hasta },
         periodoYm,
         periodoYear,
+        tipoOc,
+        area: tipoOc,
+        mantenimiento: tipoOc === "MANTENIMIENTO" ? mantenimientoPayload : null,
         items,
         totales: { subtotal, igv, total },
         observaciones,
@@ -197,69 +242,71 @@ export async function POST(req: Request) {
         },
       });
 
-      for (const allocation of allocationPlan.allocations) {
-        const latest = installedById.get(allocation.instalacionId) || null;
-        if (!latest) {
-          throw new Error(`INSTALACION_NOT_FOUND:${allocation.instalacionId}`);
-        }
-        const raw = buildInstallationConceptTotals(latest);
-        const consumed = consumedById.get(allocation.instalacionId) || {
-          residencial: 0,
-          condominio: 0,
-          cat5e: 0,
-          cat6: 0,
-        };
-        if (consumed.residencial + allocation.consumos.residencial > raw.residencial) {
-          throw new Error("RESIDENCIAL_ALREADY_CONSUMED");
-        }
-        if (consumed.condominio + allocation.consumos.condominio > raw.condominio) {
-          throw new Error("CONDOMINIO_ALREADY_CONSUMED");
-        }
-        if (consumed.cat5e + allocation.consumos.cat5e > raw.cat5e) {
-          throw new Error("CAT5E_ALREADY_CONSUMED");
-        }
-        if (consumed.cat6 + allocation.consumos.cat6 > raw.cat6) {
-          throw new Error("CAT6_ALREADY_CONSUMED");
-        }
+      if (tipoOc === "INSTALACIONES" && allocationPlan) {
+        for (const allocation of allocationPlan.allocations) {
+          const latest = installedById.get(allocation.instalacionId) || null;
+          if (!latest) {
+            throw new Error(`INSTALACION_NOT_FOUND:${allocation.instalacionId}`);
+          }
+          const raw = buildInstallationConceptTotals(latest);
+          const consumed = consumedById.get(allocation.instalacionId) || {
+            residencial: 0,
+            condominio: 0,
+            cat5e: 0,
+            cat6: 0,
+          };
+          if (consumed.residencial + allocation.consumos.residencial > raw.residencial) {
+            throw new Error("RESIDENCIAL_ALREADY_CONSUMED");
+          }
+          if (consumed.condominio + allocation.consumos.condominio > raw.condominio) {
+            throw new Error("CONDOMINIO_ALREADY_CONSUMED");
+          }
+          if (consumed.cat5e + allocation.consumos.cat5e > raw.cat5e) {
+            throw new Error("CAT5E_ALREADY_CONSUMED");
+          }
+          if (consumed.cat6 + allocation.consumos.cat6 > raw.cat6) {
+            throw new Error("CAT6_ALREADY_CONSUMED");
+          }
 
-        const nextConsumed = {
-          residencial: consumed.residencial + allocation.consumos.residencial,
-          condominio: consumed.condominio + allocation.consumos.condominio,
-          cat5e: consumed.cat5e + allocation.consumos.cat5e,
-          cat6: consumed.cat6 + allocation.consumos.cat6,
-        };
-        const consumptionRef = db.collection("ordenes_compra_consumo").doc(allocation.instalacionId);
-        const detailRef = db.collection("ordenes_compra_detalle").doc(`${codigo}__${allocation.instalacionId}`);
-        tx.set(detailRef, {
-          ordenCompraId: codigo,
-          instalacionId: allocation.instalacionId,
-          coordinadorUid,
-          fechaInstalacion: allocation.fechaInstalacion,
-          estado: "BORRADOR",
-          consumos: allocation.consumos,
-          snapshot: buildInstallationSnapshot(latest, coordinadorUid),
-          audit: {
-            createdAt: FieldValue.serverTimestamp(),
-            createdBy: session.uid,
-            updatedAt: FieldValue.serverTimestamp(),
-            updatedBy: session.uid,
-          },
-        });
-        tx.set(
-          consumptionRef,
-          {
+          const nextConsumed = {
+            residencial: consumed.residencial + allocation.consumos.residencial,
+            condominio: consumed.condominio + allocation.consumos.condominio,
+            cat5e: consumed.cat5e + allocation.consumos.cat5e,
+            cat6: consumed.cat6 + allocation.consumos.cat6,
+          };
+          const consumptionRef = db.collection("ordenes_compra_consumo").doc(allocation.instalacionId);
+          const detailRef = db.collection("ordenes_compra_detalle").doc(`${codigo}__${allocation.instalacionId}`);
+          tx.set(detailRef, {
+            ordenCompraId: codigo,
             instalacionId: allocation.instalacionId,
             coordinadorUid,
             fechaInstalacion: allocation.fechaInstalacion,
-            consumos: nextConsumed,
+            estado: "BORRADOR",
+            consumos: allocation.consumos,
+            snapshot: buildInstallationSnapshot(latest, coordinadorUid),
             audit: {
+              createdAt: FieldValue.serverTimestamp(),
+              createdBy: session.uid,
               updatedAt: FieldValue.serverTimestamp(),
               updatedBy: session.uid,
             },
-          },
-          { merge: true }
-        );
-        consumedById.set(allocation.instalacionId, nextConsumed);
+          });
+          tx.set(
+            consumptionRef,
+            {
+              instalacionId: allocation.instalacionId,
+              coordinadorUid,
+              fechaInstalacion: allocation.fechaInstalacion,
+              consumos: nextConsumed,
+              audit: {
+                updatedAt: FieldValue.serverTimestamp(),
+                updatedBy: session.uid,
+              },
+            },
+            { merge: true }
+          );
+          consumedById.set(allocation.instalacionId, nextConsumed);
+        }
       }
     });
 

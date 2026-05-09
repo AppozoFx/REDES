@@ -6,6 +6,7 @@ import { toast } from "sonner";
 type OrdenRow = {
   id: string;
   codigo: string;
+  tipoOc?: string;
   estado: string;
   coordinadorNombre: string;
   proveedor: { razonSocial: string; ruc: string };
@@ -36,6 +37,7 @@ export default function OrdenesCompraMesClient() {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<OrdenRow[]>([]);
   const [totalMonto, setTotalMonto] = useState(0);
+  const [totalOrdenesActivas, setTotalOrdenesActivas] = useState(0);
   const [cancellingId, setCancellingId] = useState("");
 
   const load = async (targetYm = ym) => {
@@ -48,10 +50,12 @@ export default function OrdenesCompraMesClient() {
       if (!res.ok || !body?.ok) throw new Error(String(body?.error || "ERROR"));
       setRows(Array.isArray(body.items) ? body.items : []);
       setTotalMonto(Number(body?.summary?.totalMonto || 0));
+      setTotalOrdenesActivas(Number(body?.summary?.totalOrdenesActivas || 0));
     } catch (e: any) {
       toast.error(e?.message || "No se pudo cargar órdenes del mes");
       setRows([]);
       setTotalMonto(0);
+      setTotalOrdenesActivas(0);
     } finally {
       setLoading(false);
     }
@@ -59,8 +63,7 @@ export default function OrdenesCompraMesClient() {
 
   useEffect(() => {
     load(ym);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ym]);
 
   const totalOrdenes = useMemo(() => rows.length, [rows]);
 
@@ -111,18 +114,11 @@ export default function OrdenesCompraMesClient() {
               className="h-10 rounded-xl border border-slate-300 px-3 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
             />
           </div>
-          <button
-            type="button"
-            onClick={() => load(ym)}
-            disabled={loading}
-            className="h-10 rounded-xl bg-[#30518c] px-4 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            {loading ? "Consultando..." : "Consultar"}
-          </button>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
           <Metric title="Total ordenes" value={String(totalOrdenes)} />
+          <Metric title="Ordenes activas" value={String(totalOrdenesActivas)} />
           <Metric title="Monto total" value={money(totalMonto)} />
         </div>
       </section>
@@ -132,6 +128,7 @@ export default function OrdenesCompraMesClient() {
           <thead className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
             <tr>
               <th className="border border-slate-200 p-2 text-left">Codigo</th>
+              <th className="border border-slate-200 p-2 text-left">Tipo</th>
               <th className="border border-slate-200 p-2 text-left">Generada</th>
               <th className="border border-slate-200 p-2 text-left">Coordinador</th>
               <th className="border border-slate-200 p-2 text-left">Proveedor</th>
@@ -145,14 +142,14 @@ export default function OrdenesCompraMesClient() {
           <tbody>
             {loading && (
               <tr>
-                <td className="border border-slate-200 p-4 text-center text-slate-500 dark:border-slate-700 dark:text-slate-300" colSpan={9}>
+                <td className="border border-slate-200 p-4 text-center text-slate-500 dark:border-slate-700 dark:text-slate-300" colSpan={10}>
                   Cargando...
                 </td>
               </tr>
             )}
             {!loading && !rows.length && (
               <tr>
-                <td className="border border-slate-200 p-4 text-center text-slate-500 dark:border-slate-700 dark:text-slate-300" colSpan={9}>
+                <td className="border border-slate-200 p-4 text-center text-slate-500 dark:border-slate-700 dark:text-slate-300" colSpan={10}>
                   Sin ordenes para el mes seleccionado
                 </td>
               </tr>
@@ -161,6 +158,15 @@ export default function OrdenesCompraMesClient() {
               rows.map((r) => (
                 <tr key={r.id} className="odd:bg-white even:bg-slate-50/60 dark:odd:bg-slate-900 dark:even:bg-slate-800/60">
                   <td className="border border-slate-200 p-2 font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-100">{r.codigo}</td>
+                  <td className="border border-slate-200 p-2 dark:border-slate-700">
+                    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${
+                      r.tipoOc === "MANTENIMIENTO"
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-blue-100 text-blue-800"
+                    }`}>
+                      {r.tipoOc === "MANTENIMIENTO" ? "Mantenimiento" : "Instalaciones"}
+                    </span>
+                  </td>
                   <td className="border border-slate-200 p-2 dark:border-slate-700 dark:text-slate-200">{formatDate(r.createdAt)}</td>
                   <td className="border border-slate-200 p-2 dark:border-slate-700 dark:text-slate-200">{r.coordinadorNombre || "-"}</td>
                   <td className="border border-slate-200 p-2 dark:border-slate-700">

@@ -75,6 +75,7 @@ export async function GET(req: Request) {
         id: d.id,
         codigo: String(x?.codigo || d.id),
         correlativo: Number(x?.correlativo || 0),
+        tipoOc: String(x?.tipoOc || x?.area || "INSTALACIONES"),
         estado: String(x?.estado || "-"),
         coordinadorNombre: String(x?.coordinadorNombre || "-"),
         proveedor: {
@@ -98,12 +99,14 @@ export async function GET(req: Request) {
       .filter((x) => x.periodoYm === ym)
       .sort((a, b) => b.correlativo - a.correlativo);
 
-    const totalMonto = Number(items.reduce((acc, it) => acc + Number(it?.totales?.total || 0), 0).toFixed(2));
+    const activeItems = items.filter((it) => String(it?.estado || "").toUpperCase() !== "ANULADA");
+    const totalMonto = Number(activeItems.reduce((acc, it) => acc + Number(it?.totales?.total || 0), 0).toFixed(2));
     return NextResponse.json({
       ok: true,
       ym,
       summary: {
         totalOrdenes: items.length,
+        totalOrdenesActivas: activeItems.length,
         totalMonto,
       },
       items,

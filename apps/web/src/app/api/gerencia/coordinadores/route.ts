@@ -46,8 +46,9 @@ export async function GET() {
     const userSnaps = refs.length ? await adminDb().getAll(...refs) : [];
 
     const items = userSnaps
-      .map((s) => {
+      .map((s, index) => {
         const data = (s.data() || {}) as any;
+        const accessData = accessSnap.docs[index]?.data() as any;
         return {
           uid: s.id,
           nombre: toShortName(data, s.id),
@@ -55,6 +56,7 @@ export async function GET() {
           celular: String(data?.celular || ""),
           razonSocial: String(data?.razon_social || ""),
           ruc: String(data?.ruc || ""),
+          areas: Array.isArray(accessData?.areas) ? accessData.areas.map((x: any) => String(x || "").trim()).filter(Boolean) : [],
         };
       })
       .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));

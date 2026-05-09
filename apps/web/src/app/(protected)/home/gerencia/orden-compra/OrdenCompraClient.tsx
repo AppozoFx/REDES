@@ -11,6 +11,7 @@ type Coordinador = {
   celular: string;
   razonSocial: string;
   ruc: string;
+  areas?: string[];
 };
 
 type Item = {
@@ -40,6 +41,15 @@ type RowCuadrilla = {
   cat6: number;
 };
 
+type TipoOc = "INSTALACIONES" | "MANTENIMIENTO";
+
+type MantenimientoCuadrilla = {
+  id: string;
+  nombre: string;
+  zona: string;
+  turno: string;
+};
+
 const DESCRIPCIONES: Record<string, { descripcion: string; precio: number }> = {
   "001": { descripcion: "INSTALACION Y ACTIVACION DE ABONADOS EN RESIDENCIALES", precio: 120 },
   "002": { descripcion: "INSTALACION Y ACTIVACION DE ABONADOS EN CONDOMINIOS", precio: 80 },
@@ -52,6 +62,8 @@ const OC_ATENCION = "DNIEPER MAYTA - m.mayta@redesm";
 const OC_LUGAR_ENTREGA = "REDES M&D S.A.C";
 const OC_TIPO = "SERVICIOS";
 const OC_LOGO_PATH = "/img/logo.png";
+const MANT_TARIFA_MENSUAL = 10000;
+const MANT_DESCUENTO_FALTA = Number((MANT_TARIFA_MENSUAL / 30).toFixed(2));
 let logoDataUrlCache: string | null = null;
 
 function defaultPeriodo() {
@@ -68,6 +80,11 @@ function money(v: number) {
   return `S/ ${Number(v || 0).toFixed(2)}`;
 }
 
+function defaultObservacion(tipoOc: TipoOc, periodo: { desde: string }) {
+  const year = String(periodo?.desde || "").slice(0, 4) || String(new Date().getFullYear());
+  return `${tipoOc} ${year}`;
+}
+
 function buildItemsFromResumen(s: Resumen): Item[] {
   return [
     { codigo: "001", descripcion: DESCRIPCIONES["001"].descripcion, cantidad: s.residencial, precio: DESCRIPCIONES["001"].precio, total: s.residencial * DESCRIPCIONES["001"].precio },
@@ -75,6 +92,25 @@ function buildItemsFromResumen(s: Resumen): Item[] {
     { codigo: "003", descripcion: DESCRIPCIONES["003"].descripcion, cantidad: s.cat5e, precio: DESCRIPCIONES["003"].precio, total: s.cat5e * DESCRIPCIONES["003"].precio },
     { codigo: "004", descripcion: DESCRIPCIONES["004"].descripcion, cantidad: s.cat6, precio: DESCRIPCIONES["004"].precio, total: s.cat6 * DESCRIPCIONES["004"].precio },
   ].filter((x) => x.cantidad > 0);
+}
+
+function buildItemsForMantenimiento(
+  cuadrillas: MantenimientoCuadrilla[],
+  selectedIds: string[],
+  faltasByCuadrilla: Record<string, number>
+): Item[] {
+  const selected = cuadrillas.filter((row) => selectedIds.includes(row.id));
+  return selected.map((row, index) => {
+    const faltas = Math.max(0, Number(faltasByCuadrilla[row.id] || 0));
+    const precioNeto = Number((MANT_TARIFA_MENSUAL - faltas * MANT_DESCUENTO_FALTA).toFixed(2));
+    return {
+      codigo: `M${String(index + 1).padStart(3, "0")}`,
+      descripcion: `SERVICIO MENSUAL CUADRILLA MANTENIMIENTO - ${row.nombre}`,
+      cantidad: 1,
+      precio: precioNeto > 0 ? precioNeto : 0,
+      total: precioNeto > 0 ? precioNeto : 0,
+    };
+  });
 }
 
 function numeroALetras(num: number): string {
@@ -375,11 +411,15 @@ async function makePdfBlob(args: {
 }
 
 export default function OrdenCompraClient() {
+  const [tipoOc, setTipoOc] = useState<TipoOc>("INSTALACIONES");
   const [coordinadores, setCoordinadores] = useState<Coordinador[]>([]);
   const [coordinadorUid, setCoordinadorUid] = useState("");
   const [periodo, setPeriodo] = useState(defaultPeriodo());
   const [resumen, setResumen] = useState<Resumen | null>(null);
   const [porCuadrilla, setPorCuadrilla] = useState<RowCuadrilla[]>([]);
+  const [cuadrillasMant, setCuadrillasMant] = useState<MantenimientoCuadrilla[]>([]);
+  const [selectedCuadrillaIds, setSelectedCuadrillaIds] = useState<string[]>([]);
+  const [faltasByCuadrilla, setFaltasByCuadrilla] = useState<Record<string, number>>({});
   const [items, setItems] = useState<Item[]>([]);
   const [loadingData, setLoadingData] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -411,9 +451,16 @@ export default function OrdenCompraClient() {
     })();
   }, []);
 
+  const coordinadoresDisponibles = useMemo(() => {
+    if (tipoOc === "MANTENIMIENTO") {
+      return coordinadores.filter((c) => Array.isArray(c.areas) && c.areas.some((x) => String(x || "").toUpperCase() === "MANTENIMIENTO"));
+    }
+    return coordinadores;
+  }, [coordinadores, tipoOc]);
+
   const selected = useMemo(
-    () => coordinadores.find((c) => c.uid === coordinadorUid) || null,
-    [coordinadores, coordinadorUid]
+    () => coordinadoresDisponibles.find((c) => c.uid === coordinadorUid) || null,
+    [coordinadoresDisponibles, coordinadorUid]
   );
 
   const cleanItems = useMemo(
@@ -431,7 +478,61 @@ export default function OrdenCompraClient() {
     return { subtotal, igv, total };
   }, [cleanItems]);
 
+  useEffect(() => {
+    setCoordinadorUid("");
+    setResumen(null);
+    setPorCuadrilla([]);
+    setCuadrillasMant([]);
+    setSelectedCuadrillaIds([]);
+    setFaltasByCuadrilla({});
+    setItems([]);
+  }, [tipoOc]);
+
+  useEffect(() => {
+    if (tipoOc !== "MANTENIMIENTO" || !coordinadorUid) {
+      setCuadrillasMant([]);
+      setSelectedCuadrillaIds([]);
+      setFaltasByCuadrilla({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/gerencia/orden-compra/mantenimiento-cuadrillas?coordinadorUid=${encodeURIComponent(coordinadorUid)}`, {
+          cache: "no-store",
+        });
+        const body = await res.json();
+        if (!res.ok || !body?.ok) throw new Error(String(body?.error || "ERROR"));
+        if (cancelled) return;
+        const nextItems = Array.isArray(body.items) ? body.items : [];
+        setCuadrillasMant(nextItems);
+        setSelectedCuadrillaIds((prev) => prev.filter((id) => nextItems.some((row: MantenimientoCuadrilla) => row.id === id)));
+        setFaltasByCuadrilla((prev) => {
+          const next: Record<string, number> = {};
+          nextItems.forEach((row: MantenimientoCuadrilla) => {
+            next[row.id] = Number(prev[row.id] || 0);
+          });
+          return next;
+        });
+      } catch (e: any) {
+        if (!cancelled) {
+          toast.error(e?.message || "No se pudo cargar cuadrillas de mantenimiento");
+          setCuadrillasMant([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tipoOc, coordinadorUid]);
+
+  useEffect(() => {
+    if (tipoOc !== "MANTENIMIENTO") return;
+    setItems(buildItemsForMantenimiento(cuadrillasMant, selectedCuadrillaIds, faltasByCuadrilla));
+  }, [tipoOc, cuadrillasMant, selectedCuadrillaIds, faltasByCuadrilla]);
+
   const loadInstalaciones = async () => {
+    if (tipoOc !== "INSTALACIONES") return;
     if (!coordinadorUid) {
       toast.error("Selecciona un coordinador");
       return;
@@ -457,6 +558,17 @@ export default function OrdenCompraClient() {
     } finally {
       setLoadingData(false);
     }
+  };
+
+  const toggleCuadrillaMant = (id: string) => {
+    setSelectedCuadrillaIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const setFaltasMant = (id: string, value: number) => {
+    setFaltasByCuadrilla((prev) => ({
+      ...prev,
+      [id]: Number.isFinite(value) && value > 0 ? Math.floor(value) : 0,
+    }));
   };
 
   const updateItem = (idx: number, patch: Partial<Item>) => {
@@ -486,6 +598,9 @@ export default function OrdenCompraClient() {
     setPeriodo(defaultPeriodo());
     setResumen(null);
     setPorCuadrilla([]);
+    setCuadrillasMant([]);
+    setSelectedCuadrillaIds([]);
+    setFaltasByCuadrilla({});
     setItems([]);
     setObs("");
     setPreviewUrl("");
@@ -510,20 +625,40 @@ export default function OrdenCompraClient() {
       toast.error("Agrega al menos un item");
       return;
     }
+    if (tipoOc === "MANTENIMIENTO" && !selectedCuadrillaIds.length) {
+      toast.error("Selecciona al menos una cuadrilla de mantenimiento");
+      return;
+    }
 
     setSaving(true);
     try {
+      const observacionFinal = String(obs || "").trim() || defaultObservacion(tipoOc, periodo);
       const createRes = await fetch("/api/gerencia/orden-compra/create", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          tipoOc,
           coordinadorUid: selected.uid,
           coordinadorNombre: selected.nombre,
           razonSocial: selected.razonSocial,
           ruc: selected.ruc,
           periodo,
           items: cleanItems,
-          observaciones: obs,
+          observaciones: observacionFinal,
+          mantenimiento:
+            tipoOc === "MANTENIMIENTO"
+              ? {
+                  cuadrillas: cuadrillasMant
+                    .filter((row) => selectedCuadrillaIds.includes(row.id))
+                    .map((row) => ({
+                      id: row.id,
+                      nombre: row.nombre,
+                      faltas: Number(faltasByCuadrilla[row.id] || 0),
+                    })),
+                  tarifaMensual: MANT_TARIFA_MENSUAL,
+                  descuentoPorFalta: MANT_DESCUENTO_FALTA,
+                }
+              : null,
         }),
       });
       const createBody = await createRes.json();
@@ -544,7 +679,7 @@ export default function OrdenCompraClient() {
         subtotal: totals.subtotal,
         igv: totals.igv,
         total: totals.total,
-        observaciones: obs,
+        observaciones: observacionFinal,
       });
 
       const uploadRes = await fetch(`/api/gerencia/orden-compra/pdf-upload?ordenId=${encodeURIComponent(ordenId)}`, {
@@ -573,8 +708,32 @@ export default function OrdenCompraClient() {
           <div>
             <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Orden de Compra</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Gestiona la orden, revisa instalaciones y genera el PDF final.
+              Gestiona OCs de Instalaciones o Mantenimiento y genera el PDF final.
             </p>
+            <div className="mt-3 inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800">
+              <button
+                type="button"
+                onClick={() => setTipoOc("INSTALACIONES")}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                  tipoOc === "INSTALACIONES"
+                    ? "bg-[#30518c] text-white"
+                    : "text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-700"
+                }`}
+              >
+                Instalaciones
+              </button>
+              <button
+                type="button"
+                onClick={() => setTipoOc("MANTENIMIENTO")}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                  tipoOc === "MANTENIMIENTO"
+                    ? "bg-[#30518c] text-white"
+                    : "text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-700"
+                }`}
+              >
+                Mantenimiento
+              </button>
+            </div>
           </div>
           <div className={`rounded-full border px-3 py-1 text-xs font-semibold ${lastCode ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"}`}>
             {lastCode ? `Ultima OC: ${lastCode}` : "Sin OC generada en esta sesion"}
@@ -585,14 +744,16 @@ export default function OrdenCompraClient() {
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">
         <div className="grid gap-3 md:grid-cols-4">
           <div className="md:col-span-2">
-            <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">Coordinador</label>
+            <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+              Coordinador {tipoOc === "MANTENIMIENTO" ? "(Area Mantenimiento)" : ""}
+            </label>
             <select
               value={coordinadorUid}
               onChange={(e) => setCoordinadorUid(e.target.value)}
               className="h-10 w-full rounded border border-slate-300 px-3 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
             >
               <option value="">Selecciona...</option>
-              {coordinadores.map((c) => (
+              {coordinadoresDisponibles.map((c) => (
                 <option key={c.uid} value={c.uid}>
                   {c.nombre}
                 </option>
@@ -623,17 +784,18 @@ export default function OrdenCompraClient() {
           <button
             type="button"
             onClick={loadInstalaciones}
-            disabled={loadingData}
+            disabled={loadingData || tipoOc !== "INSTALACIONES"}
             className="rounded bg-[#30518c] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
           >
-            {loadingData ? "Cargando..." : "Cargar Instalaciones"}
+            {tipoOc === "INSTALACIONES" ? (loadingData ? "Cargando..." : "Cargar Instalaciones") : "Solo aplica a Instalaciones"}
           </button>
           <button
             type="button"
             onClick={agregarItem}
+            disabled={tipoOc === "MANTENIMIENTO"}
             className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
           >
-            Agregar item
+            {tipoOc === "MANTENIMIENTO" ? "Items generados automaticamente" : "Agregar item"}
           </button>
         </div>
       </section>
@@ -656,6 +818,7 @@ export default function OrdenCompraClient() {
         </div>
       </section>
 
+      {tipoOc === "INSTALACIONES" && (
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">
         <h2 className="mb-2 text-sm font-semibold">Resumen por instalaciones</h2>
         <div className="grid gap-2 md:grid-cols-4 xl:grid-cols-8">
@@ -696,7 +859,9 @@ export default function OrdenCompraClient() {
           </div>
         )}
       </section>
+      )}
 
+      {tipoOc === "INSTALACIONES" && (
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">
         <h2 className="mb-2 text-sm font-semibold">Resumen por cuadrilla</h2>
         <div className="overflow-x-auto">
@@ -731,6 +896,69 @@ export default function OrdenCompraClient() {
           </table>
         </div>
       </section>
+      )}
+
+      {tipoOc === "MANTENIMIENTO" && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="mb-1 text-sm font-semibold">Cuadrillas de Mantenimiento</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Tarifa plana: <b>{money(MANT_TARIFA_MENSUAL)}</b> por cuadrilla. Descuento por falta: <b>{money(MANT_DESCUENTO_FALTA)}</b>.
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+              Seleccionadas: <b>{selectedCuadrillaIds.length}</b>
+            </div>
+          </div>
+          {!coordinadorUid ? (
+            <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+              Selecciona primero un coordinador del area de mantenimiento.
+            </div>
+          ) : !cuadrillasMant.length ? (
+            <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+              No se encontraron cuadrillas habilitadas de mantenimiento para este coordinador.
+            </div>
+          ) : (
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {cuadrillasMant.map((row) => {
+                const checked = selectedCuadrillaIds.includes(row.id);
+                return (
+                  <label key={row.id} className={`rounded-2xl border p-3 ${checked ? "border-[#30518c] bg-blue-50 dark:bg-blue-950/20" : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800"}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex gap-3">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleCuadrillaMant(row.id)}
+                          className="mt-1"
+                        />
+                        <div>
+                          <div className="font-medium text-slate-900 dark:text-slate-100">{row.nombre}</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400">
+                            {row.zona || "-"} {row.turno ? `| ${row.turno}` : ""}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="w-28">
+                        <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Faltas</span>
+                        <input
+                          type="number"
+                          min={0}
+                          value={Number(faltasByCuadrilla[row.id] || 0)}
+                          onChange={(e) => setFaltasMant(row.id, Number(e.target.value || 0))}
+                          disabled={!checked}
+                          className="h-9 w-full rounded border border-slate-300 px-2 text-sm disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                        />
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">
         <h2 className="mb-2 text-sm font-semibold">Items de Orden de Compra</h2>
@@ -809,7 +1037,7 @@ export default function OrdenCompraClient() {
               value={obs}
               onChange={(e) => setObs(e.target.value)}
               className="min-h-[84px] w-full rounded border border-slate-300 p-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-              placeholder="Observaciones de la orden..."
+              placeholder={defaultObservacion(tipoOc, periodo)}
             />
           </div>
           <div className="rounded border bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">

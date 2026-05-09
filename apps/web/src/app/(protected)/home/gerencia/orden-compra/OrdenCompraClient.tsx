@@ -27,6 +27,9 @@ type Resumen = {
   condominio: number;
   cat5e: number;
   cat6: number;
+  totalEnRango: number;
+  yaConsideradas: number;
+  totalPendientes: number;
 };
 
 type RowCuadrilla = {
@@ -384,6 +387,17 @@ export default function OrdenCompraClient() {
   const [previewUrl, setPreviewUrl] = useState("");
   const [lastCode, setLastCode] = useState("");
 
+  const resumenBaseVacio: Resumen = {
+    totalInstalaciones: 0,
+    residencial: 0,
+    condominio: 0,
+    cat5e: 0,
+    cat6: 0,
+    totalEnRango: 0,
+    yaConsideradas: 0,
+    totalPendientes: 0,
+  };
+
   useEffect(() => {
     (async () => {
       try {
@@ -436,7 +450,7 @@ export default function OrdenCompraClient() {
       if (!res.ok || !body?.ok) throw new Error(String(body?.error || "ERROR"));
       setResumen(body.summary || null);
       setPorCuadrilla(Array.isArray(body.porCuadrilla) ? body.porCuadrilla : []);
-      setItems(buildItemsFromResumen(body.summary || { totalInstalaciones: 0, residencial: 0, condominio: 0, cat5e: 0, cat6: 0 }));
+      setItems(buildItemsFromResumen(body.summary || resumenBaseVacio));
       toast.success("Instalaciones cargadas");
     } catch (e: any) {
       toast.error(e?.message || "No se pudo cargar instalaciones");
@@ -644,13 +658,43 @@ export default function OrdenCompraClient() {
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">
         <h2 className="mb-2 text-sm font-semibold">Resumen por instalaciones</h2>
-        <div className="grid gap-2 md:grid-cols-5">
+        <div className="grid gap-2 md:grid-cols-4 xl:grid-cols-8">
+          <Metric title="En rango" value={String(resumen?.totalEnRango || 0)} />
+          <Metric title="Ya consideradas" value={String(resumen?.yaConsideradas || 0)} />
+          <Metric title="Pendientes" value={String(resumen?.totalPendientes || 0)} />
           <Metric title="Total instalaciones" value={String(resumen?.totalInstalaciones || 0)} />
           <Metric title="Residencial" value={String(resumen?.residencial || 0)} />
           <Metric title="Condominio" value={String(resumen?.condominio || 0)} />
           <Metric title="CAT5e" value={String(resumen?.cat5e || 0)} />
           <Metric title="CAT6" value={String(resumen?.cat6 || 0)} />
         </div>
+        {resumen && resumen.totalEnRango > 0 && resumen.yaConsideradas > 0 && (
+          <div
+            className={`mt-3 rounded-xl border px-3 py-3 text-sm ${
+              resumen.totalPendientes > 0
+                ? "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100"
+                : "border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-700 dark:bg-sky-900/20 dark:text-sky-100"
+            }`}
+          >
+            {resumen.totalPendientes > 0 ? (
+              <p>
+                Se encontraron <b>{resumen.totalEnRango}</b> instalaciones en el rango. <b>{resumen.yaConsideradas}</b>{" "}
+                ya fueron consideradas en OCs previas y <b>{resumen.totalPendientes}</b> siguen pendientes para esta
+                orden.
+              </p>
+            ) : (
+              <p>
+                No hay pendientes para este rango. Las <b>{resumen.totalEnRango}</b> instalaciones encontradas ya
+                fueron consideradas en OCs previas, por eso no se vuelven a contar.
+              </p>
+            )}
+          </div>
+        )}
+        {resumen && resumen.totalEnRango === 0 && (
+          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+            No se encontraron instalaciones para el coordinador en ese rango.
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">

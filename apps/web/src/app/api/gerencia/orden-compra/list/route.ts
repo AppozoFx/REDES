@@ -21,15 +21,6 @@ function currentYm() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function rangeFromYm(ym: string) {
-  const [yStr, mStr] = ym.split("-");
-  const year = Number(yStr);
-  const month = Number(mStr);
-  const from = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
-  const to = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
-  return { from, to };
-}
-
 function ymLimaFromDate(date: Date) {
   const ymd = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Lima",
@@ -51,6 +42,15 @@ function toIso(v: any) {
   }
 }
 
+function ymFromPeriodo(data: any) {
+  const explicitYm = String(data?.periodoYm || "").trim();
+  if (isYm(explicitYm)) return explicitYm;
+  const desde = String(data?.periodo?.desde || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(desde)) return desde.slice(0, 7);
+  const createdAtDate = typeof data?.audit?.createdAt?.toDate === "function" ? data.audit.createdAt.toDate() : null;
+  return createdAtDate ? ymLimaFromDate(createdAtDate) : "";
+}
+
 export async function GET(req: Request) {
   try {
     const session = await getServerSession();
@@ -66,13 +66,7 @@ export async function GET(req: Request) {
     const ym = String(searchParams.get("ym") || "").trim() || currentYm();
     if (!isYm(ym)) return NextResponse.json({ ok: false, error: "YM_INVALID" }, { status: 400 });
 
-    const { from } = rangeFromYm(ym);
-    const year = from.getUTCFullYear();
-    const snap = await adminDb()
-      .collection("ordenes_compra")
-      .where("year", "==", year)
-      .limit(3000)
-      .get();
+    const snap = await adminDb().collection("ordenes_compra").limit(3000).get();
 
     const items = snap.docs.map((d) => {
       const x = d.data() as any;
@@ -91,6 +85,7 @@ export async function GET(req: Request) {
           desde: String(x?.periodo?.desde || ""),
           hasta: String(x?.periodo?.hasta || ""),
         },
+        periodoYm: ymFromPeriodo(x),
         totales: {
           subtotal: Number(x?.totales?.subtotal || 0),
           igv: Number(x?.totales?.igv || 0),
@@ -100,7 +95,7 @@ export async function GET(req: Request) {
         createdAt: toIso(createdAtDate),
       };
     })
-      .filter((x) => (x.createdAt ? ymLimaFromDate(new Date(x.createdAt)) === ym : false))
+      .filter((x) => x.periodoYm === ym)
       .sort((a, b) => b.correlativo - a.correlativo);
 
     const totalMonto = Number(items.reduce((acc, it) => acc + Number(it?.totales?.total || 0), 0).toFixed(2));

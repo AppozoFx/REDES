@@ -58,6 +58,11 @@ export async function POST(req: Request) {
 
     const encodedPath = encodeURIComponent(path);
     const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedPath}?alt=media&token=${token}`;
+    const detailSnap = await adminDb()
+      .collection("ordenes_compra_detalle")
+      .where("ordenCompraId", "==", ordenId)
+      .limit(10000)
+      .get();
 
     await ordenRef.set(
       {
@@ -75,9 +80,24 @@ export async function POST(req: Request) {
       { merge: true }
     );
 
+    const batch = adminDb().batch();
+    for (const detail of detailSnap.docs) {
+      batch.set(
+        detail.ref,
+        {
+          estado: "GENERADA",
+          audit: {
+            updatedAt: FieldValue.serverTimestamp(),
+            updatedBy: session.uid,
+          },
+        },
+        { merge: true }
+      );
+    }
+    await batch.commit();
+
     return NextResponse.json({ ok: true, path, url });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }
 }
-

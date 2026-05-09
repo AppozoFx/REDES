@@ -36,6 +36,7 @@ export default function OrdenesCompraMesClient() {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<OrdenRow[]>([]);
   const [totalMonto, setTotalMonto] = useState(0);
+  const [cancellingId, setCancellingId] = useState("");
 
   const load = async (targetYm = ym) => {
     setLoading(true);
@@ -62,6 +63,29 @@ export default function OrdenesCompraMesClient() {
   }, []);
 
   const totalOrdenes = useMemo(() => rows.length, [rows]);
+
+  const anularOrden = async (row: OrdenRow) => {
+    if (row.estado === "ANULADA") return;
+    const ok = window.confirm(`Se anulara la orden ${row.codigo}. Sus pendientes volveran a quedar disponibles. Deseas continuar?`);
+    if (!ok) return;
+
+    setCancellingId(row.id);
+    try {
+      const res = await fetch("/api/gerencia/orden-compra/anular", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ordenId: row.id }),
+      });
+      const body = await res.json();
+      if (!res.ok || !body?.ok) throw new Error(String(body?.error || "ERROR"));
+      toast.success(`Orden ${row.codigo} anulada`);
+      await load(ym);
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo anular la orden");
+    } finally {
+      setCancellingId("");
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -115,19 +139,20 @@ export default function OrdenesCompraMesClient() {
               <th className="border border-slate-200 p-2 text-left">Estado</th>
               <th className="border border-slate-200 p-2 text-right">Total</th>
               <th className="border border-slate-200 p-2 text-left">PDF</th>
+              <th className="border border-slate-200 p-2 text-left">Acciones</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
-                <td className="border border-slate-200 p-4 text-center text-slate-500 dark:border-slate-700 dark:text-slate-300" colSpan={8}>
+                <td className="border border-slate-200 p-4 text-center text-slate-500 dark:border-slate-700 dark:text-slate-300" colSpan={9}>
                   Cargando...
                 </td>
               </tr>
             )}
             {!loading && !rows.length && (
               <tr>
-                <td className="border border-slate-200 p-4 text-center text-slate-500 dark:border-slate-700 dark:text-slate-300" colSpan={8}>
+                <td className="border border-slate-200 p-4 text-center text-slate-500 dark:border-slate-700 dark:text-slate-300" colSpan={9}>
                   Sin ordenes para el mes seleccionado
                 </td>
               </tr>
@@ -159,6 +184,20 @@ export default function OrdenesCompraMesClient() {
                       </a>
                     ) : (
                       <span className="text-xs text-slate-500 dark:text-slate-400">Sin PDF</span>
+                    )}
+                  </td>
+                  <td className="border border-slate-200 p-2 dark:border-slate-700">
+                    {r.estado === "ANULADA" ? (
+                      <span className="text-xs text-slate-500 dark:text-slate-400">Sin acciones</span>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={cancellingId === r.id}
+                        onClick={() => anularOrden(r)}
+                        className="rounded-lg border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60 dark:border-rose-700 dark:bg-rose-900/30 dark:text-rose-300"
+                      >
+                        {cancellingId === r.id ? "Anulando..." : "Anular"}
+                      </button>
                     )}
                   </td>
                 </tr>

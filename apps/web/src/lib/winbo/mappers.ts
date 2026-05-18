@@ -19,6 +19,7 @@ export type OrdenImportInput = {
   fechaFinVisi?: Date | null;
   fechaIniVisi?: Date | null;
   motivoCancelacion?: string;
+  motivoFinalizacion?: string;
   georeferencia?: string;
 };
 
@@ -131,6 +132,7 @@ function buildPayload(row: ParsedWinboRow): OrdenImportInput | null {
     fechaFinVisi: parseExcelDateLike(firstNonEmpty(row, ["fechafinvisi", "fechavisitafin", "fechavisita", "fechafin"])),
     fechaIniVisi: parseExcelDateLike(firstNonEmpty(row, ["fechainivisi", "fechavisitainicio", "fechainicio"])),
     motivoCancelacion: emptyToUndefined(firstNonEmpty(row, ["motivocancelacion", "motivo", "motivocancela"])),
+    motivoFinalizacion: emptyToUndefined(firstNonEmpty(row, ["motivodefinalizacion", "motivofinalizacion"])),
     georeferencia: emptyToUndefined(firstNonEmpty(row, ["georeferencia", "geo", "coordenadas"])),
   };
 }

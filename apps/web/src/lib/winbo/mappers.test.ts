@@ -74,6 +74,7 @@ test("mapWinboRowsToOrdenImport keeps WinBo fields aligned with manual import se
       fechaFinVisi: result.payloads[0].fechaFinVisi instanceof Date,
       fechaIniVisi: result.payloads[0].fechaIniVisi instanceof Date,
       motivoCancelacion: result.payloads[0].motivoCancelacion,
+      motivoFinalizacion: result.payloads[0].motivoFinalizacion,
       georeferencia: result.payloads[0].georeferencia,
     },
     {
@@ -97,6 +98,7 @@ test("mapWinboRowsToOrdenImport keeps WinBo fields aligned with manual import se
       fechaFinVisi: true,
       fechaIniVisi: true,
       motivoCancelacion: "Sin motivo",
+      motivoFinalizacion: undefined,
       georeferencia: "-12.1,-77.0",
     }
   );
@@ -108,4 +110,43 @@ test("mapWinboRowsToOrdenImport marks rows without ordenId as invalid", () => {
   assert.equal(result.invalidos, 1);
   assert.equal(result.payloads.length, 0);
   assert.equal(result.issues[0]?.code, "ORDEN_ID_REQUIRED");
+});
+
+test("mapWinboRowsToOrdenImport keeps motivo de finalizacion as a separate field", () => {
+  const result = mapWinboRowsToOrdenImport([
+    {
+      __rowNumber: 10,
+      ordenid: "ORD-GAR-1",
+      tipoordenservicio: "GARANTIA",
+      tipotrabajo: "POSTVENTA",
+      estadoorden: "FINALIZADA",
+      cliente: "Cliente Garantia",
+      motivodefinalizacion: "Cambio de conector",
+    },
+  ]);
+
+  assert.equal(result.invalidos, 0);
+  assert.equal(result.payloads.length, 1);
+  assert.equal(result.payloads[0].motivoCancelacion, undefined);
+  assert.equal(result.payloads[0].motivoFinalizacion, "Cambio de conector");
+});
+
+test("mapWinboRowsToOrdenImport also keeps motivo cancelacion when both fields exist", () => {
+  const result = mapWinboRowsToOrdenImport([
+    {
+      __rowNumber: 11,
+      ordenid: "ORD-GAR-2",
+      tipoordenservicio: "GARANTIA",
+      tipotrabajo: "POSTVENTA",
+      estadoorden: "FINALIZADA",
+      cliente: "Cliente Garantia",
+      motivocancelacion: "Cliente no atendio",
+      motivodefinalizacion: "Trabajo completado",
+    },
+  ]);
+
+  assert.equal(result.invalidos, 0);
+  assert.equal(result.payloads.length, 1);
+  assert.equal(result.payloads[0].motivoCancelacion, "Cliente no atendio");
+  assert.equal(result.payloads[0].motivoFinalizacion, "Trabajo completado");
 });

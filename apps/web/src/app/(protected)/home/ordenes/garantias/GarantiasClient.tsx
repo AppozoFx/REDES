@@ -18,6 +18,7 @@ type Row = {
   horaInicio: string;
   horaFin: string;
   motivoCancelacion: string;
+  motivoFinalizacion: string;
   coordinadorUid: string;
   coordinadorNombre: string;
   motivoGarantia: string;
@@ -352,7 +353,7 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
                     <div><b>Duracion:</b> {humanDuration(r.horaInicio, r.horaFin)}</div>
                   </td>
                   <td className="w-[90px] p-2 align-top break-words">{r.estado || "-"}</td>
-                  <td className="w-[120px] p-2 align-top break-words">{r.motivoCancelacion || "-"}</td>
+                  <td className="w-[120px] p-2 align-top break-words">{r.motivoCancelacion || r.motivoFinalizacion || "-"}</td>
                   <td className="w-[140px] p-2 align-top break-words">
                     {editing ? (
                       <input className="ui-input-inline ui-input-inline w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.diagnosticoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, diagnosticoGarantia: e.target.value }))} />

@@ -175,6 +175,7 @@ function pickBusinessComparable(doc: Partial<OrdenDoc>): Record<string, any> {
     "numeroDocumento",
     "telefono",
     "motivoCancelacion",
+    "motivoFinalizacion",
     "lat",
     "lng",
     "fSoliAt",
@@ -231,6 +232,7 @@ export async function upsertOrden(input: {
   fechaFinVisi?: Date | null;
   fechaIniVisi?: Date | null;
   motivoCancelacion?: string;
+  motivoFinalizacion?: string;
   georeferencia?: string;
 }, actorUid: string): Promise<"CREATED" | "UPDATED" | "UNCHANGED"> {
   const ordenId = String(input.ordenId ?? "").trim();
@@ -280,6 +282,7 @@ export async function upsertOrden(input: {
     numeroDocumento: input.numeroDocumento || undefined,
     telefono: input.telefono || undefined,
     motivoCancelacion: input.motivoCancelacion || undefined,
+    motivoFinalizacion: input.motivoFinalizacion || undefined,
     georeferenciaRaw: geo.georeferenciaRaw,
     lat: geo.lat,
     lng: geo.lng,

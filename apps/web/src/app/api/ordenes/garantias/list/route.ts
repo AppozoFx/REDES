@@ -23,6 +23,7 @@ type Row = {
   horaInicio: string;
   horaFin: string;
   motivoCancelacion: string;
+  motivoFinalizacion: string;
   coordinadorUid: string;
   coordinadorNombre: string;
   motivoGarantia: string;
@@ -303,6 +304,7 @@ export async function GET(req: Request) {
         horaInicio: String(x.fechaIniVisiHm || x.horaInicio || ""),
         horaFin: String(x.fechaFinVisiHm || x.horaFin || ""),
         motivoCancelacion: String(x.motivoCancelacion || ""),
+        motivoFinalizacion: String(x.motivoFinalizacion || ""),
         coordinadorUid: String(x.coordinadorCuadrilla || ""),
         coordinadorNombre: coordMap.get(String(x.coordinadorCuadrilla || "")) || String(x.coordinadorCuadrilla || "-"),
         motivoGarantia: String(x.motivoGarantia || ""),

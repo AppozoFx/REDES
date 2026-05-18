@@ -19,6 +19,7 @@ export const OrdenDocSchema = z.object({
   numeroDocumento: z.string().optional(),
   telefono: z.string().optional(),
   motivoCancelacion: z.string().optional(),
+  motivoFinalizacion: z.string().optional(),
 
   // Georeferencia
   georeferenciaRaw: z.string().optional(),

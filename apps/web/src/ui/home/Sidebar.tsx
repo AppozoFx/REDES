@@ -11,6 +11,7 @@ import { useUserIdentity } from "@/ui/common/UserProvider";
 
 type GroupKey =
   | "INSTALACIONES"
+  | "GARANTIAS"
   | "MANTENIMIENTO"
   | "ORDENES"
   | "INCONCERT"
@@ -21,6 +22,7 @@ type GroupKey =
 
 const GROUP_ORDER: GroupKey[] = [
   "INSTALACIONES",
+  "GARANTIAS",
   "MANTENIMIENTO",
   "ORDENES",
   "INCONCERT",
@@ -53,6 +55,9 @@ function getGroup(href: string): GroupKey {
     href === "/home/instalaciones/actas-dia"
   ) {
     return "INSTALACIONES";
+  }
+  if (href === "/home/garantias" || href.startsWith("/home/garantias/")) {
+    return "GARANTIAS";
   }
   if (href.startsWith("/home/ordenes/")) return "ORDENES";
   if (href.startsWith("/home/inconcert/")) return "INCONCERT";
@@ -106,6 +111,7 @@ function getGroup(href: string): GroupKey {
 
 function groupBadge(group: GroupKey) {
   if (group === "INSTALACIONES") return "IN";
+  if (group === "GARANTIAS") return "GA";
   if (group === "MANTENIMIENTO") return "MA";
   if (group === "ORDENES") return "OR";
   if (group === "INCONCERT") return "IC";

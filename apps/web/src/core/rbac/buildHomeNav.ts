@@ -51,7 +51,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
       items.push({ key: "ORDENES_MAPA", label: "Ordenes: Mapa", href: "/home/ordenes/mapa" });
     }
     if (hasPerm(session, "ORDENES_GARANTIAS_VIEW") || hasPerm(session, "ORDENES_GARANTIAS_EDIT") || isGerencia || isSupervisor) {
-      items.push({ key: "ORDENES_GARANTIAS", label: "Ordenes: Garantias", href: "/home/ordenes/garantias" });
+      items.push({ key: "ORDENES_GARANTIAS", label: "Garantias", href: "/home/garantias" });
     }
     if (hasArea(session, "MANTENIMIENTO")) {
       items.push({ key: "MANT_LIQ", label: "Mantenimiento: Liquidaciones", href: "/home/mantenimiento/liquidaciones" });
@@ -143,6 +143,37 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     });
   }
 
+  if (hasPerm(session, "ORDENES_GARANTIAS_VIEW") || hasPerm(session, "ORDENES_GARANTIAS_EDIT") || isGerencia || isSupervisor) {
+    items.push({ key: "GARANTIAS", label: "Garantias", href: "/home/garantias" });
+    items.push({
+      key: "GARANTIAS_DASHBOARD",
+      label: "Garantias: Dashboard",
+      href: "/home/garantias/dashboard",
+    });
+  }
+
+  if (hasPerm(session, "ORDENES_IMPORT")) {
+    items.push({ key: "ORDENES_IMPORT", label: "Ordenes: Importar", href: "/home/ordenes/import" });
+  }
+  if (hasPerm(session, "ORDENES_LLAMADAS_VIEW") || hasPerm(session, "ORDENES_LLAMADAS_EDIT") || isCoord) {
+    items.push({ key: "ORDENES_CALLS", label: "Ordenes: Llamadas", href: "/home/ordenes/llamadas" });
+  }
+  if (hasPerm(session, "ORDENES_LIQUIDAR")) {
+    items.push({ key: "ORDENES_LIQ", label: "Ordenes: Liquidacion", href: "/home/ordenes/liquidacion" });
+  }
+  if (hasPerm(session, "ORDENES_LIQUIDAR") || isCoord) {
+    items.push({ key: "ORDENES_PLANTILLAS", label: "Ordenes: Plantillas", href: "/home/ordenes/plantillas" });
+  }
+  if (hasPerm(session, "ORDENES_MAPA_VIEW") || roles.includes("COORDINADOR")) {
+    items.push({ key: "ORDENES_MAPA", label: "Ordenes: Mapa", href: "/home/ordenes/mapa" });
+  }
+  if (hasPerm(session, "INCONCERT_IMPORT")) {
+    items.push({ key: "INCONCERT_IMPORT", label: "InConcert: Importar", href: "/home/inconcert/importar" });
+  }
+  if (hasPerm(session, "INCONCERT_GERENCIA_VIEW") || hasPerm(session, "INCONCERT_GERENCIA_EDIT")) {
+    items.push({ key: "INCONCERT_GERENCIA", label: "InConcert: Gerencia", href: "/home/inconcert/gerencia" });
+  }
+
   if (hasPerm(session, "USERS_LIST")) {
     items.push({ key: "USUARIOS", label: "Usuarios", href: "/home/usuarios" });
   }
@@ -188,31 +219,6 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
   }
   if (hasArea(session, "MANTENIMIENTO")) {
     items.push({ key: "MANT_LIQ", label: "Mantenimiento: Liquidaciones", href: "/home/mantenimiento/liquidaciones" });
-  }
-
-  if (hasPerm(session, "ORDENES_IMPORT")) {
-    items.push({ key: "ORDENES_IMPORT", label: "Ordenes: Importar", href: "/home/ordenes/import" });
-  }
-  if (hasPerm(session, "ORDENES_LLAMADAS_VIEW") || hasPerm(session, "ORDENES_LLAMADAS_EDIT") || isCoord) {
-    items.push({ key: "ORDENES_CALLS", label: "Ordenes: Llamadas", href: "/home/ordenes/llamadas" });
-  }
-  if (hasPerm(session, "ORDENES_LIQUIDAR")) {
-    items.push({ key: "ORDENES_LIQ", label: "Ordenes: Liquidacion", href: "/home/ordenes/liquidacion" });
-  }
-  if (hasPerm(session, "ORDENES_LIQUIDAR") || isCoord) {
-    items.push({ key: "ORDENES_PLANTILLAS", label: "Ordenes: Plantillas", href: "/home/ordenes/plantillas" });
-  }
-  if (hasPerm(session, "ORDENES_MAPA_VIEW") || roles.includes("COORDINADOR")) {
-    items.push({ key: "ORDENES_MAPA", label: "Ordenes: Mapa", href: "/home/ordenes/mapa" });
-  }
-  if (hasPerm(session, "ORDENES_GARANTIAS_VIEW") || hasPerm(session, "ORDENES_GARANTIAS_EDIT") || isGerencia || isSupervisor) {
-    items.push({ key: "ORDENES_GARANTIAS", label: "Ordenes: Garantias", href: "/home/ordenes/garantias" });
-  }
-  if (hasPerm(session, "INCONCERT_IMPORT")) {
-    items.push({ key: "INCONCERT_IMPORT", label: "InConcert: Importar", href: "/home/inconcert/importar" });
-  }
-  if (hasPerm(session, "INCONCERT_GERENCIA_VIEW") || hasPerm(session, "INCONCERT_GERENCIA_EDIT")) {
-    items.push({ key: "INCONCERT_GERENCIA", label: "InConcert: Gerencia", href: "/home/inconcert/gerencia" });
   }
 
   if (!isJefatura && hasPerm(session, "EQUIPOS_IMPORT")) {
@@ -290,7 +296,8 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
       "/home/cuadrillas/gestion",
       "/home/tecnicos/gestion",
       "/home/usuarios",
-      "/home/ordenes/garantias",
+      "/home/garantias/dashboard",
+      "/home/garantias",
       ...((isSupervisor || isSeguridad) ? ["/home/ordenes/mapa"] : []),
     ]);
     return items.filter((item) => limitedAllowed.has(item.href));

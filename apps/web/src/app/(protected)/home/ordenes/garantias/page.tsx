@@ -15,7 +15,12 @@ function todayLimaYm() {
 
 export default async function Page() {
   const session = await requireAuth();
-  const canEdit = session.isAdmin || session.permissions.includes("ORDENES_GARANTIAS_EDIT");
+  const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
+  const canEdit =
+    session.isAdmin ||
+    roles.includes("GERENCIA") ||
+    roles.includes("SUPERVISOR") ||
+    session.permissions.includes("ORDENES_GARANTIAS_EDIT");
   const canView = canEdit || session.permissions.includes("ORDENES_GARANTIAS_VIEW");
   if (!canView) redirect("/admin");
 
@@ -25,4 +30,3 @@ export default async function Page() {
     </div>
   );
 }
-

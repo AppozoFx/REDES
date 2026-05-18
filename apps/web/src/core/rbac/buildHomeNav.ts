@@ -50,7 +50,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     if (hasPerm(session, "ORDENES_MAPA_VIEW") || roles.includes("COORDINADOR")) {
       items.push({ key: "ORDENES_MAPA", label: "Ordenes: Mapa", href: "/home/ordenes/mapa" });
     }
-    if (hasPerm(session, "ORDENES_GARANTIAS_VIEW") || hasPerm(session, "ORDENES_GARANTIAS_EDIT")) {
+    if (hasPerm(session, "ORDENES_GARANTIAS_VIEW") || hasPerm(session, "ORDENES_GARANTIAS_EDIT") || isGerencia || isSupervisor) {
       items.push({ key: "ORDENES_GARANTIAS", label: "Ordenes: Garantias", href: "/home/ordenes/garantias" });
     }
     if (hasArea(session, "MANTENIMIENTO")) {
@@ -205,7 +205,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
   if (hasPerm(session, "ORDENES_MAPA_VIEW") || roles.includes("COORDINADOR")) {
     items.push({ key: "ORDENES_MAPA", label: "Ordenes: Mapa", href: "/home/ordenes/mapa" });
   }
-  if (hasPerm(session, "ORDENES_GARANTIAS_VIEW") || hasPerm(session, "ORDENES_GARANTIAS_EDIT")) {
+  if (hasPerm(session, "ORDENES_GARANTIAS_VIEW") || hasPerm(session, "ORDENES_GARANTIAS_EDIT") || isGerencia || isSupervisor) {
     items.push({ key: "ORDENES_GARANTIAS", label: "Ordenes: Garantias", href: "/home/ordenes/garantias" });
   }
   if (hasPerm(session, "INCONCERT_IMPORT")) {
@@ -290,6 +290,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
       "/home/cuadrillas/gestion",
       "/home/tecnicos/gestion",
       "/home/usuarios",
+      "/home/ordenes/garantias",
       ...((isSupervisor || isSeguridad) ? ["/home/ordenes/mapa"] : []),
     ]);
     return items.filter((item) => limitedAllowed.has(item.href));

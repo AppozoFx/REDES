@@ -44,7 +44,12 @@ export async function POST(req: Request) {
     const session = await getServerSession();
     if (!session) return jsonErr("UNAUTHENTICATED", 401);
     if (session.access.estadoAcceso !== "HABILITADO") return jsonErr("ACCESS_DISABLED", 403);
-    const canEdit = session.isAdmin || session.permissions.includes(PERM_EDIT);
+    const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
+    const canEdit =
+      session.isAdmin ||
+      roles.includes("GERENCIA") ||
+      roles.includes("SUPERVISOR") ||
+      session.permissions.includes(PERM_EDIT);
     if (!canEdit) return jsonErr("FORBIDDEN", 403);
 
     const parsed = BodySchema.safeParse(await req.json());
@@ -77,7 +82,8 @@ export async function POST(req: Request) {
         const finalizada = String(x?.estado || "").trim().toUpperCase() === "FINALIZADA";
         const notGarantia = !isGarantia(x);
         const ymd = String(x?.fSoliYmd || "").trim();
-        if (!sameClient || !finalizada || !notGarantia || !ymd) return;
+        const beforeGarantia = !garantiaYmd || !ymd || ymd <= garantiaYmd;
+        if (!sameClient || !finalizada || !notGarantia || !ymd || !beforeGarantia) return;
         if (!bestYmd || ymd > bestYmd) bestYmd = ymd;
       });
 

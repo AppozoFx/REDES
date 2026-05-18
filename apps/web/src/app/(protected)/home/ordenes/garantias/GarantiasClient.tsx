@@ -67,6 +67,14 @@ function humanDuration(hInicio: string, hFin: string) {
   return `${m} min`;
 }
 
+function normalizeEstadoFilter(value: string) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
 function nowLimaYm() {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Lima",
@@ -148,7 +156,8 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
         !c ||
         r.cliente.toLowerCase().includes(c) ||
         r.codigoCliente.toLowerCase().includes(c);
-      const byEstado = !filtroEstado || r.estado === filtroEstado;
+      const byEstado =
+        !filtroEstado || normalizeEstadoFilter(r.estado) === normalizeEstadoFilter(filtroEstado);
       const byCoord = !filtroCoord || r.coordinadorUid === filtroCoord;
       const byCuad = !q || r.cuadrilla.toLowerCase().includes(q);
       return byFecha && byCliente && byEstado && byCoord && byCuad;
@@ -248,8 +257,14 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
         </div>
 
         <div className="mt-3 flex flex-wrap items-end gap-2">
-          <input type="month" value={ym} onChange={(e) => setYm(e.target.value)} className="ui-input-inline rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900" />
-          <input type="date" value={filtroFecha} onChange={(e) => setFiltroFecha(e.target.value)} className="ui-input-inline rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900" />
+          <label className="flex flex-col gap-1 text-xs text-slate-600 dark:text-slate-300">
+            <span>Mes de garantia</span>
+            <input type="month" value={ym} onChange={(e) => setYm(e.target.value)} className="ui-input-inline rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-slate-600 dark:text-slate-300">
+            <span>Fecha de garantia</span>
+            <input type="date" value={filtroFecha} onChange={(e) => setFiltroFecha(e.target.value)} className="ui-input-inline rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
+          </label>
           <input
             value={filtroCliente}
             onChange={(e) => setFiltroCliente(e.target.value)}
@@ -271,7 +286,6 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
             <option value="Reprogramada">Reprogramada</option>
             <option value="Iniciada">Iniciada</option>
             <option value="Regestion">Regestion</option>
-            <option value="Regestión">Regestion (tilde)</option>
           </select>
           <select value={filtroCoord} onChange={(e) => setFiltroCoord(e.target.value)} className="ui-select-inline rounded-xl border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900">
             <option value="">Todos los coordinadores</option>
@@ -301,19 +315,15 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
       {error ? <div className="m-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
       {loading ? <div className="m-4 rounded border border-slate-200 bg-white p-3 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">Cargando garantias...</div> : null}
 
-      <div className="m-4 overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
-        <table className="min-w-[1900px] w-full text-xs md:text-sm border-collapse">
+      <div className="m-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+        <table className="min-w-max w-full text-xs md:text-sm border-collapse">
           <thead className="sticky top-0 bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100">
             <tr>
               <th className="p-2"><button onClick={() => toggleSort("fechaGarantiaYmd")}>F. Garantia / Cliente / Codigo / F. Instalacion</button></th>
-              <th className="p-2"><button onClick={() => toggleSort("plan")}>Plan</button></th>
-              <th className="p-2"><button onClick={() => toggleSort("direccion")}>Direccion</button></th>
               <th className="p-2"><button onClick={() => toggleSort("cuadrilla")}>Cuadrilla</button></th>
-              <th className="p-2"><button onClick={() => toggleSort("tipoServicio")}>Tipo Servicio</button></th>
               <th className="p-2">Tiempo</th>
-              <th className="p-2"><button onClick={() => toggleSort("motivoCancelacion")}>Motivo Cancelacion</button></th>
               <th className="p-2"><button onClick={() => toggleSort("estado")}>Estado</button></th>
-              <th className="p-2"><button onClick={() => toggleSort("motivoGarantia")}>Motivo</button></th>
+              <th className="p-2"><button onClick={() => toggleSort("motivoCancelacion")}>Motivo</button></th>
               <th className="p-2"><button onClick={() => toggleSort("diagnosticoGarantia")}>Diagnostico</button></th>
               <th className="p-2"><button onClick={() => toggleSort("solucionGarantia")}>Solucion</button></th>
               <th className="p-2"><button onClick={() => toggleSort("responsableGarantia")}>Responsable</button></th>
@@ -327,47 +337,37 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
               const editing = editId === r.ordenId;
               return (
                 <tr key={r.id} className={`border-b border-slate-200 dark:border-slate-700 ${idx % 2 === 0 ? "bg-white dark:bg-slate-900" : "bg-slate-50/60 dark:bg-slate-800/60"}`}>
-                  <td className="p-2 max-w-[380px] leading-5">
-                    <div><b>F. Garantia:</b> {r.fechaGarantiaYmd || "-"}</div>
-                    <div><b>Cliente:</b> {r.cliente || "-"}</div>
-                    <div><b>Codigo:</b> {r.codigoCliente || "-"}</div>
-                    <div><b>F. Instalacion:</b> {r.fechaInstalacionBase || "-"}</div>
-                    <div><b>Dias:</b> {typeof r.diasDesdeInstalacion === "number" ? r.diasDesdeInstalacion : "-"}</div>
+                  <td className="w-[350px] p-2 leading-5 align-top">
+                    <div className="whitespace-nowrap"><b>F. Garantia:</b> {r.fechaGarantiaYmd || "-"}</div>
+                    <div className="whitespace-nowrap"><b>Cliente:</b> {r.cliente || "-"}</div>
+                    <div className="whitespace-nowrap"><b>Codigo:</b> {r.codigoCliente || "-"}</div>
+                    <div className="whitespace-nowrap"><b>F. Instalacion:</b> {r.fechaInstalacionBase || "-"}</div>
+                    <div className="whitespace-nowrap"><b>Dias:</b> {typeof r.diasDesdeInstalacion === "number" ? r.diasDesdeInstalacion : "-"}</div>
                   </td>
-                  <td className="p-2">{r.plan || "-"}</td>
-                  <td className="p-2 max-w-[260px]">{r.direccion || "-"}</td>
-                  <td className="p-2">{r.cuadrilla || "-"}</td>
-                  <td className="p-2">{r.tipoServicio || "-"}</td>
-                  <td className="p-2">
+                  <td className="w-[110px] p-2 align-top break-words">{r.cuadrilla || "-"}</td>
+                  <td className="w-[130px] p-2 align-top">
                     <div><b>Tramo:</b> {r.tramo || "-"}</div>
                     <div><b>H. Inicio:</b> {r.horaInicio || "-"}</div>
                     <div><b>H. Fin:</b> {r.horaFin || "-"}</div>
                     <div><b>Duracion:</b> {humanDuration(r.horaInicio, r.horaFin)}</div>
                   </td>
-                  <td className="p-2">{r.motivoCancelacion || "-"}</td>
-                  <td className="p-2">{r.estado || "-"}</td>
-                  <td className="p-2">
-                    {editing ? (
-                      <input className="ui-input-inline ui-input-inline w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.motivoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, motivoGarantia: e.target.value }))} />
-                    ) : (
-                      r.motivoGarantia || "-"
-                    )}
-                  </td>
-                  <td className="p-2">
+                  <td className="w-[90px] p-2 align-top break-words">{r.estado || "-"}</td>
+                  <td className="w-[120px] p-2 align-top break-words">{r.motivoCancelacion || "-"}</td>
+                  <td className="w-[140px] p-2 align-top break-words">
                     {editing ? (
                       <input className="ui-input-inline ui-input-inline w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.diagnosticoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, diagnosticoGarantia: e.target.value }))} />
                     ) : (
                       r.diagnosticoGarantia || "-"
                     )}
                   </td>
-                  <td className="p-2">
+                  <td className="w-[140px] p-2 align-top break-words">
                     {editing ? (
                       <input className="ui-input-inline ui-input-inline w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.solucionGarantia} onChange={(e) => setEditForm((f) => ({ ...f, solucionGarantia: e.target.value }))} />
                     ) : (
                       r.solucionGarantia || "-"
                     )}
                   </td>
-                  <td className="p-2">
+                  <td className="w-[120px] p-2 align-top break-words">
                     {editing ? (
                       <select className="ui-select-inline ui-select-inline w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.responsableGarantia} onChange={(e) => setEditForm((f) => ({ ...f, responsableGarantia: e.target.value }))}>
                         <option value="">--</option>
@@ -377,7 +377,7 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
                       r.responsableGarantia || "-"
                     )}
                   </td>
-                  <td className="p-2">
+                  <td className="w-[130px] p-2 align-top break-words">
                     {editing ? (
                       <select className="ui-select-inline ui-select-inline w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.casoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, casoGarantia: e.target.value }))}>
                         <option value="">--</option>
@@ -387,7 +387,7 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
                       r.casoGarantia || "-"
                     )}
                   </td>
-                  <td className="p-2">
+                  <td className="w-[100px] p-2 align-top break-words">
                     {editing ? (
                       <select className="ui-select-inline ui-select-inline w-full rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900" value={editForm.imputadoGarantia} onChange={(e) => setEditForm((f) => ({ ...f, imputadoGarantia: e.target.value }))}>
                         <option value="">--</option>
@@ -397,7 +397,7 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
                       r.imputadoGarantia || "-"
                     )}
                   </td>
-                  <td className="p-2">
+                  <td className="w-[110px] p-2 align-top">
                     {editing && canEdit ? (
                       <div className="flex gap-2">
                         <button disabled={saving} className="rounded bg-emerald-600 px-2 py-1 text-white" onClick={() => saveEdit(r.ordenId)}>Guardar</button>
@@ -429,7 +429,7 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
             })}
             {!loading && pageData.length === 0 ? (
               <tr>
-                <td colSpan={15} className="py-6 text-center text-slate-500 dark:text-slate-300">No hay garantias para los filtros seleccionados</td>
+                <td colSpan={11} className="py-6 text-center text-slate-500 dark:text-slate-300">No hay garantias para los filtros seleccionados</td>
               </tr>
             ) : null}
           </tbody>
@@ -447,4 +447,3 @@ export function GarantiasClient({ initialYm, initialCanEdit }: { initialYm?: str
     </div>
   );
 }
-

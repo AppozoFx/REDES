@@ -38,5 +38,14 @@ export async function buildAdminNav(params: {
     });
   }
 
+  if (params.isAdmin && !items.some((it) => it.href === "/admin/temporal")) {
+    items.push({
+      key: "TEMPORAL_PUBLIC_PAGE",
+      label: "Temporal",
+      href: "/admin/temporal",
+      adminOnly: false,
+    });
+  }
+
   return [{ key: "DASHBOARD", label: "Dashboard", href: "/admin" }, ...items];
 }

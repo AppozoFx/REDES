@@ -18,6 +18,8 @@ import {
 } from "recharts";
 
 const COLORS = ["#30518c", "#10b981", "#f59e0b", "#ef4444", "#06b6d4", "#8b5cf6"];
+const POWER_BI_GARANTIAS_URL =
+  "https://app.powerbi.com/view?r=eyJrIjoiMzRjNGUzMzEtNGEzOC00M2M3LWFmNzItOTg4NDIzNTVhODNiIiwidCI6ImY2YTA3ODJkLWYxOWQtNGQ1OC1hZjYyLTUyMDIyNDZmZjQxYyIsImMiOjR9";
 
 type Resp = {
   ok: true;
@@ -486,6 +488,14 @@ export default function GarantiasDashboardClient() {
               >
                 {exporting ? "Exportando..." : "Exportar Excel"}
               </button>
+              <a
+                href={POWER_BI_GARANTIAS_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-full border border-cyan-300/25 bg-cyan-400/10 px-4 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-400/15"
+              >
+                Abrir Power BI
+              </a>
               <div className="text-xs text-slate-300">El dashboard se actualiza al cambiar las fechas.</div>
             </div>
           </div>

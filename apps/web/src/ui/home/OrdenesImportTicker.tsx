@@ -89,7 +89,10 @@ export function OrdenesImportTicker() {
     [importText, comunicados]
   );
 
-  const repeatedSegments = useMemo(() => [...segments, ...segments], [segments]);
+  const repeatedSegments = useMemo(
+    () => [...segments, ...segments, ...segments, ...segments],
+    [segments]
+  );
   const hasSecondaryItems = comunicados.length > 0;
   const importOnlyLoopText = useMemo(
     () => `${importText} • ${importText} • ${importText} • ${importText} • `,

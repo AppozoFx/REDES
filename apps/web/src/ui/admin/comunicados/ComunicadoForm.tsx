@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 type Target = "ALL" | "ROLES" | "AREAS" | "USERS";
 type Estado = "ACTIVO" | "INACTIVO";
 type Persistencia = "ONCE" | "ALWAYS";
+type Placement = "PAGE" | "TOP_BANNER" | "BOTH";
 
 type RoleItem = { id: string; nombre?: string };
 
@@ -17,6 +18,7 @@ type Props = {
     linkUrl: string;
     linkLabel: string;
     estado: Estado;
+    placement: Placement;
     target: Target;
     rolesTarget: string[];
     areasTarget: string[];
@@ -64,6 +66,7 @@ export default function ComunicadoForm({
   const [areasTarget, setAreasTarget] = useState<string[]>(defaultValues?.areasTarget ?? []);
   const [uidsText, setUidsText] = useState((defaultValues?.uidsTarget ?? []).join(","));
   const [estado, setEstado] = useState<Estado>((defaultValues?.estado as Estado) ?? "ACTIVO");
+  const [placement, setPlacement] = useState<Placement>((defaultValues?.placement as Placement) ?? "PAGE");
   const [persistencia, setPersistencia] = useState<Persistencia>(
     (defaultValues?.persistencia as Persistencia) ?? "ONCE"
   );
@@ -290,6 +293,9 @@ export default function ComunicadoForm({
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
             <h2 className="text-base font-semibold">Configuracion</h2>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Define si el contenido aparece solo en la pagina de comunicados, solo en la banda superior o en ambos espacios.
+            </p>
             <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Estado</label>
@@ -302,6 +308,23 @@ export default function ComunicadoForm({
                   <option value="ACTIVO">ACTIVO</option>
                   <option value="INACTIVO">INACTIVO</option>
                 </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Publicacion</label>
+                <select
+                  name="placement"
+                  value={placement}
+                  onChange={(e) => setPlacement(e.target.value as Placement)}
+                  className="ui-select"
+                >
+                  <option value="PAGE">Solo pagina de comunicados</option>
+                  <option value="TOP_BANNER">Solo banner superior</option>
+                  <option value="BOTH">Pagina y banner superior</option>
+                </select>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Usa `Solo banner superior` para reuniones, enlaces urgentes o mensajes que todos deban ver al entrar.
+                </p>
               </div>
 
               <div className="space-y-1.5">
@@ -358,6 +381,9 @@ export default function ComunicadoForm({
                 <span className="rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-slate-600">
                   {estado}
                 </span>
+                <span className="rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-slate-600">
+                  {placement}
+                </span>
                 {obligatorio ? (
                   <span className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-700 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
                     Obligatorio
@@ -391,6 +417,7 @@ export default function ComunicadoForm({
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
             <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400">
               <div>Destino: {target}</div>
+              <div>Publicacion: {placement}</div>
               <div>Prioridad: {prioridad}</div>
               <div>
                 Ventana: {visibleDesde || "-"} a {visibleHasta || "-"}

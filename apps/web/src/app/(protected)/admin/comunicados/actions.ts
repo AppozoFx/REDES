@@ -6,6 +6,7 @@ import { requirePermission } from "@/core/auth/guards";
 import { adminDb } from "@/lib/firebase/admin";
 import {
   createComunicado,
+  deleteComunicado,
   syncBirthdayComunicadoToday,
   updateComunicado,
   setComunicadoEstado,
@@ -47,6 +48,7 @@ function buildInputFromForm(formData: FormData) {
     linkLabel: String(formData.get("linkLabel") ?? "").trim(),
 
     target: String(formData.get("target") ?? "ALL").trim(),
+    placement: String(formData.get("placement") ?? "PAGE").trim(),
     rolesTarget: csvToArr(formData.get("rolesTarget")),
     areasTarget: csvToArr(formData.get("areasTarget")),
     uidsTarget: csvToArr(formData.get("uidsTarget")),
@@ -155,4 +157,14 @@ export async function syncBirthdayComunicadoAction() {
   const result = await syncBirthdayComunicadoToday(session.uid);
   revalidatePath("/admin/comunicados");
   return { ok: true, ...result };
+}
+
+export async function comunicadosDeleteByIdAction(id: string) {
+  await requirePermission(PERM);
+  const safeId = String(id ?? "").trim();
+  if (!safeId) return { ok: false, error: "INVALID_ID" };
+  await deleteComunicado(safeId);
+  revalidatePath("/admin/comunicados");
+  revalidatePath(`/admin/comunicados/${safeId}`);
+  return { ok: true };
 }

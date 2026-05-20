@@ -1,8 +1,12 @@
 import Link from "next/link";
 import { requirePermission } from "@/core/auth/guards";
-import { listComunicados, syncBirthdayComunicadoToday } from "@/domain/comunicados/repo";
+import { listComunicados } from "@/domain/comunicados/repo";
 import LocalTime from "@/ui/LocalTime";
-import { comunicadosToggleAction, syncBirthdayComunicadoAction } from "./actions";
+import {
+  comunicadosDeleteByIdAction,
+  comunicadosToggleAction,
+  syncBirthdayComunicadoAction,
+} from "./actions";
 
 const PERM = "ANNOUNCEMENTS_MANAGE";
 
@@ -22,12 +26,14 @@ function labelTarget(target: string) {
   return "Todos";
 }
 
-export default async function ComunicadosAdminListPage() {
-  const session = await requirePermission(PERM);
+function labelPlacement(placement: string) {
+  if (placement === "TOP_BANNER") return "Banner superior";
+  if (placement === "BOTH") return "Pagina y banner";
+  return "Solo pagina";
+}
 
-  try {
-    await syncBirthdayComunicadoToday(session.uid);
-  } catch {}
+export default async function ComunicadosAdminListPage() {
+  await requirePermission(PERM);
 
   const rows = await listComunicados(120);
   const activos = rows.filter((r: any) => r?.estado === "ACTIVO").length;
@@ -90,7 +96,7 @@ export default async function ComunicadosAdminListPage() {
               <tr className="text-left text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 <th className="px-4 py-3">Comunicado</th>
                 <th className="px-4 py-3">Estado</th>
-                <th className="px-4 py-3">Alcance</th>
+                <th className="px-4 py-3">Publicacion</th>
                 <th className="px-4 py-3">Detalle</th>
                 <th className="px-4 py-3">Creado</th>
                 <th className="px-4 py-3">Acciones</th>
@@ -123,9 +129,14 @@ export default async function ComunicadosAdminListPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-slate-600">
-                        {labelTarget(String(c?.target ?? "ALL"))}
-                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        <span className="rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-slate-600">
+                          {labelPlacement(String(c?.placement ?? "PAGE"))}
+                        </span>
+                        <span className="rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-slate-600">
+                          {labelTarget(String(c?.target ?? "ALL"))}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
@@ -137,6 +148,11 @@ export default async function ComunicadosAdminListPage() {
                         {isAutoBirthday ? (
                           <span className="rounded-md border border-indigo-300 bg-indigo-50 px-2 py-1 text-xs text-indigo-700 dark:border-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300">
                             Auto cumpleanos
+                          </span>
+                        ) : null}
+                        {c?.linkUrl ? (
+                          <span className="rounded-md border border-sky-300 bg-sky-50 px-2 py-1 text-xs text-sky-700 dark:border-sky-700 dark:bg-sky-900/20 dark:text-sky-300">
+                            Con enlace
                           </span>
                         ) : null}
                       </div>
@@ -164,6 +180,20 @@ export default async function ComunicadosAdminListPage() {
                             type="submit"
                           >
                             {estado === "ACTIVO" ? "Desactivar" : "Activar"}
+                          </button>
+                        </form>
+                        <form
+                          action={async () => {
+                            "use server";
+                            if (!id) return;
+                            await comunicadosDeleteByIdAction(id);
+                          }}
+                        >
+                          <button
+                            className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs text-rose-700 transition hover:bg-rose-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-900/20"
+                            type="submit"
+                          >
+                            Eliminar
                           </button>
                         </form>
                       </div>

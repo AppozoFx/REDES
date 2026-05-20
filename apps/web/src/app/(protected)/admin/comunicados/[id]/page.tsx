@@ -3,7 +3,11 @@ import { requirePermission } from "@/core/auth/guards";
 import { listRoles } from "@/domain/roles/repo";
 import { getComunicadoById } from "@/domain/comunicados/repo";
 import ComunicadoForm from "@/ui/admin/comunicados/ComunicadoForm";
-import { comunicadosToggleByIdAction, comunicadosUpdateFromFormAction } from "../actions";
+import {
+  comunicadosDeleteByIdAction,
+  comunicadosToggleByIdAction,
+  comunicadosUpdateFromFormAction,
+} from "../actions";
 
 const PERM = "ANNOUNCEMENTS_MANAGE";
 
@@ -14,6 +18,7 @@ type FormDefaults = {
   linkUrl: string;
   linkLabel: string;
   estado: "ACTIVO" | "INACTIVO";
+  placement: "PAGE" | "TOP_BANNER" | "BOTH";
   target: "ALL" | "ROLES" | "AREAS" | "USERS";
   rolesTarget: string[];
   areasTarget: string[];
@@ -49,6 +54,10 @@ function toPlainDefaults(c: any): FormDefaults {
     linkUrl: String(c?.linkUrl ?? ""),
     linkLabel: String(c?.linkLabel ?? ""),
     estado: currentEstado as "ACTIVO" | "INACTIVO",
+    placement: (c?.placement === "TOP_BANNER" || c?.placement === "BOTH" ? c.placement : "PAGE") as
+      | "PAGE"
+      | "TOP_BANNER"
+      | "BOTH",
     target: target as "ALL" | "ROLES" | "AREAS" | "USERS",
     rolesTarget: (Array.isArray(c?.rolesTarget) ? c.rolesTarget.map((v: any) => String(v)) : []) as string[],
     areasTarget: (Array.isArray(c?.areasTarget) ? c.areasTarget.map((v: any) => String(v)) : []) as string[],
@@ -115,6 +124,22 @@ export default async function ComunicadoEditPage({
           type="submit"
         >
           {defaults.estado === "ACTIVO" ? "Desactivar comunicado" : "Activar comunicado"}
+        </button>
+      </form>
+
+      <form
+        className="mt-3"
+        action={async () => {
+          "use server";
+          await comunicadosDeleteByIdAction(id);
+          redirect("/admin/comunicados");
+        }}
+      >
+        <button
+          className="rounded-lg border border-rose-300 px-4 py-2 text-sm text-rose-700 transition hover:bg-rose-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-900/20"
+          type="submit"
+        >
+          Eliminar comunicado
         </button>
       </form>
     </div>

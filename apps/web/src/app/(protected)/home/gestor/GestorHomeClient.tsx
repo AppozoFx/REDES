@@ -241,10 +241,6 @@ export function GestorHomeClient() {
   const estadosOrdenesDetalle = Object.entries(resumenGlobal.detallePorEstado)
     .sort((a, b) => b[1] - a[1])
     .map(([estado, cantidad]) => `${estado} ${cantidad}`);
-  const importLine = data?.ultimaImportacion
-    ? `Ordenes actualizadas: ${fmtDateTime(data.ultimaImportacion.at)}, por ${data.ultimaImportacion.byNombre || data.ultimaImportacion.byUid}`
-    : "Ordenes: sin registro reciente de actualizacion";
-
   const routeBadgeClass = (estado: CuadrillaRow["estadoRuta"]) => {
     if (estado === "OPERATIVA") return "border-sky-200 bg-sky-50 text-sky-700";
     if (estado === "EN_CAMPO") return "border-emerald-200 bg-emerald-50 text-emerald-700";
@@ -354,7 +350,6 @@ export function GestorHomeClient() {
           <div className="flex flex-wrap items-end gap-2">
             <div>
               <h2 className="text-lg font-semibold">Mis cuadrillas</h2>
-              <p className="text-xs text-slate-500">{importLine}</p>
             </div>
             <input
               value={cuadrillaQuery}
@@ -469,5 +464,4 @@ export function GestorHomeClient() {
     </div>
   );
 }
-
 

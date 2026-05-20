@@ -73,6 +73,13 @@ function getPersistencia(c: any): "ONCE" | "ALWAYS" {
   return p === "ALWAYS" ? "ALWAYS" : "ONCE";
 }
 
+function getPlacement(c: any): "PAGE" | "TOP_BANNER" | "BOTH" {
+  const p = String(c?.placement ?? "PAGE").toUpperCase();
+  if (p === "TOP_BANNER") return "TOP_BANNER";
+  if (p === "BOTH") return "BOTH";
+  return "PAGE";
+}
+
 /**
  * ✅ ESTA ES LA FUNCIÓN QUE /home NECESITA IMPORTAR
  * Devuelve comunicados aplicables al usuario:
@@ -150,6 +157,14 @@ export async function listPendingComunicadosForUser(session: ServerSession) {
     console.log("[comunicados] pending.count", pending.length);
   } catch {}
   return pending;
+}
+
+export async function listBannerComunicadosForUser(session: ServerSession) {
+  const pending = await listPendingComunicadosForUser(session);
+  return pending.filter((c: any) => {
+    const placement = getPlacement(c);
+    return placement === "TOP_BANNER" || placement === "BOTH";
+  });
 }
 
 /**

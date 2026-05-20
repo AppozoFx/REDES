@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const ComunicadoPersistenciaSchema = z.enum(["ONCE", "ALWAYS"]);
+export const ComunicadoPlacementSchema = z.enum(["PAGE", "TOP_BANNER", "BOTH"]);
 
 export const ComunicadoCreateSchema = z.object({
   titulo: z.string().trim().min(3).max(120),
@@ -12,6 +13,7 @@ export const ComunicadoCreateSchema = z.object({
   linkLabel: z.string().trim().max(60).optional().or(z.literal("")).default(""),
 
   estado: z.enum(["ACTIVO", "INACTIVO"]).default("ACTIVO"),
+  placement: ComunicadoPlacementSchema.default("PAGE"),
   target: z.enum(["ALL", "ROLES", "AREAS", "USERS"]).default("ALL"),
 
   rolesTarget: z.array(z.string()).default([]),

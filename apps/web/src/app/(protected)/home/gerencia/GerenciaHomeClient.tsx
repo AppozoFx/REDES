@@ -151,10 +151,6 @@ export function GerenciaHomeClient() {
     return list.filter((r) => `${r.nombre} ${r.uid}`.toLowerCase().includes(q));
   }, [data, query]);
 
-  const importLine = data?.ultimaImportacion
-    ? `Ordenes actualizadas: ${fmtDateTime(data.ultimaImportacion.at)}, por ${data.ultimaImportacion.byNombre || data.ultimaImportacion.byUid}`
-    : "Ordenes: sin registro reciente de actualizacion";
-
   const estadoTurnoClass = (v: string) => {
     if (v === "EN_TURNO") return "border-sky-200 bg-sky-50 text-sky-700";
     if (v === "EN_REFRIGERIO") return "border-amber-200 bg-amber-50 text-amber-700";
@@ -227,7 +223,6 @@ export function GerenciaHomeClient() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-lg font-semibold">Estado de gestores</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">{importLine}</p>
           </div>
           <div className="flex items-center gap-2">
             <input

@@ -5,6 +5,7 @@ export type ComunicadoDoc = {
   titulo: string;
   cuerpo: string;
   estado: "ACTIVO" | "INACTIVO";
+  placement?: "PAGE" | "TOP_BANNER" | "BOTH";
   target: "ALL" | "ROLES" | "AREAS" | "USERS";
   rolesTarget: string[];
   areasTarget: string[];
@@ -187,6 +188,7 @@ export async function createComunicado(input: any, actorUid: string): Promise<st
 
     // ✅ estado default
     estado: input.estado ?? "ACTIVO",
+    placement: input.placement ?? "PAGE",
 
     // ✅ persistencia default (por si faltara)
     persistencia: input.persistencia ?? "ONCE",
@@ -226,6 +228,12 @@ export async function updateComunicado(id: string, patch: any, actorUid: string)
   if ("visibleHasta" in patch) normalizedPatch.visibleHasta = visibleHasta ?? null;
 
   await db.collection("comunicados").doc(safeId).set(normalizedPatch, { merge: true });
+}
+
+export async function deleteComunicado(id: string) {
+  const safeId = String(id ?? "").trim();
+  if (!safeId) throw new Error("Invalid comunicado id");
+  await adminDb().collection("comunicados").doc(safeId).delete();
 }
 
 export async function setComunicadoEstado(
@@ -271,6 +279,7 @@ export async function syncBirthdayComunicadoForDate(date: Date, actorUid: string
   if (!existingSnap.empty) {
     const doc = existingSnap.docs[0];
     const cur = (doc.data() ?? {}) as any;
+    const estado = cur?.estado === "INACTIVO" ? "INACTIVO" : "ACTIVO";
     const persistencia = asPersistencia(cur?.persistencia);
     const obligatorio = typeof cur?.obligatorio === "boolean" ? cur.obligatorio : false;
     const prioridad = typeof cur?.prioridad === "number" ? cur.prioridad : 10;
@@ -279,7 +288,10 @@ export async function syncBirthdayComunicadoForDate(date: Date, actorUid: string
     const patch = {
       titulo,
       cuerpo,
-      estado: "ACTIVO" as const,
+      estado,
+      placement: (cur?.placement === "TOP_BANNER" || cur?.placement === "BOTH" || cur?.placement === "PAGE"
+        ? cur.placement
+        : "BOTH") as "PAGE" | "TOP_BANNER" | "BOTH",
       target: "ALL" as const,
       rolesTarget: [],
       areasTarget: [],
@@ -304,6 +316,7 @@ export async function syncBirthdayComunicadoForDate(date: Date, actorUid: string
     titulo,
     cuerpo,
     estado: "ACTIVO" as const,
+    placement: "BOTH" as const,
     target: "ALL" as const,
     rolesTarget: [],
     areasTarget: [],

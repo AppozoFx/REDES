@@ -2,7 +2,12 @@
 
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { corregirOrdenAction, liquidarOrdenAction } from "./actions";
+import {
+  corregirOrdenAction,
+  getCuadrillaPreconStockLiquidacionAction,
+  liquidarOrdenAction,
+  moverSnALaCuadrillaDeOrdenAction,
+} from "./actions";
 import { resolveTramoNombre } from "@/domain/ordenes/tramo";
 
 type OrdenLite = {
@@ -31,6 +36,7 @@ type OrdenLite = {
 };
 
 const norm = (s: string) => String(s || "").trim().toUpperCase();
+const PRECON_OPTIONS = ["PRECON_50", "PRECON_100", "PRECON_150", "PRECON_200"] as const;
 
 function detectTipificaciones(idenServi: string) {
   const base = norm(idenServi);
@@ -75,12 +81,41 @@ type PreliquidacionLite = {
   rotuloNapCto: string;
 };
 
+type SnLookupInfo = {
+  ok: boolean;
+  sn: string;
+  found: boolean;
+  equipo: string;
+  proid: string;
+  inTargetCuadrillaStock: boolean;
+  targetCuadrillaId: string;
+  targetCuadrillaNombre: string;
+  ubicacion: string;
+  estado: string;
+  isCuadrilla: boolean;
+  currentCuadrillaId: string;
+  currentCuadrillaNombre: string;
+  isInstalado: boolean;
+  cliente: string;
+  codigoCliente: string;
+  reason: string;
+  actionHint: string;
+};
+
 function emptyStock(): StockByTipo {
   return { ONT: [], MESH: [], BOX: [], FONO: [] };
 }
 
 function emptyPreliquidacion(): PreliquidacionLite {
   return { snOnt: "", snMeshes: [], snBoxes: [], snFono: "", rotuloNapCto: "" };
+}
+
+function lookupTone(info?: SnLookupInfo | null) {
+  if (!info) return "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200";
+  if (info.reason === "ALREADY_INSTALLED" || info.reason === "NOT_FOUND") {
+    return "border-red-300 bg-red-50 text-red-900 dark:border-red-700 dark:bg-red-900/20 dark:text-red-200";
+  }
+  return "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200";
 }
 
 export function LiquidacionRowClient({
@@ -114,6 +149,20 @@ export function LiquidacionRowClient({
   const [stock, setStock] = useState<StockByTipo>(emptyStock());
   const [stockLoading, setStockLoading] = useState(false);
   const [preliqLoading, setPreliqLoading] = useState(false);
+  const [lookupLoading, setLookupLoading] = useState<Record<string, boolean>>({});
+  const [lookupBySn, setLookupBySn] = useState<Record<string, SnLookupInfo>>({});
+  const [movePendingBySn, setMovePendingBySn] = useState<Record<string, boolean>>({});
+  const [ontMoveModalOpen, setOntMoveModalOpen] = useState(false);
+  const [ontMoveSn, setOntMoveSn] = useState("");
+  const [ontMoveLoading, setOntMoveLoading] = useState(false);
+  const [ontMoveWithPrecon, setOntMoveWithPrecon] = useState(false);
+  const [ontMovePreconId, setOntMovePreconId] = useState("");
+  const [ontMovePreconStock, setOntMovePreconStock] = useState<Record<string, number>>({
+    PRECON_50: 0,
+    PRECON_100: 0,
+    PRECON_150: 0,
+    PRECON_200: 0,
+  });
   const [cardFocus, setCardFocus] = useState(false);
   const [prefilledOnce, setPrefilledOnce] = useState(false);
 
@@ -205,35 +254,110 @@ export function LiquidacionRowClient({
     requiredFirstBoxExtra &&
     observacionValida;
 
+  const invalidLookupSns = useMemo(() => {
+    const sns = new Set<string>();
+    const addIfInvalid = (value: string, valid: boolean) => {
+      const key = norm(value);
+      if (key && !valid) sns.add(key);
+    };
+
+    addIfInvalid(snONT, validONT);
+    snMESHUi.forEach((v) => addIfInvalid(v, meshSet.has(norm(v))));
+    snBOXUi.forEach((v) => addIfInvalid(v, boxSet.has(norm(v))));
+    addIfInvalid(snFONO, fonoSet.has(norm(snFONO)));
+
+    return Array.from(sns);
+  }, [snONT, validONT, snMESHUi, snBOXUi, snFONO, meshSet, boxSet, fonoSet]);
+
+  async function fetchStock(signal?: AbortSignal) {
+    if (!orden.cuadrillaId) {
+      setStock(emptyStock());
+      return;
+    }
+    setStockLoading(true);
+    try {
+      const res = await fetch(
+        `/api/ordenes/liquidacion/stock?cuadrillaId=${encodeURIComponent(orden.cuadrillaId)}`,
+        { cache: "no-store", signal }
+      );
+      const data = await res.json();
+      if (!res.ok || !data?.ok) throw new Error(String(data?.error || "ERROR"));
+      setStock(data.stock || emptyStock());
+    } catch {
+      setStock(emptyStock());
+    } finally {
+      setStockLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (!open) return;
     if (!orden.cuadrillaId) return;
-    let cancelled = false;
     const ctrl = new AbortController();
+    fetchStock(ctrl.signal);
+    return () => ctrl.abort();
+  }, [open, orden.cuadrillaId]);
 
-    async function loadStock() {
-      setStockLoading(true);
-      try {
-        const res = await fetch(
-          `/api/ordenes/liquidacion/stock?cuadrillaId=${encodeURIComponent(orden.cuadrillaId)}`,
-          { cache: "no-store", signal: ctrl.signal }
-        );
-        const data = await res.json();
-        if (!res.ok || !data?.ok) throw new Error(String(data?.error || "ERROR"));
-        if (!cancelled) setStock(data.stock || emptyStock());
-      } catch {
-        if (!cancelled) setStock(emptyStock());
-      } finally {
-        if (!cancelled) setStockLoading(false);
-      }
+  useEffect(() => {
+    if (!open) {
+      setLookupBySn({});
+      setLookupLoading({});
+      return;
+    }
+    if (stockLoading) return;
+    if (!orden.cuadrillaId) return;
+
+    const needed = invalidLookupSns.filter((sn) => !!sn);
+    setLookupBySn((prev) => {
+      const next: Record<string, SnLookupInfo> = {};
+      needed.forEach((sn) => {
+        if (prev[sn]) next[sn] = prev[sn];
+      });
+      return next;
+    });
+    if (!needed.length) {
+      setLookupLoading({});
+      return;
     }
 
-    loadStock();
+    let cancelled = false;
+    const ctrl = new AbortController();
+    setLookupLoading(Object.fromEntries(needed.map((sn) => [sn, true])));
+
+    async function loadLookups() {
+      const entries = await Promise.all(
+        needed.map(async (sn) => {
+          try {
+            const res = await fetch(
+              `/api/ordenes/liquidacion/sn-lookup?cuadrillaId=${encodeURIComponent(orden.cuadrillaId)}&sn=${encodeURIComponent(sn)}`,
+              { cache: "no-store", signal: ctrl.signal }
+            );
+            const data = await res.json();
+            if (!res.ok || !data?.ok) throw new Error(String(data?.error || "ERROR"));
+            return [sn, data as SnLookupInfo] as const;
+          } catch {
+            return [sn, null] as const;
+          }
+        })
+      );
+      if (cancelled) return;
+      setLookupBySn((prev) => {
+        const next = { ...prev };
+        entries.forEach(([sn, data]) => {
+          if (data) next[sn] = data;
+          else delete next[sn];
+        });
+        return next;
+      });
+      setLookupLoading(Object.fromEntries(needed.map((sn) => [sn, false])));
+    }
+
+    loadLookups();
     return () => {
       cancelled = true;
       ctrl.abort();
     };
-  }, [open, orden.cuadrillaId]);
+  }, [open, stockLoading, orden.cuadrillaId, invalidLookupSns]);
 
   useEffect(() => {
     if (!open || prefilledOnce) return;
@@ -338,8 +462,8 @@ export function LiquidacionRowClient({
       return;
     }
     const hit = stock.ONT.find((o) => norm(o.sn) === key);
-    setProidONT(hit?.proid || "");
-  }, [snONT, stock.ONT]);
+    setProidONT(hit?.proid || lookupBySn[key]?.proid || "");
+  }, [snONT, stock.ONT, lookupBySn]);
 
   const handledOkRef = useRef(false);
   useEffect(() => {
@@ -404,6 +528,150 @@ export function LiquidacionRowClient({
     const next = [...arr];
     next[idx] = value;
     return next;
+  }
+
+  function renderLookupHint(rawSn: string) {
+    const key = norm(rawSn);
+    if (!key) return null;
+    if (lookupLoading[key]) {
+      return <div className="text-xs text-slate-500 dark:text-slate-400">Consultando ubicacion actual del SN...</div>;
+    }
+    const info = lookupBySn[key];
+    if (!info) return null;
+
+    const lines: string[] = [
+      `Ubicacion actual: ${info.found ? info.ubicacion || "-" : "-"}`,
+      `Accion: ${info.actionHint || "Revisar ubicacion real del equipo antes de liquidar."}`,
+    ];
+
+    return (
+      <div className={`rounded border px-3 py-2 text-xs ${lookupTone(info)}`}>
+        {lines.map((line) => (
+          <div key={line}>{line}</div>
+        ))}
+        {info.reason === "IN_OTHER_CUADRILLA" ? (
+          <div className="mt-2">
+            <button
+              type="button"
+              className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-900 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+              onClick={() => openMoveFlow(key)}
+              disabled={!!movePendingBySn[key] || ontMoveModalOpen}
+            >
+              {movePendingBySn[key]
+                ? "Moviendo..."
+                : `Mover a ${info.targetCuadrillaNombre || "esta cuadrilla"}`}
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  function closeOntMoveModal() {
+    setOntMoveModalOpen(false);
+    setOntMoveSn("");
+    setOntMoveLoading(false);
+    setOntMoveWithPrecon(false);
+    setOntMovePreconId("");
+    setOntMovePreconStock({
+      PRECON_50: 0,
+      PRECON_100: 0,
+      PRECON_150: 0,
+      PRECON_200: 0,
+    });
+  }
+
+  async function refreshAfterMove(sn: string) {
+    await fetchStock();
+    setLookupLoading((prev) => ({ ...prev, [sn]: true }));
+    try {
+      const res = await fetch(
+        `/api/ordenes/liquidacion/sn-lookup?cuadrillaId=${encodeURIComponent(orden.cuadrillaId)}&sn=${encodeURIComponent(sn)}`,
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      if (!res.ok || !data?.ok) throw new Error(String(data?.error || "ERROR"));
+      setLookupBySn((prev) => ({ ...prev, [sn]: data as SnLookupInfo }));
+    } catch {
+      // mantener ultimo estado conocido
+    } finally {
+      setLookupLoading((prev) => ({ ...prev, [sn]: false }));
+    }
+  }
+
+  async function executeMove(sn: string, preconMaterialId?: string) {
+    const key = norm(sn);
+    if (!key) return;
+    setMovePendingBySn((prev) => ({ ...prev, [key]: true }));
+    try {
+      const result = await moverSnALaCuadrillaDeOrdenAction({
+        ordenId: orden.id,
+        sn: key,
+        preconMaterialId: preconMaterialId || "",
+      });
+      if (!result?.ok) throw new Error("MOVE_FAIL");
+      await refreshAfterMove(key);
+      closeOntMoveModal();
+      toast.success("Equipo movido a la cuadrilla de la orden");
+    } catch (e: any) {
+      toast.error(String(e?.message || "No se pudo mover el equipo"));
+    } finally {
+      setMovePendingBySn((prev) => ({ ...prev, [key]: false }));
+    }
+  }
+
+  async function openMoveFlow(rawSn: string) {
+    const key = norm(rawSn);
+    const info = lookupBySn[key];
+    if (!info || info.reason !== "IN_OTHER_CUADRILLA") return;
+    if (String(info.equipo || "").toUpperCase() !== "ONT") {
+      await executeMove(key);
+      return;
+    }
+    if (!info.currentCuadrillaId) {
+      toast.error("No se pudo identificar la cuadrilla origen del ONT");
+      return;
+    }
+    setOntMoveSn(key);
+    setOntMoveModalOpen(true);
+    setOntMoveWithPrecon(false);
+    setOntMovePreconId("");
+    setOntMoveLoading(true);
+    try {
+      const res = await getCuadrillaPreconStockLiquidacionAction({ cuadrillaId: info.currentCuadrillaId });
+      if (res?.ok && res.stock) {
+        setOntMovePreconStock({
+          PRECON_50: Number(res.stock.PRECON_50 || 0),
+          PRECON_100: Number(res.stock.PRECON_100 || 0),
+          PRECON_150: Number(res.stock.PRECON_150 || 0),
+          PRECON_200: Number(res.stock.PRECON_200 || 0),
+        });
+      }
+    } catch {
+      toast.error("No se pudo cargar stock PRECON de la cuadrilla origen");
+      closeOntMoveModal();
+    } finally {
+      setOntMoveLoading(false);
+    }
+  }
+
+  const ontMoveInfo = ontMoveSn ? lookupBySn[norm(ontMoveSn)] : null;
+  const ontMovePreconDisponibles = useMemo(
+    () => PRECON_OPTIONS.map((id) => ({ id, stock: Number(ontMovePreconStock[id] || 0) })),
+    [ontMovePreconStock]
+  );
+
+  async function confirmOntMove() {
+    if (!ontMoveSn) return;
+    if (ontMoveWithPrecon && !ontMovePreconId) {
+      toast.error("Selecciona un PRECON para mover junto al equipo ONT");
+      return;
+    }
+    if (ontMoveWithPrecon && Number(ontMovePreconStock[ontMovePreconId] || 0) < 1) {
+      toast.error("No hay stock suficiente del PRECON seleccionado en la cuadrilla origen");
+      return;
+    }
+    await executeMove(ontMoveSn, ontMoveWithPrecon ? ontMovePreconId : "");
   }
 
   const codigoTxt = useMemo(() => orden.codiSeguiClien || orden.ordenId || "-", [orden.codiSeguiClien, orden.ordenId]);
@@ -671,7 +939,10 @@ export function LiquidacionRowClient({
                 placeholder="PROID ONT"
               />
               {!!norm(snONT) && !validONT ? (
-                <div className="text-xs text-red-700">SN no encontrado en stock de cuadrilla.</div>
+                <div className="space-y-1">
+                  <div className="text-xs text-red-700">SN no encontrado en stock de cuadrilla.</div>
+                  {renderLookupHint(snONT)}
+                </div>
               ) : null}
             </div>
           </div>
@@ -732,7 +1003,10 @@ export function LiquidacionRowClient({
                       );
                     })()}
                     {!!norm(v) && !meshSet.has(norm(v)) ? (
-                      <div className="text-xs text-red-700">SN no encontrado en stock de cuadrilla.</div>
+                      <div className="space-y-1">
+                        <div className="text-xs text-red-700">SN no encontrado en stock de cuadrilla.</div>
+                        {renderLookupHint(v)}
+                      </div>
                     ) : null}
                   </div>
                 ))}
@@ -815,7 +1089,10 @@ export function LiquidacionRowClient({
                       );
                     })()}
                     {!!norm(v) && !boxSet.has(norm(v)) ? (
-                      <div className="text-xs text-red-700">SN no encontrado en stock de cuadrilla.</div>
+                      <div className="space-y-1">
+                        <div className="text-xs text-red-700">SN no encontrado en stock de cuadrilla.</div>
+                        {renderLookupHint(v)}
+                      </div>
                     ) : null}
                   </div>
                 ))}
@@ -888,7 +1165,10 @@ export function LiquidacionRowClient({
                 ))}
               </datalist>
               {!!norm(snFONO) && !fonoSet.has(norm(snFONO)) ? (
-                <div className="text-xs text-red-700">SN no encontrado en stock de cuadrilla.</div>
+                <div className="space-y-1">
+                  <div className="text-xs text-red-700">SN no encontrado en stock de cuadrilla.</div>
+                  {renderLookupHint(snFONO)}
+                </div>
               ) : null}
             </div>
           ) : (
@@ -1041,6 +1321,95 @@ export function LiquidacionRowClient({
             ) : null}
           </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+      {ontMoveModalOpen ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-2xl rounded-xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="mb-3 border-b pb-2">
+              <div className="text-base font-semibold">Movimiento ONT con materiales</div>
+              <div className="text-sm text-slate-500 dark:text-slate-400">
+                Se movera el equipo ONT junto con su kit base de materiales entre cuadrillas.
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg border bg-slate-50 p-3 text-sm dark:bg-slate-800/60">
+                <div><span className="font-medium">SN:</span> <span className="font-mono">{ontMoveSn || "-"}</span></div>
+                <div><span className="font-medium">Origen:</span> {ontMoveInfo?.currentCuadrillaNombre || ontMoveInfo?.ubicacion || "-"}</div>
+                <div><span className="font-medium">Destino:</span> {ontMoveInfo?.targetCuadrillaNombre || "-"}</div>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm dark:border-slate-700 dark:bg-slate-900">
+                <div className="mb-1 font-medium">Kit ONT a mover</div>
+                <div className="space-y-1 text-slate-500 dark:text-slate-400">
+                  <div className="flex items-center justify-between"><span>ACTA</span><span className="font-medium">1 UND</span></div>
+                  <div className="flex items-center justify-between"><span>CONECTOR</span><span className="font-medium">1 UND</span></div>
+                  <div className="flex items-center justify-between"><span>ROSETA</span><span className="font-medium">1 UND</span></div>
+                  <div className="flex items-center justify-between"><span>ACOPLADOR</span><span className="font-medium">1 UND</span></div>
+                  <div className="flex items-center justify-between"><span>PACHCORD</span><span className="font-medium">1 UND</span></div>
+                  <div className="flex items-center justify-between"><span>CINTILLO_30</span><span className="font-medium">4 UND</span></div>
+                  <div className="flex items-center justify-between"><span>CINTILLO_BANDERA</span><span className="font-medium">1 UND</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={ontMoveWithPrecon}
+                  onChange={(e) => {
+                    setOntMoveWithPrecon(e.target.checked);
+                    if (!e.target.checked) setOntMovePreconId("");
+                  }}
+                />
+                Mover tambien PRECON (1 UND)
+              </label>
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                {ontMovePreconDisponibles.map((it) => (
+                  <label
+                    key={it.id}
+                    className={`flex cursor-pointer items-center justify-between rounded border px-3 py-2 text-sm ${
+                      ontMoveWithPrecon && ontMovePreconId === it.id
+                        ? "border-blue-600 bg-blue-50 dark:bg-blue-950/40"
+                        : "border-slate-200 dark:border-slate-700"
+                    } ${it.stock <= 0 ? "opacity-50" : ""}`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="precon_liq"
+                        disabled={!ontMoveWithPrecon || it.stock <= 0}
+                        checked={ontMoveWithPrecon && ontMovePreconId === it.id}
+                        onChange={() => setOntMovePreconId(it.id)}
+                      />
+                      <span>{it.id}</span>
+                    </span>
+                    <span className="font-medium">{ontMoveLoading ? "..." : `${it.stock} UND`}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border px-3 py-2 text-sm"
+                onClick={closeOntMoveModal}
+                disabled={!!movePendingBySn[norm(ontMoveSn)]}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-60"
+                onClick={confirmOntMove}
+                disabled={ontMoveLoading || !!movePendingBySn[norm(ontMoveSn)]}
+              >
+                {movePendingBySn[norm(ontMoveSn)] ? "Moviendo..." : "Confirmar movimiento"}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

@@ -9,6 +9,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import { normalizeUbicacion, toDatePartsLima } from "@/domain/equipos/repo";
 import { metersToCm } from "@/domain/materiales/repo";
 import { addGlobalNotification } from "@/domain/notificaciones/service";
+import { getCuadrillaPreconStock, moveEquipoBetweenCuadrillas } from "@/domain/transferencias/instalaciones/moveEquipo";
 
 const PERM = "ORDENES_LIQUIDAR";
 
@@ -593,6 +594,65 @@ export async function liquidarOrdenAction(_: any, formData: FormData): Promise<L
     const msg = String(e?.message || "ERROR");
     return { ok: false, error: { formErrors: [msg] } };
   }
+}
+
+export async function getCuadrillaPreconStockLiquidacionAction(input: { cuadrillaId: string }) {
+  await requireServerPermission(PERM);
+  return { ok: true, stock: await getCuadrillaPreconStock(input.cuadrillaId) };
+}
+
+export async function moverSnALaCuadrillaDeOrdenAction(input: {
+  ordenId: string;
+  sn: string;
+  preconMaterialId?: string;
+}) {
+  const session = await requireServerPermission(PERM);
+  const ordenId = String(input.ordenId || "").trim();
+  const sn = String(input.sn || "").trim().toUpperCase();
+  const preconMaterialId = String(input.preconMaterialId || "").trim().toUpperCase();
+  if (!ordenId) throw new Error("ORDEN_REQUIRED");
+  if (!sn) throw new Error("SN_REQUIRED");
+
+  const db = adminDb();
+  const ordenSnap = await db.collection("ordenes").doc(ordenId).get();
+  if (!ordenSnap.exists) throw new Error("ORDEN_NOT_FOUND");
+  const orden = ordenSnap.data() as any;
+  const toCuadrillaId = String(orden?.cuadrillaId || "").trim();
+  if (!toCuadrillaId) throw new Error("ORDEN_SIN_CUADRILLA");
+
+  const [cuadrillaSnap, equipoSnap] = await Promise.all([
+    db.collection("cuadrillas").doc(toCuadrillaId).get(),
+    db.collection("equipos").doc(sn).get(),
+  ]);
+  if (!cuadrillaSnap.exists) throw new Error("INVALID_CUADRILLA");
+  if (!equipoSnap.exists) throw new Error("EQUIPO_NOT_FOUND");
+
+  const cuadrilla = cuadrillaSnap.data() as any;
+  const equipo = equipoSnap.data() as any;
+  const toUbicacion = normalizeUbicacion(String(cuadrilla?.nombre || toCuadrillaId)).ubicacion;
+  const currentUb = normalizeUbicacion(String(equipo?.ubicacion || ""));
+  if (currentUb.ubicacion === "INSTALADOS" || String(equipo?.estado || "").toUpperCase() === "INSTALADO") {
+    throw new Error("SN_YA_INSTALADO");
+  }
+  if (!currentUb.isCuadrilla) throw new Error("SN_NO_ESTA_EN_CUADRILLA");
+
+  const fromCuadSnap = await db
+    .collection("cuadrillas")
+    .where("nombre", "==", currentUb.ubicacion)
+    .limit(1)
+    .get();
+  if (fromCuadSnap.empty) throw new Error("CUADRILLA_ORIGEN_NOT_FOUND");
+  const fromCuadrillaId = fromCuadSnap.docs[0].id;
+  if (fromCuadrillaId === toCuadrillaId) throw new Error("SN_YA_EN_CUADRILLA");
+
+  return moveEquipoBetweenCuadrillas({
+    sn,
+    fromCuadrillaId,
+    toCuadrillaId,
+    toUbicacion,
+    preconMaterialId,
+    actorUid: session.uid,
+  });
 }
 
 export async function corregirOrdenAction(_: any, formData: FormData): Promise<CorregirResult> {

@@ -7,12 +7,15 @@ export const runtime = "nodejs";
 type OrdenAuditRow = {
   pedido: string;
   cliente: string;
+  codigoCliente: string;
   cuadrillaId: string;
   cuadrillaNombre: string;
   coordinadorId: string;
   coordinador: string;
   ymd: string;
   ordenId: string;
+  liquidado: boolean;
+  correccionPendiente: boolean;
 };
 
 type PreliqAuditRow = {
@@ -158,12 +161,18 @@ async function collectOrdenes(params: { ymd?: string; month?: string }): Promise
       return {
         pedido: cleanValue(row.codiSeguiClien || row.ordenId || ""),
         cliente: cleanValue(row.cliente || ""),
+        codigoCliente: cleanValue(row.codiSeguiClien || ""),
         cuadrillaId: cleanValue(row.cuadrillaId || ""),
         cuadrillaNombre: cleanValue(row.cuadrillaNombre || ""),
         coordinadorId: cleanValue(row.coordinadorCuadrilla || row.coordinador || row.gestorCuadrilla || ""),
         coordinador: "",
         ymd: cleanValue(row.fechaFinVisiYmd || row.fSoliYmd || ""),
         ordenId: cleanValue(row.ordenId || doc.id),
+        liquidado:
+          (cleanValue((row.liquidacion as Record<string, unknown> | undefined)?.estado).toUpperCase() === "LIQUIDADO" ||
+            !!row.liquidadoAt) &&
+          !row.correccionPendiente,
+        correccionPendiente: !!row.correccionPendiente,
         _raw: row,
       };
     })
@@ -298,9 +307,38 @@ export async function GET(req: Request) {
       collectOrdenes({ ymd: ymd || undefined, month }),
       collectPreliquidaciones({ ymd: ymd || undefined, month }),
     ]);
+    const ordenesBaseWithLiquidacion = (() => ordenesBase)();
+    const codigos = Array.from(
+      new Set(
+        ordenesBaseWithLiquidacion
+          .map((row) => cleanValue(row.codigoCliente))
+          .filter(Boolean)
+      )
+    );
+    const instRefs = codigos.map((codigo) => adminDb().collection("instalaciones").doc(codigo));
+    const instSnaps = codigos.length ? await adminDb().getAll(...instRefs) : [];
+    const instMap = new Map(
+      instSnaps
+        .filter((snap) => snap.exists)
+        .map((snap) => [snap.id, (snap.data() as Record<string, unknown>) || {}] as const)
+    );
+
+    const ordenesHydrated = ordenesBaseWithLiquidacion.map((row) => {
+      const inst = row.codigoCliente ? instMap.get(row.codigoCliente) : null;
+      if (!inst) return row;
+      const instCorr = !!inst.correccionPendiente;
+      const instLiqEstado = cleanValue((inst.liquidacion as Record<string, unknown> | undefined)?.estado).toUpperCase();
+      const instLiquidado = instLiqEstado === "LIQUIDADO" && !instCorr;
+      return {
+        ...row,
+        correccionPendiente: row.correccionPendiente || instCorr,
+        liquidado: row.liquidado || instLiquidado,
+      };
+    });
+
     const ordenes = isCoordinatorScope
-      ? ordenesBase.filter((row) => row.coordinadorId === session.uid)
-      : ordenesBase;
+      ? ordenesHydrated.filter((row) => row.coordinadorId === session.uid)
+      : ordenesHydrated;
 
     const ordenKeys = new Set(ordenes.map((row) => preliqOrderKey(row.pedido, row.ymd)));
     const preliquidacionesBase = isCoordinatorScope
@@ -339,8 +377,11 @@ export async function GET(req: Request) {
       .sort((a, b) => `${b.ymd}-${b.pedido}`.localeCompare(`${a.ymd}-${a.pedido}`));
 
     const preliqKeys = new Set(preliquidaciones.map((row) => preliqOrderKey(row.pedido, row.ymd)));
+    const preliqPedidos = new Set(preliquidaciones.map((row) => cleanValue(row.pedido)).filter(Boolean));
     const pendientesOrdenes = ordenes
+      .filter((row) => !row.liquidado)
       .filter((row) => !preliqKeys.has(preliqOrderKey(row.pedido, row.ymd)))
+      .filter((row) => !preliqPedidos.has(cleanValue(row.pedido)))
       .sort((a, b) => `${a.cuadrillaNombre}-${a.ymd}-${a.pedido}`.localeCompare(`${b.cuadrillaNombre}-${b.ymd}-${b.pedido}`));
 
     const pendientesByCuadrillaMap = new Map<string, { cuadrillaId: string; cuadrillaNombre: string; coordinadorId: string; coordinador: string; total: number; pedidos: Array<{ pedido: string; cliente: string; ymd: string; ordenId: string }> }>();

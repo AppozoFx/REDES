@@ -26,12 +26,17 @@ const ROLE_PRIORITY: string[] = [
   "TECNICO",
 ];
 
+export function getDefaultRoleForRoles(roles: string[] = []): string | null {
+  for (const role of ROLE_PRIORITY) {
+    if (roles.includes(role)) return role;
+  }
+  return null;
+}
+
 export function getHomeRouteForSession(session: ServerSession): string {
   const roles = session.access.roles ?? [];
-
-  for (const r of ROLE_PRIORITY) {
-    if (roles.includes(r)) return ROLE_HOME[r];
-  }
+  const defaultRole = getDefaultRoleForRoles(roles);
+  if (defaultRole) return ROLE_HOME[defaultRole];
 
   // fallback seguro
   return "/home/tecnico";

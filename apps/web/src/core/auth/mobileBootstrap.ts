@@ -82,6 +82,7 @@ export async function buildMobileBootstrap(mobile: MobileAuthContext) {
       uid: mobile.uid,
       email: mobile.email || null,
       nombre: profile.nombre,
+      nombreCorto: profile.nombreCorto,
       roles,
       areas: mobile.access.areas || [],
       permissions: mobile.access.effectivePermissions || [],

@@ -370,7 +370,7 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
 
   const equiposFiltrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    return rowsConFiltroCoordinador.filter((r) => {
+    const filtrados = rowsConFiltroCoordinador.filter((r) => {
       const okUb = filtroUbicacion === "todas" ? true : asStr(r.ubicacion) === filtroUbicacion;
       const okEstado = filtroEstadoGeneral === "todos" ? true : asStr(r.estado) === filtroEstadoGeneral;
       const okQ =
@@ -381,7 +381,13 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
         asStr(r.cliente).toLowerCase().includes(q);
       return okUb && okEstado && okQ;
     });
-  }, [rowsConFiltroCoordinador, busqueda, filtroEstadoGeneral, filtroUbicacion]);
+    return filtrados.sort((a, b) => {
+      const da = tsToDate(modo === "instalados" ? a.detalleInstalacion?.fechaInstalacion : getFechaDespacho(a))?.getTime() ?? Number.POSITIVE_INFINITY;
+      const db = tsToDate(modo === "instalados" ? b.detalleInstalacion?.fechaInstalacion : getFechaDespacho(b))?.getTime() ?? Number.POSITIVE_INFINITY;
+      if (da !== db) return da - db;
+      return asStr(a.SN || a.id).localeCompare(asStr(b.SN || b.id));
+    });
+  }, [rowsConFiltroCoordinador, busqueda, filtroEstadoGeneral, filtroUbicacion, modo]);
 
   const statsByUbicacion = useMemo(() => {
     const map = new Map<string, { total: number; sust: number; pend: number }>();
@@ -1263,4 +1269,3 @@ export default function AuditoriaClient({ canEdit }: { canEdit: boolean }) {
     </div>
   );
 }
-

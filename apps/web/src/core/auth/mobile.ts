@@ -7,6 +7,16 @@ export type MobileAuthContext = {
   access: NonNullable<Awaited<ReturnType<typeof getUserAccessContextCached>>>;
 };
 
+function firstToken(value: unknown) {
+  return String(value || "").trim().split(/\s+/).filter(Boolean)[0] || "";
+}
+
+export function buildShortPersonName(nombres: unknown, apellidos: unknown, fallback = "") {
+  const firstName = firstToken(nombres);
+  const firstLastName = firstToken(apellidos);
+  return `${firstName} ${firstLastName}`.trim() || fallback;
+}
+
 function getBearerToken(req: Request) {
   const authHeader = req.headers.get("authorization") || req.headers.get("Authorization") || "";
   const match = authHeader.match(/^Bearer\s+(.+)$/i);
@@ -37,9 +47,11 @@ export async function getMobileProfile(uid: string) {
   const nombres = String(data?.nombres || "").trim();
   const apellidos = String(data?.apellidos || "").trim();
   const nombre = `${nombres} ${apellidos}`.trim() || uid;
+  const nombreCorto = buildShortPersonName(nombres, apellidos, nombre || uid);
   return {
     uid,
     nombre,
+    nombreCorto,
     data,
   };
 }

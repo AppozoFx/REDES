@@ -35,6 +35,17 @@ type Row = {
   lng: number;
 };
 
+type CuadrillaTracking = {
+  id: string;
+  nombre: string;
+  area: string;
+  categoria: string;
+  vehiculo: string;
+  lat: number;
+  lng: number;
+  lastLocationAt: number | null;
+};
+
 const colorByEstado: Record<string, string> = {
   Finalizada: "#1d4ed8",
   Cancelada: "#dc2626",
@@ -44,6 +55,9 @@ const colorByEstado: Record<string, string> = {
   default: "#34495e",
 };
 
+const CUADRILLA_COLOR = "#f59e0b";
+const TRACKING_INTERVAL_MS = 60_000;
+
 const circleIcon = (leaflet: any, color: string) =>
   new leaflet.DivIcon({
     html: `<div style="background:${color};width:18px;height:18px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 3px rgba(0,0,0,.4)"></div>`,
@@ -51,6 +65,22 @@ const circleIcon = (leaflet: any, color: string) =>
     iconSize: [18, 18],
     iconAnchor: [9, 9],
     popupAnchor: [0, -9],
+  });
+
+const cuadrillaIcon = (leaflet: any) =>
+  new leaflet.DivIcon({
+    html: `<div style="
+      background:${CUADRILLA_COLOR};
+      width:28px;height:28px;border-radius:50%;
+      border:3px solid #fff;
+      box-shadow:0 0 0 3px rgba(245,158,11,0.35),0 2px 8px rgba(0,0,0,.4);
+      display:flex;align-items:center;justify-content:center;
+      font-size:14px;line-height:1;
+    ">&#128663;</div>`,
+    className: "",
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -14],
   });
 
 const clusterIcon = (leaflet: any, cluster: any) => {
@@ -100,6 +130,29 @@ function tramoLabel(v: string) {
   return hm || "-";
 }
 
+function formatRelativeTime(ms: number | null): string {
+  if (!ms) return "sin datos";
+  const diffMin = Math.floor((Date.now() - ms) / 60_000);
+  if (diffMin < 1) return "hace menos de 1 min";
+  if (diffMin === 1) return "hace 1 min";
+  if (diffMin < 60) return `hace ${diffMin} min`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH === 1) return "hace 1 hora";
+  if (diffH < 24) return `hace ${diffH} horas`;
+  return "hace mas de 1 dia";
+}
+
+function formatTime(ms: number | null): string {
+  if (!ms) return "-";
+  return new Intl.DateTimeFormat("es-PE", {
+    timeZone: "America/Lima",
+    hour: "2-digit",
+    minute: "2-digit",
+    day: "2-digit",
+    month: "2-digit",
+  }).format(new Date(ms));
+}
+
 export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
   const [isClient, setIsClient] = useState(false);
   const [leaflet, setLeaflet] = useState<any | null>(null);
@@ -121,6 +174,12 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
   const skipNextAutoFitRef = useRef(false);
   const [mapHeight, setMapHeight] = useState(600);
 
+  // Tracking de cuadrillas
+  const [showTracking, setShowTracking] = useState(true);
+  const [cuadrillas, setCuadrillas] = useState<CuadrillaTracking[]>([]);
+  const [trackingError, setTrackingError] = useState("");
+  const trackingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const baseLayers: Record<string, { name: string; url: string; attr: string }> = {
     osm: { name: "OpenStreetMap", url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", attr: "&copy; OpenStreetMap contributors" },
     voyager: { name: "Carto Voyager", url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", attr: "&copy; OSM, &copy; CARTO" },
@@ -137,9 +196,7 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
         setLeaflet(m?.default || m);
       })
       .catch(() => setLeaflet(null));
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, []);
 
   useEffect(() => {
@@ -171,6 +228,29 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
       ctrl.abort();
     };
   }, [fecha]);
+
+  async function loadTracking() {
+    try {
+      const res = await fetch("/api/cuadrillas/tracking", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) {
+        setTrackingError(String(data?.error || "Error al cargar posiciones"));
+        return;
+      }
+      setTrackingError("");
+      setCuadrillas(Array.isArray(data.items) ? data.items : []);
+    } catch {
+      setTrackingError("Sin conexion para tracking");
+    }
+  }
+
+  useEffect(() => {
+    loadTracking();
+    trackingIntervalRef.current = setInterval(loadTracking, TRACKING_INTERVAL_MS);
+    return () => {
+      if (trackingIntervalRef.current) clearInterval(trackingIntervalRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const recalc = () => {
@@ -284,13 +364,27 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
             <option value="Agendada">Agendada</option>
           </select>
           <button
+            onClick={() => setShowTracking((v) => !v)}
+            className={`rounded-xl border px-4 py-2 text-sm font-semibold transition ${
+              showTracking
+                ? "border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                : "border-slate-300 bg-white text-slate-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300"
+            }`}
+          >
+            {showTracking ? "Ocultar cuadrillas" : "Ver cuadrillas"}
+            {cuadrillas.length > 0 && (
+              <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                {cuadrillas.length}
+              </span>
+            )}
+          </button>
+          <button
             className="rounded-xl bg-[#30518c] px-4 py-2 text-white"
             onClick={() => {
               skipNextAutoFitRef.current = true;
               setFCuadrilla("");
               setFEstado("");
               setFecha(todayLimaYmd());
-              // Mantener Punto A y Punto B como solicitaste
             }}
           >
             Limpiar
@@ -374,6 +468,20 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
             <span>{estado} ({conteoPorEstado[estado] || 0})</span>
           </div>
         ))}
+        {showTracking && (
+          <div className="flex items-center gap-2 border-l border-slate-200 pl-4 dark:border-slate-700">
+            <span
+              className="inline-block w-4 h-4 rounded-full ring-2 ring-white"
+              style={{ backgroundColor: CUADRILLA_COLOR }}
+            />
+            <span className="font-medium text-amber-700 dark:text-amber-400">
+              Cuadrillas en campo ({cuadrillas.length})
+            </span>
+            {trackingError && (
+              <span className="text-xs text-red-600">{trackingError}</span>
+            )}
+          </div>
+        )}
       </div>
 
       {error ? <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
@@ -392,6 +500,64 @@ export function MapaOrdenesClient({ initialYmd }: { initialYmd?: string }) {
         {isClient ? (
           <MapContainer center={[-12.05, -77.04]} zoom={11} scrollWheelZoom className="w-full h-full" whenReady={(e: any) => (mapRef.current = e.target)}>
             <TileLayer key={base} attribution={baseLayers[base].attr} url={baseLayers[base].url} />
+
+            {/* Marcadores de cuadrillas — fuera del cluster para que siempre sean visibles */}
+            {showTracking && leaflet && cuadrillas.map((c) => (
+              <Marker key={`cuad-${c.id}`} position={[c.lat, c.lng]} icon={cuadrillaIcon(leaflet)} zIndexOffset={1000}>
+                <Tooltip permanent direction="top" offset={[0, -18]} opacity={1}>
+                  <span style={{ fontWeight: 700, fontSize: 11 }}>{c.nombre}</span>
+                </Tooltip>
+                <Popup maxWidth={320}>
+                  <div className="text-xs w-72">
+                    <div className="rounded-xl border p-3 bg-white shadow-sm">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span
+                          className="inline-block w-3 h-3 rounded-full ring-1 ring-white"
+                          style={{ background: CUADRILLA_COLOR }}
+                        />
+                        <span className="font-bold text-sm">{c.nombre}</span>
+                      </div>
+                      <div className="space-y-1 text-slate-700">
+                        <div><b>Area:</b> {c.area || "-"}</div>
+                        <div><b>Categoria:</b> {c.categoria || "-"}</div>
+                        <div><b>Vehiculo:</b> {c.vehiculo || "-"}</div>
+                        <div className="pt-1 border-t border-slate-100">
+                          <b>Ultima actualizacion:</b>
+                          <div className="text-amber-700 font-semibold">{formatRelativeTime(c.lastLocationAt)}</div>
+                          <div className="text-slate-400 text-[10px]">{formatTime(c.lastLocationAt)}</div>
+                        </div>
+                        <div className="pt-1">
+                          <b>Coordenadas:</b>
+                          <div className="font-mono text-[10px]">{c.lat.toFixed(5)}, {c.lng.toFixed(5)}</div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 pt-2">
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${c.lat},${c.lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 rounded-md bg-blue-600 px-3 py-1.5 text-center text-[11px] font-semibold text-white"
+                          style={{ color: "#fff" }}
+                        >
+                          Google Maps
+                        </a>
+                        <a
+                          href={`https://waze.com/ul?ll=${c.lat},${c.lng}&navigate=yes`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 rounded-md bg-violet-600 px-3 py-1.5 text-center text-[11px] font-semibold text-white"
+                          style={{ color: "#fff" }}
+                        >
+                          Waze
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                </Popup>
+              </Marker>
+            ))}
+
+            {/* Marcadores de órdenes con clustering */}
             <MarkerClusterGroup
               key={clusterKey}
               chunkedLoading

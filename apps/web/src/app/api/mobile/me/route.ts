@@ -18,6 +18,7 @@ export async function GET(req: Request) {
       uid: mobile.uid,
       email: mobile.email || null,
       nombre: profile.nombre,
+      nombreCorto: profile.nombreCorto,
       roles: mobile.access.roles || [],
       areas: mobile.access.areas || [],
       permissions: mobile.access.effectivePermissions || [],

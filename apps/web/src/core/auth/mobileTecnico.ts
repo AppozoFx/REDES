@@ -142,6 +142,13 @@ async function getOptionalUserShortName(uid: string) {
   return uid ? getUserShortName(uid) : "";
 }
 
+async function getGestorPhone(uid: string): Promise<string> {
+  if (!uid) return "";
+  const snap = await adminDb().collection("usuarios").doc(uid).get();
+  const data = snap.exists ? (snap.data() as any) : {};
+  return String(data?.celular || data?.telefono || data?.phone || "").trim().replace(/\s+/g, "");
+}
+
 export async function getTecnicoContext(mobile: MobileAuthContext) {
   const roles = (mobile.access.roles || []).map((role) => String(role || "").trim().toUpperCase());
   if (!roles.includes("TECNICO") && !roles.includes("ADMIN")) {
@@ -180,9 +187,10 @@ export async function getTecnicoContext(mobile: MobileAuthContext) {
     };
   });
 
-  const [coordinadorNombreResolved, gestorNombreResolved] = await Promise.all([
+  const [coordinadorNombreResolved, gestorNombreResolved, gestorWhatsappResolved] = await Promise.all([
     getOptionalUserShortName(coordinadorUid),
     getOptionalUserShortName(gestorUid),
+    getGestorPhone(gestorUid),
   ]);
 
   return {
@@ -197,6 +205,7 @@ export async function getTecnicoContext(mobile: MobileAuthContext) {
       coordinadorNombre: coordinadorNombreResolved || String(cuadrilla?.coordinadorNombre || "").trim(),
       gestorUid,
       gestorNombre: gestorNombreResolved || String(cuadrilla?.gestorNombre || "").trim(),
+      gestorWhatsapp: gestorWhatsappResolved,
       integrantes,
     },
   };

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ServerSession } from "@/core/auth/session";
+import { AlertasAppBell } from "@/ui/common/AlertasAppBell";
 import { NotificationsBell } from "@/ui/common/NotificationsBell";
 import { useUserIdentity } from "@/ui/common/UserProvider";
 import { OrdenesImportTicker } from "@/ui/home/OrdenesImportTicker";
@@ -60,6 +61,11 @@ export default function HomeTopbar({ session }: { session: ServerSession }) {
         <div className="text-sm font-medium text-slate-600 dark:text-slate-300">Panel Home</div>
 
         <div className="flex items-center gap-3">
+          {(session.isAdmin || session.access.roles.some((r) =>
+            ["GESTOR", "JEFATURA", "GERENCIA"].includes(r.toUpperCase())
+          )) && (
+            <AlertasAppBell uid={session.uid} userRoles={session.access.roles} />
+          )}
           <NotificationsBell uid={session.uid} />
 
           <div ref={menuRef} className="relative z-[160]">

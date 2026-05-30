@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { onAuthStateChanged } from "firebase/auth";
+import { getFirebaseAuth } from "@/lib/firebase/client";
+import { listenAlertasAppPendientes, type AlertaAppDoc } from "@/domain/alertas-app/repo";
 
 type Jornada = {
   ymd: string;
@@ -65,6 +68,8 @@ export function GestorHomeClient() {
   const [data, setData] = useState<InicioData | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState(false);
+  const [alertasPendientes, setAlertasPendientes] = useState<AlertaAppDoc[]>([]);
+  const [alertaLoadingById, setAlertaLoadingById] = useState<Record<string, boolean>>({});
   const [savingRouteById, setSavingRouteById] = useState<Record<string, boolean>>({});
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [cuadrillaQuery, setCuadrillaQuery] = useState("");
@@ -86,6 +91,40 @@ export function GestorHomeClient() {
   useEffect(() => {
     cargar();
   }, []);
+
+  // Esperar Firebase Auth antes de arrancar el listener Firestore
+  useEffect(() => {
+    const auth = getFirebaseAuth();
+    let unsubFirestore: (() => void) | null = null;
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      if (user && !unsubFirestore) {
+        unsubFirestore = listenAlertasAppPendientes(setAlertasPendientes);
+      }
+    });
+    return () => {
+      unsubAuth();
+      unsubFirestore?.();
+    };
+  }, []);
+
+  const responderAlerta = async (alertaId: string, accion: "ACEPTAR" | "RECHAZAR") => {
+    setAlertaLoadingById((prev) => ({ ...prev, [alertaId]: true }));
+    try {
+      const res = await fetch(`/api/alertas-app/${alertaId}/responder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accion }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body?.ok) throw new Error(String(body?.error || "ERROR"));
+      toast.success(accion === "ACEPTAR" ? "Solicitud aceptada" : "Solicitud rechazada");
+      if (accion === "ACEPTAR") await cargar();
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo procesar la solicitud");
+    } finally {
+      setAlertaLoadingById((prev) => ({ ...prev, [alertaId]: false }));
+    }
+  };
 
   useEffect(() => {
     const timer = setInterval(async () => {
@@ -266,6 +305,55 @@ export function GestorHomeClient() {
 
   return (
     <div className="space-y-4">
+      {alertasPendientes.length > 0 && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <h2 className="text-base font-semibold text-amber-800">
+            Solicitudes pendientes ({alertasPendientes.length})
+          </h2>
+          <div className="mt-3 space-y-3">
+            {alertasPendientes.map((alerta) => (
+              <div
+                key={alerta.id}
+                className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <div className="text-sm font-medium text-gray-900">
+                    {alerta.tipo === "CERRAR_RUTA"
+                      ? "Solicitud de cierre de ruta"
+                      : alerta.tipo === "REQUIERE_ATENCION"
+                      ? `${alerta.cuadrillaNombre} requiere Atención`
+                      : alerta.tipo}
+                  </div>
+                  <div className="text-xs text-gray-600">
+                    <span className="font-medium">{alerta.cuadrillaNombre}</span>
+                    {" · "}
+                    {alerta.emisorNombre}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={alertaLoadingById[alerta.id]}
+                    onClick={() => responderAlerta(alerta.id, "ACEPTAR")}
+                    className="rounded-md bg-green-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {alertaLoadingById[alerta.id] ? "..." : "Aceptar"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={alertaLoadingById[alerta.id]}
+                    onClick={() => responderAlerta(alerta.id, "RECHAZAR")}
+                    className="rounded-md bg-red-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {alertaLoadingById[alerta.id] ? "..." : "Rechazar"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="rounded-xl border bg-white p-4">
         <h2 className="text-lg font-semibold">Mi jornada de hoy</h2>
         <div className="mt-3 grid gap-3 md:grid-cols-4">

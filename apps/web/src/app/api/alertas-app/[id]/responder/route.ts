@@ -19,9 +19,10 @@ function todayLimaYmd() {
 
 export async function POST(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession();
     if (!session) return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
     if (session.access.estadoAcceso !== "HABILITADO") {
@@ -32,7 +33,7 @@ export async function POST(
     const canAct = session.isAdmin || userRoles.some((r) => ROLES_PERMITIDOS.includes(r));
     if (!canAct) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
-    const alertaId = String(params.id || "").trim();
+    const alertaId = String(id || "").trim();
     if (!alertaId) return NextResponse.json({ ok: false, error: "ID_REQUIRED" }, { status: 400 });
 
     const raw = (await req.json().catch(() => ({}))) as { accion?: string };

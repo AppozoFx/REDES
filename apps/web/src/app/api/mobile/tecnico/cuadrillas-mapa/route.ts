@@ -50,8 +50,8 @@ export async function GET(req: Request) {
     }
 
     const roles = (mobile.access.roles || []).map((r) => String(r || "").trim().toUpperCase());
-    if (!roles.includes("TECNICO") && !roles.includes("ADMIN")) {
-      return NextResponse.json({ ok: false, error: "ROLE_TECNICO_REQUIRED" }, { status: 403 });
+    if (!roles.includes("TECNICO") && !roles.includes("COORDINADOR") && !roles.includes("ADMIN")) {
+      return NextResponse.json({ ok: false, error: "ROLE_REQUIRED" }, { status: 403 });
     }
 
     const db = adminDb();

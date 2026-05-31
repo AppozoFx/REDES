@@ -78,6 +78,7 @@ function getGroup(href: string): GroupKey {
     href === "/home/instalaciones/asistencia-programada" ||
     href === "/home/instalaciones/asignacion-gestores" ||
     href === "/home/instalaciones/asistencia/resumen" ||
+    href === "/home/rrhh/gestor-jornadas" ||
     href === "/home/cuadrillas/gestion" ||
     href === "/home/tecnicos/gestion" ||
     href === "/home/zonas"

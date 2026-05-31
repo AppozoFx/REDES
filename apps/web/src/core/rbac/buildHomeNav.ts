@@ -131,6 +131,13 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
         href: "/home/instalaciones/asistencia/resumen",
       });
     }
+    if (session.isAdmin || roles.includes("GERENCIA") || roles.includes("JEFATURA") || roles.includes("ALMACEN") || roles.includes("RRHH")) {
+      items.push({
+        key: "GESTOR_JORNADAS",
+        label: "Jornadas: Gestores",
+        href: "/home/rrhh/gestor-jornadas",
+      });
+    }
     items.push({
       key: "CUADRILLAS_GESTION",
       label: "Cuadrillas Gestion",
@@ -293,6 +300,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
       "/home/comunicados",
       "/home/instalaciones/dashboard",
       "/home/instalaciones/asistencia/resumen",
+      "/home/rrhh/gestor-jornadas",
       "/home/cuadrillas/gestion",
       "/home/tecnicos/gestion",
       "/home/usuarios",

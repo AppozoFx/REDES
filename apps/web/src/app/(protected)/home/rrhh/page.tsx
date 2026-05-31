@@ -4,6 +4,12 @@ import { requireAuth } from "@/core/auth/guards";
 
 const rrhhLinks = [
   {
+    title: "Jornadas Gestores",
+    description: "Consulta ingresos, refrigerios y salidas del equipo de gestores. Exporta a Excel.",
+    href: "/home/rrhh/gestor-jornadas",
+    tone: "from-violet-600 to-violet-800 text-white",
+  },
+  {
     title: "Dashboard Instalaciones",
     description: "Vista operativa consolidada de ordenes y liquidaciones.",
     href: "/home/instalaciones/dashboard",

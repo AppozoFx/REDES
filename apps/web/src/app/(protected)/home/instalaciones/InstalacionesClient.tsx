@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dayjs from "dayjs";
@@ -34,7 +34,6 @@ const useDebounce = (value: string, delay = 350) => {
   return debounced;
 };
 
-// --- Helpers para cuadrillas K# RESIDENCIAL / K# MOTO ---
 const RX_CUADRILLA = /^K\s?(\d+)\s+(RESIDENCIAL|MOTO)$/i;
 
 const parseCuadrilla = (nombre: unknown) => {
@@ -44,14 +43,12 @@ const parseCuadrilla = (nombre: unknown) => {
   return { num: parseInt(m[1], 10), tipo: m[2].toUpperCase() };
 };
 
-// Prioridad de grupo: RESIDENCIAL (0) antes que MOTO (1)
 const groupOrder = (tipo?: string) => (tipo === "RESIDENCIAL" ? 0 : 1);
 
 const convertirAFecha = (valor: any) => {
   if (!valor) return null;
   if (typeof valor?.toDate === "function") return valor.toDate();
   if (typeof valor === "string" && valor.includes("T")) return new Date(valor);
-
   const parseada = dayjs(valor, "D [de] MMMM [de] YYYY, h:mm:ss A [UTC-5]", "es", true);
   return parseada.isValid() ? parseada.toDate() : new Date(valor);
 };
@@ -146,9 +143,7 @@ export default function InstalacionesClient() {
       }
     };
     loadMe();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, []);
 
   const selectPortalStyles = {
@@ -160,7 +155,7 @@ export default function InstalacionesClient() {
     menuPosition: "fixed" as const,
   };
 
-  /* ===== Sticky offsets / mediciones ===== */
+  /* ===== Sticky offsets ===== */
   const kpiRef = useRef<HTMLDivElement | null>(null);
   const theadRef = useRef<HTMLTableSectionElement | null>(null);
   const [theadH, setTheadH] = useState(0);
@@ -171,21 +166,17 @@ export default function InstalacionesClient() {
       const kpiH = kpiRef.current?.getBoundingClientRect().height || 0;
       const thH = theadRef.current?.getBoundingClientRect().height || 0;
       setTheadH(thH);
-
       if (theadRef.current) {
         const currentTop = theadRef.current.getBoundingClientRect().top;
         setHeadPinned(currentTop <= kpiH + 0.5);
       }
     };
-
     recalc();
     window.addEventListener("resize", recalc, { passive: true });
     window.addEventListener("scroll", recalc, { passive: true });
-
     const ro = new ResizeObserver(recalc);
     if (kpiRef.current) ro.observe(kpiRef.current);
     if (theadRef.current) ro.observe(theadRef.current);
-
     return () => {
       window.removeEventListener("resize", recalc);
       window.removeEventListener("scroll", recalc);
@@ -209,11 +200,9 @@ export default function InstalacionesClient() {
       } else {
         params.set("ym", filtros.mes);
       }
-
       const res = await fetch(`/api/instalaciones/list?${params.toString()}`, { cache: "no-store" });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Error al obtener instalaciones");
-
       setInstalaciones(json?.items || []);
     } catch (e) {
       console.error(e);
@@ -305,7 +294,6 @@ export default function InstalacionesClient() {
         const ta = convertirAFecha(a.fechaInstalacion)?.getTime() ?? 0;
         const tb = convertirAFecha(b.fechaInstalacion)?.getTime() ?? 0;
         if (ta !== tb) return ta - tb;
-
         const pa = parseCuadrilla(a.cuadrillaNombre);
         const pb = parseCuadrilla(b.cuadrillaNombre);
         const goA = groupOrder(pa?.tipo);
@@ -313,19 +301,15 @@ export default function InstalacionesClient() {
         if (goA !== goB) return goA - goB;
         return (pa?.num ?? 0) - (pb?.num ?? 0);
       }
-
       const k = sort.key as string;
       let va = a[k];
       let vb = b[k];
-
       if (k === "fechaInstalacion") {
         va = convertirAFecha(va)?.getTime() ?? 0;
         vb = convertirAFecha(vb)?.getTime() ?? 0;
       }
-
       if (typeof va === "string") va = va.toLowerCase();
       if (typeof vb === "string") vb = vb.toLowerCase();
-
       if (va < vb) return sort.dir === "asc" ? -1 : 1;
       if (va > vb) return sort.dir === "asc" ? 1 : -1;
       return 0;
@@ -340,31 +324,19 @@ export default function InstalacionesClient() {
   const kpis = useMemo(() => {
     const total = instalacionesFiltradas.length;
     const countArray = (arr: unknown) => (Array.isArray(arr) ? arr.filter(Boolean).length : 0);
-
     const totalONT = instalacionesFiltradas.filter((l) => l.snONT).length;
     const totalMESH = instalacionesFiltradas.reduce((acc, l) => acc + countArray(l.snMESH), 0);
     const totalBOX = instalacionesFiltradas.reduce((acc, l) => acc + countArray(l.snBOX), 0);
     const totalFONO = instalacionesFiltradas.filter((l) => l.snFONO).length;
-
     const totalGamer = instalacionesFiltradas.filter((l) => !!l.planGamer).length;
     const totalWifiPro = instalacionesFiltradas.filter((l) => !!l.kitWifiPro).length;
     const totalCableado = instalacionesFiltradas.filter((l) => !!l.servicioCableadoMesh).length;
-
     const totalCat5e = instalacionesFiltradas.reduce((acc, l) => acc + parseIntSafe(l.cat5e), 0);
     const totalCat6 = instalacionesFiltradas.reduce((acc, l) => acc + parseIntSafe(l.cat6), 0);
-
     return {
-      total,
-      totalONT,
-      totalMESH,
-      totalBOX,
-      totalFONO,
-      totalGamer,
-      totalWifiPro,
-      totalCableado,
-      totalCat5e,
-      totalCat6,
-      totalUTP: totalCat5e + totalCat6,
+      total, totalONT, totalMESH, totalBOX, totalFONO,
+      totalGamer, totalWifiPro, totalCableado,
+      totalCat5e, totalCat6, totalUTP: totalCat5e + totalCat6,
     };
   }, [instalacionesFiltradas]);
 
@@ -434,7 +406,6 @@ export default function InstalacionesClient() {
     const cat6Val = planGamerChecked ? 1 : parseIntSafe(cambios.cat6 ?? row.cat6 ?? 0);
     const cat5Final = cableadoChecked ? Math.max(0, cat5Val) : 0;
     const puntosUTP = cat5Final + cat6Val;
-
     cambios.cat5e = cat5Final;
     cambios.cat6 = cat6Val;
     cambios.puntosUTP = puntosUTP;
@@ -447,7 +418,6 @@ export default function InstalacionesClient() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Error al guardar cambios");
-
       toast.success("Cambios guardados");
       await obtenerInstalaciones({ keepPage: true });
       setEdiciones((prev) => {
@@ -480,8 +450,8 @@ export default function InstalacionesClient() {
   };
 
   const renderLinea = (label: string, value: any) => (
-    <div className="flex items-start gap-2 text-sm">
-      <span className="w-32 shrink-0 text-slate-500 dark:text-slate-400">{label}</span>
+    <div className="flex items-start gap-3 text-sm">
+      <span className="w-32 shrink-0 font-medium text-slate-500 dark:text-slate-400">{label}</span>
       <span className="break-words text-slate-800 dark:text-slate-100">{value || "-"}</span>
     </div>
   );
@@ -490,6 +460,18 @@ export default function InstalacionesClient() {
      Exportar Excel
   ========================= */
   const handleExportarExcel = () => {
+    // Paso 1: recolectar todos los nombres de material únicos del dataset filtrado
+    const todosLosMateriales = new Set<string>();
+    for (const l of instalacionesFiltradas) {
+      const mats = Array.isArray(l.materialesConsumidos) ? l.materialesConsumidos : [];
+      for (const m of mats) {
+        const nombre = String(m.nombre || m.materialId || "").trim();
+        if (nombre) todosLosMateriales.add(nombre);
+      }
+    }
+    const nombresMateriales = Array.from(todosLosMateriales).sort();
+
+    // Paso 2: construir filas
     const dataExportar = instalacionesFiltradas.map((l, idx) => {
       const fecha = convertirAFecha(l.fechaInstalacion);
       const cat5 = parseIntSafe(l.cat5e);
@@ -538,6 +520,35 @@ export default function InstalacionesClient() {
       const puntosCell = puntos === 0 ? "" : puntos;
       const cableadoUTP = puntos > 0 ? puntos * 25 : "";
 
+      // metraje_instalado: valor real desde los materiales liquidados
+      // BOBINA → metros numérico  |  PRECON → nombre tal como está en materiales
+      const mats = Array.isArray(l.materialesConsumidos) ? l.materialesConsumidos : [];
+      const bobinaMat = mats.find((m: any) =>
+        String(m.materialId || m.nombre || "").toUpperCase().includes("BOBINA")
+      );
+      const preconMat = mats.find((m: any) =>
+        String(m.materialId || m.nombre || "").toUpperCase().includes("PRECON")
+      );
+      let metrajeCell: any = null;
+      if (bobinaMat) {
+        metrajeCell = bobinaMat.metros ?? bobinaMat.cantidad ?? null;
+      } else if (preconMat) {
+        metrajeCell = String(preconMat.nombre || preconMat.materialId || "PRECON_50").trim();
+      } else {
+        const rawMetraje = l.metraje_instalado ?? l.metrajeInstalado;
+        metrajeCell = rawMetraje != null && rawMetraje !== "" ? rawMetraje : null;
+      }
+
+      // Columnas de materiales: una por cada material único del dataset
+      // Valor: metros si tiene, sino cantidad
+      const matCols: Record<string, any> = {};
+      for (const nombre of nombresMateriales) {
+        const mat = mats.find(
+          (m: any) => String(m.nombre || m.materialId || "").trim() === nombre
+        );
+        matCols[nombre] = mat ? (mat.metros ?? mat.cantidad ?? null) : null;
+      }
+
       return {
         "N": idx + 1,
         "Fecha Instalacion": formatearFecha(fecha),
@@ -556,7 +567,7 @@ export default function InstalacionesClient() {
         ...meshCols,
         ...boxCols,
         "SN_FONO": valorONulo(l.snFONO),
-        "metraje_instalado": valorONulo(l.metraje_instalado ?? l.metrajeInstalado),
+        "metraje_instalado": metrajeCell,
         "Cantidad mesh": cantidadMesh,
         "rotuloNapCto": valorONulo(l.rotuloNapCto),
         "Observacion de la contrata": obsContrata || "",
@@ -568,6 +579,7 @@ export default function InstalacionesClient() {
         "Cat5e": cat5Cell,
         "Cat6": cat6Cell,
         "Puntos UTP": puntosCell,
+        ...matCols,
       };
     });
 
@@ -585,549 +597,727 @@ export default function InstalacionesClient() {
   };
 
   /* =========================
+     Sort icon helper
+  ========================= */
+  const SortIcon = ({ col }: { col: string }) => {
+    if (sort.key !== col)
+      return <span className="text-slate-400 text-[10px] ml-0.5">⇅</span>;
+    return (
+      <span className="text-blue-500 text-[10px] ml-0.5 font-bold">
+        {sort.dir === "asc" ? "▲" : "▼"}
+      </span>
+    );
+  };
+
+  /* =========================
      Render
   ========================= */
+  const inputCls =
+    "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-blue-400";
+
+  const colDefs = [
+    { k: "fechaInstalacion", lbl: "Fecha", w: "w-32" },
+    { k: "cuadrillaNombre", lbl: "Cuadrilla", w: "w-40" },
+    { k: "codigoCliente", lbl: "Codigo", w: "w-28" },
+    { k: "documento", lbl: "Documento", w: "w-36" },
+    { k: "cliente", lbl: "Cliente", w: "w-52" },
+    { k: "tipoOrden", lbl: "R/C", w: "w-24" },
+    { k: "plan", lbl: "Plan", w: "min-w-[220px]" },
+    { k: "snONT", lbl: "SN ONT", w: "w-36" },
+    { k: "snMESH", lbl: "SN MESH", w: "w-52" },
+    { k: "snBOX", lbl: "SN BOX", w: "w-52" },
+    { k: "snFONO", lbl: "SN FONO", w: "w-36" },
+    { k: "planGamer", lbl: "Gamer", w: "w-20" },
+    { k: "kitWifiPro", lbl: "Wifi Pro", w: "w-24" },
+    { k: "servicioCableadoMesh", lbl: "Cable Mesh", w: "w-28" },
+    { k: "cat5e", lbl: "Cat5e", w: "w-20" },
+    { k: "cat6", lbl: "Cat6", w: "w-20" },
+    { k: "puntos", lbl: "UTP", w: "w-20" },
+    { k: "observacion", lbl: "Observacion", w: "min-w-[200px]" },
+    { k: "accion", lbl: "Acciones", w: "w-36" },
+  ];
+
   return (
     <div className="p-4 text-slate-900 dark:text-slate-100">
-      {/* Header */}
-      <div className="mb-4 flex items-center justify-between">
+
+      {/* ── Header ── */}
+      <div className="mb-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold">Instalaciones</h1>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+              Instalaciones
+            </h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Control y seguimiento de instalaciones liquidadas
+            </p>
+          </div>
           {coordReadOnly && (
-            <span className="rounded-full border border-amber-300 bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
-              Solo lectura (Coordinador)
+            <span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
+              Solo lectura
             </span>
           )}
         </div>
         <div className="flex gap-2">
           <button
             onClick={handleExportarExcel}
-            className="bg-green-600 hover:bg-green-700 text-white text-sm px-4 py-2 rounded shadow"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-700 active:bg-emerald-800"
           >
-            Exportar a Excel
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Exportar Excel
           </button>
           <button
             onClick={limpiarFiltros}
-            className="rounded border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-700 hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
           >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
             Limpiar filtros
           </button>
         </div>
       </div>
 
-      {/* KPIs sticky */}
+      {/* ── KPIs sticky ── */}
       <div
         ref={kpiRef}
-        className="sticky top-0 z-20 mb-3 border border-blue-200 rounded-xl bg-gradient-to-r from-blue-50 via-white to-blue-50 p-3 shadow"
+        className="sticky top-0 z-20 mb-4 overflow-hidden rounded-xl border border-slate-200 bg-white/95 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/95"
       >
-        <div className="flex flex-wrap gap-4 items-center justify-between text-blue-900 text-[13px] font-medium">
-          <span className="inline-flex items-center gap-2">
-            <span className="bg-blue-600 text-white rounded-full px-3 py-1 text-xs font-bold">
+        <div className="flex flex-wrap divide-x divide-slate-100 dark:divide-slate-700">
+          {/* Total */}
+          <div className="flex items-center gap-2.5 px-4 py-2.5">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-xs font-bold text-white">
               {kpis.total}
-            </span>{" "}
-            instalaciones
-          </span>
-          <span className="inline-flex items-center gap-2">
-            <span className="bg-gray-800 text-white rounded-full px-2 py-0.5 text-xs">ONT</span> {kpis.totalONT}
-            <span className="bg-green-200 text-green-800 rounded-full px-2 py-0.5 text-xs">MESH</span> {kpis.totalMESH}
-            <span className="bg-yellow-200 text-yellow-800 rounded-full px-2 py-0.5 text-xs">BOX</span> {kpis.totalBOX}
-            <span className="bg-pink-200 text-pink-800 rounded-full px-2 py-0.5 text-xs">FONO</span> {kpis.totalFONO}
-          </span>
-          <span className="inline-flex items-center gap-2">
-            <span className="bg-purple-200 text-purple-800 rounded-full px-2 py-0.5 text-xs">Gamer</span> {kpis.totalGamer}
-            <span className="bg-blue-200 text-blue-800 rounded-full px-2 py-0.5 text-xs">Wifi Pro</span> {kpis.totalWifiPro}
-            <span className="bg-orange-200 text-orange-800 rounded-full px-2 py-0.5 text-xs">Cableado</span> {kpis.totalCableado}
-          </span>
-          <span className="inline-flex items-center gap-2">
-            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-800 dark:bg-slate-700 dark:text-slate-100">Cat5e</span> {kpis.totalCat5e}
-            <span className="bg-slate-400 text-slate-900 rounded-full px-2 py-0.5 text-xs">Cat6</span> {kpis.totalCat6}
-            <span className="bg-slate-800 text-white rounded-full px-2 py-0.5 text-xs">UTP</span> {kpis.totalUTP}
-          </span>
+            </span>
+            <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide">instalaciones</span>
+          </div>
+          {/* Equipos */}
+          <div className="flex flex-wrap items-center gap-3 px-4 py-2.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Equipos</span>
+            {[
+              { lbl: "ONT", val: kpis.totalONT, cls: "bg-slate-700 text-white" },
+              { lbl: "MESH", val: kpis.totalMESH, cls: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" },
+              { lbl: "BOX", val: kpis.totalBOX, cls: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" },
+              { lbl: "FONO", val: kpis.totalFONO, cls: "bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300" },
+            ].map((k) => (
+              <span key={k.lbl} className={cls("inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold", k.cls)}>
+                {k.lbl} <span className="font-bold">{k.val}</span>
+              </span>
+            ))}
+          </div>
+          {/* Servicios */}
+          <div className="flex flex-wrap items-center gap-3 px-4 py-2.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Servicios</span>
+            {[
+              { lbl: "Gamer", val: kpis.totalGamer, cls: "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300" },
+              { lbl: "Wifi Pro", val: kpis.totalWifiPro, cls: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300" },
+              { lbl: "Cableado", val: kpis.totalCableado, cls: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300" },
+            ].map((k) => (
+              <span key={k.lbl} className={cls("inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold", k.cls)}>
+                {k.lbl} <span className="font-bold">{k.val}</span>
+              </span>
+            ))}
+          </div>
+          {/* Cables */}
+          <div className="flex flex-wrap items-center gap-3 px-4 py-2.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Cable</span>
+            {[
+              { lbl: "Cat5e", val: kpis.totalCat5e, cls: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
+              { lbl: "Cat6", val: kpis.totalCat6, cls: "bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200" },
+              { lbl: "UTP", val: kpis.totalUTP, cls: "bg-slate-800 text-white dark:bg-slate-600" },
+            ].map((k) => (
+              <span key={k.lbl} className={cls("inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold", k.cls)}>
+                {k.lbl} <span className="font-bold">{k.val}</span>
+              </span>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Filtros */}
-      <div className="mb-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-        <div className="flex flex-col">
-          <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Mes</label>
-          <input
-            type="month"
-            name="mes"
-            value={filtros.mes}
-            onChange={handleFiltroInput}
-            className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
-          />
-        </div>
+      {/* ── Filtros ── */}
+      <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-700 dark:bg-slate-800/40">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Mes</label>
+            <input type="month" name="mes" value={filtros.mes} onChange={handleFiltroInput} className={inputCls} />
+          </div>
 
-        <div className="flex flex-col">
-          <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Dia</label>
-          <input
-            type="date"
-            name="dia"
-            value={filtros.dia}
-            onChange={handleFiltroInput}
-            className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
-          />
-        </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Dia</label>
+            <input type="date" name="dia" value={filtros.dia} onChange={handleFiltroInput} className={inputCls} />
+          </div>
 
-        <div className="flex flex-col">
-          <label className="mb-1 text-sm font-medium text-gray-700 dark:text-slate-300">Tipo de Cuadrilla</label>
-          <Select
-            isMulti
-            name="tipoCuadrilla"
-            instanceId="instalaciones-tipo-cuadrilla"
-            inputId="instalaciones-tipo-cuadrilla"
-            options={opcionesTipoCuadrilla}
-            className="text-sm"
-            placeholder="Seleccionar..."
-            value={opcionesTipoCuadrilla.filter((opt) => filtros.tipoCuadrilla.includes(opt.value))}
-            onChange={(sel) => setFiltros((p) => ({ ...p, tipoCuadrilla: (sel || []).map((s) => s.value) }))}
-            {...selectPortalProps}
-            styles={
-              isDark
-                ? {
-                    ...selectPortalStyles,
-                    control: (base: any, state: any) => ({
-                      ...base,
-                      backgroundColor: "#020617",
-                      borderColor: state.isFocused ? "#38bdf8" : "#334155",
-                      boxShadow: "none",
-                    }),
-                    menu: (base: any) => ({ ...base, backgroundColor: "#0f172a", color: "#e2e8f0" }),
-                    option: (base: any, state: any) => ({
-                      ...base,
-                      backgroundColor: state.isSelected ? "#1d4ed8" : state.isFocused ? "#1e293b" : "#0f172a",
-                      color: "#e2e8f0",
-                    }),
-                    input: (base: any) => ({ ...base, color: "#e2e8f0" }),
-                    placeholder: (base: any) => ({ ...base, color: "#94a3b8" }),
-                    multiValue: (base: any) => ({ ...base, backgroundColor: "#1e293b" }),
-                    multiValueLabel: (base: any) => ({ ...base, color: "#e2e8f0" }),
-                  }
-                : selectPortalStyles
-            }
-          />
-        </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Tipo Cuadrilla</label>
+            <Select
+              isMulti
+              name="tipoCuadrilla"
+              instanceId="instalaciones-tipo-cuadrilla"
+              inputId="instalaciones-tipo-cuadrilla"
+              options={opcionesTipoCuadrilla}
+              className="text-sm"
+              placeholder="Seleccionar..."
+              value={opcionesTipoCuadrilla.filter((opt) => filtros.tipoCuadrilla.includes(opt.value))}
+              onChange={(sel) => setFiltros((p) => ({ ...p, tipoCuadrilla: (sel || []).map((s) => s.value) }))}
+              {...selectPortalProps}
+              styles={
+                isDark
+                  ? {
+                      ...selectPortalStyles,
+                      control: (base: any, state: any) => ({
+                        ...base,
+                        backgroundColor: "#020617",
+                        borderColor: state.isFocused ? "#38bdf8" : "#334155",
+                        boxShadow: "none",
+                        borderRadius: "0.5rem",
+                      }),
+                      menu: (base: any) => ({ ...base, backgroundColor: "#0f172a", color: "#e2e8f0" }),
+                      option: (base: any, state: any) => ({
+                        ...base,
+                        backgroundColor: state.isSelected ? "#1d4ed8" : state.isFocused ? "#1e293b" : "#0f172a",
+                        color: "#e2e8f0",
+                      }),
+                      input: (base: any) => ({ ...base, color: "#e2e8f0" }),
+                      placeholder: (base: any) => ({ ...base, color: "#94a3b8" }),
+                      multiValue: (base: any) => ({ ...base, backgroundColor: "#1e293b" }),
+                      multiValueLabel: (base: any) => ({ ...base, color: "#e2e8f0" }),
+                    }
+                  : {
+                      ...selectPortalStyles,
+                      control: (base: any) => ({ ...base, borderRadius: "0.5rem" }),
+                    }
+              }
+            />
+          </div>
 
-        <div className="flex flex-col">
-          <label className="mb-1 text-sm font-medium text-gray-700 dark:text-slate-300">Cuadrilla</label>
-          <input
-            type="text"
-            name="cuadrilla"
-            placeholder="Buscar cuadrilla"
-            value={filtros.cuadrilla}
-            onChange={handleFiltroInput}
-            autoComplete="off"
-            className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
-          />
-        </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Cuadrilla</label>
+            <input
+              type="text"
+              name="cuadrilla"
+              placeholder="Buscar cuadrilla"
+              value={filtros.cuadrilla}
+              onChange={handleFiltroInput}
+              autoComplete="off"
+              className={inputCls}
+            />
+          </div>
 
-        <div className="flex flex-col">
-          <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Coordinador</label>
-          <select
-            name="coordinador"
-            value={filtros.coordinador}
-            onChange={handleFiltroInput}
-            disabled={coordReadOnly}
-            className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
-          >
-            <option value="">{coordReadOnly ? "Mi coordinacion" : "Todos"}</option>
-            {opcionesCoordinador.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Coordinador</label>
+            <select
+              name="coordinador"
+              value={filtros.coordinador}
+              onChange={handleFiltroInput}
+              disabled={coordReadOnly}
+              className={inputCls}
+            >
+              <option value="">{coordReadOnly ? "Mi coordinacion" : "Todos"}</option>
+              {opcionesCoordinador.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
 
-        <div className="flex flex-col">
-          <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Tipo orden</label>
-          <select
-            name="tipoOrden"
-            value={filtros.tipoOrden}
-            onChange={handleFiltroInput}
-            className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
-          >
-            <option value="">Todos</option>
-            <option value="CONDOMINIO">CONDOMINIO</option>
-            <option value="RESIDENCIAL">RESIDENCIAL</option>
-          </select>
-        </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Tipo Orden</label>
+            <select name="tipoOrden" value={filtros.tipoOrden} onChange={handleFiltroInput} className={inputCls}>
+              <option value="">Todos</option>
+              <option value="CONDOMINIO">CONDOMINIO</option>
+              <option value="RESIDENCIAL">RESIDENCIAL</option>
+            </select>
+          </div>
 
-        <div className="flex flex-col">
-          <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Codigo o Cliente</label>
-          <input
-            type="text"
-            name="busqueda"
-            placeholder="Buscar codigo o cliente"
-            value={filtros.busqueda}
-            onChange={handleFiltroInput}
-            className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
-          />
-        </div>
+          <div className="flex flex-col gap-1 xl:col-span-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Codigo o Cliente</label>
+            <input
+              type="text"
+              name="busqueda"
+              placeholder="Buscar codigo o cliente..."
+              value={filtros.busqueda}
+              onChange={handleFiltroInput}
+              className={inputCls}
+            />
+          </div>
 
-        <div className="col-span-full">
-          <div className="flex flex-wrap gap-4 items-end">
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={filtros.filtrarPlanGamer}
-                onChange={(e) => setFiltros((p) => ({ ...p, filtrarPlanGamer: e.target.checked }))}
-              />
-              Plan Gamer
-            </label>
+          {/* Checkboxes y botones */}
+          <div className="col-span-full mt-1">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+              {[
+                {
+                  key: "filtrarPlanGamer" as const,
+                  label: "Plan Gamer",
+                  cls: "text-violet-700 dark:text-violet-400",
+                },
+                {
+                  key: "filtrarKitWifiPro" as const,
+                  label: "Kit Wifi Pro",
+                  cls: "text-sky-700 dark:text-sky-400",
+                },
+                {
+                  key: "filtrarCableadoMesh" as const,
+                  label: "Cableado Mesh",
+                  cls: "text-orange-700 dark:text-orange-400",
+                },
+                {
+                  key: "filtrarObservacion" as const,
+                  label: "Con observacion",
+                  cls: "text-slate-700 dark:text-slate-300",
+                },
+              ].map(({ key, label, cls: colorCls }) => (
+                <label key={key} className={cls("inline-flex cursor-pointer items-center gap-2 text-sm font-medium select-none", colorCls)}>
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+                    checked={filtros[key]}
+                    onChange={(e) => setFiltros((p) => ({ ...p, [key]: e.target.checked }))}
+                  />
+                  {label}
+                </label>
+              ))}
 
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={filtros.filtrarKitWifiPro}
-                onChange={(e) => setFiltros((p) => ({ ...p, filtrarKitWifiPro: e.target.checked }))}
-              />
-              Kit Wifi Pro
-            </label>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Cat5e</label>
+                <select
+                  name="cat5eFiltro"
+                  value={filtros.cat5eFiltro}
+                  onChange={handleFiltroInput}
+                  className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                >
+                  <option value="">Todos</option>
+                  {[0, 1, 2, 3, 4, 5].map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </div>
 
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={filtros.filtrarCableadoMesh}
-                onChange={(e) => setFiltros((p) => ({ ...p, filtrarCableadoMesh: e.target.checked }))}
-              />
-              Cableado Mesh
-            </label>
-
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Cat5e</label>
-              <select
-                name="cat5eFiltro"
-                value={filtros.cat5eFiltro}
-                onChange={handleFiltroInput}
-                className="rounded border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-              >
-                <option value="">Todos</option>
-                {[0, 1, 2, 3, 4, 5].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={filtros.filtrarObservacion}
-                onChange={(e) => setFiltros((p) => ({ ...p, filtrarObservacion: e.target.checked }))}
-              />
-              Con observacion
-            </label>
-
-            <div className="ml-auto">
-              <button
-                onClick={() => obtenerInstalaciones({ keepPage: true })}
-                disabled={cargando}
-                className="bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white text-sm px-4 py-2 rounded shadow"
-                title="Recargar datos sin perder filtros"
-              >
-                {cargando ? "Actualizando..." : "Refrescar tabla"}
-              </button>
+              <div className="ml-auto">
+                <button
+                  onClick={() => obtenerInstalaciones({ keepPage: true })}
+                  disabled={cargando}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-sky-700 disabled:opacity-50 active:bg-sky-800"
+                >
+                  <svg className={cls("h-4 w-4", cargando && "animate-spin")} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  {cargando ? "Actualizando..." : "Refrescar"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Tabla */}
-      <div className="relative overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
-        <table className="min-w-full text-sm">
-          <thead className="bg-gray-100 dark:bg-slate-800" ref={theadRef}>
-            <tr className="text-center font-semibold text-gray-700 dark:text-slate-200">
-              {[
-                { k: "fechaInstalacion", lbl: "Fecha Instalacion", w: "w-40" },
-                { k: "cuadrillaNombre", lbl: "Cuadrilla", w: "w-44" },
-                { k: "codigoCliente", lbl: "Codigo", w: "w-32" },
-                { k: "documento", lbl: "Documento", w: "w-40" },
-                { k: "cliente", lbl: "Cliente", w: "w-56" },
-                { k: "tipoOrden", lbl: "R/C", w: "w-36" },
-                { k: "plan", lbl: "Plan", w: "min-w-[240px]" },
-                { k: "snONT", lbl: "SN ONT", w: "w-40" },
-                { k: "snMESH", lbl: "SN MESH", w: "w-56" },
-                { k: "snBOX", lbl: "SN BOX", w: "w-56" },
-                { k: "snFONO", lbl: "SN FONO", w: "w-40" },
-                { k: "planGamer", lbl: "Plan Gamer", w: "w-32" },
-                { k: "kitWifiPro", lbl: "Kit Wifi Pro", w: "w-36" },
-                { k: "servicioCableadoMesh", lbl: "Cableado Mesh", w: "w-40" },
-                { k: "cat5e", lbl: "Cat5e", w: "w-24" },
-                { k: "cat6", lbl: "Cat6", w: "w-24" },
-                { k: "puntos", lbl: "Puntos UTP", w: "w-28" },
-                { k: "observacion", lbl: "Observacion", w: "min-w-[220px]" },
-                { k: "accion", lbl: "Accion", w: "w-40" },
-              ].map((col) => (
-                <th
-                  key={col.k}
-                  className={cls("cursor-pointer select-none border border-slate-200 bg-gray-100 p-2 dark:border-slate-700 dark:bg-slate-800", col.w)}
-                  onClick={() => col.k !== "accion" && setSortKey(col.k)}
-                  title="Ordenar"
-                >
-                  <div className="flex items-center justify-center gap-1">
-                    <span>{col.lbl}</span>
-                    {sort.key === col.k && <span>{sort.dir === "asc" ? "^" : "v"}</span>}
-                  </div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-
-          <tbody>
-            {headPinned && (
-              <tr aria-hidden>
-                <td colSpan={19} style={{ height: theadH }} />
+      {/* ── Tabla ── */}
+      <div className="overflow-hidden rounded-xl border border-slate-200 shadow-sm dark:border-slate-700">
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead ref={theadRef} className="bg-slate-50 dark:bg-slate-800">
+              <tr className="text-center text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                {colDefs.map((col) => (
+                  <th
+                    key={col.k}
+                    className={cls(
+                      "cursor-pointer select-none whitespace-nowrap border-b border-slate-200 px-3 py-3 dark:border-slate-700",
+                      col.w,
+                      col.k !== "accion" && "hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors"
+                    )}
+                    onClick={() => col.k !== "accion" && setSortKey(col.k)}
+                  >
+                    <div className="inline-flex items-center gap-1">
+                      <span>{col.lbl}</span>
+                      {col.k !== "accion" && <SortIcon col={col.k} />}
+                    </div>
+                  </th>
+                ))}
               </tr>
-            )}
+            </thead>
 
-            {cargando ? (
-              <tr>
-                <td colSpan={19} className="p-6 text-center text-gray-500 dark:text-slate-400">
-                  Cargando...
-                </td>
-              </tr>
-            ) : pageData.length === 0 ? (
-              <tr>
-                <td colSpan={19} className="p-6 text-center text-gray-500 dark:text-slate-400">
-                  No hay registros para los filtros seleccionados.
-                </td>
-              </tr>
-            ) : (
-              pageData.map((l) => {
-                const f = convertirAFecha(l.fechaInstalacion);
-                const planGamerChecked = (ediciones[l.id]?.planGamer ?? l.planGamer ?? "") !== "";
-                const cableadoChecked = (ediciones[l.id]?.servicioCableadoMesh ?? l.servicioCableadoMesh ?? "") !== "";
-                const cat5 = parseIntSafe(ediciones[l.id]?.cat5e ?? l.cat5e ?? 0);
-                const cat6 = planGamerChecked ? 1 : parseIntSafe(ediciones[l.id]?.cat6 ?? l.cat6 ?? 0);
-                const puntos = cat5 + cat6;
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60 bg-white dark:bg-slate-900">
+              {headPinned && (
+                <tr aria-hidden>
+                  <td colSpan={19} style={{ height: theadH }} />
+                </tr>
+              )}
 
-                return (
-                  <tr key={l.id} className="text-center hover:bg-gray-50 dark:hover:bg-slate-800/70">
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">{formatearFecha(f)}</td>
+              {cargando ? (
+                <tr>
+                  <td colSpan={19} className="py-16 text-center">
+                    <div className="inline-flex flex-col items-center gap-2 text-slate-400 dark:text-slate-500">
+                      <svg className="h-8 w-8 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      <span className="text-sm">Cargando instalaciones...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : pageData.length === 0 ? (
+                <tr>
+                  <td colSpan={19} className="py-16 text-center">
+                    <div className="inline-flex flex-col items-center gap-2 text-slate-400 dark:text-slate-500">
+                      <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span className="text-sm font-medium">Sin resultados</span>
+                      <span className="text-xs">No hay registros para los filtros aplicados</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                pageData.map((l, rowIdx) => {
+                  const f = convertirAFecha(l.fechaInstalacion);
+                  const planGamerChecked = (ediciones[l.id]?.planGamer ?? l.planGamer ?? "") !== "";
+                  const cableadoChecked = (ediciones[l.id]?.servicioCableadoMesh ?? l.servicioCableadoMesh ?? "") !== "";
+                  const cat5 = parseIntSafe(ediciones[l.id]?.cat5e ?? l.cat5e ?? 0);
+                  const cat6 = planGamerChecked ? 1 : parseIntSafe(ediciones[l.id]?.cat6 ?? l.cat6 ?? 0);
+                  const puntos = cat5 + cat6;
+                  const isEven = rowIdx % 2 === 0;
 
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">{l.cuadrillaNombre || "-"}</td>
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">{l.codigoCliente || "-"}</td>
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">{l.documento || "-"}</td>
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">{l.cliente || "-"}</td>
-
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">{(l.tipoOrden || "-").toString()}</td>
-
-                    <td
-                      className="max-w-[360px] border border-slate-200 p-1 text-left dark:border-slate-700"
-                      style={{ maxHeight: 64, overflowY: "auto" }}
-                      dangerouslySetInnerHTML={{ __html: resaltarPlanHTML(l.plan) }}
-                    />
-
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">{l.snONT || "-"}</td>
-
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">
-                      {Array.isArray(l.snMESH) && l.snMESH.filter(Boolean).length > 0 ? (
-                        <div className="flex flex-wrap gap-1 justify-center">
-                          {l.snMESH.filter(Boolean).map((sn: string, i: number) => (
-                            <span
-                              key={i}
-                              className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-800 border border-green-200"
-                            >
-                              {sn}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        "-"
+                  return (
+                    <tr
+                      key={l.id}
+                      className={cls(
+                        "text-center transition-colors hover:bg-blue-50/40 dark:hover:bg-blue-950/20",
+                        isEven ? "bg-white dark:bg-slate-900" : "bg-slate-50/60 dark:bg-slate-800/30"
                       )}
-                    </td>
+                    >
+                      {/* Fecha */}
+                      <td className="whitespace-nowrap px-3 py-2.5 text-xs text-slate-600 dark:text-slate-400">
+                        {formatearFecha(f)}
+                      </td>
 
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">
-                      {Array.isArray(l.snBOX) && l.snBOX.filter(Boolean).length > 0 ? (
-                        <div className="flex flex-wrap gap-1 justify-center">
-                          {l.snBOX.filter(Boolean).map((sn: string, i: number) => (
-                            <span
-                              key={i}
-                              className="px-2 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-800 border border-yellow-200"
-                            >
-                              {sn}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
-
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">{l.snFONO || "-"}</td>
-
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">
-                      {coordReadOnly ? (
-                        (ediciones[l.id]?.planGamer ?? l.planGamer ?? "") !== "" ? "Si" : "No"
-                      ) : (
-                        <input
-                          type="checkbox"
-                          className="scale-110"
-                          checked={(ediciones[l.id]?.planGamer ?? l.planGamer ?? "") !== ""}
-                          onChange={(e) => {
-                            const checked = e.target.checked;
-                            handleEdicionChange(l.id, "planGamer", checked ? "GAMER" : "");
-                            if (!checked) handleEdicionChange(l.id, "cat6", 0);
-                          }}
-                        />
-                      )}
-                    </td>
-
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">
-                      {coordReadOnly ? (
-                        (ediciones[l.id]?.kitWifiPro ?? l.kitWifiPro ?? "") !== "" ? "Si" : "No"
-                      ) : (
-                        <input
-                          type="checkbox"
-                          className="scale-110"
-                          checked={(ediciones[l.id]?.kitWifiPro ?? l.kitWifiPro ?? "") !== ""}
-                          onChange={(e) =>
-                            handleEdicionChange(
-                              l.id,
-                              "kitWifiPro",
-                              e.target.checked ? "KIT WIFI PRO (EN VENTA)" : ""
-                            )
-                          }
-                        />
-                      )}
-                    </td>
-
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">
-                      {coordReadOnly ? (
-                        (ediciones[l.id]?.servicioCableadoMesh ?? l.servicioCableadoMesh ?? "") !== "" ? "Si" : "No"
-                      ) : (
-                        <input
-                          type="checkbox"
-                          className="scale-110"
-                          checked={(ediciones[l.id]?.servicioCableadoMesh ?? l.servicioCableadoMesh ?? "") !== ""}
-                          onChange={(e) => {
-                            const checked = e.target.checked;
-                            handleEdicionChange(
-                              l.id,
-                              "servicioCableadoMesh",
-                              checked ? "SERVICIO CABLEADO DE MESH" : ""
-                            );
-                            if (!checked) handleEdicionChange(l.id, "cat5e", 0);
-                          }}
-                        />
-                      )}
-                    </td>
-
-                    <td className="border border-slate-200 p-1 dark:border-slate-700">
-                      {coordReadOnly ? (
-                        <span>{ediciones[l.id]?.cat5e ?? l.cat5e ?? 0}</span>
-                      ) : (
-                        <input
-                          type="number"
-                          min={0}
-                          step={1}
-                          disabled={!cableadoChecked}
-                          value={ediciones[l.id]?.cat5e ?? l.cat5e ?? 0}
-                          className="w-20 rounded border border-slate-300 px-2 py-1 text-center disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:disabled:bg-slate-800"
-                          onChange={(e) => handleEdicionChange(l.id, "cat5e", Math.max(0, parseIntSafe(e.target.value)))}
-                        />
-                      )}
-                    </td>
-
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">{cat6}</td>
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">{puntos}</td>
-
-                    <td className="border border-slate-200 p-1 dark:border-slate-700">
-                      {coordReadOnly ? (
-                        <span className="block text-left">{ediciones[l.id]?.observacion ?? l.observacion ?? "-"}</span>
-                      ) : (
-                        <input
-                          type="text"
-                          value={ediciones[l.id]?.observacion ?? l.observacion ?? ""}
-                          className="w-full rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                          onChange={(e) => handleEdicionChange(l.id, "observacion", e.target.value)}
-                        />
-                      )}
-                    </td>
-
-                    <td className="border border-slate-200 p-2 dark:border-slate-700">
-                      <div className="flex items-center justify-center gap-2">
-                        {!coordReadOnly && (
-                          <button
-                            className={cls(
-                              "px-3 py-1 rounded text-xs text-white",
-                              guardandoFila === l.id ? "bg-slate-400" : "bg-blue-600 hover:bg-blue-700"
-                            )}
-                            disabled={guardandoFila === l.id}
-                            onClick={() => guardarFila(l)}
-                          >
-                            {guardandoFila === l.id ? "Guardando..." : "Guardar"}
-                          </button>
+                      {/* Cuadrilla */}
+                      <td className="px-3 py-2.5">
+                        {l.cuadrillaNombre ? (
+                          <span className="inline-block rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                            {l.cuadrillaNombre}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">-</span>
                         )}
-                        <button
-                          className="px-3 py-1 rounded text-xs text-white bg-slate-700 hover:bg-slate-800"
-                          onClick={() => abrirDetalle(l)}
-                        >
-                          Detalle
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+                      </td>
+
+                      {/* Codigo */}
+                      <td className="px-3 py-2.5 font-mono text-xs text-slate-700 dark:text-slate-300">
+                        {l.codigoCliente || "-"}
+                      </td>
+
+                      {/* Documento */}
+                      <td className="px-3 py-2.5 text-xs text-slate-600 dark:text-slate-400">
+                        {l.documento || "-"}
+                      </td>
+
+                      {/* Cliente */}
+                      <td className="px-3 py-2.5 text-left text-xs font-medium text-slate-800 dark:text-slate-200">
+                        {l.cliente || "-"}
+                      </td>
+
+                      {/* R/C */}
+                      <td className="px-3 py-2.5">
+                        {l.tipoOrden ? (
+                          <span
+                            className={cls(
+                              "inline-block rounded-md px-2 py-0.5 text-[11px] font-semibold",
+                              l.tipoOrden === "RESIDENCIAL"
+                                ? "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                                : "bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300"
+                            )}
+                          >
+                            {l.tipoOrden === "RESIDENCIAL" ? "RES" : l.tipoOrden === "CONDOMINIO" ? "COND" : l.tipoOrden}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
+                      </td>
+
+                      {/* Plan */}
+                      <td
+                        className="max-w-[320px] px-2 py-1.5 text-left text-xs dark:border-slate-700"
+                        style={{ maxHeight: 60, overflowY: "auto" }}
+                        dangerouslySetInnerHTML={{ __html: resaltarPlanHTML(l.plan) }}
+                      />
+
+                      {/* SN ONT */}
+                      <td className="px-3 py-2.5 font-mono text-xs text-slate-600 dark:text-slate-400">
+                        {l.snONT || "-"}
+                      </td>
+
+                      {/* SN MESH */}
+                      <td className="px-2 py-2">
+                        {Array.isArray(l.snMESH) && l.snMESH.filter(Boolean).length > 0 ? (
+                          <div className="flex flex-wrap justify-center gap-1">
+                            {l.snMESH.filter(Boolean).map((sn: string, i: number) => (
+                              <span
+                                key={i}
+                                className="rounded-md bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:ring-emerald-800"
+                              >
+                                {sn}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-xs">-</span>
+                        )}
+                      </td>
+
+                      {/* SN BOX */}
+                      <td className="px-2 py-2">
+                        {Array.isArray(l.snBOX) && l.snBOX.filter(Boolean).length > 0 ? (
+                          <div className="flex flex-wrap justify-center gap-1">
+                            {l.snBOX.filter(Boolean).map((sn: string, i: number) => (
+                              <span
+                                key={i}
+                                className="rounded-md bg-amber-50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-800"
+                              >
+                                {sn}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-xs">-</span>
+                        )}
+                      </td>
+
+                      {/* SN FONO */}
+                      <td className="px-3 py-2.5 font-mono text-xs text-slate-600 dark:text-slate-400">
+                        {l.snFONO || "-"}
+                      </td>
+
+                      {/* Plan Gamer */}
+                      <td className="px-3 py-2.5">
+                        {coordReadOnly ? (
+                          <span
+                            className={cls(
+                              "inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                              (ediciones[l.id]?.planGamer ?? l.planGamer ?? "") !== ""
+                                ? "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
+                                : "bg-slate-100 text-slate-400 dark:bg-slate-800"
+                            )}
+                          >
+                            {(ediciones[l.id]?.planGamer ?? l.planGamer ?? "") !== "" ? "Si" : "No"}
+                          </span>
+                        ) : (
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 cursor-pointer rounded accent-violet-600"
+                            checked={(ediciones[l.id]?.planGamer ?? l.planGamer ?? "") !== ""}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              handleEdicionChange(l.id, "planGamer", checked ? "GAMER" : "");
+                              if (!checked) handleEdicionChange(l.id, "cat6", 0);
+                            }}
+                          />
+                        )}
+                      </td>
+
+                      {/* Kit Wifi Pro */}
+                      <td className="px-3 py-2.5">
+                        {coordReadOnly ? (
+                          <span
+                            className={cls(
+                              "inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                              (ediciones[l.id]?.kitWifiPro ?? l.kitWifiPro ?? "") !== ""
+                                ? "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300"
+                                : "bg-slate-100 text-slate-400 dark:bg-slate-800"
+                            )}
+                          >
+                            {(ediciones[l.id]?.kitWifiPro ?? l.kitWifiPro ?? "") !== "" ? "Si" : "No"}
+                          </span>
+                        ) : (
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 cursor-pointer rounded accent-sky-600"
+                            checked={(ediciones[l.id]?.kitWifiPro ?? l.kitWifiPro ?? "") !== ""}
+                            onChange={(e) =>
+                              handleEdicionChange(
+                                l.id,
+                                "kitWifiPro",
+                                e.target.checked ? "KIT WIFI PRO (EN VENTA)" : ""
+                              )
+                            }
+                          />
+                        )}
+                      </td>
+
+                      {/* Cableado Mesh */}
+                      <td className="px-3 py-2.5">
+                        {coordReadOnly ? (
+                          <span
+                            className={cls(
+                              "inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                              (ediciones[l.id]?.servicioCableadoMesh ?? l.servicioCableadoMesh ?? "") !== ""
+                                ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300"
+                                : "bg-slate-100 text-slate-400 dark:bg-slate-800"
+                            )}
+                          >
+                            {(ediciones[l.id]?.servicioCableadoMesh ?? l.servicioCableadoMesh ?? "") !== "" ? "Si" : "No"}
+                          </span>
+                        ) : (
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 cursor-pointer rounded accent-orange-600"
+                            checked={(ediciones[l.id]?.servicioCableadoMesh ?? l.servicioCableadoMesh ?? "") !== ""}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              handleEdicionChange(
+                                l.id,
+                                "servicioCableadoMesh",
+                                checked ? "SERVICIO CABLEADO DE MESH" : ""
+                              );
+                              if (!checked) handleEdicionChange(l.id, "cat5e", 0);
+                            }}
+                          />
+                        )}
+                      </td>
+
+                      {/* Cat5e */}
+                      <td className="px-2 py-2">
+                        {coordReadOnly ? (
+                          <span className="font-mono text-sm text-slate-700 dark:text-slate-300">
+                            {ediciones[l.id]?.cat5e ?? l.cat5e ?? 0}
+                          </span>
+                        ) : (
+                          <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            disabled={!cableadoChecked}
+                            value={ediciones[l.id]?.cat5e ?? l.cat5e ?? 0}
+                            className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-center text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:disabled:bg-slate-800"
+                            onChange={(e) =>
+                              handleEdicionChange(l.id, "cat5e", Math.max(0, parseIntSafe(e.target.value)))
+                            }
+                          />
+                        )}
+                      </td>
+
+                      {/* Cat6 */}
+                      <td className="px-3 py-2.5 font-mono text-sm text-slate-700 dark:text-slate-300">
+                        {cat6}
+                      </td>
+
+                      {/* UTP */}
+                      <td className="px-3 py-2.5">
+                        {puntos > 0 ? (
+                          <span className="inline-block rounded-md bg-slate-700 px-2 py-0.5 text-xs font-bold text-white dark:bg-slate-600">
+                            {puntos}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-xs">0</span>
+                        )}
+                      </td>
+
+                      {/* Observacion */}
+                      <td className="px-2 py-2">
+                        {coordReadOnly ? (
+                          <span className="block text-left text-xs text-slate-600 dark:text-slate-400">
+                            {ediciones[l.id]?.observacion ?? l.observacion ?? "-"}
+                          </span>
+                        ) : (
+                          <input
+                            type="text"
+                            value={ediciones[l.id]?.observacion ?? l.observacion ?? ""}
+                            className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                            onChange={(e) => handleEdicionChange(l.id, "observacion", e.target.value)}
+                          />
+                        )}
+                      </td>
+
+                      {/* Acciones */}
+                      <td className="px-2 py-2">
+                        <div className="flex items-center justify-center gap-1.5">
+                          {!coordReadOnly && (
+                            <button
+                              className={cls(
+                                "rounded-lg px-2.5 py-1 text-xs font-medium text-white transition-colors",
+                                guardandoFila === l.id
+                                  ? "bg-slate-400 cursor-not-allowed"
+                                  : "bg-blue-600 hover:bg-blue-700 active:bg-blue-800"
+                              )}
+                              disabled={guardandoFila === l.id}
+                              onClick={() => guardarFila(l)}
+                            >
+                              {guardandoFila === l.id ? "..." : "Guardar"}
+                            </button>
+                          )}
+                          <button
+                            className="rounded-lg bg-slate-700 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-slate-800 active:bg-slate-900 dark:bg-slate-600 dark:hover:bg-slate-700"
+                            onClick={() => abrirDetalle(l)}
+                          >
+                            Detalle
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* Paginacion */}
-      <div className="mt-3 flex items-center justify-between">
-        <div className="text-sm text-gray-600 dark:text-slate-400">
-          Mostrando <strong>{pageData.length > 0 ? (page - 1) * pageSize + 1 : 0}</strong>-<strong>{
-            (page - 1) * pageSize + pageData.length
-          }</strong> de <strong>{instalacionesFiltradas.length}</strong>
+      {/* ── Paginacion ── */}
+      <div className="mt-4 flex items-center justify-between">
+        <div className="text-xs text-slate-500 dark:text-slate-400">
+          Mostrando{" "}
+          <strong className="text-slate-700 dark:text-slate-200">
+            {pageData.length > 0 ? (page - 1) * pageSize + 1 : 0}–{(page - 1) * pageSize + pageData.length}
+          </strong>{" "}
+          de{" "}
+          <strong className="text-slate-700 dark:text-slate-200">{instalacionesFiltradas.length}</strong>{" "}
+          registros
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <button
-            className="rounded border border-slate-300 bg-white px-3 py-1 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page === 1}
           >
-            {"<"}
+            ‹
           </button>
-          <span className="text-sm">
-            Pagina <strong>{page}</strong> / {totalPages}
+          <span className="px-3 py-1.5 text-sm text-slate-600 dark:text-slate-400">
+            <strong className="text-slate-800 dark:text-slate-200">{page}</strong>
+            <span className="mx-1">/</span>
+            {totalPages}
           </span>
           <button
-            className="rounded border border-slate-300 bg-white px-3 py-1 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
           >
-            {">"}
+            ›
           </button>
         </div>
       </div>
 
-      {/* Drawer */}
+      {/* ── Drawer detalle ── */}
       {detalleOpen && (
         <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/40" onClick={cerrarDetalle} />
-          <div className="absolute right-0 top-0 h-full w-full max-w-[520px] overflow-y-auto border-l bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
-            <div className="flex items-center justify-between border-b p-4 dark:border-slate-700">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={cerrarDetalle} />
+          <div className="absolute right-0 top-0 h-full w-full max-w-[540px] overflow-y-auto bg-white shadow-2xl dark:bg-slate-900">
+            {/* Drawer header */}
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4 dark:border-slate-700 dark:bg-slate-900">
               <div>
-                <div className="text-lg font-semibold">Detalle de instalacion</div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">Codigo: {detalleItem?.codigoCliente || "-"}</div>
+                <div className="text-base font-semibold text-slate-900 dark:text-white">Detalle de instalacion</div>
+                <div className="mt-0.5 font-mono text-xs text-slate-500 dark:text-slate-400">
+                  {detalleItem?.codigoCliente || "-"}
+                </div>
               </div>
               <button
-                className="rounded bg-slate-100 px-3 py-1 text-sm hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                 onClick={cerrarDetalle}
               >
                 Cerrar
               </button>
             </div>
 
-            <div className="p-4 space-y-4">
-              <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                <div className="text-sm font-semibold mb-2">Resumen</div>
-                <div className="space-y-2">
+            <div className="p-5 space-y-4">
+              {/* Resumen */}
+              <section>
+                <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Resumen</h3>
+                <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/50 space-y-2.5">
                   {renderLinea("Cliente", detalleItem?.cliente)}
                   {renderLinea("Documento", detalleItem?.documento)}
                   {renderLinea("Direccion", detalleItem?.direccion)}
@@ -1138,33 +1328,51 @@ export default function InstalacionesClient() {
                   {renderLinea("Tipo Orden", detalleItem?.tipoOrden)}
                   {renderLinea("Plan", detalleItem?.plan)}
                 </div>
-              </div>
+              </section>
 
-              <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                <div className="text-sm font-semibold mb-2">Auditoria</div>
-                <div className="space-y-2">
+              {/* Auditoria */}
+              <section>
+                <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Auditoria</h3>
+                <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/50 space-y-2.5">
                   {renderLinea(
                     "Liquidado",
-                    detalleItem?.liquidadoAt ? formatearFecha(convertirAFecha(detalleItem?.liquidadoAt)) : "-"
+                    detalleItem?.liquidadoAt ? formatearFecha(convertirAFecha(detalleItem.liquidadoAt)) : "-"
                   )}
                   {renderLinea("Liquidado por", detalleItem?.liquidadoBy)}
                   {renderLinea(
                     "Corregido",
-                    detalleItem?.corregidoAt ? formatearFecha(convertirAFecha(detalleItem?.corregidoAt)) : "-"
+                    detalleItem?.corregidoAt ? formatearFecha(convertirAFecha(detalleItem.corregidoAt)) : "-"
                   )}
                   {renderLinea("Corregido por", detalleItem?.corregidoBy)}
-                  {renderLinea("Estado", detalleItem?.corregido ? "CORREGIDA" : "LIQUIDADA")}
+                  {renderLinea(
+                    "Estado",
+                    detalleItem?.corregido ? (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                        CORREGIDA
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                        LIQUIDADA
+                      </span>
+                    )
+                  )}
                 </div>
-              </div>
+              </section>
 
-              <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                <div className="text-sm font-semibold mb-2">Acta</div>
-                <div className="text-sm">{detalleItem?.acta || "-"}</div>
-              </div>
+              {/* Acta */}
+              <section>
+                <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Acta</h3>
+                <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                  <span className="font-mono text-sm text-slate-700 dark:text-slate-300">
+                    {detalleItem?.acta || "-"}
+                  </span>
+                </div>
+              </section>
 
-              <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                <div className="text-sm font-semibold mb-2">Equipos</div>
-                <div className="space-y-2">
+              {/* Equipos */}
+              <section>
+                <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Equipos instalados</h3>
+                <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/50 space-y-2">
                   {(() => {
                     const equiposBase = toArray(detalleItem?.equiposInstalados || detalleItem?.equipos || []);
                     const equiposSn = [
@@ -1178,54 +1386,88 @@ export default function InstalacionesClient() {
                       detalleItem?.snFONO ? { tipo: "FONO", sn: detalleItem.snFONO } : null,
                     ].filter(Boolean) as any[];
                     const equipos = equiposBase.length ? equiposBase : equiposSn;
-                    if (!equipos.length) return <div className="text-sm text-slate-500 dark:text-slate-400">Sin equipos</div>;
-                    return equipos.map((e: any, i: number) => (
-                      <div key={i} className="text-sm border rounded px-2 py-1">
-                        {e.tipo || e.kind || "Equipo"} {e.sn ? `- ${e.sn}` : ""} {e.proid ? `(PROID ${e.proid})` : ""}
-                      </div>
-                    ));
+                    if (!equipos.length)
+                      return <p className="text-xs text-slate-400">Sin equipos registrados</p>;
+                    const colorMap: Record<string, string> = {
+                      ONT: "bg-slate-100 text-slate-700 ring-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:ring-slate-600",
+                      MESH: "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:ring-emerald-800",
+                      BOX: "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-800",
+                      FONO: "bg-pink-50 text-pink-700 ring-pink-200 dark:bg-pink-900/30 dark:text-pink-300 dark:ring-pink-800",
+                    };
+                    return equipos.map((e: any, i: number) => {
+                      const tipo = (e.tipo || e.kind || "").toUpperCase();
+                      return (
+                        <div key={i} className={cls("flex items-center gap-2 rounded-lg px-3 py-2 ring-1", colorMap[tipo] || colorMap.ONT)}>
+                          <span className="text-xs font-bold">{tipo || "EQUIPO"}</span>
+                          {e.sn && <span className="font-mono text-xs">{e.sn}</span>}
+                          {e.proid && <span className="ml-auto text-[10px] text-slate-400">(PROID {e.proid})</span>}
+                        </div>
+                      );
+                    });
                   })()}
                 </div>
-              </div>
+              </section>
 
-              <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                <div className="text-sm font-semibold mb-2">Materiales</div>
-                <div className="space-y-2">
+              {/* Materiales */}
+              <section>
+                <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Materiales consumidos</h3>
+                <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/50 space-y-2">
                   {(() => {
                     const mats = toArray(detalleItem?.materialesConsumidos || detalleItem?.materiales || []);
-                    if (!mats.length) return <div className="text-sm text-slate-500 dark:text-slate-400">Sin materiales</div>;
+                    if (!mats.length)
+                      return <p className="text-xs text-slate-400">Sin materiales registrados</p>;
                     return mats.map((m: any, i: number) => (
-                      <div key={i} className="text-sm border rounded px-2 py-1">
-                        {m.tipo || m.nombre || "Material"} {m.cantidad ? `x ${m.cantidad}` : ""}
+                      <div key={i} className="flex items-center justify-between rounded-lg bg-white px-3 py-2 ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
+                        <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                          {m.tipo || m.nombre || "Material"}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {m.cantidad && (
+                            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                              x{m.cantidad}
+                            </span>
+                          )}
+                          {m.metros && (
+                            <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
+                              {m.metros}m
+                            </span>
+                          )}
+                        </div>
                       </div>
                     ));
                   })()}
                 </div>
-              </div>
+              </section>
 
-              <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                <div className="text-sm font-semibold mb-2">Llamadas</div>
-                <div className="space-y-2">
+              {/* Llamadas */}
+              <section>
+                <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Llamadas</h3>
+                <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/50 space-y-2">
                   {(() => {
                     const llamadas = toArray(detalleItem?.llamadas || detalleItem?.llamadasGestoras || []);
-                    if (!llamadas.length) return <div className="text-sm text-slate-500 dark:text-slate-400">Sin llamadas</div>;
+                    if (!llamadas.length)
+                      return <p className="text-xs text-slate-400">Sin llamadas registradas</p>;
                     return llamadas.map((ll: any, i: number) => (
-                      <div key={i} className="text-sm border rounded px-2 py-1">
-                        <div>{ll.gestora || ll.user || ll.estadoLlamada || "Llamada"}</div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400">
-                          {ll.fecha ? formatearFecha(convertirAFecha(ll.fecha)) : ""}{" "}
-                          {ll.resultado ? `- ${ll.resultado}` : ""}
-                          {ll.horaInicioLlamada && ll.horaInicioLlamada !== "-" ? ` | ${ll.horaInicioLlamada}` : ""}
-                          {ll.horaFinLlamada && ll.horaFinLlamada !== "-" ? ` - ${ll.horaFinLlamada}` : ""}
+                      <div key={i} className="rounded-lg bg-white px-3 py-2.5 ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
+                        <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                          {ll.gestora || ll.user || ll.estadoLlamada || "Llamada"}
                         </div>
-                        {ll.observacion || ll.observacionLlamada ? (
-                          <div className="text-xs">{ll.observacion || ll.observacionLlamada}</div>
-                        ) : null}
+                        <div className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                          {ll.fecha ? formatearFecha(convertirAFecha(ll.fecha)) : ""}{" "}
+                          {ll.resultado ? `· ${ll.resultado}` : ""}
+                          {ll.horaInicioLlamada && ll.horaInicioLlamada !== "-" ? ` · ${ll.horaInicioLlamada}` : ""}
+                          {ll.horaFinLlamada && ll.horaFinLlamada !== "-" ? ` – ${ll.horaFinLlamada}` : ""}
+                        </div>
+                        {(ll.observacion || ll.observacionLlamada) && (
+                          <div className="mt-1 text-[10px] italic text-slate-500 dark:text-slate-400">
+                            {ll.observacion || ll.observacionLlamada}
+                          </div>
+                        )}
                       </div>
                     ));
                   })()}
                 </div>
-              </div>
+              </section>
             </div>
           </div>
         </div>

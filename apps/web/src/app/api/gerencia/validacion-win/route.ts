@@ -204,6 +204,24 @@ function mapInstDoc(d: FirebaseFirestore.QueryDocumentSnapshot | FirebaseFiresto
 
   const cableado = toStr(servicios.servicioCableadoMesh || "");
 
+  // Determinar metraje desde materialesConsumidos:
+  // BOBINA → valor numérico de metros | PRECON → nombre del material tal como está
+  const matsCons: any[] = Array.isArray(data.materialesConsumidos) ? data.materialesConsumidos : [];
+  const bobinaMat = matsCons.find((m: any) =>
+    String(m.materialId || m.nombre || "").toUpperCase().includes("BOBINA")
+  );
+  const preconMat = matsCons.find((m: any) =>
+    String(m.materialId || m.nombre || "").toUpperCase().includes("PRECON")
+  );
+  const baseMetraje = toStr(
+    data.metraje_instalado || data.metrajeInstalado || data.materialesLiquidacion?.bobinaMetros || ""
+  );
+  const metrajeComputed = bobinaMat
+    ? toStr(bobinaMat.metros ?? bobinaMat.cantidad ?? baseMetraje)
+    : preconMat
+    ? toStr(preconMat.nombre || preconMat.materialId || "") || baseMetraje
+    : baseMetraje;
+
   return {
     id: d.id,
     codigoCliente: toStr(data.codigoCliente || orden.codiSeguiClien || d.id),
@@ -219,7 +237,7 @@ function mapInstDoc(d: FirebaseFirestore.QueryDocumentSnapshot | FirebaseFiresto
     snBOX: snBOX.length ? snBOX : parseSnList(data.snBOX),
     snFONO: toStr(byTipo("FONO")[0]?.sn || data.snFONO || ""),
     acta: toStr(data.ACTA || data.acta || data.materialesLiquidacion?.acta || ""),
-    metrajeInstalado: toStr(data.metraje_instalado || data.metrajeInstalado || data.materialesLiquidacion?.bobinaMetros || ""),
+    metrajeInstalado: metrajeComputed,
     cableadoMesh: cableado || "NO LLEVA",
     rotuloNapCto: toStr(liquidacion.rotuloNapCto || data.rotuloNapCto || ""),
     partner: "M&D",

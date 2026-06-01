@@ -11,8 +11,15 @@ export default async function ValidacionWinPage() {
   if (!canUse) redirect("/home");
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">VALIDACION WIN</h1>
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+          Validacion WIN
+        </h1>
+        <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
+          Cruce y validacion del Excel mensual contra la base de datos de instalaciones
+        </p>
+      </div>
       <ValidacionWinClient />
     </div>
   );

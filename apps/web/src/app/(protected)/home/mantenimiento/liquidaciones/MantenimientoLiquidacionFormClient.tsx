@@ -431,6 +431,19 @@ function normalizeDistrito(value: string) {
     if (raw === "MOTIVO_SIN_MATERIALES_REQUIRED") {
       return "Debes indicar el motivo cuando liquidas sin materiales.";
     }
+    if (raw === "SIN_CAMBIOS") {
+      return "No se detectaron cambios. Modifica al menos un campo o material antes de aplicar la correccion.";
+    }
+    if (raw === "LIQUIDACION_NO_CONFIRMADA") {
+      return "Esta liquidacion no esta en estado LIQUIDADO y no puede corregirse.";
+    }
+    if (raw === "MATERIALES_REQUIRED") {
+      return "Debes agregar al menos un material, o marcar la opcion sin materiales con su motivo.";
+    }
+    if (raw.startsWith("STOCK_INSUFICIENTE_CUADRILLA")) {
+      const materialId = raw.replace("STOCK_INSUFICIENTE_CUADRILLA", "").trim();
+      return `Stock insuficiente en la cuadrilla para el material${materialId ? `: ${materialId}` : ""}.`;
+    }
     return raw;
   }
 
@@ -570,6 +583,42 @@ function normalizeDistrito(value: string) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) throw new Error(String(data?.error || "ERROR"));
+
+      // Recargar el detalle actualizado para que el form refleje los valores corregidos
+      const detailRes = await fetch(`/api/mantenimiento/liquidaciones/detail?id=${encodeURIComponent(id)}`, { cache: "no-store" });
+      const detailBody = await detailRes.json().catch(() => ({}));
+      if (detailRes.ok && detailBody?.ok && detailBody?.item) {
+        const item = detailBody.item;
+        setForm({
+          ticketNumero: String(item.ticketNumero || ""),
+          ticketVisita: Math.max(1, Number(item.ticketVisita || 1)),
+          codigoCaja: String(item.codigoCaja || ""),
+          fechaAtencionYmd: String(item.fechaAtencionYmd || ""),
+          distrito: String(item.distrito || ""),
+          latitud: item.latitud === null || item.latitud === undefined ? "" : String(item.latitud),
+          longitud: item.longitud === null || item.longitud === undefined ? "" : String(item.longitud),
+          cuadrillaId: String(item.cuadrillaId || ""),
+          horaInicio: String(item.horaInicio || ""),
+          horaFin: String(item.horaFin || ""),
+          causaRaiz: String(item.causaRaiz || ""),
+          solucion: String(item.solucion || ""),
+          observacion: String(item.observacion || ""),
+          sinMateriales: Boolean(item.sinMateriales),
+          motivoSinMateriales: String(item.motivoSinMateriales || ""),
+          estado: String(item.estado || "LIQUIDADO"),
+          origen: (String(item.origen || "MANUAL") as any) || "MANUAL",
+          materialesConsumidos: Array.isArray(item.materialesConsumidos)
+            ? item.materialesConsumidos.map((it: any) => ({
+                materialId: String(it.materialId || ""),
+                descripcion: String(it.descripcion || ""),
+                unidadTipo: String(it.unidadTipo || "UND").toUpperCase() === "METROS" ? "METROS" : "UND",
+                und: String(it.und || ""),
+                metros: String(it.metros || ""),
+              }))
+            : [],
+        });
+      }
+
       setCorrectionMode(false);
       setMessage("Correccion aplicada.");
       router.refresh();
@@ -691,12 +740,13 @@ function normalizeDistrito(value: string) {
               </div>
               <div>
                 <label className="mb-1 block text-xs text-slate-500">Cuadrilla <span className="text-red-500">*</span></label>
-                <select value={form.cuadrillaId} onChange={(e) => patch("cuadrillaId", e.target.value)} disabled={locked} className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+                <select value={form.cuadrillaId} onChange={(e) => patch("cuadrillaId", e.target.value)} disabled={locked || correctionMode} className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
                   <option value="">Selecciona...</option>
                   {cuadrillas.map((c) => (
                     <option key={c.id} value={c.id}>{c.nombre || c.id}</option>
                   ))}
                 </select>
+                {correctionMode ? <p className="mt-1 text-xs text-amber-600">La cuadrilla no puede cambiarse durante una correccion.</p> : null}
               </div>
               <div>
                 <label className="mb-1 block text-xs text-slate-500">Coordenadas</label>

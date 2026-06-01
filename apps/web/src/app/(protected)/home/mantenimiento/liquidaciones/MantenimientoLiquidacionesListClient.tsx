@@ -13,6 +13,7 @@ type Row = {
   cuadrillaNombre?: string;
   estado?: string;
   materialesConsumidos?: any[];
+  sinMateriales?: boolean;
 };
 
 type CausaRaiz = {
@@ -60,6 +61,12 @@ export default function MantenimientoLiquidacionesListClient() {
   const [editingCausaId, setEditingCausaId] = useState("");
   const [savingCausa, setSavingCausa] = useState(false);
   const [deletingId, setDeletingId] = useState("");
+  const [confirmDeleteModal, setConfirmDeleteModal] = useState<null | {
+    id: string;
+    ticketNumero: string;
+    tieneStock: boolean;
+  }>(null);
+  const [deletingModal, setDeletingModal] = useState(false);
   const [viewMode, setViewMode] = useState<"atenciones" | "tickets">("atenciones");
   const [onlyRepeated, setOnlyRepeated] = useState(false);
 
@@ -220,9 +227,33 @@ export default function MantenimientoLiquidacionesListClient() {
       setRows((curr) => curr.filter((row) => row.id !== id));
     } catch (e: any) {
       const code = String(e?.message || "ERROR");
-      setError(code === "SOLO_ABIERTO_ELIMINABLE" ? "Solo se pueden eliminar tickets en estado ABIERTO." : code);
+      setError(code === "NO_ELIMINABLE" ? "Este ticket no puede ser eliminado en su estado actual." : code);
     } finally {
       setDeletingId("");
+    }
+  }
+
+  async function confirmarEliminarLiquidado() {
+    if (!confirmDeleteModal) return;
+    const { id } = confirmDeleteModal;
+    try {
+      setDeletingModal(true);
+      setError("");
+      const res = await fetch("/api/mantenimiento/liquidaciones/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body?.ok) throw new Error(String(body?.error || "ERROR"));
+      setRows((curr) => curr.filter((row) => row.id !== id));
+      setConfirmDeleteModal(null);
+    } catch (e: any) {
+      const code = String(e?.message || "ERROR");
+      setError(code === "NO_ELIMINABLE" ? "Este ticket no puede ser eliminado en su estado actual." : code);
+      setConfirmDeleteModal(null);
+    } finally {
+      setDeletingModal(false);
     }
   }
 
@@ -426,6 +457,21 @@ export default function MantenimientoLiquidacionesListClient() {
                             {deletingId === r.id ? "Eliminando..." : "Eliminar"}
                           </button>
                         ) : null}
+                        {r.estado === "LIQUIDADO" ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setConfirmDeleteModal({
+                                id: r.id,
+                                ticketNumero: r.ticketNumero || r.id,
+                                tieneStock: !r.sinMateriales && (Array.isArray(r.materialesConsumidos) ? r.materialesConsumidos.length > 0 : false),
+                              })
+                            }
+                            className="text-red-600 hover:underline"
+                          >
+                            Eliminar
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -501,6 +547,49 @@ export default function MantenimientoLiquidacionesListClient() {
           </div>
         ) : null}
       </section>
+
+      {confirmDeleteModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" onClick={() => { if (!deletingModal) setConfirmDeleteModal(null); }}>
+          <div className="w-full max-w-md rounded-[24px] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900" onClick={(e) => e.stopPropagation()}>
+            <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-700">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Eliminar ticket liquidado</h3>
+              <p className="mt-0.5 text-sm text-slate-500">Ticket: <span className="font-medium text-slate-700 dark:text-slate-300">{confirmDeleteModal.ticketNumero}</span></p>
+            </div>
+            <div className="space-y-3 p-5">
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300">
+                Esta accion es irreversible. Una vez eliminado no se podra recuperar la informacion del ticket.
+              </div>
+              {confirmDeleteModal.tieneStock ? (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300">
+                  Los materiales liquidados en este ticket seran devueltos al stock de la cuadrilla correspondiente.
+                </div>
+              ) : (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                  Este ticket fue liquidado sin materiales, no hay stock que devolver.
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4 dark:border-slate-700">
+              <button
+                type="button"
+                disabled={deletingModal}
+                onClick={() => setConfirmDeleteModal(null)}
+                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={deletingModal}
+                onClick={confirmarEliminarLiquidado}
+                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deletingModal ? "Eliminando..." : "Eliminar definitivamente"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {causasOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" onClick={() => setCausasOpen(false)}>

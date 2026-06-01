@@ -260,6 +260,11 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
       href: "/home/transferencias/mantenimiento/despacho",
     });
     items.push({
+      key: "TR_MANT_DEV",
+      label: "Devolucion (Mant)",
+      href: "/home/transferencias/mantenimiento/devolucion",
+    });
+    items.push({
       key: "TR_MANT_STOCK",
       label: "Stock Cuadrillas (Mant)",
       href: "/home/transferencias/mantenimiento/stock-cuadrillas",

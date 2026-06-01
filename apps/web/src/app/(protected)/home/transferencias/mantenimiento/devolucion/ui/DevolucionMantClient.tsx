@@ -5,23 +5,16 @@ import { useActionState } from "react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
-import { despacharMantenimientoAction } from "../actions";
+import { devolverMantenimientoAction } from "../actions";
 
-type CuadrillaInfo = {
-  nombre?: string;
-  coordinadorUid?: string;
-  coordinadorNombre?: string;
-  tecnicosUids?: string[];
-  tecnicosNombres?: string[];
-};
+type CuadrillaOpt = { id: string; nombre: string };
 
-  type CuadrillaOpt = { id: string; nombre: string };
-
-type MaterialOpt = {
+type StockItem = {
   id: string;
   nombre?: string;
-  unidadTipo?: "UND" | "METROS" | null;
-  vendible?: boolean;
+  tipo?: string;
+  cantidad?: number;
+  metros?: number;
 };
 
 type ItemState = {
@@ -42,6 +35,17 @@ type ActionState =
       usuarioNombre?: string;
     };
 
+type GuiaData = {
+  fechaStr?: string;
+  usuario?: string;
+  cuadrilla?: string;
+  coordinador?: string;
+  tecnicos?: string[];
+  observacion?: string;
+  materiales?: Record<string, number>;
+  qrDataUrl?: string;
+};
+
 function shortName(full: string, fallback: string) {
   const parts = String(full || "")
     .trim()
@@ -54,48 +58,17 @@ function shortName(full: string, fallback: string) {
 }
 
 function stripCuadrillaPrefix(name: string) {
-  const raw = String(name || "").trim();
-  if (!raw) return raw;
-  return raw.replace(/^MANTENIMIENTO\s+/i, "").trim();
-}
-
-function printThermalBlobTwice(pdf: jsPDF) {
-  const blob = pdf.output("blob");
-  const urlBlob = URL.createObjectURL(blob);
-
-  const iframe = document.createElement("iframe");
-  iframe.style.display = "none";
-  iframe.src = urlBlob;
-  document.body.appendChild(iframe);
-
-  iframe.onload = () => {
-    iframe.contentWindow?.focus();
-    iframe.contentWindow?.print();
-    setTimeout(() => iframe.contentWindow?.print(), 1000);
-  };
-
-  setTimeout(() => {
-    try {
-      document.body.removeChild(iframe);
-    } catch {}
-    URL.revokeObjectURL(urlBlob);
-  }, 15000);
-
-  return blob;
-}
-
-async function makeQrDataUrl(value: string) {
-  return QRCode.toDataURL(value, {
-    errorCorrectionLevel: "H",
-    margin: 0,
-    width: 300,
-  });
+  return String(name || "")
+    .trim()
+    .replace(/^MANTENIMIENTO\s+/i, "")
+    .trim();
 }
 
 function normalizePhone(raw: string) {
   const digits = String(raw || "").replace(/\D/g, "");
   if (!digits) return "";
-  const noPrefix = digits.startsWith("51") && digits.length >= 11 ? digits.slice(2) : digits;
+  const noPrefix =
+    digits.startsWith("51") && digits.length >= 11 ? digits.slice(2) : digits;
   return noPrefix.length >= 9 ? noPrefix : "";
 }
 
@@ -106,11 +79,13 @@ async function obtenerCelularesByUid(uids: string[] = []) {
   if (!res.ok) return [];
   const data = await res.json();
   const items = Array.isArray(data?.items) ? data.items : [];
-  const celulares = items.map((it: any) => normalizePhone(String(it?.celular || ""))).filter(Boolean);
+  const celulares = items
+    .map((it: any) => normalizePhone(String(it?.celular || "")))
+    .filter(Boolean);
   return Array.from(new Set(celulares));
 }
 
-async function enviarGuiaPorWhatsAppACoordinador(args: {
+async function enviarGuiaPorWhatsApp(args: {
   coordinadorUid: string;
   tipoGuia: string;
   guiaId: string;
@@ -124,7 +99,6 @@ async function enviarGuiaPorWhatsAppACoordinador(args: {
 }) {
   const celulares = await obtenerCelularesByUid([args.coordinadorUid]);
   if (!celulares.length) return { total: 0 };
-
   const lines: string[] = [];
   lines.push(`*${args.tipoGuia}*`);
   lines.push(`Guia: ${args.guiaId}`);
@@ -137,27 +111,37 @@ async function enviarGuiaPorWhatsAppACoordinador(args: {
   lines.push("Puedes ver el comprobante aqui:");
   lines.push(args.urlComprobante);
   const mensaje = lines.join("\n");
-
   const numero = celulares[0];
   try {
     const url = `https://wa.me/51${numero}?text=${encodeURIComponent(mensaje)}`;
     const win = window.open(url, "_blank");
     if (win) win.opener = null;
   } catch {}
-
   return { total: 1 };
 }
 
-type GuiaData = {
-  fechaStr?: string;
-  usuario?: string;
-  cuadrilla?: string;
-  coordinador?: string;
-  tecnicos?: string[];
-  observacion?: string;
-  materiales?: Record<string, number>;
-  qrDataUrl?: string;
-};
+async function makeQrDataUrl(value: string) {
+  return QRCode.toDataURL(value, { errorCorrectionLevel: "H", margin: 0, width: 300 });
+}
+
+function printThermalBlobTwice(pdf: jsPDF) {
+  const blob = pdf.output("blob");
+  const urlBlob = URL.createObjectURL(blob);
+  const iframe = document.createElement("iframe");
+  iframe.style.display = "none";
+  iframe.src = urlBlob;
+  document.body.appendChild(iframe);
+  iframe.onload = () => {
+    iframe.contentWindow?.focus();
+    iframe.contentWindow?.print();
+    setTimeout(() => iframe.contentWindow?.print(), 1000);
+  };
+  setTimeout(() => {
+    try { document.body.removeChild(iframe); } catch {}
+    URL.revokeObjectURL(urlBlob);
+  }, 15000);
+  return blob;
+}
 
 function generarPDFTermico80mm(guiaId: string, data: GuiaData) {
   const items = Object.entries(data.materiales || {});
@@ -194,7 +178,6 @@ function generarPDFTermico80mm(guiaId: string, data: GuiaData) {
   pdf.text(`COORDINADOR: ${data.coordinador || "-"}`, 40, y, C);
   y += 5;
   pdf.setFont("helvetica", "normal");
-
   (data.tecnicos || []).forEach((t, i) => {
     pdf.text(`TECNICO ${i + 1}: ${t}`, 40, y, C);
     y += 5;
@@ -202,7 +185,7 @@ function generarPDFTermico80mm(guiaId: string, data: GuiaData) {
 
   y += 3;
   pdf.setFont("helvetica", "bold");
-  pdf.text("DESPACHO", 40, y, C);
+  pdf.text("DEVOLUCION", 40, y, C);
   y += 6;
   pdf.setFont("helvetica", "normal");
 
@@ -237,135 +220,195 @@ function generarPDFTermico80mm(guiaId: string, data: GuiaData) {
   return pdf;
 }
 
-function buildMaterialResumen(items: ItemState[], materialsById: Map<string, MaterialOpt>) {
-  const resumen: Record<string, number> = {};
+function buildResumenDisplay(items: ItemState[], stockByMaterial: Map<string, StockItem>) {
+  const out: Record<string, number> = {};
   items.forEach((it) => {
-    const mat = materialsById.get(it.materialId);
-    const unidad = (mat?.unidadTipo || "UND").toUpperCase();
+    const stock = stockByMaterial.get(it.materialId);
+    const unidad = (stock?.tipo || "UND").toUpperCase();
+    const nombre = stock?.nombre || it.materialId;
     if (unidad === "METROS") {
       const n = Math.max(0, Number(it.metros || 0));
-      if (n > 0) resumen[it.materialId] = (resumen[it.materialId] || 0) + n;
+      if (n > 0) out[nombre] = (out[nombre] || 0) + n;
     } else {
       const n = Math.max(0, Math.floor(Number(it.und || 0)));
-      if (n > 0) resumen[it.materialId] = (resumen[it.materialId] || 0) + n;
+      if (n > 0) out[nombre] = (out[nombre] || 0) + n;
     }
-  });
-  return resumen;
-}
-
-function buildMaterialResumenDisplay(items: ItemState[], materialsById: Map<string, MaterialOpt>) {
-  const base = buildMaterialResumen(items, materialsById);
-  const out: Record<string, number> = {};
-  Object.entries(base).forEach(([id, n]) => {
-    const nombre = materialsById.get(id)?.nombre || id;
-    out[nombre] = (out[nombre] || 0) + n;
   });
   return out;
 }
 
-function buildMaterialResumenRows(items: ItemState[], materialsById: Map<string, MaterialOpt>) {
-  const base = buildMaterialResumen(items, materialsById);
-  return Object.entries(base).map(([id, n]) => {
-    const mat = materialsById.get(id);
-    return {
-      id,
-      nombre: mat?.nombre || id,
-      unidad: (mat?.unidadTipo || "UND").toUpperCase(),
-      cantidad: n,
-    };
-  });
+function buildResumenRows(items: ItemState[], stockByMaterial: Map<string, StockItem>) {
+  return items
+    .map((it) => {
+      const stock = stockByMaterial.get(it.materialId);
+      const unidad = (stock?.tipo || "UND").toUpperCase();
+      const cantidad =
+        unidad === "METROS"
+          ? Math.max(0, Number(it.metros || 0))
+          : Math.max(0, Math.floor(Number(it.und || 0)));
+      return { id: it.materialId, nombre: stock?.nombre || it.materialId, unidad, cantidad };
+    })
+    .filter((r) => r.cantidad > 0);
 }
 
-function getItemsValidationError(items: ItemState[], materialsById: Map<string, MaterialOpt>) {
-  if (!items.length) return "Agrega materiales";
+function getValidationError(items: ItemState[], stockByMaterial: Map<string, StockItem>) {
+  if (!items.length) return "Agrega al menos un material a devolver";
   for (const it of items) {
-    const mat = materialsById.get(it.materialId);
-    const unidad = (mat?.unidadTipo || "UND").toUpperCase();
+    const stock = stockByMaterial.get(it.materialId);
+    const unidad = (stock?.tipo || "UND").toUpperCase();
     if (unidad === "METROS") {
       const n = Number(it.metros || 0);
-      if (!Number.isFinite(n) || n <= 0) return `Cantidad invalida en ${mat?.nombre || it.materialId}`;
+      if (!Number.isFinite(n) || n <= 0)
+        return `Cantidad invalida en ${stock?.nombre || it.materialId}`;
+      if (n > Number(stock?.metros || 0))
+        return `Cantidad excede el stock disponible en: ${stock?.nombre || it.materialId}`;
     } else {
       const n = Math.floor(Number(it.und || 0));
-      if (!Number.isFinite(n) || n <= 0) return `Cantidad invalida en ${mat?.nombre || it.materialId}`;
+      if (!Number.isFinite(n) || n <= 0)
+        return `Cantidad invalida en ${stock?.nombre || it.materialId}`;
+      if (n > Number(stock?.cantidad || 0))
+        return `Cantidad excede el stock disponible en: ${stock?.nombre || it.materialId}`;
     }
   }
   return "";
 }
 
-export default function DespachoMantClient() {
+export default function DevolucionMantClient() {
   const formRef = useRef<HTMLFormElement | null>(null);
-  const [state, action, pending] = useActionState<ActionState, FormData>(despacharMantenimientoAction as any, null);
-  const formError = state && !state.ok ? (state.error?.formErrors || [])[0] : undefined;
+  const [state, action, pending] = useActionState<ActionState, FormData>(
+    devolverMantenimientoAction as any,
+    null
+  );
+  const formError =
+    state && !state.ok ? (state.error?.formErrors || [])[0] : undefined;
 
   const [step, setStep] = useState<1 | 2>(1);
   const [cuadrillas, setCuadrillas] = useState<CuadrillaOpt[]>([]);
   const [cuadrillasLoading, setCuadrillasLoading] = useState(false);
   const [comboOpen, setComboOpen] = useState(false);
   const [busqueda, setBusqueda] = useState("");
-  const [materiales, setMateriales] = useState<MaterialOpt[]>([]);
+
   const [cuadrillaId, setCuadrillaId] = useState("");
   const [cuadrillaNombre, setCuadrillaNombre] = useState("");
   const [coordinador, setCoordinador] = useState("");
   const [coordinadorUid, setCoordinadorUid] = useState("");
   const [tecnicos, setTecnicos] = useState<string[]>([]);
-  const [tecnicosUids, setTecnicosUids] = useState<string[]>([]);
+
+  const [stockItems, setStockItems] = useState<StockItem[]>([]);
+  const [stockLoading, setStockLoading] = useState(false);
+  const [stockSearch, setStockSearch] = useState("");
+
   const [usuarioNombre, setUsuarioNombre] = useState("");
   const [observacion, setObservacion] = useState("");
-
-  const [materialSearch, setMaterialSearch] = useState("");
-  const [materialId, setMaterialId] = useState("");
   const [items, setItems] = useState<ItemState[]>([]);
   const [showPreview, setShowPreview] = useState(false);
 
   const printedGuiaRef = useRef<string | null>(null);
 
+  // Carga lista de cuadrillas y usuario actual
   useEffect(() => {
     (async () => {
       try {
         setCuadrillasLoading(true);
-        const [qRes, mRes] = await Promise.all([
+        const [qRes, meRes] = await Promise.all([
           fetch("/api/cuadrillas/list?area=MANTENIMIENTO", { cache: "no-store" }),
-          fetch("/api/materiales/list", { cache: "no-store" }),
+          fetch("/api/auth/me", { cache: "no-store" }),
         ]);
-        const [qBody, mBody] = await Promise.all([qRes.json().catch(() => ({})), mRes.json().catch(() => ({}))]);
+        const [qBody, meBody] = await Promise.all([
+          qRes.json().catch(() => ({})),
+          meRes.json().catch(() => ({})),
+        ]);
         setCuadrillas(Array.isArray(qBody?.items) ? qBody.items : []);
-        setMateriales(Array.isArray(mBody?.items) ? mBody.items : []);
+        if (meBody?.ok && meBody?.nombre)
+          setUsuarioNombre(shortName(String(meBody.nombre), ""));
       } catch {
-        toast.error("No se pudo cargar catalogos");
+        toast.error("No se pudo cargar el catalogo de cuadrillas");
       } finally {
         setCuadrillasLoading(false);
       }
     })();
   }, []);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/api/auth/me", { cache: "no-store" });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (data?.ok && data?.nombre) setUsuarioNombre(shortName(String(data.nombre), ""));
-      } catch {}
-    })();
-  }, []);
+  const stockByMaterial = useMemo(
+    () => new Map(stockItems.map((s) => [s.id, s])),
+    [stockItems]
+  );
 
-  const materialsById = useMemo(() => new Map(materiales.map((m) => [m.id, m])), [materiales]);
+  const stockFiltrado = useMemo(() => {
+    const q = stockSearch.trim().toLowerCase();
+    const conStock = stockItems.filter((s) =>
+      s.tipo?.toUpperCase() === "METROS"
+        ? Number(s.metros || 0) > 0
+        : Number(s.cantidad || 0) > 0
+    );
+    if (!q) return conStock;
+    return conStock.filter((s) =>
+      `${s.id} ${s.nombre || ""}`.toLowerCase().includes(q)
+    );
+  }, [stockItems, stockSearch]);
 
-  async function cargarInfoCuadrilla(id: string) {
-    const res = await fetch(`/api/cuadrillas/info?id=${encodeURIComponent(id)}`, { cache: "no-store" });
-    const data = (await res.json().catch(() => ({}))) as CuadrillaInfo & { ok?: boolean; error?: string };
-    if (!data || (data as any).ok === false) throw new Error((data as any).error || "No se pudo obtener info");
-    setCuadrillaNombre(data.nombre || id);
-    const coordName = shortName(String(data.coordinadorNombre || data.coordinadorUid || ""), "");
-    setCoordinador(coordName);
-    setCoordinadorUid(String(data.coordinadorUid || ""));
-    setTecnicosUids(Array.isArray(data.tecnicosUids) ? data.tecnicosUids : []);
-    const techNames = Array.isArray(data.tecnicosNombres)
-      ? data.tecnicosNombres.map((n) => shortName(String(n || ""), "")).filter(Boolean)
-      : Array.isArray(data.tecnicosUids)
-      ? data.tecnicosUids.map((n) => String(n))
-      : [];
-    setTecnicos(techNames);
+  const cuadrillasFiltradas = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return cuadrillas;
+    return cuadrillas
+      .filter((c) => `${c.id} ${c.nombre || ""}`.toLowerCase().includes(q))
+      .slice(0, 50);
+  }, [busqueda, cuadrillas]);
+
+  async function cargarStockCuadrilla(id: string) {
+    setStockLoading(true);
+    try {
+      const res = await fetch(
+        `/api/mantenimiento/cuadrillas/stock-materiales?cuadrillaId=${encodeURIComponent(id)}`,
+        { cache: "no-store" }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Error al cargar stock");
+      setCuadrillaNombre(String(data.cuadrilla?.nombre || id));
+      setCoordinadorUid(String(data.cuadrilla?.coordinadorUid || ""));
+      setCoordinador(shortName(String(data.cuadrilla?.coordinadorNombre || ""), ""));
+      const techNames = Array.isArray(data.cuadrilla?.tecnicosNombres)
+        ? data.cuadrilla.tecnicosNombres
+            .map((n: any) => shortName(String(n || ""), ""))
+            .filter(Boolean)
+        : [];
+      setTecnicos(techNames);
+      setStockItems(Array.isArray(data.materiales) ? data.materiales : []);
+    } finally {
+      setStockLoading(false);
+    }
+  }
+
+  async function handleNext() {
+    if (!cuadrillaId) return toast.error("Selecciona una cuadrilla");
+    try {
+      await cargarStockCuadrilla(cuadrillaId);
+      setStep(2);
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo cargar el stock de la cuadrilla");
+    }
+  }
+
+  function addItem(id: string) {
+    const materialId = id.trim();
+    if (!materialId) return;
+    if (items.some((i) => i.materialId === materialId)) {
+      toast.error("Ese material ya esta en la lista");
+      return;
+    }
+    setItems((prev) => [...prev, { materialId, und: "", metros: "" }]);
+    setStockSearch("");
+  }
+
+  function removeItem(materialId: string) {
+    setItems((prev) => prev.filter((i) => i.materialId !== materialId));
+  }
+
+  function handlePreview() {
+    if (!cuadrillaId) return toast.error("Selecciona una cuadrilla");
+    const err = getValidationError(items, stockByMaterial);
+    if (err) return toast.error(err);
+    setShowPreview(true);
   }
 
   function resetForm() {
@@ -375,22 +418,23 @@ export default function DespachoMantClient() {
     setCoordinador("");
     setCoordinadorUid("");
     setTecnicos([]);
-    setTecnicosUids([]);
-    setUsuarioNombre("");
+    setStockItems([]);
+    setStockSearch("");
     setObservacion("");
-    setMaterialSearch("");
-    setMaterialId("");
     setItems([]);
     setShowPreview(false);
     setBusqueda("");
     setComboOpen(false);
   }
 
+  // Efecto post-acción
   useEffect(() => {
     if (!state) return;
     if ((state as any).ok) {
       const guia = (state as any).guia;
-      toast.success("Despacho registrado", { description: guia ? `Guia: ${guia}` : undefined });
+      toast.success("Devolucion registrada", {
+        description: guia ? `Guia: ${guia}` : undefined,
+      });
       if (guia && printedGuiaRef.current !== guia) {
         printedGuiaRef.current = guia;
         (async () => {
@@ -399,59 +443,17 @@ export default function DespachoMantClient() {
         })();
       }
     } else {
-      const msg = (state as any)?.error?.formErrors?.join(", ") || "Error en despacho";
+      const msg =
+        (state as any)?.error?.formErrors?.join(", ") || "Error en devolucion";
       toast.error(msg);
     }
   }, [state]);
-
-  const materialesFiltrados = useMemo(() => {
-    const q = materialSearch.trim().toLowerCase();
-    if (!q) return [];
-    return materiales.filter((m) => `${m.id} ${m.nombre || ""}`.toLowerCase().includes(q)).slice(0, 80);
-  }, [materiales, materialSearch]);
-
-  const cuadrillasFiltradas = useMemo(() => {
-    const q = busqueda.trim().toLowerCase();
-    if (!q) return cuadrillas;
-    return cuadrillas.filter((c) => `${c.id} ${c.nombre || ""}`.toLowerCase().includes(q)).slice(0, 50);
-  }, [busqueda, cuadrillas]);
-
-  const addItem = (id?: string) => {
-    const targetId = (id || materialId || "").trim();
-    if (!targetId) return;
-    if (items.some((i) => i.materialId === targetId)) {
-      toast.error("Ese material ya esta agregado");
-      return;
-    }
-    setItems((prev) => [...prev, { materialId: targetId, und: "", metros: "" }]);
-    setMaterialId("");
-    setMaterialSearch("");
-  };
-
-  const removeItem = (materialId: string) => setItems((prev) => prev.filter((i) => i.materialId !== materialId));
-
-  const handleNext = async () => {
-    if (!cuadrillaId) return toast.error("Selecciona una cuadrilla");
-    try {
-      await cargarInfoCuadrilla(cuadrillaId);
-      setStep(2);
-    } catch (e: any) {
-      toast.error(e?.message || "No se pudo cargar info de la cuadrilla");
-    }
-  };
-
-  const handlePreview = () => {
-    if (!cuadrillaId) return toast.error("Selecciona una cuadrilla");
-    const err = getItemsValidationError(items, materialsById);
-    if (err) return toast.error(err);
-    setShowPreview(true);
-  };
 
   async function imprimirGuiaTermica(): Promise<boolean> {
     const guia = (state as any)?.guia;
     if (!guia) return false;
 
-    const resumen = buildMaterialResumenDisplay(items, materialsById);
+    const resumen = buildResumenDisplay(items, stockByMaterial);
     const cuadrillaNombrePrint = stripCuadrillaPrefix(
       (state as any)?.cuadrillaNombre || cuadrillaNombre || cuadrillaId
     );
@@ -466,11 +468,12 @@ export default function DespachoMantClient() {
       materiales: resumen,
     };
 
-    const token = typeof crypto?.randomUUID === "function"
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const token =
+      typeof crypto?.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const bucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "";
-    const path = `guias/mantenimiento/despacho/${guia}.pdf`;
+    const path = `guias/mantenimiento/devolucion/${guia}.pdf`;
     const encodedPath = encodeURIComponent(path);
     const directUrl = bucket
       ? `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodedPath}?alt=media&token=${token}`
@@ -487,7 +490,7 @@ export default function DespachoMantClient() {
     try {
       const blob = pdf.output("blob");
       const res = await fetch(
-        `/api/transferencias/mantenimiento/guia/upload?guiaId=${encodeURIComponent(guia)}&tipo=despacho&token=${encodeURIComponent(token)}`,
+        `/api/transferencias/mantenimiento/guia/upload?guiaId=${encodeURIComponent(guia)}&tipo=devolucion&token=${encodeURIComponent(token)}`,
         {
           method: "POST",
           headers: { "content-type": "application/pdf" },
@@ -500,14 +503,16 @@ export default function DespachoMantClient() {
 
       if (directUrl && coordinadorUid) {
         try {
-          const rows = buildMaterialResumenRows(items, materialsById);
+          const rows = buildResumenRows(items, stockByMaterial);
           const matsLine = rows.length
             ? `Materiales: ${rows.map((r) => `${r.nombre}: ${r.cantidad} ${r.unidad}`).join(", ")}`
             : "";
-          const extraInfoParts = [matsLine, observacion ? `Obs: ${observacion}` : ""].filter(Boolean);
-          await enviarGuiaPorWhatsAppACoordinador({
+          const extraInfoParts = [matsLine, observacion ? `Obs: ${observacion}` : ""].filter(
+            Boolean
+          );
+          await enviarGuiaPorWhatsApp({
             coordinadorUid,
-            tipoGuia: "Despacho (Mantenimiento)",
+            tipoGuia: "Devolucion (Mantenimiento)",
             guiaId: guia,
             cuadrilla: cuadrillaNombrePrint || cuadrillaNombre || cuadrillaId,
             tecnicosNombres: tecnicos,
@@ -526,7 +531,7 @@ export default function DespachoMantClient() {
     }
   }
 
-  const resumenRows = buildMaterialResumenRows(items, materialsById);
+  const resumenRows = buildResumenRows(items, stockByMaterial);
 
   return (
     <form ref={formRef} action={action} className="space-y-5">
@@ -536,15 +541,39 @@ export default function DespachoMantClient() {
 
       {/* Stepper */}
       <div className="flex items-center gap-2">
-        <div className={`flex items-center gap-2 ${step === 1 ? "text-slate-900 dark:text-slate-100" : "text-emerald-700 dark:text-emerald-400"}`}>
-          <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${step === 1 ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"}`}>
+        <div
+          className={`flex items-center gap-2 ${
+            step === 1
+              ? "text-slate-900 dark:text-slate-100"
+              : "text-emerald-700 dark:text-emerald-400"
+          }`}
+        >
+          <div
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+              step === 1
+                ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+            }`}
+          >
             {step > 1 ? "✓" : "1"}
           </div>
           <span className="text-sm font-medium">Cuadrilla</span>
         </div>
         <div className="mx-2 h-px flex-1 bg-slate-200 dark:bg-slate-700" />
-        <div className={`flex items-center gap-2 ${step === 2 ? "text-slate-900 dark:text-slate-100" : "text-slate-400 dark:text-slate-500"}`}>
-          <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${step === 2 ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900" : "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500"}`}>
+        <div
+          className={`flex items-center gap-2 ${
+            step === 2
+              ? "text-slate-900 dark:text-slate-100"
+              : "text-slate-400 dark:text-slate-500"
+          }`}
+        >
+          <div
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+              step === 2
+                ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                : "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500"
+            }`}
+          >
             2
           </div>
           <span className="text-sm font-medium">Materiales</span>
@@ -554,36 +583,54 @@ export default function DespachoMantClient() {
       {/* ── PASO 1 ── */}
       {step === 1 && (
         <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-          <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">Seleccionar cuadrilla</h2>
+          <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+            Seleccionar cuadrilla
+          </h2>
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-            Elige la cuadrilla de mantenimiento que recibira los materiales.
+            Elige la cuadrilla que devuelve materiales al almacen.
           </p>
 
           <div className="relative mt-4 max-w-sm">
-            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Buscar cuadrilla</label>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+              Buscar cuadrilla
+            </label>
             <input
               value={busqueda}
-              onChange={(e) => { setBusqueda(e.target.value); setComboOpen(true); }}
+              onChange={(e) => {
+                setBusqueda(e.target.value);
+                setComboOpen(true);
+              }}
               onFocus={() => setComboOpen(true)}
               className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
               placeholder="Codigo o nombre..."
             />
             {comboOpen && (
               <div className="absolute z-20 mt-1 w-full max-h-52 overflow-auto rounded-xl border border-slate-200 bg-white p-1 text-sm shadow-xl dark:border-slate-700 dark:bg-slate-900">
-                {cuadrillasLoading && <div className="p-2 text-slate-500">Cargando...</div>}
+                {cuadrillasLoading && (
+                  <div className="p-2 text-slate-500">Cargando...</div>
+                )}
                 {!cuadrillasLoading && cuadrillasFiltradas.length === 0 && (
                   <div className="p-2 text-slate-500">Sin resultados.</div>
                 )}
-                {!cuadrillasLoading && cuadrillasFiltradas.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => { setCuadrillaId(c.id); setBusqueda(c.nombre || ""); setComboOpen(false); }}
-                    className={`w-full rounded-lg px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-slate-800 ${cuadrillaId === c.id ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300" : ""}`}
-                  >
-                    {c.nombre || "Sin nombre"}
-                  </button>
-                ))}
+                {!cuadrillasLoading &&
+                  cuadrillasFiltradas.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        setCuadrillaId(c.id);
+                        setBusqueda(c.nombre || "");
+                        setComboOpen(false);
+                      }}
+                      className={`w-full rounded-lg px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                        cuadrillaId === c.id
+                          ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300"
+                          : ""
+                      }`}
+                    >
+                      {c.nombre || "Sin nombre"}
+                    </button>
+                  ))}
               </div>
             )}
           </div>
@@ -591,7 +638,9 @@ export default function DespachoMantClient() {
           {cuadrillaId && !comboOpen && (
             <div className="mt-3 inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 dark:border-emerald-800/60 dark:bg-emerald-950/30">
               <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
-              <span className="text-sm font-medium text-emerald-800 dark:text-emerald-200">{busqueda}</span>
+              <span className="text-sm font-medium text-emerald-800 dark:text-emerald-200">
+                {busqueda}
+              </span>
             </div>
           )}
 
@@ -605,7 +654,9 @@ export default function DespachoMantClient() {
               Continuar
             </button>
             {!cuadrillaId && (
-              <span className="text-xs text-slate-400">Selecciona una cuadrilla para continuar</span>
+              <span className="text-xs text-slate-400">
+                Selecciona una cuadrilla para continuar
+              </span>
             )}
           </div>
         </section>
@@ -614,11 +665,15 @@ export default function DespachoMantClient() {
       {/* ── PASO 2 ── */}
       {step === 2 && (
         <div className="space-y-4">
-          {/* Cuadrilla info card */}
+          {/* Card cuadrilla */}
           <div className="flex flex-wrap items-start justify-between gap-3 rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-700 dark:bg-slate-800/60">
             <div className="space-y-0.5">
-              <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Cuadrilla seleccionada</div>
-              <div className="text-base font-semibold text-slate-900 dark:text-slate-100">{cuadrillaNombre || cuadrillaId}</div>
+              <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                Cuadrilla que devuelve
+              </div>
+              <div className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                {cuadrillaNombre || cuadrillaId}
+              </div>
               {coordinador && (
                 <div className="text-sm text-slate-600 dark:text-slate-300">
                   <span className="font-medium">Coordinador:</span> {coordinador}
@@ -639,74 +694,140 @@ export default function DespachoMantClient() {
             </button>
           </div>
 
-          {/* Materiales section */}
           <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">Materiales a despachar</h2>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+              Materiales a devolver
+            </h2>
             <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-              Busca materiales del almacen y establece la cantidad a transferir.
+              Selecciona materiales del stock de la cuadrilla e indica la cantidad a devolver.
             </p>
 
-            {/* Buscador de materiales */}
+            {/* Stock de la cuadrilla */}
             <div className="mt-4">
-              <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Buscar material</label>
-              <input
-                value={materialSearch}
-                onChange={(e) => setMaterialSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    if (materialesFiltrados.length === 1) addItem(materialesFiltrados[0]?.id);
-                  }
-                }}
-                className="w-full max-w-md rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-                placeholder="Codigo o nombre del material..."
-              />
-              {materialSearch.trim() && (
-                <div className="mt-1.5 max-h-44 max-w-md overflow-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                  {materialesFiltrados.map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      className="flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
-                      onClick={() => addItem(m.id)}
-                    >
-                      <span className="text-slate-800 dark:text-slate-200">{m.nombre || m.id}</span>
-                      <span className="ml-2 shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500 dark:bg-slate-700 dark:text-slate-300">
-                        {(m.unidadTipo || "UND").toUpperCase()}
-                      </span>
-                    </button>
-                  ))}
-                  {!materialesFiltrados.length && (
-                    <div className="p-2 text-center text-sm text-slate-400">Sin resultados para "{materialSearch}"</div>
-                  )}
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Stock disponible en la cuadrilla
+                </label>
+                {stockLoading && (
+                  <span className="text-xs text-slate-400">Cargando stock...</span>
+                )}
+              </div>
+
+              {!stockLoading && stockItems.length > 0 && (
+                <input
+                  value={stockSearch}
+                  onChange={(e) => setStockSearch(e.target.value)}
+                  className="mb-2 w-full max-w-sm rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+                  placeholder="Filtrar materiales..."
+                />
+              )}
+
+              {!stockLoading && stockItems.length === 0 && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300">
+                  Esta cuadrilla no tiene materiales en stock para devolver.
+                </div>
+              )}
+
+              {!stockLoading && stockFiltrado.length > 0 && (
+                <div className="max-h-52 overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-slate-50 dark:bg-slate-800/60">
+                      <tr className="text-left text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        <th className="px-3 py-2">Material</th>
+                        <th className="px-3 py-2 text-right">En stock</th>
+                        <th className="px-3 py-2">Unidad</th>
+                        <th className="px-3 py-2" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stockFiltrado.map((s) => {
+                        const yaAgregado = items.some((i) => i.materialId === s.id);
+                        const stockVal =
+                          s.tipo?.toUpperCase() === "METROS"
+                            ? `${s.metros ?? 0} m`
+                            : `${s.cantidad ?? 0} und`;
+                        return (
+                          <tr
+                            key={s.id}
+                            className="border-t border-slate-100 dark:border-slate-800"
+                          >
+                            <td className="px-3 py-2">
+                              <div className="font-medium text-slate-800 dark:text-slate-200">
+                                {s.nombre || s.id}
+                              </div>
+                              <div className="text-xs text-slate-400">{s.id}</div>
+                            </td>
+                            <td className="px-3 py-2 text-right font-semibold text-slate-700 dark:text-slate-300">
+                              {stockVal}
+                            </td>
+                            <td className="px-3 py-2">
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500 dark:bg-slate-700 dark:text-slate-300">
+                                {(s.tipo || "UND").toUpperCase()}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {yaAgregado ? (
+                                <span className="text-xs text-emerald-600 dark:text-emerald-400">
+                                  Agregado
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => addItem(s.id)}
+                                  className="rounded-lg bg-slate-900 px-3 py-1 text-xs font-medium text-white hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+                                >
+                                  Agregar
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
 
-            {/* Tabla de items */}
-            <div className="mt-4">
-              {items.length > 0 ? (
+            {/* Lista de items a devolver */}
+            {items.length > 0 && (
+              <div className="mt-5">
+                <div className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Cantidades a devolver
+                </div>
                 <div className="overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
                   <table className="min-w-full text-sm">
                     <thead className="bg-slate-50 dark:bg-slate-800/60">
                       <tr className="text-left text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                         <th className="px-3 py-2.5">Material</th>
-                        <th className="px-3 py-2.5">Cantidad</th>
+                        <th className="px-3 py-2.5">Devolver</th>
+                        <th className="px-3 py-2.5">Disponible</th>
                         <th className="px-3 py-2.5">Unidad</th>
                         <th className="px-3 py-2.5" />
                       </tr>
                     </thead>
                     <tbody>
                       {items.map((it) => {
-                        const unidad = (materialsById.get(it.materialId)?.unidadTipo || "UND").toUpperCase();
+                        const stock = stockByMaterial.get(it.materialId);
+                        const unidad = (stock?.tipo || "UND").toUpperCase();
                         const isMetros = unidad === "METROS";
                         const val = isMetros ? it.metros : it.und;
-                        const isValid = isMetros ? Number(it.metros) > 0 : Math.floor(Number(it.und)) > 0;
+                        const available = isMetros
+                          ? Number(stock?.metros || 0)
+                          : Number(stock?.cantidad || 0);
+                        const inputNum = isMetros
+                          ? Number(it.metros || 0)
+                          : Math.floor(Number(it.und || 0));
+                        const exceeded = val !== "" && inputNum > available;
+                        const isInvalid = val !== "" && inputNum <= 0;
                         return (
-                          <tr key={it.materialId} className="border-t border-slate-100 dark:border-slate-800">
+                          <tr
+                            key={it.materialId}
+                            className="border-t border-slate-100 dark:border-slate-800"
+                          >
                             <td className="px-3 py-2.5">
                               <div className="font-medium text-slate-800 dark:text-slate-200">
-                                {materialsById.get(it.materialId)?.nombre || it.materialId}
+                                {stock?.nombre || it.materialId}
                               </div>
                               <div className="text-xs text-slate-400">{it.materialId}</div>
                             </td>
@@ -717,18 +838,34 @@ export default function DespachoMantClient() {
                                   setItems((prev) =>
                                     prev.map((p) =>
                                       p.materialId === it.materialId
-                                        ? { ...p, und: isMetros ? p.und : e.target.value, metros: isMetros ? e.target.value : p.metros }
+                                        ? {
+                                            ...p,
+                                            und: isMetros ? p.und : e.target.value,
+                                            metros: isMetros ? e.target.value : p.metros,
+                                          }
                                         : p
                                     )
                                   )
                                 }
-                                className={`w-24 rounded-lg border px-2 py-1 text-sm ${val !== "" && !isValid ? "border-red-300 bg-red-50 dark:bg-red-950/30" : "border-slate-300 dark:border-slate-600 dark:bg-slate-900"}`}
+                                className={`w-24 rounded-lg border px-2 py-1 text-sm ${
+                                  exceeded || isInvalid
+                                    ? "border-red-300 bg-red-50 dark:bg-red-950/30"
+                                    : "border-slate-300 dark:border-slate-600 dark:bg-slate-900"
+                                }`}
                                 inputMode={isMetros ? "decimal" : "numeric"}
                                 placeholder="0"
                               />
+                              {exceeded && (
+                                <div className="mt-0.5 text-xs text-red-500">
+                                  Maximo: {available}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-300">
+                              {available}
                             </td>
                             <td className="px-3 py-2.5">
-                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500 dark:bg-slate-700 dark:text-slate-300">
                                 {unidad}
                               </span>
                             </td>
@@ -747,24 +884,21 @@ export default function DespachoMantClient() {
                     </tbody>
                   </table>
                 </div>
-              ) : (
-                <div className="rounded-xl border border-dashed border-slate-300 py-8 text-center text-sm text-slate-400 dark:border-slate-600 dark:text-slate-500">
-                  Busca un material arriba y seleccionalo para agregarlo a la lista
-                </div>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Observacion */}
             <div className="mt-4">
               <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                Observacion <span className="font-normal text-slate-400">(opcional)</span>
+                Observacion{" "}
+                <span className="font-normal text-slate-400">(opcional)</span>
               </label>
               <textarea
                 value={observacion}
                 onChange={(e) => setObservacion(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
                 rows={2}
-                placeholder="Nota u observacion del despacho..."
+                placeholder="Motivo u observacion de la devolucion..."
               />
             </div>
 
@@ -781,7 +915,7 @@ export default function DespachoMantClient() {
                 disabled={items.length === 0}
                 className="rounded-xl bg-[#1f5f4a] px-5 py-2 text-sm font-medium text-white hover:bg-[#184c3a] disabled:cursor-not-allowed disabled:opacity-40"
               >
-                Previsualizar despacho
+                Previsualizar devolucion
               </button>
               {items.length > 0 && (
                 <span className="text-xs text-slate-500">
@@ -805,8 +939,12 @@ export default function DespachoMantClient() {
           >
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-700">
               <div>
-                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Confirmar despacho</h3>
-                <p className="text-xs text-slate-500">Revisa el resumen antes de registrar el movimiento</p>
+                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                  Confirmar devolucion
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Revisa el resumen antes de registrar el movimiento
+                </p>
               </div>
               <button
                 type="button"
@@ -822,22 +960,36 @@ export default function DespachoMantClient() {
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/60">
                 <div className="grid gap-1 text-sm">
                   <div className="flex gap-2">
-                    <span className="w-24 shrink-0 font-medium text-slate-500 dark:text-slate-400">Cuadrilla</span>
-                    <span className="text-slate-900 dark:text-slate-100">{cuadrillaNombre || "-"}</span>
+                    <span className="w-24 shrink-0 font-medium text-slate-500 dark:text-slate-400">
+                      Cuadrilla
+                    </span>
+                    <span className="text-slate-900 dark:text-slate-100">
+                      {cuadrillaNombre || "-"}
+                    </span>
                   </div>
                   <div className="flex gap-2">
-                    <span className="w-24 shrink-0 font-medium text-slate-500 dark:text-slate-400">Coordinador</span>
-                    <span className="text-slate-900 dark:text-slate-100">{coordinador || "-"}</span>
+                    <span className="w-24 shrink-0 font-medium text-slate-500 dark:text-slate-400">
+                      Coordinador
+                    </span>
+                    <span className="text-slate-900 dark:text-slate-100">
+                      {coordinador || "-"}
+                    </span>
                   </div>
                   {tecnicos.length > 0 && (
                     <div className="flex gap-2">
-                      <span className="w-24 shrink-0 font-medium text-slate-500 dark:text-slate-400">Tecnicos</span>
-                      <span className="text-slate-900 dark:text-slate-100">{tecnicos.join(", ")}</span>
+                      <span className="w-24 shrink-0 font-medium text-slate-500 dark:text-slate-400">
+                        Tecnicos
+                      </span>
+                      <span className="text-slate-900 dark:text-slate-100">
+                        {tecnicos.join(", ")}
+                      </span>
                     </div>
                   )}
                   {observacion && (
                     <div className="flex gap-2">
-                      <span className="w-24 shrink-0 font-medium text-slate-500 dark:text-slate-400">Observacion</span>
+                      <span className="w-24 shrink-0 font-medium text-slate-500 dark:text-slate-400">
+                        Observacion
+                      </span>
                       <span className="text-slate-900 dark:text-slate-100">{observacion}</span>
                     </div>
                   )}
@@ -847,7 +999,7 @@ export default function DespachoMantClient() {
               {/* Tabla materiales */}
               <div>
                 <div className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  {resumenRows.length} material{resumenRows.length !== 1 ? "es" : ""} a despachar
+                  {resumenRows.length} material{resumenRows.length !== 1 ? "es" : ""} a devolver
                 </div>
                 <div className="overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
                   <table className="min-w-full text-sm">
@@ -860,9 +1012,16 @@ export default function DespachoMantClient() {
                     </thead>
                     <tbody>
                       {resumenRows.map((row) => (
-                        <tr key={row.id} className="border-t border-slate-100 dark:border-slate-800">
-                          <td className="px-3 py-2.5 font-medium text-slate-800 dark:text-slate-200">{row.nombre}</td>
-                          <td className="px-3 py-2.5 text-right font-semibold text-slate-900 dark:text-slate-100">{row.cantidad}</td>
+                        <tr
+                          key={row.id}
+                          className="border-t border-slate-100 dark:border-slate-800"
+                        >
+                          <td className="px-3 py-2.5 font-medium text-slate-800 dark:text-slate-200">
+                            {row.nombre}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-semibold text-slate-900 dark:text-slate-100">
+                            {row.cantidad}
+                          </td>
                           <td className="px-3 py-2.5">
                             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500 dark:bg-slate-700 dark:text-slate-300">
                               {row.unidad}
@@ -888,14 +1047,14 @@ export default function DespachoMantClient() {
                 type="button"
                 disabled={pending}
                 onClick={() => {
-                  const err = getItemsValidationError(items, materialsById);
+                  const err = getValidationError(items, stockByMaterial);
                   if (err) return toast.error(err);
                   setShowPreview(false);
                   formRef.current?.requestSubmit();
                 }}
                 className="rounded-xl bg-[#1f5f4a] px-5 py-2 text-sm font-medium text-white hover:bg-[#184c3a] disabled:opacity-50"
               >
-                {pending ? "Registrando..." : "Confirmar despacho"}
+                {pending ? "Registrando..." : "Confirmar devolucion"}
               </button>
             </div>
           </div>

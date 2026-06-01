@@ -1,11 +1,11 @@
 import { requireArea, requirePermission } from "@/core/auth/guards";
-import DespachoMantClient from "./ui/DespachoMantClient";
+import DevolucionMantClient from "./ui/DevolucionMantClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
   await requireArea("MANTENIMIENTO");
-  await requirePermission("MATERIALES_TRANSFER_SERVICIO");
+  await requirePermission("MATERIALES_DEVOLUCION");
   return (
     <div className="space-y-5">
       <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-gradient-to-br from-[#f3f6fb] via-white to-[#eef7f4] shadow-sm dark:border-slate-700 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800">
@@ -14,14 +14,16 @@ export default async function Page() {
             Mantenimiento
           </div>
           <div className="mt-2">
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">Despacho de materiales</h1>
+            <h1 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+              Devolucion de materiales
+            </h1>
             <p className="mt-1 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
-              Transfiere materiales desde el almacen central hacia el stock de una cuadrilla de mantenimiento.
+              Registra materiales que una cuadrilla devuelve al almacen central. El stock de la cuadrilla se descuenta y el almacen se incrementa.
             </p>
           </div>
         </div>
       </section>
-      <DespachoMantClient />
+      <DevolucionMantClient />
     </div>
   );
 }

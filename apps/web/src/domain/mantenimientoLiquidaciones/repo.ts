@@ -288,14 +288,70 @@ export async function deleteMantenimientoLiquidacion(id: string, actorUid: strin
     if (!snap.exists) throw new Error("NOT_FOUND");
     const curr = snap.data() as any;
     const estado = normalizeEstadoLegacy(curr?.estado || "ABIERTO");
-    if (estado !== "ABIERTO") throw new Error("SOLO_ABIERTO_ELIMINABLE");
+
+    if (estado !== "ABIERTO" && estado !== "LIQUIDADO") throw new Error("NO_ELIMINABLE");
+
+    if (estado === "LIQUIDADO") {
+      const sinMateriales = Boolean(curr?.sinMateriales);
+      const cuadrillaId = normText(curr?.cuadrillaId);
+
+      if (!sinMateriales && cuadrillaId) {
+        const materialesSnapshot: any[] = Array.isArray(curr?.materialesSnapshot) ? curr.materialesSnapshot : [];
+        const cuadrillaRef = db.collection("cuadrillas").doc(cuadrillaId);
+
+        const itemsConCantidad: any[] = [];
+        for (const item of materialesSnapshot) {
+          const materialId = normText(item?.materialId);
+          if (!materialId) continue;
+          const unidadTipo = String(item?.unidadTipo || "UND").toUpperCase() === "METROS" ? "METROS" : "UND";
+          const stockRef = cuadrillaRef.collection("stock").doc(materialId);
+
+          if (unidadTipo === "UND") {
+            const und = Math.max(0, Math.floor(Number(item?.und || 0)));
+            if (und > 0) {
+              tx.set(
+                stockRef,
+                { materialId, unidadTipo: "UND", stockUnd: FieldValue.increment(und), updatedAt: FieldValue.serverTimestamp() },
+                { merge: true }
+              );
+              itemsConCantidad.push(item);
+            }
+          } else {
+            const metros = Math.max(0, Number(item?.metros || 0));
+            if (metros > 0) {
+              const addCm = metersToCm(metros);
+              tx.set(
+                stockRef,
+                { materialId, unidadTipo: "METROS", stockCm: FieldValue.increment(addCm), updatedAt: FieldValue.serverTimestamp() },
+                { merge: true }
+              );
+              itemsConCantidad.push(item);
+            }
+          }
+        }
+
+        if (itemsConCantidad.length > 0) {
+          const movRef = db.collection("movimientos_inventario").doc();
+          tx.set(movRef, {
+            area: "MANTENIMIENTO",
+            tipo: "ELIMINACION_LIQUIDACION_MANTENIMIENTO",
+            liquidacionId: ref.id,
+            ticketNumero: normText(curr?.ticketNumero),
+            ticketNumeroNorm: normText(curr?.ticketNumeroNorm || normalizeTicketNumero(curr?.ticketNumero)),
+            origen: { type: "TICKET", id: normText(curr?.ticketNumero || ref.id) },
+            destino: { type: "CUADRILLA", id: cuadrillaId },
+            itemsMateriales: itemsConCantidad,
+            observacion: "Eliminacion de liquidacion — materiales devueltos al stock de la cuadrilla",
+            createdAt: FieldValue.serverTimestamp(),
+            createdBy: actorUid,
+          });
+        }
+      }
+    }
 
     tx.delete(ref);
 
-    return {
-      id,
-      deletedBy: actorUid,
-    };
+    return { id, deletedBy: actorUid };
   });
 }
 
@@ -495,7 +551,10 @@ export async function corregirMantenimientoLiquidacion(id: string, input: unknow
     const cuadrillaRef = db.collection("cuadrillas").doc(cuadrilla.id);
     const matRefs = materialIds.map((mid) => db.collection("materiales").doc(mid));
     const stockRefs = materialIds.map((mid) => cuadrillaRef.collection("stock").doc(mid));
-    const [matSnaps, stockSnaps] = await Promise.all([tx.getAll(...matRefs), tx.getAll(...stockRefs)]);
+    const [matSnaps, stockSnaps] =
+      materialIds.length > 0
+        ? await Promise.all([tx.getAll(...matRefs), tx.getAll(...stockRefs)])
+        : [[] as any[], [] as any[]];
     const matMap = new Map(matSnaps.map((s) => [s.id, s]));
     const stockMap = new Map(stockSnaps.map((s) => [s.id, s]));
 

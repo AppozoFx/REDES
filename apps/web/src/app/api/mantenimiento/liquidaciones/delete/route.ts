@@ -21,7 +21,7 @@ export async function POST(req: Request) {
         ? 401
         : msg === "ACCESS_DISABLED" || msg === "AREA_FORBIDDEN"
           ? 403
-          : msg === "ID_REQUIRED" || msg === "SOLO_ABIERTO_ELIMINABLE"
+          : msg === "ID_REQUIRED" || msg === "NO_ELIMINABLE"
             ? 400
             : msg === "NOT_FOUND"
               ? 404

@@ -124,7 +124,10 @@ export async function POST(req: Request) {
 
     addUnd("ACTA", 1);
     if (precon) addUnd(precon, 1);
-    else addMetros("BOBINA", bobinaMetros);
+    else {
+      addMetros("BOBINA", bobinaMetros);
+      addUnd("CONECTOR", 1);
+    }
 
     if (esResidencial) {
       addUnd("ANCLAJE_P", anclajeP);

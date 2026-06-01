@@ -248,7 +248,7 @@ async function collectPreliquidaciones(params: { ymd?: string; month?: string })
       contacto: { documento, nombres, telefono },
       normalized: {
         documento: cleanValue(pre.receptorDocumentoNorm) || normalizeDigits(documento),
-        nombres: cleanValue(pre.receptorNombresNorm) || normalizeAuditName(nombres),
+        nombres: normalizeAuditName(nombres),
         telefono: cleanValue(pre.receptorTelefonoNorm) || normalizeDigits(telefono),
       },
     };
@@ -379,7 +379,6 @@ export async function GET(req: Request) {
     const preliqKeys = new Set(preliquidaciones.map((row) => preliqOrderKey(row.pedido, row.ymd)));
     const preliqPedidos = new Set(preliquidaciones.map((row) => cleanValue(row.pedido)).filter(Boolean));
     const pendientesOrdenes = ordenes
-      .filter((row) => !row.liquidado)
       .filter((row) => !preliqKeys.has(preliqOrderKey(row.pedido, row.ymd)))
       .filter((row) => !preliqPedidos.has(cleanValue(row.pedido)))
       .sort((a, b) => `${a.cuadrillaNombre}-${a.ymd}-${a.pedido}`.localeCompare(`${b.cuadrillaNombre}-${b.ymd}-${b.pedido}`));

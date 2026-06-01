@@ -102,6 +102,7 @@ const LIMA_DISTRITOS = [
   "VENTANILLA",
   "VILLA EL SALVADOR",
   "VILLA MARIA DEL TRIUNFO",
+  "LA PERLA",
 ];
 
 const emptyState: FormState = {

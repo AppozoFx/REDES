@@ -284,6 +284,16 @@ function normalizeYmdOrToday(v?: string): string {
   return parsed || todayLimaYmd();
 }
 
+function monthStartFromYmd(ymd: string): string {
+  return String(ymd || "").slice(0, 7) + "-01";
+}
+
+function formatYmdDdMm(ymd: string): string {
+  const parts = String(ymd || "").split("-");
+  if (parts.length !== 3) return ymd;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+
 function resolveOperacionYmdFromOrden(orden: Record<string, unknown>): string {
   const bySoli = parseFlexibleDateToYmd(cleanValue(orden.fSoliYmd || ""));
   if (bySoli) return bySoli;
@@ -503,6 +513,66 @@ async function fetchOrdenesFinalizadasByYmd(ymd: string): Promise<OrdenResumen[]
     .map((orden) => buildOrdenResumen(orden))
     .filter((row) => !!row.pedido);
   return dedupeListByPedido(rows);
+}
+
+async function fetchOrdenesFinalizadasByRange(startYmd: string, endYmd: string): Promise<OrdenResumen[]> {
+  const docsById = new Map<string, Record<string, unknown>>();
+  const collect = (snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>) => {
+    for (const doc of snap.docs) {
+      if (docsById.has(doc.id)) continue;
+      const data = (doc.data() || {}) as Record<string, unknown>;
+      if (isOrdenConsiderada(data) && isOrdenEstadoFinalizada(data.estado)) {
+        docsById.set(doc.id, data);
+      }
+    }
+  };
+
+  const [snap1, snap2] = await Promise.all([
+    db.collection(ORDENES_COLLECTION)
+      .where("fSoliYmd", ">=", startYmd)
+      .where("fSoliYmd", "<=", endYmd)
+      .orderBy("fSoliYmd")
+      .limit(5000)
+      .get(),
+    db.collection(ORDENES_COLLECTION)
+      .where("fechaFinVisiYmd", ">=", startYmd)
+      .where("fechaFinVisiYmd", "<=", endYmd)
+      .orderBy("fechaFinVisiYmd")
+      .limit(5000)
+      .get(),
+  ]);
+  collect(snap1);
+  collect(snap2);
+
+  const rows = Array.from(docsById.values())
+    .map((orden) => buildOrdenResumen(orden))
+    .filter((row) => !!row.pedido);
+  return dedupeListByPedido(rows);
+}
+
+async function fetchPreliqKeysByRange(chatId: string, startYmd: string, endYmd: string): Promise<Set<string>> {
+  const snap = await db.collection(PRELIQ_COLLECTION)
+    .where("ymd", ">=", startYmd)
+    .where("ymd", "<=", endYmd)
+    .orderBy("ymd")
+    .limit(5000)
+    .get();
+  const keys = new Set<string>();
+  for (const doc of snap.docs) {
+    const data = (doc.data() || {}) as Record<string, unknown>;
+    if (cleanValue(data.chatId || "") !== chatId) continue;
+    const pedido = cleanValue(data.pedido || "");
+    if (pedido) keys.add(pedido);
+  }
+  return keys;
+}
+
+async function getPendientesByRange(chatId: string, startYmd: string, endYmd: string): Promise<OrdenResumen[]> {
+  const [allOrders, preliqKeys] = await Promise.all([
+    fetchOrdenesFinalizadasByRange(startYmd, endYmd),
+    fetchPreliqKeysByRange(chatId, startYmd, endYmd),
+  ]);
+  return allOrders.filter((row) => !preliqKeys.has(row.pedido));
 }
 
 async function fetchTelegramFoundByYmd(
@@ -726,15 +796,6 @@ function summaryActionsKeyboard(
   };
 }
 
-function cuadrillaActionsKeyboard(cuadrilla: string, ymd: string): Record<string, unknown> {
-  const q = encodeURIComponent(cuadrilla);
-  return {
-    inline_keyboard: [[
-      { text: "Pendientes", callback_data: `CDET_PEN|${ymd}|${q}` },
-      { text: "Liquidadas", callback_data: `CDET_LIQ|${ymd}|${q}` },
-    ]],
-  };
-}
 
 function normalizeKey(value: string): string {
   return normalizeTextKey(value);
@@ -992,12 +1053,19 @@ function parseViewQueueCommand(text: string): boolean {
   return /^ver\s+cola$/i.test(raw);
 }
 
-function parseBareCuadrillaCommand(text: string): { cuadrilla: string; ymd: string } | null {
+function parseBareCuadrillaCommand(text: string): { cuadrilla: string; startYmd: string; endYmd: string } | null {
   const raw = String(text || "").trim();
   const m = /^k\s*(\d+)\s+(moto|residencial)(?:\s+(\S+))?$/i.exec(raw);
   if (!m) return null;
-  const ymd = normalizeYmdOrToday(String(m[3] || ""));
-  return { cuadrilla: `K${m[1]} ${String(m[2]).toUpperCase()}`, ymd };
+  const cuadrilla = `K${m[1]} ${String(m[2]).toUpperCase()}`;
+  const dateRaw = String(m[3] || "").trim();
+  if (dateRaw) {
+    const ymd = parseFlexibleDateToYmd(dateRaw);
+    if (!ymd) return null;
+    return { cuadrilla, startYmd: ymd, endYmd: ymd };
+  }
+  const todayYmd = todayLimaYmd();
+  return { cuadrilla, startYmd: monthStartFromYmd(todayYmd), endYmd: todayYmd };
 }
 
 async function sendCuadrillaStatus(
@@ -1109,6 +1177,81 @@ async function sendPendientesDetalladoPorCuadrilla(
     for (const block of blocks) {
       await sendTelegramMessage({ token, chatId, text: block });
     }
+  }
+}
+
+async function sendPendientesDetalladoPorCuadrillaRange(
+  chatId: string,
+  token: string,
+  startYmd: string,
+  endYmd: string,
+  preloadedRows?: OrdenResumen[]
+) {
+  const pendingRows = preloadedRows ?? await getPendientesByRange(chatId, startYmd, endYmd);
+  if (!pendingRows.length) return;
+
+  const grouped = new Map<string, { label: string; rows: OrdenResumen[] }>();
+  for (const row of pendingRows) {
+    const target = cuadrillaKeyAndLabel({ cuadrillaId: row.cuadrillaId, cuadrillaNombre: row.cuadrillaNombre });
+    const current = grouped.get(target.key) || { label: target.label, rows: [] };
+    current.rows.push(row);
+    grouped.set(target.key, current);
+  }
+
+  const responsables = await fetchCuadrillaResponsablesByKeys(Array.from(grouped.keys()));
+  const sorted = Array.from(grouped.entries()).sort((a, b) => a[1].label.localeCompare(b[1].label));
+
+  for (const [key, payload] of sorted) {
+    const mention = buildResponsableMention(responsables.get(key));
+    await sendTelegramMessage({ token, chatId, text: `CUADRILLA: ${payload.label}\n${mention}` });
+    const blocks = buildCuadrillaDetailBlocks(payload.label, payload.rows);
+    for (const block of blocks) {
+      await sendTelegramMessage({ token, chatId, text: block });
+    }
+  }
+}
+
+async function sendCuadrillaStatusRange(
+  chatId: string,
+  token: string,
+  cuadrillaQuery: string,
+  startYmd: string,
+  endYmd: string
+) {
+  const allPending = await getPendientesByRange(chatId, startYmd, endYmd);
+  const pending = filterByCuadrilla(allPending, cuadrillaQuery);
+
+  const sampleRow = pending[0];
+  const target = sampleRow
+    ? cuadrillaKeyAndLabel({ cuadrillaId: sampleRow.cuadrillaId, cuadrillaNombre: sampleRow.cuadrillaNombre })
+    : cuadrillaKeyAndLabel({ cuadrillaNombre: cuadrillaQuery });
+  const cuadrillaLabel = sampleRow?.cuadrillaNombre || sampleRow?.cuadrillaId || cuadrillaQuery;
+
+  const responsablesMap = await fetchCuadrillaResponsablesByKeys([target.key]);
+  const mention = buildResponsableMention(responsablesMap.get(target.key));
+
+  const isRange = startYmd !== endYmd;
+  const periodoText = isRange
+    ? `Del ${formatYmdDdMm(startYmd)} al ${formatYmdDdMm(endYmd)}`
+    : formatYmdDdMm(startYmd);
+
+  if (!pending.length) {
+    await sendTelegramMessage({
+      token,
+      chatId,
+      text: `CUADRILLA: ${cuadrillaLabel}\n${mention}\n\nSin pendientes de plantilla — ${periodoText}.`,
+    });
+    return;
+  }
+
+  await sendTelegramMessage({
+    token,
+    chatId,
+    text: `CUADRILLA: ${cuadrillaLabel}\n${mention}\n\nPendientes de plantilla — ${periodoText}: ${pending.length}`,
+  });
+  const blocks = buildCuadrillaDetailBlocks(cuadrillaLabel, pending);
+  for (const block of blocks) {
+    await sendTelegramMessage({ token, chatId, text: block });
   }
 }
 
@@ -1903,15 +2046,13 @@ export const telegramWebhook = onRequest(
 
     const bareCuadrilla = parseBareCuadrillaCommand(text);
     if (bareCuadrilla) {
-      await sendTelegramMessage({
-        token,
+      await sendCuadrillaStatusRange(
         chatId,
-        text: `Cuadrilla detectada: ${bareCuadrilla.cuadrilla}\nFecha: ${bareCuadrilla.ymd}\nElige el tipo de detalle.`,
-        replyMarkup: cuadrillaActionsKeyboard(
-          bareCuadrilla.cuadrilla,
-          bareCuadrilla.ymd
-        ),
-      });
+        token,
+        bareCuadrilla.cuadrilla,
+        bareCuadrilla.startYmd,
+        bareCuadrilla.endYmd
+      );
       res.status(200).json({ ok: true, handled: "BARE_CUADRILLA_CMD" });
       return;
     }
@@ -2305,7 +2446,8 @@ export const telegramPendientesReminder = onSchedule(
     if (!chats.length) return;
 
     const scheduleDate = new Date(event.scheduleTime || Date.now());
-    const ymd = ymdFromLimaDate(scheduleDate);
+    const todayYmd = ymdFromLimaDate(scheduleDate);
+    const startYmd = monthStartFromYmd(todayYmd);
     const hourLima = Number(new Intl.DateTimeFormat("en-US", {
       timeZone: "America/Lima",
       hour: "2-digit",
@@ -2316,8 +2458,23 @@ export const telegramPendientesReminder = onSchedule(
 
     for (const chatId of chats) {
       await sendTelegramMessage({ token, chatId, text: baseText });
-      await sendResumenCount(chatId, token, "PENDIENTES", ymd, false);
-      await sendPendientesDetalladoPorCuadrilla(chatId, token, ymd);
+
+      const pendingRows = await getPendientesByRange(chatId, startYmd, todayYmd);
+      const cuadrillaCount = new Set(
+        pendingRows.map((r) => r.cuadrillaNombre || r.cuadrillaId || "SIN_CUADRILLA")
+      ).size;
+      await sendTelegramMessage({
+        token,
+        chatId,
+        text: [
+          `PENDIENTES DE PLANTILLA EN EL MES`,
+          `Del ${formatYmdDdMm(startYmd)} al ${formatYmdDdMm(todayYmd)}`,
+          `Total ordenes: ${pendingRows.length}`,
+          `Cuadrillas con pendientes: ${cuadrillaCount}`,
+        ].join("\n"),
+      });
+
+      await sendPendientesDetalladoPorCuadrillaRange(chatId, token, startYmd, todayYmd, pendingRows);
     }
   }
 );

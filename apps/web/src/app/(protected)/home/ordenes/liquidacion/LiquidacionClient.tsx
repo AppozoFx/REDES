@@ -14,6 +14,7 @@ type Row = {
   coordinador: string;
   cuadrillaId: string;
   cuadrillaNombre: string;
+  fSoliYmd?: string;
   fechaFinVisiYmd: string;
   fechaFinVisiHm: string;
   tipo: string;
@@ -144,7 +145,7 @@ export function LiquidacionClient({ initialYmd, initialMonth }: { initialYmd?: s
       for (const row of pendingRows) {
         processed += 1;
         const pedido = String(row.codiSeguiClien || "").trim() || String(row.ordenId || row.id);
-        const preYmd = String(row.fechaFinVisiYmd || ymd).trim() || ymd;
+        const preYmd = String(row.fSoliYmd || row.fechaFinVisiYmd || ymd).trim() || ymd;
 
         try {
           const preRes = await fetch(
@@ -286,7 +287,7 @@ export function LiquidacionClient({ initialYmd, initialMonth }: { initialYmd?: s
   const filteredBase = useMemo(() => {
     const text = q.trim().toLowerCase();
     return rows.filter((r) => {
-      const byDate = !filterDate || String(r.fechaFinVisiYmd || "") === filterDate;
+      const byDate = !filterDate || String(r.fSoliYmd || r.fechaFinVisiYmd || "") === filterDate;
       if (!byDate) return false;
       const byCoord = !coordinador || String(r.coordinador || "") === coordinador;
       if (!byCoord) return false;

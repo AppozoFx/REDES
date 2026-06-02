@@ -15,6 +15,7 @@ type Row = {
   coordinador: string;
   cuadrillaId: string;
   cuadrillaNombre: string;
+  fSoliYmd: string;
   fechaFinVisiYmd: string;
   fechaFinVisiHm: string;
   fSoliHm: string;
@@ -192,6 +193,7 @@ export async function GET(req: Request) {
           ),
           cuadrillaId: String(x.cuadrillaId || ""),
           cuadrillaNombre: String(x.cuadrillaNombre || ""),
+          fSoliYmd: String(x.fSoliYmd || ""),
           // El frontend consume `fechaFinVisi*`; en historicos algunas ordenes
           // solo tienen `fechaFinVisi*` y otras solo `fSoli*`.
           fechaFinVisiYmd: String(x.fechaFinVisiYmd || x.fSoliYmd || ""),

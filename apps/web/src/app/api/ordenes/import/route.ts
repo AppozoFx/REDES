@@ -105,8 +105,8 @@ export async function POST(req: Request) {
         if (idx >= payloads.length) return;
         try {
           const res = await upsertOrden(payloads[idx], actorUid);
-          if (res === "CREATED") nuevos++;
-          else if (res === "UPDATED") actualizados++;
+          if (res.action === "CREATED") nuevos++;
+          else if (res.action === "UPDATED") actualizados++;
           else duplicadosSinCambios++;
         } catch (err) {
           workerError = err;

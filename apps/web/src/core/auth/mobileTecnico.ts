@@ -391,16 +391,17 @@ export async function getTecnicoHomeData(cuadrillaId: string) {
   for (const doc of monthSnap.docs) {
     docsById.set(doc.id, doc.data());
   }
-  const monthOrders = Array.from(docsById.values())
-    .filter((data) => {
-      const fSoliYmd = String(data?.fSoliYmd || "").trim();
-      const fechaFinVisiYmd = String(data?.fechaFinVisiYmd || "").trim();
-      return (
-        (fSoliYmd >= monthRange.start && fSoliYmd <= monthRange.end) ||
-        (fechaFinVisiYmd >= monthRange.start && fechaFinVisiYmd <= monthRange.end)
-      );
-    })
-    .map((data) => ({
+
+  const allMonthEntries = Array.from(docsById.entries()).filter(([, data]) => {
+    const fSoliYmd = String(data?.fSoliYmd || "").trim();
+    const fechaFinVisiYmd = String(data?.fechaFinVisiYmd || "").trim();
+    return (
+      (fSoliYmd >= monthRange.start && fSoliYmd <= monthRange.end) ||
+      (fechaFinVisiYmd >= monthRange.start && fechaFinVisiYmd <= monthRange.end)
+    );
+  });
+
+  const monthOrders = allMonthEntries.map(([, data]) => ({
     isGarantia: isGarantia(data),
     estado: normalizedEstado(data?.estado),
   }));
@@ -414,12 +415,76 @@ export async function getTecnicoHomeData(cuadrillaId: string) {
     ? Number(((garantiasMes / instalacionesMes) * 100).toFixed(1))
     : 0;
 
-  const equiposSnap = await adminDb()
-    .collection("cuadrillas")
-    .doc(cuadrillaId)
-    .collection("equipos_series")
-    .limit(1500)
-    .get();
+  // Finalized non-garantia orders for cat5e/cat6 totals and plantillas check
+  const finalizedEntries = allMonthEntries.filter(([, data]) =>
+    !isGarantia(data) && normalizedEstado(data?.estado) === "FINALIZADA"
+  );
+
+  // Batch-fetch instalaciones to sum cat5e/cat6 points
+  const uniqueCodigos = [
+    ...new Set(
+      finalizedEntries
+        .map(([, data]) => cleanValue(data?.codiSeguiClien))
+        .filter(Boolean)
+    ),
+  ];
+  const instalacionRefs = uniqueCodigos.map((codigo) =>
+    adminDb().collection("instalaciones").doc(codigo)
+  );
+  const [instalacionSnaps, equiposSnap] = await Promise.all([
+    instalacionRefs.length ? adminDb().getAll(...instalacionRefs) : Promise.resolve([]),
+    adminDb()
+      .collection("cuadrillas")
+      .doc(cuadrillaId)
+      .collection("equipos_series")
+      .limit(1500)
+      .get(),
+  ]);
+
+  let puntosCat5e = 0;
+  let puntosCat6 = 0;
+  for (const snap of instalacionSnaps) {
+    if (!snap.exists) continue;
+    const inst = snap.data() as any;
+    const servicios =
+      inst?.servicios && typeof inst.servicios === "object" ? inst.servicios : {};
+    puntosCat5e += toInt(servicios?.cat5e ?? inst?.cat5e);
+    puntosCat6 += toInt(servicios?.cat6 ?? inst?.cat6);
+  }
+
+  // Check plantilla status for finalized orders → collect pending ones
+  const pendingPlantillas: Array<{
+    ordenId: string;
+    pedido: string;
+    codigoCliente: string;
+    cliente: string;
+    ymd: string;
+  }> = [];
+
+  await Promise.all(
+    finalizedEntries.map(async ([id, data]) => {
+      const codigoCliente = cleanValue(data?.codiSeguiClien);
+      const pedido = cleanValue(data?.ordenId || id);
+      const ymd = String(data?.fSoliYmd || data?.fechaFinVisiYmd || "").trim();
+      if (!ymd) return;
+      const hasPlantilla = await hasPreliquidacionRecord(
+        [codigoCliente, pedido, id],
+        ymd
+      );
+      if (!hasPlantilla) {
+        pendingPlantillas.push({
+          ordenId: id,
+          pedido,
+          codigoCliente,
+          cliente: String(data?.cliente || "").trim(),
+          ymd,
+        });
+      }
+    })
+  );
+
+  pendingPlantillas.sort((a, b) => b.ymd.localeCompare(a.ymd));
+
   const equipmentCounts = new Map<string, number>();
   for (const doc of equiposSnap.docs) {
     const data = doc.data() as any;
@@ -453,6 +518,11 @@ export async function getTecnicoHomeData(cuadrillaId: string) {
       porcentajeGarantias,
     },
     equipmentSummary,
+    cableado: {
+      puntosCat5e,
+      puntosCat6,
+    },
+    plantillasPendientes: pendingPlantillas,
   };
 }
 

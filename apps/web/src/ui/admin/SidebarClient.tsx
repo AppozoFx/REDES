@@ -21,14 +21,32 @@ function getGroup(it: AdminNavItem): GroupKey {
 
 function groupLabel(group: GroupKey) {
   if (group === "GENERAL") return "General";
-  if (group === "ADMIN") return "Administracion";
-  return "Areas";
+  if (group === "ADMIN") return "Administración";
+  return "Áreas";
 }
 
-function groupBadge(group: GroupKey) {
-  if (group === "GENERAL") return "GN";
-  if (group === "ADMIN") return "AD";
-  return "AR";
+function GroupIcon({ group }: { group: GroupKey }) {
+  if (group === "GENERAL") {
+    return (
+      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}>
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        <polyline points="9 22 9 12 15 12 15 22" />
+      </svg>
+    );
+  }
+  if (group === "ADMIN") {
+    return (
+      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}>
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      </svg>
+    );
+  }
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}>
+      <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+      <rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" />
+    </svg>
+  );
 }
 
 function isPathActive(pathname: string, href: string) {
@@ -94,6 +112,8 @@ export default function AdminSidebarClient({
       }
     >
       <div className="flex h-full min-w-0 flex-col overflow-x-hidden p-2">
+
+        {/* ── Logo / Collapse toggle ── */}
         <div className="mb-3 flex items-center justify-between">
           <AnimatePresence initial={false}>
             {!collapsed && (
@@ -115,17 +135,21 @@ export default function AdminSidebarClient({
           <button
             type="button"
             onClick={() => setCollapsed((v) => !v)}
-            className="rounded-xl border border-[var(--line)] px-2 py-1 text-xs text-[var(--muted-ink)] transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45 dark:hover:bg-slate-800"
+            className="rounded-xl border border-[var(--line)] p-1.5 text-[var(--muted-ink)] transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45 dark:hover:bg-slate-800"
             aria-label={collapsed ? "Expandir sidebar" : "Colapsar sidebar"}
           >
-            <span className={`inline-block transition-transform duration-300 ${collapsed ? "rotate-180" : ""}`}>
-              <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
-                <path d="M12.78 4.22a.75.75 0 010 1.06L8.06 10l4.72 4.72a.75.75 0 11-1.06 1.06l-5.25-5.25a.75.75 0 010-1.06l5.25-5.25a.75.75 0 011.06 0z" />
-              </svg>
-            </span>
+            <svg
+              viewBox="0 0 20 20"
+              className={`h-4 w-4 transition-transform duration-300 ${collapsed ? "rotate-180" : ""}`}
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M12.78 4.22a.75.75 0 010 1.06L8.06 10l4.72 4.72a.75.75 0 11-1.06 1.06l-5.25-5.25a.75.75 0 010-1.06l5.25-5.25a.75.75 0 011.06 0z" />
+            </svg>
           </button>
         </div>
 
+        {/* ── Ruta activa (expandido) ── */}
         <AnimatePresence initial={false}>
           {!collapsed && (
             <motion.div
@@ -135,23 +159,25 @@ export default function AdminSidebarClient({
               transition={FADE_SLIDE}
               className="mb-2 rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-[11px] text-slate-500 dark:bg-slate-800 dark:text-slate-400"
             >
-              Ruta actual: <span className="font-semibold text-[var(--brand-ink)]">{activeLabel}</span>
+              Sección: <span className="font-semibold text-[var(--brand-ink)] dark:text-slate-200">{activeLabel}</span>
             </motion.div>
           )}
         </AnimatePresence>
 
+        {/* ── Ruta activa (colapsado, tooltip) ── */}
         {collapsed && (
           <div className="group relative mb-2">
-            <div className="flex h-10 w-full items-center justify-center rounded-xl border border-[var(--line)] bg-white text-[11px] font-semibold text-[var(--brand-ink)] dark:bg-slate-800 dark:text-slate-200">
-              EN
+            <div className="flex h-10 w-full items-center justify-center rounded-xl border border-[var(--line)] bg-white text-[11px] font-bold text-[var(--brand-ink)] dark:bg-slate-800 dark:text-slate-200">
+              {activeLabel.slice(0, 2).toUpperCase()}
             </div>
-            <div className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-30 -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-900 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition group-hover:opacity-100">
-              Ruta actual: {activeLabel}
+            <div className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-30 -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs text-white opacity-0 shadow-lg transition group-hover:opacity-100">
+              {activeLabel}
             </div>
           </div>
         )}
 
-        <nav className="space-y-2 overflow-x-hidden overflow-y-auto">
+        {/* ── Navegación ── */}
+        <nav className="space-y-1.5 overflow-x-hidden overflow-y-auto">
           {GROUP_ORDER.map((group) => {
             const list = grouped.get(group) || [];
             if (!list.length) return null;
@@ -171,15 +197,18 @@ export default function AdminSidebarClient({
                       }
                       setOpenGroup((p) => (p === group ? "GENERAL" : group));
                     }}
-                    className={`flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45 ${
+                    className={`flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45 ${
                       activeInside
-                        ? "bg-[#e7efff] font-semibold text-[#1f3154] ring-1 ring-[#bfd1f1]"
-                        : "text-[var(--muted-ink)] hover:bg-white/70 hover:text-[#30518c]"
+                        ? "bg-[#e7efff] font-semibold text-[#1f3154] ring-1 ring-[#bfd1f1] dark:bg-[#1f3154]/40 dark:text-[#a8c4f0] dark:ring-[#30518c]/40"
+                        : "text-[var(--muted-ink)] hover:bg-white/70 hover:text-[#30518c] dark:hover:bg-slate-800/60"
                     }`}
                   >
-                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--line)] bg-white text-sm font-semibold dark:bg-slate-800">
-                      {groupBadge(group)}
+                    <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--line)] dark:border-slate-700 ${
+                      activeInside ? "bg-[#30518c] text-white shadow-[0_4px_12px_rgba(48,81,140,.3)]" : "bg-white text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                    }`}>
+                      <GroupIcon group={group} />
                     </span>
+
                     <AnimatePresence initial={false}>
                       {!collapsed && (
                         <motion.span
@@ -187,12 +216,13 @@ export default function AdminSidebarClient({
                           animate={{ opacity: 1, x: 0 }}
                           exit={{ opacity: 0, x: -8 }}
                           transition={FADE_SLIDE}
-                          className="flex-1 truncate"
+                          className="flex-1 truncate text-sm"
                         >
                           {groupLabel(group)}
                         </motion.span>
                       )}
                     </AnimatePresence>
+
                     <AnimatePresence initial={false}>
                       {!collapsed && (
                         <motion.span
@@ -200,16 +230,18 @@ export default function AdminSidebarClient({
                           animate={{ opacity: 1, rotate: isOpen ? 180 : 0 }}
                           exit={{ opacity: 0 }}
                           transition={{ duration: 0.2 }}
-                          className="text-xs text-[var(--muted-ink)]"
+                          className="shrink-0 text-[var(--muted-ink)]"
                         >
-                          v
+                          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                            <polyline points="6 9 12 15 18 9" />
+                          </svg>
                         </motion.span>
                       )}
                     </AnimatePresence>
                   </button>
 
                   {collapsed && (
-                    <div className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-20 -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-900 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition group-hover:opacity-100">
+                    <div className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-20 -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs text-white opacity-0 shadow-lg transition group-hover:opacity-100">
                       {groupLabel(group)}
                     </div>
                   )}
@@ -225,7 +257,7 @@ export default function AdminSidebarClient({
                       layout
                       className="overflow-hidden"
                     >
-                      <div className="ml-4 border-l border-[var(--line)] pl-2">
+                      <div className="ml-4 mt-1 border-l-2 border-[var(--line)] pl-2 dark:border-slate-700">
                         {list.map((it) => {
                           const active = pathname === it.href;
                           return (
@@ -233,19 +265,19 @@ export default function AdminSidebarClient({
                               key={it.href}
                               href={it.href}
                               onClick={(e) => handleNavClick(e, it.href)}
-                              className={`relative mt-1 flex items-center rounded-xl px-2 py-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45 ${
+                              className={`relative mt-0.5 flex items-center rounded-lg px-2.5 py-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45 ${
                                 active
-                                  ? "bg-[#dbe7ff] font-bold text-[#1f3154] ring-1 ring-[#9db8ea] shadow-[inset_0_0_0_1px_rgba(48,81,140,.08)]"
-                                  : "text-[var(--muted-ink)] hover:bg-white/80 hover:text-[#30518c]"
+                                  ? "bg-[#dbe7ff] font-semibold text-[#1f3154] shadow-[inset_0_0_0_1px_rgba(48,81,140,.12)] dark:bg-[#1f3154]/50 dark:text-[#a8c4f0]"
+                                  : "text-[var(--muted-ink)] hover:bg-white/80 hover:text-[#30518c] dark:hover:bg-slate-800/60"
                               }`}
                             >
                               {active && (
-                                <span className="absolute -left-[9px] h-7 w-2 rounded-full bg-[#30518c] shadow-[0_0_14px_rgba(48,81,140,.65)]" />
+                                <span className="absolute -left-[9px] h-6 w-1.5 rounded-full bg-[#30518c] shadow-[0_0_10px_rgba(48,81,140,.6)]" />
                               )}
                               <span className="truncate">{it.label}</span>
                               {navigatingHref === it.href && (
                                 <span
-                                  className="ml-auto inline-flex h-4 w-4 animate-spin rounded-full border-2 border-[#30518c]/35 border-t-[#30518c]"
+                                  className="ml-auto inline-flex h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#30518c]/35 border-t-[#30518c]"
                                   aria-hidden="true"
                                 />
                               )}
@@ -261,6 +293,7 @@ export default function AdminSidebarClient({
           })}
         </nav>
 
+        {/* ── Áreas (footer) ── */}
         <AnimatePresence initial={false}>
           {!collapsed && (
             <motion.div
@@ -268,9 +301,20 @@ export default function AdminSidebarClient({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.98 }}
               transition={FADE_SLIDE}
-              className="mt-3 rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-[11px] text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+              className="mt-auto pt-3"
             >
-              Areas: {areas.join(", ") || "(none)"}
+              <div className="rounded-xl border border-[var(--line)] bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800">
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Áreas con acceso</p>
+                <div className="flex flex-wrap gap-1">
+                  {areas.length ? areas.map((a) => (
+                    <span key={a} className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                      {a}
+                    </span>
+                  )) : (
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500">(ninguna)</span>
+                  )}
+                </div>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

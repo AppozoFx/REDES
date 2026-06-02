@@ -57,15 +57,25 @@ export async function GET(req: Request) {
     const db = adminDb();
     const ymd = todayLimaYmd();
 
-    // Dos queries en paralelo
-    const [cuadrillasSnap, iniciadasSnap] = await Promise.all([
+    // Tres queries en paralelo
+    const [cuadrillasSnap, iniciadasSnap, rutaCerradaSnap] = await Promise.all([
       db.collection("cuadrillas").where("estado", "==", "HABILITADO").limit(200).get(),
-      // Órdenes INICIADA hoy con coordenadas → para detectar proximidad
+      // Órdenes INICIADA hoy → para detectar proximidad
       db.collection("ordenes")
         .where("fSoliYmd", "==", ymd)
         .where("estado", "==", "INICIADA")
         .get(),
+      // Cuadrillas que cerraron ruta hoy → ocultar su posición
+      db.collection("cuadrilla_estado_diario")
+        .where("ymd", "==", ymd)
+        .where("estadoRuta", "==", "RUTA_CERRADA")
+        .get(),
     ]);
+
+    // Set de cuadrillaIds con ruta cerrada → excluir del resultado
+    const rutaCerradaIds = new Set<string>(
+      rutaCerradaSnap.docs.map((d) => String(d.data()?.cuadrillaId || "").trim()).filter(Boolean)
+    );
 
     // Mapa cuadrillaId → array de coordenadas de órdenes INICIADA con lat/lng válidos
     const ordenesIniciadasPorCuadrilla = new Map<string, Array<{ lat: number; lng: number }>>();
@@ -81,17 +91,19 @@ export async function GET(req: Request) {
 
     const items = cuadrillasSnap.docs
       .map((d) => {
+        // Ocultar cuadrillas con ruta cerrada
+        if (rutaCerradaIds.has(d.id)) return null;
+
         const x = d.data() as any;
         const lat = toFiniteNumber(x.lat);
         const lng = toFiniteNumber(x.lng);
         if (lat === null || lng === null) return null;
 
-        // Determinar estadoActual: EN_ORDEN solo si hay orden INICIADA
-        // Y la cuadrilla está a ≤50m de esa orden
-        const ordenesIniadas = ordenesIniciadasPorCuadrilla.get(d.id) ?? [];
+        // Determinar estadoActual: EN_ORDEN si está a ≤50m de una orden INICIADA
+        const ordenesIniciadas = ordenesIniciadasPorCuadrilla.get(d.id) ?? [];
         const estaEnOrden =
-          ordenesIniadas.length > 0 &&
-          ordenesIniadas.some(
+          ordenesIniciadas.length > 0 &&
+          ordenesIniciadas.some(
             (o) => distanceMeters(lat, lng, o.lat, o.lng) <= RADIO_EN_ORDEN_METROS
           );
 

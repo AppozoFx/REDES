@@ -1,6 +1,15 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import type { OrdenDoc } from "./schemas";
+import { sendNotifTecnico } from "./notificaciones-tecnico";
+
+export type UpsertOrdenResult = {
+  action: "CREATED" | "UPDATED" | "UNCHANGED";
+  cuadrillaId?: string;
+  prevCuadrillaId?: string;
+  estadoChanged?: { from: string; to: string };
+  cliente?: string;
+};
 
 export const ORDENES_COL = "ordenes";
 
@@ -234,7 +243,7 @@ export async function upsertOrden(input: {
   motivoCancelacion?: string;
   motivoFinalizacion?: string;
   georeferencia?: string;
-}, actorUid: string): Promise<"CREATED" | "UPDATED" | "UNCHANGED"> {
+}, actorUid: string): Promise<UpsertOrdenResult> {
   const ordenId = String(input.ordenId ?? "").trim();
   if (!ordenId) throw new Error("ORDEN_ID_VACIO");
 
@@ -303,6 +312,10 @@ export async function upsertOrden(input: {
     ...opcionales,
   };
 
+  const newCuadrillaId = String(cuadrillaMeta.cuadrillaId || "").trim();
+  const newEstado = String(input.estado || "").trim();
+  const clienteLabel = String(input.cliente || ordenId).trim();
+
   if (!snap.exists) {
     await ref.set({
       ...omitUndefined(base),
@@ -313,7 +326,15 @@ export async function upsertOrden(input: {
         updatedBy: actorUid,
       },
     });
-    return "CREATED";
+    if (newCuadrillaId) {
+      await sendNotifTecnico(
+        newCuadrillaId,
+        "ORDEN_NUEVA",
+        `Nueva orden: ${clienteLabel}`,
+        `Orden ${ordenId} asignada a tu cuadrilla.`,
+      ).catch(() => {});
+    }
+    return { action: "CREATED", cuadrillaId: newCuadrillaId || undefined, cliente: clienteLabel };
   }
 
   const curr = snap.data() as any as OrdenDoc;
@@ -321,7 +342,7 @@ export async function upsertOrden(input: {
   const after = pickBusinessComparable(base);
 
   const same = JSON.stringify(before) === JSON.stringify(after);
-  if (same) return "UNCHANGED";
+  if (same) return { action: "UNCHANGED" };
 
   await ref.set(
     {
@@ -331,5 +352,41 @@ export async function upsertOrden(input: {
     },
     { merge: true }
   );
-  return "UPDATED";
+
+  const prevCuadrillaId = String(curr.cuadrillaId || "").trim();
+  const prevEstado = String((curr as any).estado || "").trim();
+  const result: UpsertOrdenResult = {
+    action: "UPDATED",
+    cuadrillaId: newCuadrillaId || undefined,
+    prevCuadrillaId: prevCuadrillaId !== newCuadrillaId ? prevCuadrillaId || undefined : undefined,
+    estadoChanged: prevEstado !== newEstado ? { from: prevEstado, to: newEstado } : undefined,
+    cliente: clienteLabel,
+  };
+
+  // Cuadrilla changed: notify old (removed) and new (added)
+  if (prevCuadrillaId && prevCuadrillaId !== newCuadrillaId) {
+    await sendNotifTecnico(
+      prevCuadrillaId,
+      "ORDEN_QUITADA",
+      `Orden retirada: ${clienteLabel}`,
+      `La orden ${ordenId} fue retirada de tu cuadrilla.`,
+    ).catch(() => {});
+    if (newCuadrillaId) {
+      await sendNotifTecnico(
+        newCuadrillaId,
+        "ORDEN_NUEVA",
+        `Nueva orden: ${clienteLabel}`,
+        `Orden ${ordenId} asignada a tu cuadrilla.`,
+      ).catch(() => {});
+    }
+  } else if (newCuadrillaId && prevEstado !== newEstado) {
+    await sendNotifTecnico(
+      newCuadrillaId,
+      "ESTADO_ORDEN",
+      `Cambio de estado: ${clienteLabel}`,
+      `Orden ${ordenId}: ${prevEstado || "sin estado"} → ${newEstado || "sin estado"}.`,
+    ).catch(() => {});
+  }
+
+  return result;
 }

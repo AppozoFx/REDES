@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase/admin";
 import { addGlobalNotification } from "@/domain/notificaciones/service";
 import { upsertOrden } from "@/domain/ordenes/repo";
+import { sendNotifTecnico } from "@/domain/ordenes/notificaciones-tecnico";
 import { exportOrdenesXlsx, type WinboManualRequest } from "./client";
 import { parseWinboOrdenesExport } from "./exportParser";
 import { mapWinboRowsToOrdenImport } from "./mappers";
@@ -139,6 +140,7 @@ export async function syncWinboOrdenes(input: WinboSyncInput, actor: WinboSyncAc
       let cursor = 0;
       let workerError: any = null;
       const concurrency = Math.min(12, Math.max(1, mapped.payloads.length));
+      const cuadrillaChanges = new Map<string, { nuevos: number; actualizados: number }>();
 
       async function worker() {
         while (true) {
@@ -147,9 +149,24 @@ export async function syncWinboOrdenes(input: WinboSyncInput, actor: WinboSyncAc
           if (idx >= mapped.payloads.length) return;
           try {
             const res = await upsertOrden(mapped.payloads[idx], actor.uid);
-            if (res === "CREATED") nuevos += 1;
-            else if (res === "UPDATED") actualizados += 1;
-            else duplicadosSinCambios += 1;
+            if (res.action === "CREATED") {
+              nuevos += 1;
+              if (res.cuadrillaId) {
+                const entry = cuadrillaChanges.get(res.cuadrillaId) ?? { nuevos: 0, actualizados: 0 };
+                entry.nuevos += 1;
+                cuadrillaChanges.set(res.cuadrillaId, entry);
+              }
+            } else if (res.action === "UPDATED") {
+              actualizados += 1;
+              const cid = res.cuadrillaId ?? res.prevCuadrillaId;
+              if (cid) {
+                const entry = cuadrillaChanges.get(cid) ?? { nuevos: 0, actualizados: 0 };
+                entry.actualizados += 1;
+                cuadrillaChanges.set(cid, entry);
+              }
+            } else {
+              duplicadosSinCambios += 1;
+            }
           } catch (error) {
             workerError = error;
             return;
@@ -161,6 +178,23 @@ export async function syncWinboOrdenes(input: WinboSyncInput, actor: WinboSyncAc
         await Promise.all(Array.from({ length: concurrency }, () => worker()));
       }
       if (workerError) throw workerError;
+
+      // Notify each affected cuadrilla with a sync summary
+      if (cuadrillaChanges.size > 0) {
+        await Promise.all(
+          Array.from(cuadrillaChanges.entries()).map(([cuadrillaId, counts]) => {
+            const parts: string[] = [];
+            if (counts.nuevos > 0) parts.push(`${counts.nuevos} nueva${counts.nuevos === 1 ? "" : "s"}`);
+            if (counts.actualizados > 0) parts.push(`${counts.actualizados} actualizada${counts.actualizados === 1 ? "" : "s"}`);
+            return sendNotifTecnico(
+              cuadrillaId,
+              "ORDENES_ACTUALIZADAS",
+              "Órdenes actualizadas",
+              `Sincronización completada: ${parts.join(", ")}.`,
+            ).catch(() => {});
+          })
+        );
+      }
 
       await addGlobalNotification({
         title: input.mode === "auto" ? "Sincronizacion automatica WinBo" : "Importacion WinBo",

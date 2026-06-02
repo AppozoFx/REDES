@@ -111,11 +111,38 @@ function emptyPreliquidacion(): PreliquidacionLite {
 }
 
 function lookupTone(info?: SnLookupInfo | null) {
-  if (!info) return "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200";
+  if (!info) return "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-300";
   if (info.reason === "ALREADY_INSTALLED" || info.reason === "NOT_FOUND") {
-    return "border-red-300 bg-red-50 text-red-900 dark:border-red-700 dark:bg-red-900/20 dark:text-red-200";
+    return "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-700/60 dark:bg-rose-900/20 dark:text-rose-300";
   }
-  return "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200";
+  return "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-300";
+}
+
+// ── Shared input/button styles ──
+const snInputBase = "w-full rounded-xl border px-3 py-2 text-sm font-mono text-slate-900 outline-none transition focus:ring-2 dark:text-slate-100";
+const snInputEmpty = "border-slate-200 bg-white focus:border-blue-400 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900";
+const snInputValid = "border-emerald-400 bg-emerald-50 focus:ring-emerald-100 dark:bg-emerald-900/20";
+const snInputInvalid = "border-rose-400 bg-rose-50 focus:ring-rose-100 dark:bg-rose-900/20";
+const snInputDisabled = "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500";
+const fieldLabel = "block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5";
+
+function CopyBtn({ value, label }: { value: string; label?: string }) {
+  return (
+    <button
+      type="button"
+      disabled={!norm(value)}
+      onClick={async () => {
+        try { await navigator.clipboard.writeText(value || ""); toast.success(label || "Copiado"); }
+        catch { toast.error("No se pudo copiar"); }
+      }}
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-400 transition hover:bg-slate-50 hover:text-slate-600 disabled:opacity-30 dark:border-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+    >
+      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+      </svg>
+    </button>
+  );
 }
 
 export function LiquidacionRowClient({
@@ -534,32 +561,37 @@ export function LiquidacionRowClient({
     const key = norm(rawSn);
     if (!key) return null;
     if (lookupLoading[key]) {
-      return <div className="text-xs text-slate-500 dark:text-slate-400">Consultando ubicacion actual del SN...</div>;
+      return (
+        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+          <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-500" />
+          Consultando ubicación actual del SN…
+        </div>
+      );
     }
     const info = lookupBySn[key];
     if (!info) return null;
 
     const lines: string[] = [
-      `Ubicacion actual: ${info.found ? info.ubicacion || "-" : "-"}`,
-      `Accion: ${info.actionHint || "Revisar ubicacion real del equipo antes de liquidar."}`,
+      `Ubicación actual: ${info.found ? info.ubicacion || "-" : "-"}`,
+      `Acción: ${info.actionHint || "Revisar ubicación real del equipo antes de liquidar."}`,
     ];
 
     return (
-      <div className={`rounded border px-3 py-2 text-xs ${lookupTone(info)}`}>
-        {lines.map((line) => (
-          <div key={line}>{line}</div>
-        ))}
+      <div className={`rounded-xl border px-3 py-2.5 text-xs ${lookupTone(info)}`}>
+        {lines.map((line) => <div key={line}>{line}</div>)}
         {info.reason === "IN_OTHER_CUADRILLA" ? (
           <div className="mt-2">
             <button
               type="button"
-              className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-900 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
               onClick={() => openMoveFlow(key)}
               disabled={!!movePendingBySn[key] || ontMoveModalOpen}
             >
-              {movePendingBySn[key]
-                ? "Moviendo..."
-                : `Mover a ${info.targetCuadrillaNombre || "esta cuadrilla"}`}
+              {movePendingBySn[key] ? (
+                <><span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-400 border-t-slate-600" />Moviendo…</>
+              ) : (
+                `Mover a ${info.targetCuadrillaNombre || "esta cuadrilla"}`
+              )}
             </button>
           </div>
         ) : null}
@@ -573,12 +605,7 @@ export function LiquidacionRowClient({
     setOntMoveLoading(false);
     setOntMoveWithPrecon(false);
     setOntMovePreconId("");
-    setOntMovePreconStock({
-      PRECON_50: 0,
-      PRECON_100: 0,
-      PRECON_150: 0,
-      PRECON_200: 0,
-    });
+    setOntMovePreconStock({ PRECON_50: 0, PRECON_100: 0, PRECON_150: 0, PRECON_200: 0 });
   }
 
   async function refreshAfterMove(sn: string) {
@@ -691,728 +718,715 @@ export function LiquidacionRowClient({
     return [`*${fecha}*`, codigo, `*${cliente}*`, `Cuadrilla *${cuadrilla}*`, `*${tramo}*`].join("\n");
   }, [orden.fechaFinVisiYmd, orden.codiSeguiClien, orden.ordenId, orden.cliente, orden.cuadrillaNombre, orden.cuadrillaId, tramo]);
 
+  // ──────────────────────────────────────────────────────────
+  // RENDER
+  // ──────────────────────────────────────────────────────────
+  const isLiquidado = !!orden.liquidado && !orden.correccionPendiente;
+  const isCorreccionPendiente = !!orden.correccionPendiente;
+
   return (
-    <div className={`rounded-xl border border-slate-200 p-4 space-y-3 text-slate-900 transition-all dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 ${cardFocus ? "ring-2 ring-blue-500 border-blue-400 bg-blue-50/40 dark:bg-blue-900/20" : ""}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1 min-w-0 flex-1">
-          <button
-            type="button"
-            className="text-left rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 py-1 text-lg font-extrabold tracking-wide text-slate-900 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
-            onClick={async () => {
-              copyText(codigoTxt, "Codigo copiado");
-            }}
-            title="Copiar codigo"
-          >
-            {orden.codiSeguiClien || orden.ordenId}
-          </button>
-          <div className="flex flex-wrap gap-2">
+    <div
+      className={`overflow-hidden rounded-2xl border text-slate-900 transition-all dark:text-slate-100 ${
+        cardFocus
+          ? "border-blue-400 ring-2 ring-blue-500"
+          : isLiquidado
+          ? "border-emerald-200 dark:border-emerald-800/60"
+          : isCorreccionPendiente
+          ? "border-amber-300 dark:border-amber-700/60"
+          : "border-slate-200 dark:border-slate-700"
+      }`}
+    >
+      {/* ── Status accent bar ── */}
+      <div className={`h-1 w-full ${
+        isLiquidado ? "bg-emerald-400" : isCorreccionPendiente ? "bg-amber-400" : "bg-[#30518c]"
+      }`} />
+
+      <div className={`p-4 ${isLiquidado ? "bg-emerald-50/30 dark:bg-emerald-900/5" : "bg-white dark:bg-slate-900"}`}>
+        <div className="flex items-start justify-between gap-3">
+          {/* ── Left: info ── */}
+          <div className="min-w-0 flex-1 space-y-2">
+            {/* Código + cliente */}
+            <div className="flex flex-wrap items-start gap-2">
+              <button
+                type="button"
+                onClick={() => copyText(codigoTxt, "Código copiado")}
+                title="Copiar código"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2.5 py-1 font-mono text-base font-extrabold tracking-wide text-slate-900 transition hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+              >
+                {orden.codiSeguiClien || orden.ordenId}
+                <svg className="h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => copyText(clienteTxt, "Cliente copiado")}
+                title="Copiar cliente"
+                className="inline-flex rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2.5 py-1 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                {clienteTxt}
+              </button>
+            </div>
+
+            {/* Dirección y plan */}
+            <div className="space-y-0.5 text-sm text-slate-600 dark:text-slate-300">
+              <div className="flex items-start gap-1.5">
+                <svg className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>
+                <span>{orden.direccion || "—"}</span>
+              </div>
+              <div className="flex items-start gap-1.5">
+                <svg className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /></svg>
+                <span className="break-words">{orden.plan || orden.idenServi || "—"}</span>
+              </div>
+            </div>
+
+            {/* Cuadrilla + fecha */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-800 dark:border-blue-700/60 dark:bg-blue-900/30 dark:text-blue-300">
+                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+                {orden.cuadrillaNombre || orden.cuadrillaId}
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
+                {ymdToDmy(orden.fechaFinVisiYmd || "")}
+              </span>
+              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                {orden.estado || "—"} · {orden.tipo || "—"}
+              </span>
+            </div>
+
+            {/* Tramo */}
             <button
               type="button"
-              className="text-left text-sm rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 py-1 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700"
-              onClick={async () => {
-                copyText(clienteTxt, "Cliente copiado");
-              }}
-              title="Copiar cliente"
-            >
-              <span className="text-slate-700 dark:text-slate-100">{clienteTxt}</span>
-            </button>
-          </div>
-          <div className="text-sm break-words text-slate-600 dark:text-slate-300">
-            Direccion: {orden.direccion || "-"}
-          </div>
-          <div className="text-sm text-slate-600 dark:text-slate-300">
-            Plan: {orden.plan || orden.idenServi || "-"}
-          </div>
-          <div className="inline-flex items-center gap-2 rounded-md border border-blue-300 bg-blue-50 px-2 py-1 text-sm text-blue-900 dark:border-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
-            <span className="font-medium">Cuadrilla</span>
-            <span className="font-semibold">{orden.cuadrillaNombre || orden.cuadrillaId}</span>
-            <span className="text-blue-700 dark:text-blue-300">|</span>
-            <span>{ymdToDmy(orden.fechaFinVisiYmd || "")}</span>
-          </div>
-          <div className="text-xs text-slate-500 dark:text-slate-400">
-            Estado: {orden.estado || "-"} | Tipo: {orden.tipo || "-"}
-          </div>
-          <div>
-            <button
-              type="button"
-              className="inline-flex items-center rounded-md border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-              onClick={async () => {
-                await copyText(tramoCopyText, "Resumen de tramo copiado");
-              }}
+              onClick={() => copyText(tramoCopyText, "Resumen de tramo copiado")}
               title="Copiar resumen de tramo"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
             >
+              <svg className="h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
               {tramo}
             </button>
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {tips.cableadoMesh ? <span className="inline-flex items-center rounded-md border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700 dark:border-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-200">SERVICIO CABLEADO DE MESH</span> : null}
-            {tips.gamer ? <span className="inline-flex items-center rounded-md border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs text-blue-700 dark:border-blue-700 dark:bg-blue-900/30 dark:text-blue-200">INTERNETGAMER</span> : null}
-            {tips.kitWifiPro ? <span className="inline-flex items-center rounded-md border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200">KIT WIFI PRO (EN VENTA)</span> : null}
-          </div>
-        </div>
-        <div className="shrink-0 flex flex-col items-end gap-2">
-        <button
-          type="button"
-          className="rounded-lg border bg-black px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-50"
-          onClick={() => (open ? closeModal() : setOpen(true))}
-          disabled={!!orden.liquidado && !orden.correccionPendiente}
-        >
-          {open ? "Cerrar" : orden.correccionPendiente ? "Liquidar (correccion)" : "Liquidar"}
-        </button>
-        {orden.liquidado ? (
-          <>
-            <form ref={corrFormRef} action={corrAction} className="inline">
-              <input type="hidden" name="ordenId" value={orden.id} />
-              <input type="hidden" name="motivo" value={corrMotivo} />
-            </form>
-            <button
-              type="button"
-              className="rounded-lg border px-3 py-1.5 text-sm border-amber-400 text-amber-700"
-              disabled={corrPending}
-              onClick={() => {
-                const motivo = window.prompt("Motivo de correccion (opcional):", corrMotivo || "");
-                if (motivo === null) return;
-                setCorrMotivo(motivo || "");
-                requestAnimationFrame(() => corrFormRef.current?.requestSubmit());
-              }}
-            >
-              {corrPending ? "Corrigiendo..." : "Corregir"}
-            </button>
-          </>
-        ) : null}
-        </div>
-      </div>
-      {orden.correccionPendiente ? (
-        <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
-          Pendiente por corregir. Devuelve equipos y vuelve a liquidar con las series correctas.
-          {orden.correccionYmd ? ` Corregida: ${orden.correccionYmd.split("-").reverse().join("/")}` : ""}
-          {orden.correccionBy ? ` | Por: ${orden.correccionBy}` : ""}
-        </div>
-      ) : null}
 
-      {open ? (
-        <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/45" onClick={closeModal} />
-	            <div className="absolute inset-x-0 top-4 bottom-4 mx-auto w-[96vw] max-w-4xl overflow-y-auto rounded-xl bg-white p-4 shadow-2xl dark:bg-slate-900 dark:text-slate-100">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="font-semibold text-base">Liquidar orden {orden.codiSeguiClien || orden.ordenId}</div>
-	              <button type="button" className="rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:text-slate-200" onClick={closeModal}>
-	                Cerrar
-	              </button>
-            </div>
-            <form action={action} className="space-y-3">
-          <input type="hidden" name="ordenId" value={orden.id} />
-          <input type="hidden" name="snsText" value={snsText} />
-          <input type="hidden" name="rotuloNapCto" value={rotuloNapCto} />
-          <input type="hidden" name="planGamer" value={planGamerChecked ? "GAMER" : ""} />
-          <input type="hidden" name="kitWifiPro" value={kitWifiProChecked ? "KIT WIFI PRO (AL CONTADO)" : ""} />
-          <input type="hidden" name="servicioCableadoMesh" value={cableadoMeshChecked ? "SERVICIO CABLEADO DE MESH" : ""} />
-          <input
-            type="hidden"
-            name="cat5e"
-            value={String(cableadoMeshChecked ? Math.max(1, Math.min(4, Math.floor(cat5e || 1))) : 0)}
-          />
-          <input type="hidden" name="cat6" value={String(cat6)} />
-          <input type="hidden" name="puntosUTP" value={String(puntosUTP)} />
-          <input type="hidden" name="observacion" value={observacion} />
-
-          <div className="rounded border border-slate-200 bg-slate-50 p-3 space-y-2 dark:border-slate-700 dark:bg-slate-800">
-            <div className="text-sm font-medium">Datos de la orden</div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-              <div>
-                <span className="text-slate-500 dark:text-slate-400">Fecha:</span>{" "}
-                <span>{ymdToDmy(orden.fechaFinVisiYmd || "")}</span>
+            {/* Tipificaciones */}
+            {(tips.cableadoMesh || tips.gamer || tips.kitWifiPro) && (
+              <div className="flex flex-wrap gap-1">
+                {tips.cableadoMesh && <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:border-indigo-700/60 dark:bg-indigo-900/30 dark:text-indigo-300">CABLEADO MESH</span>}
+                {tips.gamer && <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:border-blue-700/60 dark:bg-blue-900/30 dark:text-blue-300">INTERNETGAMER</span>}
+                {tips.kitWifiPro && <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:border-emerald-700/60 dark:bg-emerald-900/30 dark:text-emerald-300">KIT WIFI PRO</span>}
               </div>
+            )}
+          </div>
+
+          {/* ── Right: actions ── */}
+          <div className="shrink-0 flex flex-col items-end gap-2">
+            {isLiquidado ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-900/30 dark:text-emerald-300">
+                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><polyline points="20 6 9 17 4 12" /></svg>
+                Liquidada
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#30518c] px-4 py-2 text-sm font-medium text-white shadow-[0_4px_12px_rgba(48,81,140,.3)] transition hover:bg-[#2b4880] active:scale-[.98] disabled:opacity-50"
+                onClick={() => (open ? closeModal() : setOpen(true))}
+                disabled={isLiquidado}
+              >
+                {open ? (
+                  <><svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>Cerrar</>
+                ) : isCorreccionPendiente ? (
+                  <><svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><polyline points="20 6 9 17 4 12" /></svg>Liquidar (corrección)</>
+                ) : (
+                  <><svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><polyline points="20 6 9 17 4 12" /></svg>Liquidar</>
+                )}
+              </button>
+            )}
+            {orden.liquidado && (
+              <>
+                <form ref={corrFormRef} action={corrAction} className="inline">
+                  <input type="hidden" name="ordenId" value={orden.id} />
+                  <input type="hidden" name="motivo" value={corrMotivo} />
+                </form>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 transition hover:bg-amber-100 disabled:opacity-60 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-400 dark:hover:bg-amber-900/40"
+                  disabled={corrPending}
+                  onClick={() => {
+                    const motivo = window.prompt("Motivo de corrección (opcional):", corrMotivo || "");
+                    if (motivo === null) return;
+                    setCorrMotivo(motivo || "");
+                    requestAnimationFrame(() => corrFormRef.current?.requestSubmit());
+                  }}
+                >
+                  {corrPending ? (
+                    <><span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-400 border-t-amber-700" />Corrigiendo…</>
+                  ) : (
+                    <><svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>Corregir</>
+                  )}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Corrección pendiente banner */}
+        {isCorreccionPendiente && (
+          <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-300">
+            <svg className="h-4 w-4 shrink-0 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}>
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <span>
+              Pendiente por corregir. Devuelve equipos y vuelve a liquidar con las series correctas.
+              {orden.correccionYmd ? ` · Corregida: ${orden.correccionYmd.split("-").reverse().join("/")}` : ""}
+              {orden.correccionBy ? ` · Por: ${orden.correccionBy}` : ""}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* ── Modal de liquidación ── */}
+      {open && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={closeModal} />
+          <div className="absolute inset-x-0 top-3 bottom-3 mx-auto w-[96vw] max-w-4xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+
+            {/* Modal header */}
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white px-5 py-4 dark:border-slate-700 dark:bg-slate-900">
               <div>
-                <span className="text-slate-500 dark:text-slate-400">Cuadrilla:</span>{" "}
-                <span className="inline-flex rounded bg-blue-100 px-2 py-0.5 font-semibold text-blue-900 dark:bg-blue-900/30 dark:text-blue-200">
-                  {orden.cuadrillaNombre || orden.cuadrillaId || "-"}
+                <p className="font-semibold text-slate-900 dark:text-slate-100">
+                  Liquidar orden — <span className="font-mono">{orden.codiSeguiClien || orden.ordenId}</span>
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{orden.cliente || "—"} · {orden.cuadrillaNombre || orden.cuadrillaId}</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeModal}
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:border-slate-700 dark:hover:bg-slate-800"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+
+            <form action={action} className="space-y-4 p-5">
+              <input type="hidden" name="ordenId" value={orden.id} />
+              <input type="hidden" name="snsText" value={snsText} />
+              <input type="hidden" name="rotuloNapCto" value={rotuloNapCto} />
+              <input type="hidden" name="planGamer" value={planGamerChecked ? "GAMER" : ""} />
+              <input type="hidden" name="kitWifiPro" value={kitWifiProChecked ? "KIT WIFI PRO (AL CONTADO)" : ""} />
+              <input type="hidden" name="servicioCableadoMesh" value={cableadoMeshChecked ? "SERVICIO CABLEADO DE MESH" : ""} />
+              <input type="hidden" name="cat5e" value={String(cableadoMeshChecked ? Math.max(1, Math.min(4, Math.floor(cat5e || 1))) : 0)} />
+              <input type="hidden" name="cat6" value={String(cat6)} />
+              <input type="hidden" name="puntosUTP" value={String(puntosUTP)} />
+              <input type="hidden" name="observacion" value={observacion} />
+
+              {/* Datos de la orden */}
+              <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+                <div className="border-b border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Datos de la orden</p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 p-4 text-sm md:grid-cols-2">
+                  <div>
+                    <span className="text-xs font-medium text-slate-400">Fecha</span>
+                    <p className="font-medium">{ymdToDmy(orden.fechaFinVisiYmd || "")}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs font-medium text-slate-400">Cuadrilla</span>
+                    <p>
+                      <span className="inline-flex rounded-lg bg-blue-100 px-2 py-0.5 font-semibold text-blue-900 dark:bg-blue-900/30 dark:text-blue-200">
+                        {orden.cuadrillaNombre || orden.cuadrillaId || "—"}
+                      </span>
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-xs font-medium text-slate-400">Código cliente</span>
+                    <button
+                      type="button"
+                      onClick={() => copyText(codigoTxt, "Código copiado")}
+                      className="mt-0.5 flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 bg-white px-2 py-0.5 font-mono text-xs font-semibold hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:hover:bg-slate-800"
+                    >
+                      {codigoTxt}
+                      <svg className="h-3 w-3 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                    </button>
+                  </div>
+                  <div>
+                    <span className="text-xs font-medium text-slate-400">Cliente</span>
+                    <button
+                      type="button"
+                      onClick={() => copyText(clienteTxt, "Cliente copiado")}
+                      className="mt-0.5 flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 bg-white px-2 py-0.5 text-xs hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:hover:bg-slate-800"
+                    >
+                      {clienteTxt}
+                      <svg className="h-3 w-3 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                    </button>
+                  </div>
+                  <div className="md:col-span-2">
+                    <span className="text-xs font-medium text-slate-400">Dirección</span>
+                    <p className="font-medium">{orden.direccion || "—"}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs font-medium text-slate-400">Tipo</span>
+                    <p>{orden.tipo || "—"}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs font-medium text-slate-400">Plan / Servicios</span>
+                    <p className="whitespace-pre-line text-xs">{planLines.join("\n")}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Resumen de equipos esperados */}
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-800">
+                <span className="font-semibold text-slate-500 dark:text-slate-400">Esperado:</span>
+                {[
+                  { label: "ONT", val: 1 },
+                  { label: "MESH", val: meshBaseSlots },
+                  { label: "FONO", val: expected.fono },
+                  { label: "BOX", val: boxBaseSlots },
+                ].map(({ label, val }) => (
+                  <span key={label} className={`inline-flex items-center rounded-full px-2 py-0.5 font-mono font-semibold ${val > 0 ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" : "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400"}`}>
+                    {label}:{val}
+                  </span>
+                ))}
+                <span className="text-slate-400">·</span>
+                <span className="text-slate-500 dark:text-slate-400">
+                  Gamer:{tips.gamer ? "Sí" : "No"} · KitWifiPro:{tips.kitWifiPro ? "Sí" : "No"} · CableadoMesh:{tips.cableadoMesh ? "Sí" : "No"}
                 </span>
               </div>
-              <div>
-                <span className="text-slate-500 dark:text-slate-400">Codigo Cliente:</span>{" "}
-                <button
-                  type="button"
-                  className="rounded border border-dashed border-slate-300 bg-white px-2 py-0.5 text-xs font-medium hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(codigoTxt);
-                      toast.success("Codigo copiado");
-                    } catch {
-                      toast.error("No se pudo copiar codigo");
-                    }
-                  }}
-                  title="Copiar codigo cliente"
-                >
-                  {orden.codiSeguiClien || orden.ordenId || "-"}
-                </button>
-              </div>
-              <div>
-                <span className="text-slate-500 dark:text-slate-400">Cliente:</span>{" "}
-                <button
-                  type="button"
-                  className="rounded border border-dashed border-slate-300 bg-white px-2 py-0.5 text-xs hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(clienteTxt);
-                      toast.success("Cliente copiado");
-                    } catch {
-                      toast.error("No se pudo copiar cliente");
-                    }
-                  }}
-                  title="Copiar cliente"
-                >
-                  {orden.cliente || "-"}
-                </button>
-              </div>
-              <div className="md:col-span-2">
-                <span className="text-slate-500 dark:text-slate-400">Direccion:</span>{" "}
-                <span>{orden.direccion || "-"}</span>
-              </div>
-              <div>
-                <span className="text-slate-500 dark:text-slate-400">Tipo:</span>{" "}
-                <span>{orden.tipo || "-"}</span>
-              </div>
-              <div>
-                <span className="text-slate-500 dark:text-slate-400">Plan:</span>{" "}
-                <span className="block whitespace-pre-line">{planLines.join("\n")}</span>
-              </div>
-            </div>
-          </div>
 
-          <div className="text-xs text-slate-500 dark:text-slate-400">
-            Esperado por orden: ONT=1, MESH={meshBaseSlots}, FONO={expected.fono}, BOX={boxBaseSlots}
-          </div>
-
-          <div className="text-xs text-slate-500 dark:text-slate-400">
-            Tipificaciones: Gamer={tips.gamer ? "Si" : "No"} | Kit Wifi Pro={tips.kitWifiPro ? "Si" : "No"} | Cableado Mesh={tips.cableadoMesh ? "Si" : "No"}
-          </div>
-          {observacionRequerida ? (
-            <div className="rounded border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2 text-xs">
-              Estas usando equipos fuera del plan. La observacion es obligatoria para liquidar.
-            </div>
-          ) : null}
-
-          {duplicates.length > 0 ? (
-            <div className="rounded border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2 text-xs">
-              SN duplicados: {duplicates.join(", ")}
-            </div>
-          ) : null}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-sm font-medium">SN ONT (obligatorio)</label>
-              <div className="flex items-center gap-2">
-                <input
-                  list={`ont-list-${orden.ordenId}`}
-                  value={snONT}
-                  onChange={(e) => setSnONT(e.target.value)}
-                  className={`w-full rounded border px-3 py-2 text-sm text-slate-900 dark:text-slate-100 ${
-                    !norm(snONT)
-                      ? "border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900"
-                      : validONT
-                      ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
-                      : "border-red-500 bg-red-50 dark:bg-red-900/20"
-                  }`}
-                  placeholder="Ejemplo: ONT123456"
-                  required
-                />
-                <button
-                  type="button"
-                  className="rounded border border-slate-300 px-2 py-2 text-xs dark:border-slate-700 dark:text-slate-200"
-                  onClick={() => copyText(snONT, "SN ONT copiada")}
-                  disabled={!norm(snONT)}
-                  title="Copiar SN ONT"
-                >
-                  Copiar
-                </button>
-              </div>
-              <datalist id={`ont-list-${orden.ordenId}`}>
-                {stock.ONT.map((o) => (
-                  <option key={o.sn} value={o.sn} />
-                ))}
-              </datalist>
-              <input
-                value={proidONT}
-                readOnly
-                className="mt-2 w-full rounded border border-slate-300 bg-gray-100 px-3 py-2 text-sm text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                placeholder="PROID ONT"
-              />
-              {!!norm(snONT) && !validONT ? (
-                <div className="space-y-1">
-                  <div className="text-xs text-red-700">SN no encontrado en stock de cuadrilla.</div>
-                  {renderLookupHint(snONT)}
+              {/* Alertas */}
+              {observacionRequerida && (
+                <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-300">
+                  <svg className="h-4 w-4 shrink-0 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+                  Estás usando equipos fuera del plan. La observación es obligatoria para liquidar.
                 </div>
-              ) : null}
-            </div>
-          </div>
-
-          {snMESHUi.length > 0 ? (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-3">
-                <label className="text-sm font-medium">SN MESH</label>
-                <div className="text-xs text-slate-500 dark:text-slate-400">
-                  usados: {meshEnteredCount}/4
-                </div>
-                <button
-                  type="button"
-                  className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-60 dark:border-slate-700 dark:text-slate-200"
-                  onClick={() => canAddMeshExtra && setMeshExtraEnabled((v) => !v)}
-                  disabled={!canAddMeshExtra}
-                >
-                  {canAddMeshExtra
-                    ? meshExtraEnabled
-                      ? "Quitar MESH adicionales"
-                      : "Agregar MESH adicionales"
-                    : "Maximo MESH: 4"}
-                </button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {snMESHUi.map((v, i) => (
-                  <div key={`mesh-${orden.ordenId}-${i}`} className="space-y-1">
-                    {(() => {
-                      const prevFilled = i === 0 ? true : !!norm(snMESHUi[i - 1] || "");
-                      return (
-                    <div className="flex items-center gap-2">
-                      <input
-                        list={`mesh-list-${orden.ordenId}`}
-                        value={v}
-                        onChange={(e) => setSnMESH((prev) => updateAt(ensureArraySize(prev, snMESHUi.length), i, e.target.value))}
-                        className={`w-full rounded border px-3 py-2 text-sm text-slate-900 dark:text-slate-100 ${
-                          !prevFilled
-                            ? "cursor-not-allowed border-slate-300 bg-gray-100 text-gray-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
-                            : !norm(v)
-                            ? "border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900"
-                            : meshSet.has(norm(v))
-                            ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
-                            : "border-red-500 bg-red-50 dark:bg-red-900/20"
-                        }`}
-                        placeholder={`MESH ${i + 1}`}
-                        disabled={!prevFilled}
-                      />
-                      <button
-                        type="button"
-                        className="rounded border border-slate-300 px-2 py-2 text-xs dark:border-slate-700 dark:text-slate-200"
-                        onClick={() => copyText(v, `SN MESH ${i + 1} copiada`)}
-                        disabled={!norm(v)}
-                        title={`Copiar SN MESH ${i + 1}`}
-                      >
-                        Copiar
-                      </button>
-                    </div>
-                      );
-                    })()}
-                    {!!norm(v) && !meshSet.has(norm(v)) ? (
-                      <div className="space-y-1">
-                        <div className="text-xs text-red-700">SN no encontrado en stock de cuadrilla.</div>
-                        {renderLookupHint(v)}
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-                <datalist id={`mesh-list-${orden.ordenId}`}>
-                  {stock.MESH.map((sn) => (
-                    <option key={sn} value={sn} />
-                  ))}
-                </datalist>
-              </div>
-              {meshExtraEnabled && !requiredFirstMeshExtra ? (
-                <div className="text-xs text-amber-700">Debes completar el primer MESH adicional para continuar.</div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="space-y-2 text-xs text-slate-500 dark:text-slate-400">
-              <div>MESH no requerido para esta orden.</div>
-              <button
-                type="button"
-                className="rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:text-slate-200"
-                onClick={() => setMeshExtraEnabled(true)}
-              >
-                Agregar MESH adicionales
-              </button>
-            </div>
-          )}
-
-          {snBOXUi.length > 0 ? (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-3">
-                <label className="text-sm font-medium">SN BOX</label>
-                <div className="text-xs text-slate-500 dark:text-slate-400">
-                  usados: {boxEnteredCount}/4
-                </div>
-                <button
-                  type="button"
-                  className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-60 dark:border-slate-700 dark:text-slate-200"
-                  onClick={() => canAddBoxExtra && setBoxExtraEnabled((v) => !v)}
-                  disabled={!canAddBoxExtra}
-                >
-                  {canAddBoxExtra
-                    ? boxExtraEnabled
-                      ? "Quitar BOX adicionales"
-                      : "Agregar BOX adicionales"
-                    : "Maximo BOX: 4"}
-                </button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {snBOXUi.map((v, i) => (
-                  <div key={`box-${orden.ordenId}-${i}`} className="space-y-1">
-                    {(() => {
-                      const prevFilled = i === 0 ? true : !!norm(snBOXUi[i - 1] || "");
-                      return (
-                    <div className="flex items-center gap-2">
-                      <input
-                        list={`box-list-${orden.ordenId}`}
-                        value={v}
-                        onChange={(e) => setSnBOX((prev) => updateAt(ensureArraySize(prev, snBOXUi.length), i, e.target.value))}
-                        className={`w-full rounded border px-3 py-2 text-sm text-slate-900 dark:text-slate-100 ${
-                          !prevFilled
-                            ? "cursor-not-allowed border-slate-300 bg-gray-100 text-gray-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
-                            : !norm(v)
-                            ? "border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900"
-                            : boxSet.has(norm(v))
-                            ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
-                            : "border-red-500 bg-red-50 dark:bg-red-900/20"
-                        }`}
-                        placeholder={`BOX ${i + 1}`}
-                        disabled={!prevFilled}
-                      />
-                      <button
-                        type="button"
-                        className="rounded border border-slate-300 px-2 py-2 text-xs dark:border-slate-700 dark:text-slate-200"
-                        onClick={() => copyText(v, `SN BOX ${i + 1} copiada`)}
-                        disabled={!norm(v)}
-                        title={`Copiar SN BOX ${i + 1}`}
-                      >
-                        Copiar
-                      </button>
-                    </div>
-                      );
-                    })()}
-                    {!!norm(v) && !boxSet.has(norm(v)) ? (
-                      <div className="space-y-1">
-                        <div className="text-xs text-red-700">SN no encontrado en stock de cuadrilla.</div>
-                        {renderLookupHint(v)}
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-                <datalist id={`box-list-${orden.ordenId}`}>
-                  {stock.BOX.map((sn) => (
-                    <option key={sn} value={sn} />
-                  ))}
-                </datalist>
-              </div>
-              {boxExtraEnabled && !requiredFirstBoxExtra ? (
-                <div className="text-xs text-amber-700">Debes completar el primer BOX adicional para continuar.</div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="space-y-2 text-xs text-slate-500 dark:text-slate-400">
-              <div>BOX no requerido para esta orden.</div>
-              <button
-                type="button"
-                className="rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:text-slate-200"
-                onClick={() => setBoxExtraEnabled(true)}
-              >
-                Agregar BOX adicionales
-              </button>
-            </div>
-          )}
-
-          {expected.fono > 0 || fonoExtraEnabled ? (
-            <div className="space-y-1">
-              <div className="flex items-center justify-between gap-3">
-                <label className="text-sm font-medium">
-                  SN FONO {expected.fono > 0 ? "(requerido)" : "(excepcional)"}
-                </label>
-                {expected.fono <= 0 ? (
-                  <button
-                    type="button"
-                    className="rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:text-slate-200"
-                    onClick={() => setFonoExtraEnabled(false)}
-                  >
-                    Quitar FONO adicionales
-                  </button>
-                ) : null}
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  list={`fono-list-${orden.ordenId}`}
-                  value={snFONO}
-                  onChange={(e) => setSnFONO(e.target.value)}
-                  className={`w-full rounded border px-3 py-2 text-sm text-slate-900 dark:text-slate-100 ${
-                    !norm(snFONO)
-                      ? "border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900"
-                      : fonoSet.has(norm(snFONO))
-                      ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
-                      : "border-red-500 bg-red-50 dark:bg-red-900/20"
-                  }`}
-                  placeholder="Ejemplo: FONO123456"
-                />
-                <button
-                  type="button"
-                  className="rounded border border-slate-300 px-2 py-2 text-xs dark:border-slate-700 dark:text-slate-200"
-                  onClick={() => copyText(snFONO, "SN FONO copiada")}
-                  disabled={!norm(snFONO)}
-                  title="Copiar SN FONO"
-                >
-                  Copiar
-                </button>
-              </div>
-              <datalist id={`fono-list-${orden.ordenId}`}>
-                {stock.FONO.map((sn) => (
-                  <option key={sn} value={sn} />
-                ))}
-              </datalist>
-              {!!norm(snFONO) && !fonoSet.has(norm(snFONO)) ? (
-                <div className="space-y-1">
-                  <div className="text-xs text-red-700">SN no encontrado en stock de cuadrilla.</div>
-                  {renderLookupHint(snFONO)}
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="space-y-2 text-xs text-slate-500 dark:text-slate-400">
-              <div>FONO no requerido para esta orden.</div>
-              <button
-                type="button"
-                className="rounded border border-slate-300 px-2 py-1 dark:border-slate-700 dark:text-slate-200"
-                onClick={() => setFonoExtraEnabled(true)}
-              >
-                Agregar FONO adicionales
-              </button>
-            </div>
-          )}
-
-          {stockLoading ? <div className="text-xs text-slate-500 dark:text-slate-400">Cargando stock de cuadrilla...</div> : null}
-          {preliqLoading ? <div className="text-xs text-slate-500 dark:text-slate-400">Cargando pre-liquidacion Telegram...</div> : null}
-
-          <div className="space-y-1 rounded border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800">
-            <label className="text-sm font-medium">Materiales (consumo automatico por instalacion)</label>
-            <div className="text-xs text-slate-700 dark:text-slate-200">
-              ACTA:1, CINTILLO_30:4, CINTILLO_BANDERA:1, CONECTOR:1, ACOPLADOR:1, PACHCORD:1, ROSETA:1
-            </div>
-          </div>
-
-            <div className="rounded border border-slate-200 p-3 space-y-3 dark:border-slate-700">
-            <div className="text-sm font-medium">Servicios detectados / confirmados</div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <label className="inline-flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={planGamerChecked}
-                  onChange={(e) => setPlanGamerChecked(e.target.checked)}
-                />
-                Plan Gamer
-              </label>
-              <label className="inline-flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={cableadoMeshChecked}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    setCableadoMeshChecked(checked);
-                    if (checked && (!Number.isFinite(cat5e) || cat5e < 1)) setCat5e(1);
-                    if (!checked) setCat5e(0);
-                  }}
-                />
-                SERVICIO CABLEADO DE MESH
-              </label>
-              <label className="inline-flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={kitWifiProChecked}
-                  onChange={(e) => setKitWifiProChecked(e.target.checked)}
-                />
-                KIT WIFI PRO (AL CONTADO)
-              </label>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs text-slate-500 dark:text-slate-400">CAT 5e</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={4}
-                  step={1}
-                  value={cableadoMeshChecked ? (cat5e < 1 ? 1 : cat5e) : 0}
-                  onChange={(e) => {
-                    const raw = Math.floor(Number(e.target.value || 1));
-                    const safe = Math.max(1, Math.min(4, Number.isFinite(raw) ? raw : 1));
-                    setCat5e(safe);
-                  }}
-                  disabled={!cableadoMeshChecked}
-                  className={`w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 ${!cableadoMeshChecked ? "bg-gray-100 text-gray-500 dark:bg-slate-800 dark:text-slate-400" : ""}`}
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs text-slate-500 dark:text-slate-400">CAT 6</label>
-                <input
-                  value={String(cat6)}
-                  readOnly
-                  className="w-full rounded border border-slate-300 bg-gray-100 px-3 py-2 text-sm text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs text-slate-500 dark:text-slate-400">Puntos UTP</label>
-                <input
-                  value={String(puntosUTP)}
-                  readOnly
-                  className="w-full rounded border border-slate-300 bg-gray-100 px-3 py-2 text-sm text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Rotulo NAP/CTO (obligatorio)</label>
-            <input
-              value={rotuloNapCto}
-              onChange={(e) => setRotuloNapCto(e.target.value)}
-              className={`w-full rounded border px-3 py-2 text-sm text-slate-900 dark:text-slate-100 ${
-                !norm(rotuloNapCto)
-                  ? "border-red-500 bg-red-50 dark:bg-red-900/20"
-                  : "border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900"
-              }`}
-              placeholder="Ejemplo: NAP-12 / CTO-45"
-              required
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-sm font-medium">
-              Observacion (opcional)
-            </label>
-            <input
-              value={observacion}
-              onChange={(e) => setObservacion(e.target.value)}
-              className={`w-full rounded border px-3 py-2 text-sm text-slate-900 dark:text-slate-100 ${
-                observacionRequerida && !norm(observacion)
-                  ? "border-red-500 bg-red-50 dark:bg-red-900/20"
-                  : "border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900"
-              }`}
-              placeholder={observacionRequerida ? "Observacion obligatoria por excepcion" : "Notas de liquidacion"}
-            />
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              type="submit"
-              className="inline-flex items-center justify-center gap-2 rounded bg-black px-3 py-2 text-sm text-white disabled:opacity-60"
-              disabled={!canSubmitStrict || !norm(rotuloNapCto)}
-            >
-              {pending ? (
-                <>
-                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />
-                  Procesando...
-                </>
-              ) : (
-                "Confirmar liquidacion"
               )}
-            </button>
-            {state?.ok ? (
-              <div className="text-xs text-emerald-700">
-                Liquidado. Equipos: {state.resumen.equipos}, Materiales: {state.resumen.materiales}
+              {duplicates.length > 0 && (
+                <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-800 dark:border-rose-700/60 dark:bg-rose-900/20 dark:text-rose-300">
+                  <svg className="h-4 w-4 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+                  SN duplicados: {duplicates.join(", ")}
+                </div>
+              )}
+
+              {/* Loading states */}
+              {(stockLoading || preliqLoading) && (
+                <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-500" />
+                  {stockLoading ? "Cargando stock de cuadrilla…" : "Cargando pre-liquidación de Telegram…"}
+                </div>
+              )}
+
+              {/* ── SN ONT ── */}
+              <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+                <div className="border-b border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Series de equipos</p>
+                </div>
+                <div className="space-y-4 p-4">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <div>
+                      <label className={fieldLabel}>SN ONT <span className="text-rose-500">*</span></label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          list={`ont-list-${orden.ordenId}`}
+                          value={snONT}
+                          onChange={(e) => setSnONT(e.target.value)}
+                          className={`${snInputBase} ${!norm(snONT) ? snInputEmpty : validONT ? snInputValid : snInputInvalid}`}
+                          placeholder="Ejemplo: ONT123456"
+                          required
+                        />
+                        <CopyBtn value={snONT} label="SN ONT copiada" />
+                      </div>
+                      <datalist id={`ont-list-${orden.ordenId}`}>
+                        {stock.ONT.map((o) => <option key={o.sn} value={o.sn} />)}
+                      </datalist>
+                      <input
+                        value={proidONT}
+                        readOnly
+                        className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                        placeholder="PROID ONT (auto)"
+                      />
+                      {!!norm(snONT) && !validONT && (
+                        <div className="mt-1.5 space-y-1.5">
+                          <p className="text-xs font-medium text-rose-600">SN no encontrado en stock de cuadrilla.</p>
+                          {renderLookupHint(snONT)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* SN MESH */}
+                  {snMESHUi.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className={fieldLabel + " mb-0"}>SN MESH <span className="normal-case font-normal text-slate-400">({meshEnteredCount}/4 usados)</span></label>
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-[#30518c] transition hover:underline disabled:opacity-50 dark:text-blue-400"
+                          onClick={() => canAddMeshExtra && setMeshExtraEnabled((v) => !v)}
+                          disabled={!canAddMeshExtra}
+                        >
+                          {canAddMeshExtra ? (meshExtraEnabled ? "— Quitar MESH adicionales" : "+ MESH adicionales") : "Máx. 4"}
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                        {snMESHUi.map((v, i) => {
+                          const prevFilled = i === 0 ? true : !!norm(snMESHUi[i - 1] || "");
+                          return (
+                            <div key={`mesh-${orden.ordenId}-${i}`} className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  list={`mesh-list-${orden.ordenId}`}
+                                  value={v}
+                                  onChange={(e) => setSnMESH((prev) => updateAt(ensureArraySize(prev, snMESHUi.length), i, e.target.value))}
+                                  className={`${snInputBase} ${!prevFilled ? snInputDisabled : !norm(v) ? snInputEmpty : meshSet.has(norm(v)) ? snInputValid : snInputInvalid}`}
+                                  placeholder={`MESH ${i + 1}`}
+                                  disabled={!prevFilled}
+                                />
+                                <CopyBtn value={v} label={`SN MESH ${i + 1} copiada`} />
+                              </div>
+                              {!!norm(v) && !meshSet.has(norm(v)) && (
+                                <div className="space-y-1">
+                                  <p className="text-xs font-medium text-rose-600">SN no encontrado en stock.</p>
+                                  {renderLookupHint(v)}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                        <datalist id={`mesh-list-${orden.ordenId}`}>
+                          {stock.MESH.map((sn) => <option key={sn} value={sn} />)}
+                        </datalist>
+                      </div>
+                      {meshExtraEnabled && !requiredFirstMeshExtra && (
+                        <p className="text-xs font-medium text-amber-600">Debes completar el primer MESH adicional para continuar.</p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400">
+                      <p>MESH no requerido para esta orden.</p>
+                      <button type="button" className="font-medium text-[#30518c] hover:underline dark:text-blue-400" onClick={() => setMeshExtraEnabled(true)}>
+                        + Agregar MESH adicionales
+                      </button>
+                    </div>
+                  )}
+
+                  {/* SN BOX */}
+                  {snBOXUi.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className={fieldLabel + " mb-0"}>SN BOX <span className="normal-case font-normal text-slate-400">({boxEnteredCount}/4 usados)</span></label>
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-[#30518c] transition hover:underline disabled:opacity-50 dark:text-blue-400"
+                          onClick={() => canAddBoxExtra && setBoxExtraEnabled((v) => !v)}
+                          disabled={!canAddBoxExtra}
+                        >
+                          {canAddBoxExtra ? (boxExtraEnabled ? "— Quitar BOX adicionales" : "+ BOX adicionales") : "Máx. 4"}
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                        {snBOXUi.map((v, i) => {
+                          const prevFilled = i === 0 ? true : !!norm(snBOXUi[i - 1] || "");
+                          return (
+                            <div key={`box-${orden.ordenId}-${i}`} className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  list={`box-list-${orden.ordenId}`}
+                                  value={v}
+                                  onChange={(e) => setSnBOX((prev) => updateAt(ensureArraySize(prev, snBOXUi.length), i, e.target.value))}
+                                  className={`${snInputBase} ${!prevFilled ? snInputDisabled : !norm(v) ? snInputEmpty : boxSet.has(norm(v)) ? snInputValid : snInputInvalid}`}
+                                  placeholder={`BOX ${i + 1}`}
+                                  disabled={!prevFilled}
+                                />
+                                <CopyBtn value={v} label={`SN BOX ${i + 1} copiada`} />
+                              </div>
+                              {!!norm(v) && !boxSet.has(norm(v)) && (
+                                <div className="space-y-1">
+                                  <p className="text-xs font-medium text-rose-600">SN no encontrado en stock.</p>
+                                  {renderLookupHint(v)}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                        <datalist id={`box-list-${orden.ordenId}`}>
+                          {stock.BOX.map((sn) => <option key={sn} value={sn} />)}
+                        </datalist>
+                      </div>
+                      {boxExtraEnabled && !requiredFirstBoxExtra && (
+                        <p className="text-xs font-medium text-amber-600">Debes completar el primer BOX adicional para continuar.</p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400">
+                      <p>BOX no requerido para esta orden.</p>
+                      <button type="button" className="font-medium text-[#30518c] hover:underline dark:text-blue-400" onClick={() => setBoxExtraEnabled(true)}>
+                        + Agregar BOX adicionales
+                      </button>
+                    </div>
+                  )}
+
+                  {/* SN FONO */}
+                  {expected.fono > 0 || fonoExtraEnabled ? (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className={fieldLabel + " mb-0"}>
+                          SN FONO{" "}
+                          <span className={`normal-case font-normal ${expected.fono > 0 ? "text-rose-500" : "text-slate-400"}`}>
+                            {expected.fono > 0 ? "(requerido)" : "(excepcional)"}
+                          </span>
+                        </label>
+                        {expected.fono <= 0 && (
+                          <button type="button" className="text-xs font-medium text-rose-500 hover:underline" onClick={() => setFonoExtraEnabled(false)}>
+                            — Quitar FONO
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          list={`fono-list-${orden.ordenId}`}
+                          value={snFONO}
+                          onChange={(e) => setSnFONO(e.target.value)}
+                          className={`${snInputBase} ${!norm(snFONO) ? snInputEmpty : fonoSet.has(norm(snFONO)) ? snInputValid : snInputInvalid}`}
+                          placeholder="Ejemplo: FONO123456"
+                        />
+                        <CopyBtn value={snFONO} label="SN FONO copiada" />
+                      </div>
+                      <datalist id={`fono-list-${orden.ordenId}`}>
+                        {stock.FONO.map((sn) => <option key={sn} value={sn} />)}
+                      </datalist>
+                      {!!norm(snFONO) && !fonoSet.has(norm(snFONO)) && (
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium text-rose-600">SN no encontrado en stock.</p>
+                          {renderLookupHint(snFONO)}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400">
+                      <p>FONO no requerido para esta orden.</p>
+                      <button type="button" className="font-medium text-[#30518c] hover:underline dark:text-blue-400" onClick={() => setFonoExtraEnabled(true)}>
+                        + Agregar FONO adicional
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
-            ) : null}
-            {state?.ok === false ? (
-              <div className="text-xs text-red-700">{(state.error?.formErrors || []).join(", ")}</div>
-            ) : null}
-          </div>
+
+              {/* ── Servicios ── */}
+              <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+                <div className="border-b border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Servicios detectados / confirmados</p>
+                </div>
+                <div className="space-y-4 p-4">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    {[
+                      { label: "Plan Gamer", checked: planGamerChecked, onChange: (v: boolean) => setPlanGamerChecked(v) },
+                      {
+                        label: "Servicio Cableado de MESH",
+                        checked: cableadoMeshChecked,
+                        onChange: (v: boolean) => {
+                          setCableadoMeshChecked(v);
+                          if (v && (!Number.isFinite(cat5e) || cat5e < 1)) setCat5e(1);
+                          if (!v) setCat5e(0);
+                        },
+                      },
+                      { label: "KIT WIFI PRO (Al contado)", checked: kitWifiProChecked, onChange: (v: boolean) => setKitWifiProChecked(v) },
+                    ].map(({ label, checked, onChange }) => (
+                      <label key={label} className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2.5 text-sm transition ${checked ? "border-blue-200 bg-blue-50 dark:border-blue-700/60 dark:bg-blue-900/20" : "border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"}`}>
+                        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 accent-[#30518c] cursor-pointer" />
+                        <span className="font-medium text-slate-700 dark:text-slate-200">{label}</span>
+                      </label>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1.5">
+                      <label className={fieldLabel}>CAT 5e</label>
+                      <input
+                        type="number" min={1} max={4} step={1}
+                        value={cableadoMeshChecked ? (cat5e < 1 ? 1 : cat5e) : 0}
+                        onChange={(e) => {
+                          const raw = Math.floor(Number(e.target.value || 1));
+                          const safe = Math.max(1, Math.min(4, Number.isFinite(raw) ? raw : 1));
+                          setCat5e(safe);
+                        }}
+                        disabled={!cableadoMeshChecked}
+                        className={`w-full rounded-xl border px-3 py-2 text-sm outline-none transition dark:text-slate-100 ${!cableadoMeshChecked ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500" : "border-slate-200 bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900"}`}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className={fieldLabel}>CAT 6</label>
+                      <input value={String(cat6)} readOnly className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className={fieldLabel}>Puntos UTP</label>
+                      <input value={String(puntosUTP)} readOnly className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Materiales automáticos ── */}
+              <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+                <div className="border-b border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Materiales automáticos por instalación</p>
+                </div>
+                <div className="grid grid-cols-2 gap-px bg-slate-100 p-0 text-xs dark:bg-slate-700/60 sm:grid-cols-4 md:grid-cols-7">
+                  {["ACTA×1", "CINTILLO_30×4", "CINTILLO_BANDERA×1", "CONECTOR×1", "ACOPLADOR×1", "PACHCORD×1", "ROSETA×1"].map((m) => (
+                    <div key={m} className="bg-white px-3 py-2 text-center font-mono text-[11px] text-slate-600 dark:bg-slate-900 dark:text-slate-300">{m}</div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Rótulo y observación ── */}
+              <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+                <div className="border-b border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Rótulo y observación</p>
+                </div>
+                <div className="space-y-4 p-4">
+                  <div className="space-y-1.5">
+                    <label className={fieldLabel}>Rótulo NAP/CTO <span className="text-rose-500">*</span></label>
+                    <input
+                      value={rotuloNapCto}
+                      onChange={(e) => setRotuloNapCto(e.target.value)}
+                      className={`w-full rounded-xl border px-3 py-2 text-sm outline-none transition focus:ring-2 dark:text-slate-100 ${!norm(rotuloNapCto) ? "border-rose-400 bg-rose-50 focus:ring-rose-100 dark:bg-rose-900/20" : "border-slate-200 bg-white focus:border-blue-400 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900"}`}
+                      placeholder="Ejemplo: NAP-12 / CTO-45"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className={fieldLabel}>
+                      Observación {observacionRequerida && <span className="text-rose-500">*</span>}
+                      {!observacionRequerida && <span className="normal-case font-normal text-slate-400">(opcional)</span>}
+                    </label>
+                    <input
+                      value={observacion}
+                      onChange={(e) => setObservacion(e.target.value)}
+                      className={`w-full rounded-xl border px-3 py-2 text-sm outline-none transition focus:ring-2 dark:text-slate-100 ${
+                        observacionRequerida && !norm(observacion)
+                          ? "border-rose-400 bg-rose-50 focus:ring-rose-100 dark:bg-rose-900/20"
+                          : "border-slate-200 bg-white focus:border-blue-400 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900"
+                      }`}
+                      placeholder={observacionRequerida ? "Obligatoria por excepción de equipos" : "Notas de liquidación…"}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Submit ── */}
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
+                <div>
+                  {state?.ok && (
+                    <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                      ✓ Liquidado. Equipos: {state.resumen.equipos} · Materiales: {state.resumen.materiales}
+                    </p>
+                  )}
+                  {state?.ok === false && (
+                    <p className="text-sm font-medium text-rose-600 dark:text-rose-400">
+                      {(state.error?.formErrors || []).join(", ")}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="submit"
+                  disabled={!canSubmitStrict || !norm(rotuloNapCto)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#30518c] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(48,81,140,.3)] transition hover:bg-[#2b4880] active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {pending ? (
+                    <><span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />Procesando…</>
+                  ) : (
+                    <><svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><polyline points="20 6 9 17 4 12" /></svg>Confirmar liquidación</>
+                  )}
+                </button>
+              </div>
             </form>
           </div>
         </div>
-      ) : null}
-      {ontMoveModalOpen ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4">
-          <div className="w-full max-w-2xl rounded-xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
-            <div className="mb-3 border-b pb-2">
-              <div className="text-base font-semibold">Movimiento ONT con materiales</div>
-              <div className="text-sm text-slate-500 dark:text-slate-400">
-                Se movera el equipo ONT junto con su kit base de materiales entre cuadrillas.
+      )}
+
+      {/* ── Modal movimiento ONT ── */}
+      {ontMoveModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-700">
+              <div>
+                <p className="font-semibold text-slate-900 dark:text-slate-100">Mover ONT entre cuadrillas</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">El equipo ONT se moverá junto con su kit base de materiales.</p>
               </div>
+              <button type="button" onClick={closeOntMoveModal} disabled={!!movePendingBySn[norm(ontMoveSn)]}
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 text-slate-400 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800">
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-lg border bg-slate-50 p-3 text-sm dark:bg-slate-800/60">
-                <div><span className="font-medium">SN:</span> <span className="font-mono">{ontMoveSn || "-"}</span></div>
-                <div><span className="font-medium">Origen:</span> {ontMoveInfo?.currentCuadrillaNombre || ontMoveInfo?.ubicacion || "-"}</div>
-                <div><span className="font-medium">Destino:</span> {ontMoveInfo?.targetCuadrillaNombre || "-"}</div>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm dark:border-slate-700 dark:bg-slate-900">
-                <div className="mb-1 font-medium">Kit ONT a mover</div>
-                <div className="space-y-1 text-slate-500 dark:text-slate-400">
-                  <div className="flex items-center justify-between"><span>ACTA</span><span className="font-medium">1 UND</span></div>
-                  <div className="flex items-center justify-between"><span>CONECTOR</span><span className="font-medium">1 UND</span></div>
-                  <div className="flex items-center justify-between"><span>ROSETA</span><span className="font-medium">1 UND</span></div>
-                  <div className="flex items-center justify-between"><span>ACOPLADOR</span><span className="font-medium">1 UND</span></div>
-                  <div className="flex items-center justify-between"><span>PACHCORD</span><span className="font-medium">1 UND</span></div>
-                  <div className="flex items-center justify-between"><span>CINTILLO_30</span><span className="font-medium">4 UND</span></div>
-                  <div className="flex items-center justify-between"><span>CINTILLO_BANDERA</span><span className="font-medium">1 UND</span></div>
+            <div className="space-y-4 p-5">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800">
+                  <div className="space-y-1">
+                    <div><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">SN:</span> <span className="font-mono font-semibold">{ontMoveSn || "—"}</span></div>
+                    <div><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Origen:</span> {ontMoveInfo?.currentCuadrillaNombre || ontMoveInfo?.ubicacion || "—"}</div>
+                    <div><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Destino:</span> {ontMoveInfo?.targetCuadrillaNombre || "—"}</div>
+                  </div>
+                </div>
+                <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
+                  <div className="border-b border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Kit ONT a mover</p>
+                  </div>
+                  <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
+                    {[["ACTA", "1"], ["CONECTOR", "1"], ["ROSETA", "1"], ["ACOPLADOR", "1"], ["PACHCORD", "1"], ["CINTILLO_30", "4"], ["CINTILLO_BANDERA", "1"]].map(([m, qty]) => (
+                      <div key={m} className="flex items-center justify-between px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300">
+                        <span className="font-mono">{m}</span>
+                        <span className="font-semibold">{qty} UND</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
-              <label className="flex items-center gap-2 text-sm font-medium">
-                <input
-                  type="checkbox"
-                  checked={ontMoveWithPrecon}
-                  onChange={(e) => {
-                    setOntMoveWithPrecon(e.target.checked);
-                    if (!e.target.checked) setOntMovePreconId("");
-                  }}
-                />
-                Mover tambien PRECON (1 UND)
-              </label>
-              <div className="mt-2 grid gap-2 md:grid-cols-2">
-                {ontMovePreconDisponibles.map((it) => (
-                  <label
-                    key={it.id}
-                    className={`flex cursor-pointer items-center justify-between rounded border px-3 py-2 text-sm ${
-                      ontMoveWithPrecon && ontMovePreconId === it.id
-                        ? "border-blue-600 bg-blue-50 dark:bg-blue-950/40"
-                        : "border-slate-200 dark:border-slate-700"
-                    } ${it.stock <= 0 ? "opacity-50" : ""}`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        name="precon_liq"
-                        disabled={!ontMoveWithPrecon || it.stock <= 0}
-                        checked={ontMoveWithPrecon && ontMovePreconId === it.id}
-                        onChange={() => setOntMovePreconId(it.id)}
-                      />
-                      <span>{it.id}</span>
-                    </span>
-                    <span className="font-medium">{ontMoveLoading ? "..." : `${it.stock} UND`}</span>
+              <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
+                <div className="border-b border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                    <input type="checkbox" checked={ontMoveWithPrecon} onChange={(e) => { setOntMoveWithPrecon(e.target.checked); if (!e.target.checked) setOntMovePreconId(""); }} className="h-4 w-4 accent-[#30518c] cursor-pointer" />
+                    <span className="text-slate-700 dark:text-slate-200">Mover también PRECON (1 UND)</span>
                   </label>
-                ))}
+                </div>
+                <div className="grid gap-2 p-3 md:grid-cols-2">
+                  {ontMovePreconDisponibles.map((it) => (
+                    <label
+                      key={it.id}
+                      className={`flex cursor-pointer items-center justify-between rounded-xl border px-3 py-2.5 text-sm transition ${
+                        ontMoveWithPrecon && ontMovePreconId === it.id
+                          ? "border-blue-300 bg-blue-50 dark:border-blue-700/60 dark:bg-blue-900/20"
+                          : "border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                      } ${it.stock <= 0 ? "opacity-50" : ""}`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <input type="radio" name="precon_liq" disabled={!ontMoveWithPrecon || it.stock <= 0} checked={ontMoveWithPrecon && ontMovePreconId === it.id} onChange={() => setOntMovePreconId(it.id)} className="accent-[#30518c]" />
+                        <span className="font-mono font-semibold text-xs">{it.id}</span>
+                      </span>
+                      <span className="text-xs font-medium">{ontMoveLoading ? "…" : `${it.stock} UND`}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-lg border px-3 py-2 text-sm"
-                onClick={closeOntMoveModal}
-                disabled={!!movePendingBySn[norm(ontMoveSn)]}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-60"
-                onClick={confirmOntMove}
-                disabled={ontMoveLoading || !!movePendingBySn[norm(ontMoveSn)]}
-              >
-                {movePendingBySn[norm(ontMoveSn)] ? "Moviendo..." : "Confirmar movimiento"}
-              </button>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={closeOntMoveModal} disabled={!!movePendingBySn[norm(ontMoveSn)]}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
+                  Cancelar
+                </button>
+                <button type="button" onClick={confirmOntMove} disabled={ontMoveLoading || !!movePendingBySn[norm(ontMoveSn)]}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-[0_2px_8px_rgba(5,150,105,.25)] transition hover:bg-emerald-700 disabled:opacity-60">
+                  {movePendingBySn[norm(ontMoveSn)] ? (
+                    <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />Moviendo…</>
+                  ) : (
+                    <><svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><polyline points="20 6 9 17 4 12" /></svg>Confirmar movimiento</>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

@@ -32,9 +32,10 @@ export async function GET(req: Request) {
     const { start, end } = monthRange(ym);
 
     const db = adminDb();
-    const [ordenesSnap, ventasSnap] = await Promise.all([
+    const [ordenesSnap, ventasSnap, instalacionesSnap] = await Promise.all([
       db.collection("ordenes").where("fSoliYmd", ">=", start).where("fSoliYmd", "<=", end).limit(15000).get(),
       db.collection("ventas").where("coordinadorUid", "==", mobile.uid).limit(2000).get(),
+      db.collection("instalaciones").where("fechaOrdenYmd", ">=", start).where("fechaOrdenYmd", "<=", end).limit(15000).get(),
     ]);
 
     // Mapa cuadrillaId → resumen
@@ -56,9 +57,28 @@ export async function GET(req: Request) {
       const dia = row.dias.get(ymd)!;
       if (finalizada && !garantia) { row.finalizadas++; dia.finalizadas++; }
       if (garantia) { row.garantias++; dia.garantias++; }
-      const cat6 = toNum(o?.cat6); const cat5e = toNum(o?.cat5e);
-      row.cat6 += cat6; dia.cat6 += cat6;
-      row.cat5e += cat5e; dia.cat5e += cat5e;
+    }
+
+    for (const d of instalacionesSnap.docs) {
+      const inst = d.data() as any;
+      const cId = String(inst?.cuadrillaId || inst?.orden?.cuadrillaId || "").trim();
+      const row = byId.get(cId);
+      if (!row) continue;
+      const ymd = String(inst?.fechaOrdenYmd || "").trim();
+      const svc = inst?.servicios && typeof inst.servicios === "object" ? inst.servicios : {};
+      const liqSvc = inst?.liquidacion?.servicios && typeof inst.liquidacion?.servicios === "object" ? inst.liquidacion.servicios : {};
+      const merged = { ...liqSvc, ...svc };
+      const cat6 = toNum(merged.cat6);
+      const cat5e = toNum(merged.cat5e);
+      if (cat6 === 0 && cat5e === 0) continue;
+      row.cat6 += cat6;
+      row.cat5e += cat5e;
+      if (ymd) {
+        if (!row.dias.has(ymd)) row.dias.set(ymd, { finalizadas: 0, garantias: 0, cat6: 0, cat5e: 0 });
+        const dia = row.dias.get(ymd)!;
+        dia.cat6 += cat6;
+        dia.cat5e += cat5e;
+      }
     }
 
     const [ymYear, ymMonth] = ym.split("-").map(Number);

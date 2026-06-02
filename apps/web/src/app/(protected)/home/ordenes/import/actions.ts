@@ -139,8 +139,8 @@ export async function importOrdenesAction(arg1: any, arg2?: any): Promise<Import
         if (idx >= payloads.length) return;
         try {
           const res = await upsertOrden(payloads[idx], session.uid);
-          if (res === "CREATED") nuevos++;
-          else if (res === "UPDATED") actualizados++;
+          if (res.action === "CREATED") nuevos++;
+          else if (res.action === "UPDATED") actualizados++;
           else duplicadosSinCambios++;
         } catch (err) {
           workerError = err;

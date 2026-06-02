@@ -4,6 +4,34 @@ import { getMobileAuthContext } from "@/core/auth/mobile";
 import { getCoordinadorContext } from "@/core/auth/mobileCoordinador";
 import { adminDb } from "@/lib/firebase/admin";
 
+function normalizeText(v: unknown) {
+  return String(v || "").trim().toUpperCase();
+}
+
+async function getLatestOrdersUpdateInfo() {
+  const db = adminDb();
+  const notifsSnap = await db.collection("notificaciones").orderBy("createdAt", "desc").limit(60).get();
+  const notifImport = notifsSnap.docs
+    .map((d) => ({ id: d.id, ...(d.data() as any) }))
+    .find((n) => {
+      const title = normalizeText(n?.title);
+      const entityType = normalizeText(n?.entityType);
+      if (entityType !== "ORDENES") return false;
+      return title.includes("IMPORT") || title.includes("WINBO");
+    });
+  if (!notifImport) return null;
+  let byNombre = "";
+  if (notifImport.createdBy) {
+    try {
+      const userSnap = await db.collection("usuarios").doc(String(notifImport.createdBy)).get();
+      const u = (userSnap.data() as any) || {};
+      byNombre = String(u.displayName || `${u.nombres || ""} ${u.apellidos || ""}`.trim() || u.email || notifImport.createdBy);
+    } catch {}
+  }
+  const at = notifImport.createdAt?.toDate?.()?.toISOString?.() ?? null;
+  return { at, byNombre };
+}
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -45,7 +73,7 @@ export async function GET(req: Request) {
     const ymd = String(searchParams.get("ymd") || todayLimaYmd()).trim();
     const db = adminDb();
 
-    const [cuadSnap, ordenesSnap1, ordenesSnap2, estadoDiarioSnap, iniciadasSnap] = await Promise.all([
+    const [cuadSnap, ordenesSnap1, ordenesSnap2, estadoDiarioSnap, iniciadasSnap, updateInfo] = await Promise.all([
       db.collection("cuadrillas").where("coordinadorUid", "==", mobile.uid).where("estado", "==", "HABILITADO").get(),
       db.collection("ordenes").where("fSoliYmd", "==", ymd).limit(3000).get(),
       db.collection("ordenes").where("fechaFinVisiYmd", "==", ymd).limit(3000).get(),
@@ -53,6 +81,7 @@ export async function GET(req: Request) {
       Promise.all(coord.cuadrillasIds.map((id) => db.collection("cuadrilla_estado_diario").doc(`${ymd}_${id}`).get())),
       // Órdenes INICIADA para estadoActual
       db.collection("ordenes").where("fSoliYmd", "==", ymd).where("estado", "==", "INICIADA").get(),
+      getLatestOrdersUpdateInfo(),
     ]);
 
     // Merge ordenes (deduplicar)
@@ -133,7 +162,7 @@ export async function GET(req: Request) {
       };
     }).sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
 
-    return NextResponse.json({ ok: true, ymd, cuadrillas });
+    return NextResponse.json({ ok: true, ymd, updateInfo, cuadrillas });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }

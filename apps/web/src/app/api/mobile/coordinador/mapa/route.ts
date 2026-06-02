@@ -22,28 +22,26 @@ export async function GET(req: Request) {
     const mobile = await getMobileAuthContext(req);
     if (!mobile) return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
 
-    const coord = await getCoordinadorContext(mobile);
-    if (!coord.cuadrillasIds.length) return NextResponse.json({ ok: true, ymd: todayLimaYmd(), items: [] });
+    await getCoordinadorContext(mobile); // solo valida que sea coordinador
 
     const { searchParams } = new URL(req.url);
     const ymd = String(searchParams.get("ymd") || todayLimaYmd()).trim();
     const db = adminDb();
 
-    // Órdenes de TODAS las cuadrillas del coordinador para ese día
-    const [snap1, snap2] = await Promise.all([
+    // Todas las órdenes del día + nombres de todas las cuadrillas
+    const [snap1, snap2, cuadrillasSnap] = await Promise.all([
       db.collection("ordenes").where("fSoliYmd", "==", ymd).limit(5000).get(),
       db.collection("ordenes").where("fechaFinVisiYmd", "==", ymd).limit(5000).get(),
+      db.collection("cuadrillas").select("nombre").get(),
     ]);
 
     const docsById = new Map<string, any>();
     for (const d of [...snap1.docs, ...snap2.docs]) docsById.set(d.id, d.data());
 
-    const cuadrillasSet = new Set(coord.cuadrillasIds);
-    // Mapa cuadrillaId → nombre (para el popup)
-    const cuadrillaNames = new Map(coord.cuadrillas.map((c) => [c.id, c.nombre]));
+    const cuadrillaNames = new Map<string, string>();
+    for (const d of cuadrillasSnap.docs) cuadrillaNames.set(d.id, String((d.data() as any).nombre || d.id));
 
     const items = Array.from(docsById.entries())
-      .filter(([, o]) => cuadrillasSet.has(String(o?.cuadrillaId || "").trim()))
       .map(([id, o]) => {
         const lat = toNum(o?.lat); const lng = toNum(o?.lng);
         if (lat === null || lng === null) return null;
@@ -57,7 +55,8 @@ export async function GET(req: Request) {
           estado: String(o?.estado || "").trim(),
           tipoTrabajo: String(o?.tipoTraba || o?.tipo || "").trim(),
           fechaProgramadaHm: String(o?.fSoliHm || o?.fechaFinVisiHm || "").trim(),
-          cuadrillaNombre: cuadrillaNames.get(cId) || cId,
+          cuadrillaId: cId,
+          cuadrillaNombre: cuadrillaNames.get(cId) || String(o?.cuadrillaNombre || cId).trim(),
           lat, lng,
         };
       })

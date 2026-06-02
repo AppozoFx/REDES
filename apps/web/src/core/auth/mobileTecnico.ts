@@ -227,7 +227,15 @@ export async function listTecnicoOrders(cuadrillaId: string, ymd: string) {
   await collect("fSoliYmd", ymd);
   await collect("fechaFinVisiYmd", ymd);
 
-  const baseItems = Array.from(docsById.entries()).map(([id, data]) => {
+  // Usar fSoliYmd como fecha canónica; si un documento tiene fSoliYmd distinto
+  // al ymd solicitado (fue traído por el query de fechaFinVisiYmd), descartarlo.
+  const matchingEntries = Array.from(docsById.entries()).filter(([, data]) => {
+    const primaryYmd = String(data?.fSoliYmd || "").trim();
+    const fallbackYmd = String(data?.fechaFinVisiYmd || "").trim();
+    return (primaryYmd || fallbackYmd) === ymd;
+  });
+
+  const baseItems = matchingEntries.map(([id, data]) => {
     const dates = resolveDateFields(data);
     return {
       id,

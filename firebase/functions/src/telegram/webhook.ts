@@ -545,6 +545,12 @@ async function fetchOrdenesFinalizadasByRange(startYmd: string, endYmd: string):
   collect(snap2);
 
   const rows = Array.from(docsById.values())
+    .filter((orden) => {
+      const primaryYmd = cleanValue(String(orden.fSoliYmd || ""));
+      const fallbackYmd = cleanValue(String(orden.fechaFinVisiYmd || ""));
+      const effectiveYmd = primaryYmd || fallbackYmd;
+      return effectiveYmd >= startYmd && effectiveYmd <= endYmd;
+    })
     .map((orden) => buildOrdenResumen(orden))
     .filter((row) => !!row.pedido);
   return dedupeListByPedido(rows);

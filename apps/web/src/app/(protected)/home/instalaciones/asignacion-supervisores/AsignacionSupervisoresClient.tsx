@@ -78,23 +78,6 @@ function normalizeMap(map: AssignMap): AssignMap {
   return out;
 }
 
-function findDuplicates(map: AssignMap) {
-  const used = new Map<string, string[]>();
-  Object.entries(map || {}).forEach(([supervisor, ids]) => {
-    (ids || []).forEach((id) => {
-      const key = String(id || "").trim();
-      if (!key) return;
-      const owners = used.get(key) || [];
-      owners.push(supervisor);
-      used.set(key, owners);
-    });
-  });
-  const dup: Record<string, string[]> = {};
-  used.forEach((owners, id) => {
-    if (owners.length > 1) dup[id] = owners;
-  });
-  return dup;
-}
 
 function normalizeFamily(value: string) {
   const raw = String(value || "")
@@ -185,9 +168,6 @@ export default function AsignacionSupervisoresClient() {
 
   const unassignedCount = useMemo(() => zonas.filter((zona) => !assignedSet.has(zona.id)).length, [zonas, assignedSet]);
 
-  const duplicateZones = useMemo(() => findDuplicates(dayMap), [dayMap]);
-  const dupCount = Object.keys(duplicateZones).length;
-
   const supervisoresVisible = useMemo(() => {
     const q = filtroSupervisor.trim().toLowerCase();
     let list = supervisores;
@@ -259,11 +239,6 @@ export default function AsignacionSupervisoresClient() {
   };
 
   const guardar = async () => {
-    if (dupCount > 0) {
-      toast.error("Hay regiones asignadas a mas de un supervisor");
-      return;
-    }
-
     setSaving(true);
     try {
       const res = await fetch("/api/instalaciones/asignacion-supervisores-zonas", {
@@ -285,16 +260,17 @@ export default function AsignacionSupervisoresClient() {
     }
   };
 
-  const availableFor = (uid: string) => {
-    const selected = currentMap[uid] || [];
-    const selectedSet = new Set(selected);
-    return zonas
-      .filter((zona) => !assignedSet.has(zona.id) || selectedSet.has(zona.id))
-      .filter((zona) => {
-        const q = modalQuery.trim().toLowerCase();
-        return q ? zona.nombre.toLowerCase().includes(q) || zona.id.toLowerCase().includes(q) || zona.familia.toLowerCase().includes(q) : true;
+  const zoneOtherSupervisors = useMemo(() => {
+    const map = new Map<string, string[]>();
+    Object.entries(dayMap).forEach(([uid, ids]) => {
+      (ids || []).forEach((id) => {
+        const list = map.get(id) || [];
+        list.push(uid);
+        map.set(id, list);
       });
-  };
+    });
+    return map;
+  }, [dayMap]);
 
   const toggleZona = (uid: string, zonaId: string) => {
     const current = currentMap[uid] || [];
@@ -323,7 +299,7 @@ export default function AsignacionSupervisoresClient() {
               </div>
               <h1 className="mt-3 text-3xl font-semibold tracking-tight">Asignacion por zonas</h1>
               <p className="mt-2 max-w-2xl text-sm text-blue-50/90">
-                Cada region se asigna por dia a un solo supervisor. No usa base permanente.
+                Una region puede compartirse entre varios supervisores. No usa base permanente.
               </p>
             </div>
             <div className="rounded-2xl border border-white/15 bg-white/10 p-3 backdrop-blur">
@@ -381,7 +357,7 @@ export default function AsignacionSupervisoresClient() {
               </label>
             </div>
             <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-              La asignacion diaria se guarda por region. Si una region cambia de supervisor, el mapa de ese dia se ajusta sin tocar instalaciones.
+              La asignacion diaria se guarda por region. Una misma region puede compartirse entre varios supervisores para zonas grandes.
             </p>
           </div>
 
@@ -408,11 +384,7 @@ export default function AsignacionSupervisoresClient() {
           </div>
         </div>
 
-        {dupCount > 0 && (
-          <div className="mx-5 mb-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">
-            Hay {dupCount} region(es) asignadas a mas de un supervisor. Corrige antes de guardar.
-          </div>
-        )}
+
       </section>
 
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -556,6 +528,7 @@ export default function AsignacionSupervisoresClient() {
                           .map((zone) => {
                             const selected = (currentMap[modalSupervisor] || []).includes(zone.id);
                             const color = zoneColor(zone);
+                            const otherSups = (zoneOtherSupervisors.get(zone.id) || []).filter((uid) => uid !== modalSupervisor);
                             return (
                               <label
                                 key={zone.id}
@@ -576,6 +549,11 @@ export default function AsignacionSupervisoresClient() {
                                   <span className="mt-0.5 block text-xs text-slate-400 dark:text-slate-500">
                                     {compactNames(zone.distritos, "Sin distritos")}
                                   </span>
+                                  {otherSups.length > 0 && (
+                                    <span className="mt-0.5 block text-xs text-amber-600 dark:text-amber-400">
+                                      Compartida con: {otherSups.map((uid) => supervisorLabel(uid)).join(", ")}
+                                    </span>
+                                  )}
                                 </span>
                                 <input
                                   type="checkbox"

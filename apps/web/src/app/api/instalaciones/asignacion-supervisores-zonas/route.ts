@@ -81,20 +81,6 @@ function normalizeAssignMap(map: unknown): AssignMap {
   return out;
 }
 
-function validarDuplicados(map: AssignMap) {
-  const used = new Map<string, string[]>();
-  Object.entries(map || {}).forEach(([supervisor, zoneIds]) => {
-    (zoneIds || []).forEach((id) => {
-      const key = String(id || "").trim();
-      if (!key) return;
-      const arr = used.get(key) || [];
-      arr.push(supervisor);
-      used.set(key, arr);
-    });
-  });
-  const dup = Array.from(used.entries()).filter(([, owners]) => owners.length > 1);
-  return dup.length ? dup : null;
-}
 
 async function getActorNombre(uid: string) {
   const snap = await adminDb().collection("usuarios").doc(uid).get();
@@ -248,9 +234,6 @@ export async function POST(req: Request) {
     const fecha = String(body?.fecha || "").trim();
     const supervisoresMap = normalizeAssignMap(body?.supervisoresMap);
     if (!fecha) return NextResponse.json({ ok: false, error: "MISSING_FECHA" }, { status: 400 });
-
-    const dup = validarDuplicados(supervisoresMap);
-    if (dup) return NextResponse.json({ ok: false, error: "DUPLICATE_ZONAS" }, { status: 400 });
 
     const db = adminDb();
     const actorNombre = await getActorNombre(session.uid);

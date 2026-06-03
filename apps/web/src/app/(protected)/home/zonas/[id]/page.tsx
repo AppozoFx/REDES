@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requirePermission } from "@/core/auth/guards";
 import { adminDb } from "@/lib/firebase/admin";
 import { disableZonaAction, enableZonaAction, updateZonaAction } from "../actions";
+import ZonaGeometryEditor from "../ZonaGeometryEditor.client";
 
 export default async function ZonaDetailPage(props: { params: Promise<{ id: string }> }) {
   await requirePermission("ZONAS_MANAGE");
@@ -25,6 +26,12 @@ export default async function ZonaDetailPage(props: { params: Promise<{ id: stri
         </div>
         <div>
           <b>Nombre:</b> {z.nombre}
+        </div>
+        <div>
+          <b>Distritos:</b> {(z.distritos ?? []).join(", ") || "-"}
+        </div>
+        <div>
+          <b>Poligono:</b> {z.geometry ? "Definido" : "Sin definir"}
         </div>
       </div>
 
@@ -92,8 +99,14 @@ export default async function ZonaDetailPage(props: { params: Promise<{ id: stri
           <button className="rounded border px-3 py-2 hover:bg-black/5">Habilitar</button>
         </form>
       )}
+
+      <ZonaGeometryEditor
+        zoneId={id}
+        zoneName={String(z.nombre || z.zona || id)}
+        distritos={Array.isArray(z.distritos) ? z.distritos.map((d: any) => String(d || "")) : []}
+        initialGeometry={z.geometry || null}
+      />
     </div>
   );
 }
-
 

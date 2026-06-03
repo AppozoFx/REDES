@@ -16,6 +16,7 @@ type GroupKey =
   | "ORDENES"
   | "INCONCERT"
   | "GESTION"
+  | "SUPERVISION"
   | "GERENCIA"
   | "ADMINISTRACION"
   | "ALMACEN";
@@ -27,6 +28,7 @@ const GROUP_ORDER: GroupKey[] = [
   "ORDENES",
   "INCONCERT",
   "GESTION",
+  "SUPERVISION",
   "GERENCIA",
   "ADMINISTRACION",
   "ALMACEN",
@@ -65,6 +67,14 @@ function getGroup(href: string): GroupKey {
     return "MANTENIMIENTO";
   }
   if (
+    href === "/home/supervision" ||
+    href === "/home/supervisores" ||
+    href === "/home/instalaciones/asignacion-supervisores" ||
+    href === "/home/instalaciones/distribucion-zonas"
+  ) {
+    return "SUPERVISION";
+  }
+  if (
     href === "/home/jefatura" ||
     href === "/home/gerencia/coordinadores" ||
     href === "/home/gerencia/orden-compra" ||
@@ -79,6 +89,7 @@ function getGroup(href: string): GroupKey {
     href === "/home/instalaciones/asignacion-gestores" ||
     href === "/home/instalaciones/asistencia/resumen" ||
     href === "/home/rrhh/gestor-jornadas" ||
+    href === "/home/supervisores/asistencia" ||
     href === "/home/cuadrillas/gestion" ||
     href === "/home/tecnicos/gestion" ||
     href === "/home/zonas"
@@ -117,6 +128,7 @@ function groupBadge(group: GroupKey) {
   if (group === "ORDENES") return "OR";
   if (group === "INCONCERT") return "IC";
   if (group === "GESTION") return "GE";
+  if (group === "SUPERVISION") return "SU";
   if (group === "GERENCIA") return "GR";
   if (group === "ADMINISTRACION") return "AD";
   if (group === "ALMACEN") return "AL";

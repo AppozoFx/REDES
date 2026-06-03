@@ -1,6 +1,7 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { ZonaCreateSchema, ZonaDocSchema, ZonaUpdateSchema } from "./schemas";
+import { normalizeZoneGeometry } from "./geometry";
 
 export const ZONAS_COL = "zonas";
 export const ZONAS_COUNTERS_COL = "zonas_counters"; // docId: ZONA (MAYÚSCULA)
@@ -118,6 +119,15 @@ export async function updateZona(
   if (patch.estado !== undefined) toSet.estado = patch.estado;
   if (patch.tipo !== undefined) toSet.tipo = patch.tipo;
   if (patch.distritos !== undefined) toSet.distritos = normalizeDistritos(patch.distritos);
+  if (patch.geometry !== undefined) {
+    if (patch.geometry === null) {
+      toSet.geometry = FieldValue.delete();
+    } else {
+      const geometry = normalizeZoneGeometry(patch.geometry);
+      if (!geometry) throw new Error("GEOMETRY_INVALID");
+      toSet.geometry = geometry;
+    }
+  }
 
   if (Object.keys(toSet).length === 0) return; // nada que actualizar
 

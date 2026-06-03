@@ -29,8 +29,12 @@ export async function POST(req: Request) {
     }
 
     const roles = (mobile.access.roles || []).map((r) => String(r || "").trim().toUpperCase());
-    if (!roles.includes("TECNICO") && !roles.includes("ADMIN")) {
-      return NextResponse.json({ ok: false, error: "ROLE_TECNICO_REQUIRED" }, { status: 403 });
+    const isTecnico = roles.includes("TECNICO");
+    const isSupervisor = roles.includes("SUPERVISOR");
+    const isAdmin = roles.includes("ADMIN");
+
+    if (!isTecnico && !isSupervisor && !isAdmin) {
+      return NextResponse.json({ ok: false, error: "ROLE_REQUIRED" }, { status: 403 });
     }
 
     const body = await req.json().catch(() => ({}));
@@ -43,34 +47,39 @@ export async function POST(req: Request) {
 
     const accuracy = toFiniteNumber(body?.accuracy);
     const speed = toFiniteNumber(body?.speed);
-
-    const tecnico = await getTecnicoContext(mobile);
-    const cuadrillaId = tecnico.cuadrilla.id;
-
     const db = adminDb();
     const ymd = todayLimaYmd();
     const trackingDocId = `${ymd}_${Date.now()}`;
+    const trackingPayload = {
+      lat, lng, uid: mobile.uid, ymd,
+      ...(accuracy !== null && { accuracy }),
+      ...(speed !== null && speed >= 0 && { speed }),
+      at: FieldValue.serverTimestamp(),
+    };
 
-    await Promise.all([
-      db.collection("cuadrillas").doc(cuadrillaId).set(
-        { lat, lng, lastLocationAt: FieldValue.serverTimestamp() },
-        { merge: true }
-      ),
-      db
-        .collection("cuadrillas")
-        .doc(cuadrillaId)
-        .collection("tracking")
-        .doc(trackingDocId)
-        .set({
-          lat,
-          lng,
-          uid: mobile.uid,
-          ymd,
-          ...(accuracy !== null && { accuracy }),
-          ...(speed !== null && speed >= 0 && { speed }),
-          at: FieldValue.serverTimestamp(),
-        }),
-    ]);
+    if (isSupervisor && !isAdmin) {
+      // Supervisor: escribe en supervisores/{uid}
+      await Promise.all([
+        db.collection("supervisores").doc(mobile.uid).set(
+          { lat, lng, lastLocationAt: FieldValue.serverTimestamp() },
+          { merge: true }
+        ),
+        db.collection("supervisores").doc(mobile.uid)
+          .collection("tracking").doc(trackingDocId).set(trackingPayload),
+      ]);
+    } else {
+      // Técnico / Admin: escribe en cuadrillas/{id}
+      const tecnico = await getTecnicoContext(mobile);
+      const cuadrillaId = tecnico.cuadrilla.id;
+      await Promise.all([
+        db.collection("cuadrillas").doc(cuadrillaId).set(
+          { lat, lng, lastLocationAt: FieldValue.serverTimestamp() },
+          { merge: true }
+        ),
+        db.collection("cuadrillas").doc(cuadrillaId)
+          .collection("tracking").doc(trackingDocId).set(trackingPayload),
+      ]);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {

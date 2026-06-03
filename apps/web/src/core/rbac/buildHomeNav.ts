@@ -8,6 +8,8 @@ export type NavItem = {
 
 const PERM_GERENCIA_COORDINADORES = "GERENCIA_COORDINADORES";
 const PERM_GERENCIA_ORDEN_COMPRA = "GERENCIA_ORDEN_COMPRA";
+const PERM_SUPERVISORES_VIEW = "SUPERVISORES_VIEW";
+const PERM_SUPERVISORES_MANAGE = "SUPERVISORES_MANAGE";
 
 function hasArea(session: ServerSession, area: string) {
   return session.isAdmin || (session.access.areas?.includes(area) ?? false);
@@ -138,6 +140,13 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
         href: "/home/rrhh/gestor-jornadas",
       });
     }
+    if (session.isAdmin || isGerencia || isJefatura || isRrhh || hasPerm(session, "SUPERVISORES_ASISTENCIA_VIEW")) {
+      items.push({
+        key: "SUPERVISORES_ASISTENCIA",
+        label: "Asistencia Supervisores",
+        href: "/home/supervisores/asistencia",
+      });
+    }
     items.push({
       key: "CUADRILLAS_GESTION",
       label: "Cuadrillas Gestion",
@@ -183,6 +192,20 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
 
   if (hasPerm(session, "USERS_LIST")) {
     items.push({ key: "USUARIOS", label: "Usuarios", href: "/home/usuarios" });
+  }
+
+  if (session.isAdmin || isGerencia || isJefatura || hasPerm(session, PERM_SUPERVISORES_VIEW) || hasPerm(session, PERM_SUPERVISORES_MANAGE)) {
+    items.push({ key: "SUPERVISORES", label: "Supervisores", href: "/home/supervisores" });
+    items.push({
+      key: "SUPERVISION_ASIG_SUP",
+      label: "Asignacion por Zonas",
+      href: "/home/instalaciones/asignacion-supervisores",
+    });
+    items.push({
+      key: "SUPERVISION_DIST_ZONAS",
+      label: "Distribucion por Zonas",
+      href: "/home/instalaciones/distribucion-zonas",
+    });
   }
 
   if (session.isAdmin || isJefatura || (isGerencia && hasPerm(session, PERM_GERENCIA_COORDINADORES))) {
@@ -304,11 +327,15 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
       "/home",
       "/home/comunicados",
       "/home/instalaciones/dashboard",
+      "/home/instalaciones/asignacion-supervisores",
+      "/home/instalaciones/distribucion-zonas",
       "/home/instalaciones/asistencia/resumen",
       "/home/rrhh/gestor-jornadas",
       "/home/cuadrillas/gestion",
       "/home/tecnicos/gestion",
       "/home/usuarios",
+      "/home/supervisores",
+      "/home/supervisores/asistencia",
       "/home/garantias/dashboard",
       "/home/garantias",
       ...((isSupervisor || isSeguridad) ? ["/home/ordenes/mapa"] : []),

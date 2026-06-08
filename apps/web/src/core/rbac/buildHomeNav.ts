@@ -166,6 +166,16 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
       label: "Garantias: Dashboard",
       href: "/home/garantias/dashboard",
     });
+    items.push({
+      key: "GARANTIAS_CRUCE",
+      label: "Garantias: Cruce",
+      href: "/home/garantias/cruce",
+    });
+    items.push({
+      key: "GARANTIAS_CRUCE_CARGA",
+      label: "Garantias: Cargar Excel",
+      href: "/home/garantias/cruce/cargas",
+    });
   }
 
   if (hasPerm(session, "ORDENES_IMPORT")) {
@@ -337,6 +347,8 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
       "/home/supervisores",
       "/home/supervisores/asistencia",
       "/home/garantias/dashboard",
+      "/home/garantias/cruce",
+      "/home/garantias/cruce/cargas",
       "/home/garantias",
       ...((isSupervisor || isSeguridad) ? ["/home/ordenes/mapa"] : []),
     ]);

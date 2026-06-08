@@ -168,16 +168,25 @@ export async function GET(req: Request) {
     const startYmd = garantiaFrom <= garantiaTo ? garantiaFrom : garantiaTo;
     const endYmd = garantiaFrom <= garantiaTo ? garantiaTo : garantiaFrom;
 
+    // Extend query start to include the installation period even when garantíaFrom > instFrom
+    // (needed to count instalacionesFinalizadas for the tasa calculation)
+    const queryFrom = instFrom && instFrom < startYmd ? instFrom : startYmd;
+
     const snap = await adminDb()
       .collection("ordenes")
-      .where("fSoliYmd", ">=", startYmd)
+      .where("fSoliYmd", ">=", queryFrom)
       .where("fSoliYmd", "<=", endYmd)
       .orderBy("fSoliYmd", "asc")
       .limit(15000)
       .get();
 
     const docs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-    const garantiaDocs = docs.filter((x) => isGarantia(x));
+    // Filter garantías to the garantía date range (docs may span a wider range for denominator)
+    const garantiaDocs = docs.filter((x) => {
+      if (!isGarantia(x)) return false;
+      const ymd = String(x.fSoliYmd || "").trim();
+      return ymd >= startYmd && ymd <= endYmd;
+    });
 
     const docsByCode = new Map<string, any[]>();
     for (const doc of docs) {
@@ -481,6 +490,30 @@ export async function GET(req: Request) {
     const recurrenteItems = enrichedItems.filter((item) => item.recurrente).length;
     const recurrenteCasos = Array.from(recurrenceGroups.values()).filter((count) => count > 1).length;
 
+    // Instalaciones finalizadas en el periodo de instalación (denominador para tasa de garantía)
+    const instalacionesFinalizadas = docs.filter((x) => {
+      if (isGarantia(x)) return false;
+      if (normalizeEstado(String(x.estado || "")) !== "Finalizada") return false;
+      const ymd = String(x.fSoliYmd || "").trim();
+      if (instFrom && ymd < instFrom) return false;
+      if (instTo && ymd > instTo) return false;
+      return true;
+    }).length;
+    const tasaGarantiaPct = pct(finalizadas, instalacionesFinalizadas);
+
+    // Agregación mensual (para gráfico evolutivo)
+    const byMonthMap = new Map<string, { ym: string; total: number; finalizadas: number; canceladas: number; recurrentes: number }>();
+    for (const day of byDayMap.values()) {
+      const ym = day.ymd.slice(0, 7);
+      const e = byMonthMap.get(ym) || { ym, total: 0, finalizadas: 0, canceladas: 0, recurrentes: 0 };
+      e.total += day.total;
+      e.finalizadas += day.finalizadas;
+      e.canceladas += day.canceladas;
+      e.recurrentes += day.recurrentes;
+      byMonthMap.set(ym, e);
+    }
+    const byMonth = Array.from(byMonthMap.values()).sort((a, b) => a.ym.localeCompare(b.ym));
+
     return NextResponse.json({
       ok: true,
       ym,
@@ -503,9 +536,12 @@ export async function GET(req: Request) {
         diasPromedio: avg(diasList),
         cuadrillasAfectadas: cuadrillaSet.size,
         coordinadoresAfectados: coordinadorSet.size,
+        instalacionesFinalizadas,
+        tasaGarantiaPct,
       },
       series: {
         byDay: Array.from(byDayMap.values()).sort((a, b) => a.ymd.localeCompare(b.ymd)),
+        byMonth,
         byEstado,
         byCoordinador,
         byCuadrilla,

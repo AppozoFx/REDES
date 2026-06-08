@@ -54,6 +54,9 @@ type RedesGarantia = {
   coordinadorUid: string;
   coordinadorNombre: string;
   recurrente: boolean;
+  horaInicio: string;
+  horaFin: string;
+  duracionMin: number | null;
 };
 
 type CruceRow = {
@@ -176,6 +179,19 @@ function findBestInstalacionBase(related: any[], cliente: string, fechaGarantiaY
   return bestYmd;
 }
 
+function calcDuracionMin(inicio: string, fin: string): number | null {
+  const parseHm = (s: string) => {
+    const m = /^(\d{1,2}):(\d{2})/.exec(String(s || "").trim());
+    if (!m) return null;
+    return Number(m[1]) * 60 + Number(m[2]);
+  };
+  const a = parseHm(inicio);
+  const b = parseHm(fin);
+  if (a == null || b == null) return null;
+  const diff = b - a;
+  return diff >= 0 ? diff : null;
+}
+
 function pct(n: number, total: number) {
   if (!total) return 0;
   return Number(((n / total) * 100).toFixed(2));
@@ -202,6 +218,8 @@ function buildRedesGarantia(raw: any, relatedByCode: Map<string, any[]>, coordMa
 
   const estado = String(raw.estado || "");
   const coordinadorUid = String(raw.coordinadorCuadrilla || "");
+  const horaInicio = String(raw.fechaIniVisiHm || raw.horaInicio || "").trim();
+  const horaFin = String(raw.fechaFinVisiHm || raw.horaFin || "").trim();
   return {
     id: String(raw.id || raw.ordenId || ""),
     ordenId: String(raw.ordenId || raw.id || ""),
@@ -217,6 +235,9 @@ function buildRedesGarantia(raw: any, relatedByCode: Map<string, any[]>, coordMa
     coordinadorUid,
     coordinadorNombre: coordMap.get(coordinadorUid) || coordinadorUid || "-",
     recurrente: false,
+    horaInicio,
+    horaFin,
+    duracionMin: calcDuracionMin(horaInicio, horaFin),
   };
 }
 
@@ -339,6 +360,7 @@ const ORDENES_SELECT = [
   "coordinadorCuadrilla", "fechaInstalacionBase", "diasDesdeInstalacion",
   "motivoGarantia", "casoGarantia", "diagnosticoGarantia",
   "motivoCancelacion", "motivoFinalizacion",
+  "fechaIniVisiHm", "horaInicio", "fechaFinVisiHm", "horaFin",
 ] as const;
 
 function chunkArr<T>(arr: T[], size: number): T[][] {

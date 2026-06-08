@@ -47,6 +47,9 @@ type RedesGarantia = {
   coordinadorUid: string;
   coordinadorNombre: string;
   recurrente: boolean;
+  horaInicio: string;
+  horaFin: string;
+  duracionMin: number | null;
 };
 
 type CruceRow = {
@@ -180,6 +183,14 @@ function formatDateTime(value: string) {
   }).format(d);
 }
 
+function formatDuracion(min: number | null | undefined) {
+  if (min == null || min < 0) return "-";
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h === 0) return `${m}m`;
+  return `${h}h ${m}m`;
+}
+
 function formatNum(n: number) {
   return new Intl.NumberFormat("es-PE", { maximumFractionDigits: 2 }).format(Number(n || 0));
 }
@@ -299,6 +310,9 @@ function toCruceExportRow(row: CruceRow) {
     fecha_instalacion_redes: row.redes?.fechaInstalacionBase || "",
     fecha_garantia_redes: row.redes?.fechaGarantiaYmd || "",
     dias_redes: row.redes?.diasDesdeInstalacion ?? "",
+    hora_inicio_redes: row.redes?.horaInicio || "",
+    hora_fin_redes: row.redes?.horaFin || "",
+    duracion_min_redes: row.redes?.duracionMin ?? "",
     estado_redes: row.redes?.estado || "",
     cuadrilla_redes: row.redes?.cuadrilla || "",
     coordinador_redes: row.redes?.coordinadorNombre || "",
@@ -382,6 +396,9 @@ function CruceTable({ rows }: { rows: CruceRow[] }) {
             <th className="min-w-[220px] px-3 py-2.5 font-semibold">Cliente</th>
             <th className="whitespace-nowrap px-3 py-2.5 font-semibold">F. Instalacion</th>
             <th className="whitespace-nowrap px-3 py-2.5 font-semibold">F. Garantia</th>
+            <th className="whitespace-nowrap px-3 py-2.5 font-semibold">H. Inicio</th>
+            <th className="whitespace-nowrap px-3 py-2.5 font-semibold">H. Fin</th>
+            <th className="whitespace-nowrap px-3 py-2.5 font-semibold">Duracion</th>
             <th className="whitespace-nowrap px-3 py-2.5 font-semibold">Estado</th>
             <th className="min-w-[160px] px-3 py-2.5 font-semibold">Cuadrilla</th>
             <th className="min-w-[200px] px-3 py-2.5 font-semibold">Motivo</th>
@@ -413,6 +430,15 @@ function CruceTable({ rows }: { rows: CruceRow[] }) {
                 {typeof row.redes?.diasDesdeInstalacion === "number" ? (
                   <div className="text-[10px] text-slate-400">{row.redes.diasDesdeInstalacion} dias</div>
                 ) : null}
+              </td>
+              <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-slate-600 dark:text-slate-300">
+                {row.redes?.horaInicio || "-"}
+              </td>
+              <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-slate-600 dark:text-slate-300">
+                {row.redes?.horaFin || "-"}
+              </td>
+              <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-slate-600 dark:text-slate-300">
+                {formatDuracion(row.redes?.duracionMin)}
               </td>
               <td className="whitespace-nowrap px-3 py-2.5 text-slate-600 dark:text-slate-300">{row.redes?.estado || "-"}</td>
               <td className="px-3 py-2.5 text-xs text-slate-600 dark:text-slate-300">

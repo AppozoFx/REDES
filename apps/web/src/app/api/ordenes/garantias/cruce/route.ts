@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "@/core/auth/session";
 import {
   countByAttentionMonth,
-  loadProviderRowsForMonth,
+  loadProviderRowsFromFirestore,
 } from "@/core/garantias/cruceProveedor";
 import { adminDb } from "@/lib/firebase/admin";
 
@@ -12,11 +12,17 @@ export const dynamic = "force-dynamic";
 
 const PERM_VIEW = "ORDENES_GARANTIAS_VIEW";
 const PERM_EDIT = "ORDENES_GARANTIAS_EDIT";
-const DEFAULT_INST_YM = "2026-04";
-const WORKBOOK_NAME = "BBDD_M&D_01-06-2026.xlsx";
-const WORKBOOK_SHEET = "Garantía";
 const POWER_BI_GARANTIAS_URL =
   "https://app.powerbi.com/view?r=eyJrIjoiNzNlNDg4YTQtZmQ5Yy00OGNlLTlhZDUtZDQxNjBhNGIyYTJlIiwidCI6ImZhY2I1NjA3LTBhNDMtNDQwOS1hY2MxLWIxZTI2OWZhZjdhOCIsImMiOjR9";
+
+function defaultInstYm() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  const t = m - 2;
+  if (t <= 0) return `${y - 1}-${String(12 + t).padStart(2, "0")}`;
+  return `${y}-${String(t).padStart(2, "0")}`;
+}
 
 type ProviderGarantia = {
   key: string;
@@ -108,7 +114,7 @@ function diffDays(fromYmd: string, toYmd: string) {
 function normalizeText(value: unknown) {
   return String(value || "")
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[̀-ͯ]/g, "")
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, " ")
     .trim()
@@ -244,7 +250,7 @@ function buildCruce(providerRows: ProviderGarantia[], redesItems: RedesGarantia[
     if (!redes) {
       return {
         status: "SOLO_PROVEEDOR",
-        statusLabel: "Solo proveedor",
+        statusLabel: "Solo WIN",
         exactFechaGarantia: false,
         exactFechaInstalacion: false,
         provider,
@@ -259,7 +265,7 @@ function buildCruce(providerRows: ProviderGarantia[], redesItems: RedesGarantia[
     if (!redes.finalizada) {
       return {
         status: "PROVEEDOR_REDES_NO_FINALIZADA",
-        statusLabel: "Proveedor cuenta / REDES no finalizada",
+        statusLabel: "WIN cuenta / REDES no finalizada",
         exactFechaGarantia,
         exactFechaInstalacion,
         provider,
@@ -327,6 +333,22 @@ function countByCuadrilla(providerRows: ProviderGarantia[], redesFinalizadas: Re
     .slice(0, 20);
 }
 
+const ORDENES_SELECT = [
+  "fSoliYmd", "estado", "tipo", "tipoTraba", "idenServi", "tipoServicio",
+  "codiSeguiClien", "cliente", "ordenId", "cuadrillaNombre", "cuadrillaId",
+  "coordinadorCuadrilla", "fechaInstalacionBase", "diasDesdeInstalacion",
+  "motivoGarantia", "casoGarantia", "diagnosticoGarantia",
+  "motivoCancelacion", "motivoFinalizacion",
+] as const;
+
+function chunkArr<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+const cruceCache = new Map<string, { json: any; ts: number }>();
+
 export async function GET(req: Request) {
   try {
     const session = await getServerSession();
@@ -345,20 +367,35 @@ export async function GET(req: Request) {
     if (!canView) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const { searchParams } = new URL(req.url);
-    const instYm = String(searchParams.get("instYm") || DEFAULT_INST_YM).trim();
+    const instYm = String(searchParams.get("instYm") || defaultInstYm()).trim();
     const bounds = monthBounds(instYm);
     if (!bounds) return NextResponse.json({ ok: false, error: "INVALID_PERIOD" }, { status: 400 });
 
-    const garantiaTo = formatUtcYmd(addUtcDays(bounds.endDateUtc, 30));
-    const providerSource = await loadProviderRowsForMonth(instYm);
+    // Caché por instYm — se invalida automáticamente tras 90 s
+    const cached = cruceCache.get(instYm);
+    if (cached && Date.now() - cached.ts < 90_000) {
+      return NextResponse.json(cached.json);
+    }
+
+    const providerSource = await loadProviderRowsFromFirestore(instYm);
+    if (!providerSource || !providerSource.rows.length) {
+      return NextResponse.json({
+        ok: true,
+        noData: true,
+        period: { instYm, instFrom: bounds.startYmd, instTo: bounds.endYmd },
+      });
+    }
+
     const providerRows = providerSource.rows;
+    const garantiaTo = formatUtcYmd(addUtcDays(bounds.endDateUtc, 30));
 
     const snap = await adminDb()
       .collection("ordenes")
       .where("fSoliYmd", ">=", bounds.startYmd)
       .where("fSoliYmd", "<=", garantiaTo)
       .orderBy("fSoliYmd", "asc")
-      .limit(18000)
+      .select(...ORDENES_SELECT)
+      .limit(15000)
       .get();
 
     const docs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
@@ -392,23 +429,30 @@ export async function GET(req: Request) {
     const relatedByCode = new Map<string, any[]>();
     for (const [code, items] of docsByCode.entries()) relatedByCode.set(code, items);
 
-    const missingRelatedSnaps = await Promise.all(
-      missingRelatedCodes.map((code) =>
-        adminDb()
-          .collection("ordenes")
-          .where("codiSeguiClien", "==", code)
-          .limit(300)
-          .get()
-      )
-    );
-    missingRelatedCodes.forEach((code, index) => {
-      const existing = relatedByCode.get(code) || [];
-      const fetched = missingRelatedSnaps[index].docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-      const mergedById = new Map<string, any>();
-      for (const item of existing) mergedById.set(String(item?.id || item?.ordenId || ""), item);
-      for (const item of fetched) mergedById.set(String(item?.id || item?.ordenId || ""), item);
-      relatedByCode.set(code, Array.from(mergedById.values()));
-    });
+    if (missingRelatedCodes.length > 0) {
+      const missingSet = new Set(missingRelatedCodes);
+      const batchSnaps = await Promise.all(
+        chunkArr(missingRelatedCodes, 30).map((batch) =>
+          adminDb()
+            .collection("ordenes")
+            .where("codiSeguiClien", "in", batch)
+            .select(...ORDENES_SELECT)
+            .limit(1500)
+            .get()
+        )
+      );
+      for (const batchSnap of batchSnaps) {
+        for (const doc of batchSnap.docs) {
+          const data = { id: doc.id, ...(doc.data() as any) };
+          const code = String(data?.codiSeguiClien || "").trim();
+          if (!code || !missingSet.has(code)) continue;
+          const existing = relatedByCode.get(code) || [];
+          const ids = new Set(existing.map((x: any) => String(x?.id || "")));
+          if (!ids.has(data.id)) existing.push(data);
+          relatedByCode.set(code, existing);
+        }
+      }
+    }
 
     const coordUids = Array.from(new Set(garantiaDocs.map((x) => String(x.coordinadorCuadrilla || "")).filter(Boolean)));
     const coordRefs = coordUids.map((uid) => adminDb().collection("usuarios").doc(uid));
@@ -449,7 +493,7 @@ export async function GET(req: Request) {
     const proveedorRedesNoFinalizada = cruceRows.filter((row) => row.status === "PROVEEDOR_REDES_NO_FINALIZADA").length;
     const proveedorSinRedes = cruceRows.filter((row) => row.status === "SOLO_PROVEEDOR").length;
 
-    return NextResponse.json({
+    const responseJson = {
       ok: true,
       period: {
         instYm,
@@ -458,8 +502,8 @@ export async function GET(req: Request) {
         garantiaFrom: bounds.startYmd,
         garantiaTo,
         windowDays: 30,
-        workbookName: WORKBOOK_NAME,
-        workbookSheet: WORKBOOK_SHEET,
+        workbookName: providerSource.source.fileName,
+        workbookSheet: providerSource.source.sheetName,
         source: providerSource.source,
         powerBiUrl: POWER_BI_GARANTIAS_URL,
         powerBiPartner: "Partner 13",
@@ -489,7 +533,15 @@ export async function GET(req: Request) {
         providerRows,
         redesFinalizadas,
       },
-    });
+    };
+
+    cruceCache.set(instYm, { json: responseJson, ts: Date.now() });
+    if (cruceCache.size > 20) {
+      const oldest = [...cruceCache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
+      if (oldest) cruceCache.delete(oldest[0]);
+    }
+
+    return NextResponse.json(responseJson);
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }

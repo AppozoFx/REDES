@@ -279,7 +279,7 @@ async function loadProviderRowsFromLocalWorkbook(instYm: string): Promise<Provid
   };
 }
 
-async function loadProviderRowsFromFirestore(instYm: string): Promise<ProviderRowsForMonth | null> {
+export async function loadProviderRowsFromFirestore(instYm: string): Promise<ProviderRowsForMonth | null> {
   const periodRef = adminDb().collection(PERIODS_COLLECTION).doc(instYm);
   const periodSnap = await periodRef.get();
   if (!periodSnap.exists) return null;

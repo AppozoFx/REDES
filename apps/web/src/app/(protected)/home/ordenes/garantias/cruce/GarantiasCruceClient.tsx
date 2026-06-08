@@ -15,6 +15,8 @@ import {
   YAxis,
 } from "recharts";
 
+// ─── Tipos ────────────────────────────────────────────────────────────────────
+
 type ProviderGarantia = {
   key: string;
   id: string;
@@ -56,47 +58,52 @@ type CruceRow = {
   redes: RedesGarantia | null;
 };
 
+type PeriodInfo = {
+  instYm: string;
+  instFrom: string;
+  instTo: string;
+  garantiaFrom?: string;
+  garantiaTo?: string;
+  windowDays?: number;
+  workbookName?: string;
+  workbookSheet?: string;
+  source?: {
+    mode: "firestore" | "local";
+    importId: string;
+    fileName: string;
+    sheetName: string;
+    uploadedAtText: string;
+  };
+  powerBiUrl?: string;
+  powerBiPartner?: string;
+};
+
+type KpiData = {
+  proveedorGarantias: number;
+  redesGarantiasFinalizadas: number;
+  redesGarantiasTotal: number;
+  instalacionesFinalizadas: number;
+  proveedorTasaPct: number;
+  redesTasaPct: number;
+  brechaGarantias: number;
+  brechaTasaPct: number;
+  coincidenciasFinalizadas: number;
+  proveedorSinRedes: number;
+  proveedorRedesNoFinalizada: number;
+  redesSinProveedor: number;
+};
+
 type Resp = {
   ok: true;
-  period: {
-    instYm: string;
-    instFrom: string;
-    instTo: string;
-    garantiaFrom: string;
-    garantiaTo: string;
-    windowDays: number;
-    workbookName: string;
-    workbookSheet: string;
-    source: {
-      mode: "firestore" | "local";
-      importId: string;
-      fileName: string;
-      sheetName: string;
-      uploadedAtText: string;
-    };
-    powerBiUrl: string;
-    powerBiPartner: string;
-  };
-  kpi: {
-    proveedorGarantias: number;
-    redesGarantiasFinalizadas: number;
-    redesGarantiasTotal: number;
-    instalacionesFinalizadas: number;
-    proveedorTasaPct: number;
-    redesTasaPct: number;
-    brechaGarantias: number;
-    brechaTasaPct: number;
-    coincidenciasFinalizadas: number;
-    proveedorSinRedes: number;
-    proveedorRedesNoFinalizada: number;
-    redesSinProveedor: number;
-  };
-  series: {
+  noData?: true;
+  period: PeriodInfo;
+  kpi?: KpiData;
+  series?: {
     providerByAttentionMonth: Array<{ ym: string; total: number }>;
     byDay: Array<{ ymd: string; proveedor: number; redes: number }>;
     byCuadrilla: Array<{ cuadrilla: string; proveedor: number; redes: number; diferencia: number }>;
   };
-  detail: {
+  detail?: {
     cruce: CruceRow[];
     redesSolo: RedesGarantia[];
     providerRows: ProviderGarantia[];
@@ -106,19 +113,53 @@ type Resp = {
 
 type ViewKey = "resumen" | "coinciden" | "proveedor" | "soloProveedor" | "soloRedes";
 
-const VIEW_LABELS: Record<ViewKey, string> = {
-  resumen: "Todo el cruce",
-  coinciden: "Coinciden",
-  proveedor: "Proveedor sin finalizada REDES",
-  soloProveedor: "Solo proveedor",
-  soloRedes: "Solo REDES",
-};
+// ─── Helpers de fecha/formato ─────────────────────────────────────────────────
+
+function getDefaultInstYm(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  const t = m - 2;
+  if (t <= 0) return `${y - 1}-${String(12 + t).padStart(2, "0")}`;
+  return `${y}-${String(t).padStart(2, "0")}`;
+}
+
+function prevMonth(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  if (m === 1) return `${y - 1}-12`;
+  return `${y}-${String(m - 1).padStart(2, "0")}`;
+}
+
+function nextMonth(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  if (m === 12) return `${y + 1}-01`;
+  return `${y}-${String(m + 1).padStart(2, "0")}`;
+}
+
+function getPeriodStatus(instYm: string): "cerrado" | "ventana" | "actual" {
+  const now = new Date();
+  const cy = now.getFullYear();
+  const cm = now.getMonth() + 1;
+  const [iy, im] = instYm.split("-").map(Number);
+  const diff = (cy - iy) * 12 + (cm - im);
+  if (diff >= 2) return "cerrado";
+  if (diff === 1) return "ventana";
+  return "actual";
+}
+
+const MONTH_NAMES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+const MONTH_SHORT = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+
+function formatPeriodLabel(ym: string) {
+  if (!/^\d{4}-\d{2}$/.test(ym)) return ym;
+  const [y, m] = ym.split("-");
+  return `${MONTH_NAMES[Number(m) - 1]} ${y}`;
+}
 
 function formatYm(ym: string) {
   if (!/^\d{4}-\d{2}$/.test(ym)) return ym || "-";
-  const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
   const [y, m] = ym.split("-");
-  return `${months[Number(m) - 1]} ${y}`;
+  return `${MONTH_SHORT[Number(m) - 1]} ${y}`;
 }
 
 function formatYmd(ymd: string) {
@@ -147,6 +188,16 @@ function formatPct(n: number) {
   return `${formatNum(n)}%`;
 }
 
+// ─── Componentes UI ───────────────────────────────────────────────────────────
+
+const VIEW_LABELS: Record<ViewKey, string> = {
+  resumen: "Todo el cruce",
+  coinciden: "Coinciden",
+  proveedor: "WIN cuenta / REDES no finalizadas",
+  soloProveedor: "Solo WIN",
+  soloRedes: "Solo REDES",
+};
+
 function statusClass(status: CruceRow["status"]) {
   if (status === "COINCIDE") return "border-emerald-200 bg-emerald-50 text-emerald-800";
   if (status === "COINCIDE_FECHA_DIFERENTE") return "border-blue-200 bg-blue-50 text-blue-800";
@@ -154,16 +205,46 @@ function statusClass(status: CruceRow["status"]) {
   return "border-rose-200 bg-rose-50 text-rose-800";
 }
 
+function PeriodBadge({ instYm }: { instYm: string }) {
+  const status = getPeriodStatus(instYm);
+  if (status === "cerrado") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+        Cerrado · Analisis completo
+      </span>
+    );
+  }
+  if (status === "ventana") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+        En ventana · Garantias en curso
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+      <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+      Mes actual
+    </span>
+  );
+}
+
 function KpiCard({
   label,
   value,
   hint,
+  sub,
   tone = "slate",
+  size = "md",
 }: {
   label: string;
   value: string | number;
   hint?: string;
-  tone?: "slate" | "blue" | "emerald" | "amber" | "rose";
+  sub?: string;
+  tone?: "slate" | "blue" | "emerald" | "amber" | "rose" | "indigo";
+  size?: "md" | "lg";
 }) {
   const toneClass =
     tone === "blue"
@@ -174,35 +255,32 @@ function KpiCard({
           ? "border-amber-200 bg-amber-50 text-amber-950"
           : tone === "rose"
             ? "border-rose-200 bg-rose-50 text-rose-950"
-            : "border-slate-200 bg-white text-slate-950";
+            : tone === "indigo"
+              ? "border-indigo-200 bg-indigo-50 text-indigo-950"
+              : "border-slate-200 bg-white text-slate-950";
   return (
-    <div className={`rounded-lg border p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 ${toneClass}`}>
-      <div className="text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400">{label}</div>
-      <div className="mt-2 text-2xl font-semibold tabular-nums">{value}</div>
-      {hint ? <div className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{hint}</div> : null}
+    <div className={`rounded-xl border p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 ${toneClass}`}>
+      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">{label}</div>
+      <div className={`mt-2 tabular-nums font-bold ${size === "lg" ? "text-4xl" : "text-3xl"}`}>{value}</div>
+      {sub ? <div className="mt-1 text-sm font-semibold tabular-nums">{sub}</div> : null}
+      {hint ? <div className="mt-1.5 text-xs leading-5 text-slate-500 dark:text-slate-400">{hint}</div> : null}
     </div>
   );
 }
 
-function Panel({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  children: ReactNode;
-}) {
+function Panel({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-      <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-700">
+    <section className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-700">
         <h2 className="text-sm font-semibold text-slate-950 dark:text-slate-100">{title}</h2>
-        {subtitle ? <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{subtitle}</p> : null}
+        {subtitle ? <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{subtitle}</p> : null}
       </div>
-      <div className="p-4">{children}</div>
+      <div className="p-5">{children}</div>
     </section>
   );
 }
+
+// ─── Exportar Excel ───────────────────────────────────────────────────────────
 
 function toCruceExportRow(row: CruceRow) {
   return {
@@ -246,7 +324,7 @@ function toRedesExportRow(row: RedesGarantia) {
   };
 }
 
-function downloadWorkbook(data: Resp) {
+function downloadWorkbook(data: Required<Pick<Resp, "period" | "kpi" | "series" | "detail">>) {
   const wb = XLSX.utils.book_new();
   const resumen = [
     ["Cruce de garantias"],
@@ -258,16 +336,16 @@ function downloadWorkbook(data: Resp) {
     ["Power BI", data.period.powerBiPartner],
     [""],
     ["Metrica", "Valor"],
-    ["Garantias proveedor", data.kpi.proveedorGarantias],
+    ["Garantias WIN", data.kpi.proveedorGarantias],
     ["Garantias REDES finalizadas", data.kpi.redesGarantiasFinalizadas],
     ["Instalaciones finalizadas", data.kpi.instalacionesFinalizadas],
-    ["Tasa proveedor", data.kpi.proveedorTasaPct],
+    ["Tasa WIN", data.kpi.proveedorTasaPct],
     ["Tasa REDES", data.kpi.redesTasaPct],
     ["Brecha garantias", data.kpi.brechaGarantias],
     ["Coincidencias finalizadas", data.kpi.coincidenciasFinalizadas],
-    ["Proveedor sin REDES", data.kpi.proveedorSinRedes],
-    ["Proveedor con REDES no finalizada", data.kpi.proveedorRedesNoFinalizada],
-    ["REDES sin proveedor", data.kpi.redesSinProveedor],
+    ["WIN sin REDES", data.kpi.proveedorSinRedes],
+    ["WIN con REDES no finalizada", data.kpi.proveedorRedesNoFinalizada],
+    ["REDES sin WIN", data.kpi.redesSinProveedor],
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumen), "Resumen");
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.detail.cruce.map(toCruceExportRow)), "Cruce");
@@ -279,7 +357,7 @@ function downloadWorkbook(data: Resp) {
   XLSX.utils.book_append_sheet(
     wb,
     XLSX.utils.json_to_sheet(data.detail.cruce.filter((r) => !r.redes?.finalizada).map(toCruceExportRow)),
-    "Proveedor revisar"
+    "WIN revisar"
   );
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.detail.redesSolo.map(toRedesExportRow)), "Solo REDES");
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.series.byDay), "Por dia");
@@ -288,65 +366,62 @@ function downloadWorkbook(data: Resp) {
   saveAs(new Blob([out], { type: "application/octet-stream" }), `cruce_garantias_${data.period.instYm}.xlsx`);
 }
 
+// ─── Tablas de detalle ────────────────────────────────────────────────────────
+
 function CruceTable({ rows }: { rows: CruceRow[] }) {
   if (!rows.length) {
-    return <div className="rounded-md border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">Sin registros para esta vista.</div>;
+    return <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">Sin registros para esta vista.</div>;
   }
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full text-sm">
         <thead>
-          <tr className="border-b border-slate-200 text-left text-[11px] uppercase text-slate-500 dark:border-slate-700">
-            <th className="whitespace-nowrap px-3 py-2 font-semibold">Cruce</th>
-            <th className="whitespace-nowrap px-3 py-2 font-semibold">Cod pedido</th>
-            <th className="min-w-[220px] px-3 py-2 font-semibold">Cliente</th>
-            <th className="whitespace-nowrap px-3 py-2 font-semibold">F. inst Excel</th>
-            <th className="whitespace-nowrap px-3 py-2 font-semibold">F. garantia Excel</th>
-            <th className="whitespace-nowrap px-3 py-2 font-semibold">F. inst REDES</th>
-            <th className="whitespace-nowrap px-3 py-2 font-semibold">F. garantia REDES</th>
-            <th className="whitespace-nowrap px-3 py-2 font-semibold">Estado REDES</th>
-            <th className="min-w-[180px] px-3 py-2 font-semibold">Cuadrilla</th>
+          <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-500 dark:border-slate-700">
+            <th className="whitespace-nowrap px-3 py-2.5 font-semibold">Estado</th>
+            <th className="whitespace-nowrap px-3 py-2.5 font-semibold">Cod pedido</th>
+            <th className="min-w-[220px] px-3 py-2.5 font-semibold">Cliente</th>
+            <th className="whitespace-nowrap px-3 py-2.5 font-semibold">F. Instalacion</th>
+            <th className="whitespace-nowrap px-3 py-2.5 font-semibold">F. Garantia</th>
+            <th className="whitespace-nowrap px-3 py-2.5 font-semibold">Estado</th>
+            <th className="min-w-[160px] px-3 py-2.5 font-semibold">Cuadrilla</th>
+            <th className="min-w-[200px] px-3 py-2.5 font-semibold">Motivo</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
           {rows.map((row) => (
-            <tr key={row.provider.key} className="align-top hover:bg-slate-50 dark:hover:bg-slate-800/70">
-              <td className="px-3 py-2">
-                <span className={`inline-flex rounded-md border px-2 py-1 text-xs font-semibold ${statusClass(row.status)}`}>
+            <tr key={row.provider.key} className="align-top hover:bg-slate-50 dark:hover:bg-slate-800/60">
+              <td className="px-3 py-2.5">
+                <span className={`inline-flex rounded-md border px-2 py-1 text-[11px] font-semibold ${statusClass(row.status)}`}>
                   {row.statusLabel}
                 </span>
               </td>
-              <td className="whitespace-nowrap px-3 py-2 font-medium tabular-nums text-slate-900 dark:text-slate-100">
+              <td className="whitespace-nowrap px-3 py-2.5 font-medium tabular-nums text-slate-900 dark:text-slate-100">
                 {row.provider.codPedido || "-"}
                 {row.provider.id ? <div className="text-[10px] font-normal text-slate-400">{row.provider.id}</div> : null}
               </td>
-              <td className="px-3 py-2">
+              <td className="px-3 py-2.5">
                 <div className="font-medium text-slate-900 dark:text-slate-100">{row.provider.nombre || row.redes?.cliente || "-"}</div>
                 {row.redes?.cliente && row.redes.cliente !== row.provider.nombre ? (
                   <div className="mt-0.5 text-xs text-slate-500">REDES: {row.redes.cliente}</div>
                 ) : null}
               </td>
-              <td className="whitespace-nowrap px-3 py-2 tabular-nums text-slate-600 dark:text-slate-300">{formatYmd(row.provider.fechaInstalacionYmd)}</td>
-              <td className="whitespace-nowrap px-3 py-2 tabular-nums text-slate-600 dark:text-slate-300">
-                {formatYmd(row.provider.fechaAtencionYmd)}
-                {typeof row.provider.diasDesdeInstalacion === "number" ? (
-                  <div className="text-[10px] text-slate-400">{row.provider.diasDesdeInstalacion} dias</div>
-                ) : null}
+              <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-slate-600 dark:text-slate-300">
+                {formatYmd(row.redes?.fechaInstalacionBase || "")}
               </td>
-              <td className="whitespace-nowrap px-3 py-2 tabular-nums text-slate-600 dark:text-slate-300">{formatYmd(row.redes?.fechaInstalacionBase || "")}</td>
-              <td className="whitespace-nowrap px-3 py-2 tabular-nums text-slate-600 dark:text-slate-300">
+              <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-slate-600 dark:text-slate-300">
                 {formatYmd(row.redes?.fechaGarantiaYmd || "")}
                 {typeof row.redes?.diasDesdeInstalacion === "number" ? (
                   <div className="text-[10px] text-slate-400">{row.redes.diasDesdeInstalacion} dias</div>
                 ) : null}
               </td>
-              <td className="whitespace-nowrap px-3 py-2 text-slate-600 dark:text-slate-300">{row.redes?.estado || "-"}</td>
-              <td className="px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
+              <td className="whitespace-nowrap px-3 py-2.5 text-slate-600 dark:text-slate-300">{row.redes?.estado || "-"}</td>
+              <td className="px-3 py-2.5 text-xs text-slate-600 dark:text-slate-300">
                 <div>{row.provider.cuadrilla || "-"}</div>
                 {row.redes?.cuadrilla && row.redes.cuadrilla !== row.provider.cuadrilla ? (
                   <div className="mt-1 text-slate-400">REDES: {row.redes.cuadrilla}</div>
                 ) : null}
               </td>
+              <td className="px-3 py-2.5 text-xs text-slate-600 dark:text-slate-300">{row.redes?.motivo || "-"}</td>
             </tr>
           ))}
         </tbody>
@@ -357,38 +432,38 @@ function CruceTable({ rows }: { rows: CruceRow[] }) {
 
 function RedesSoloTable({ rows }: { rows: RedesGarantia[] }) {
   if (!rows.length) {
-    return <div className="rounded-md border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">Sin garantias REDES fuera del Excel.</div>;
+    return <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">Sin garantias REDES fuera del Excel.</div>;
   }
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full text-sm">
         <thead>
-          <tr className="border-b border-slate-200 text-left text-[11px] uppercase text-slate-500 dark:border-slate-700">
-            <th className="whitespace-nowrap px-3 py-2 font-semibold">Cod pedido</th>
-            <th className="min-w-[220px] px-3 py-2 font-semibold">Cliente</th>
-            <th className="whitespace-nowrap px-3 py-2 font-semibold">F. instalacion</th>
-            <th className="whitespace-nowrap px-3 py-2 font-semibold">F. garantia</th>
-            <th className="whitespace-nowrap px-3 py-2 font-semibold">Estado</th>
-            <th className="min-w-[180px] px-3 py-2 font-semibold">Cuadrilla</th>
-            <th className="min-w-[180px] px-3 py-2 font-semibold">Motivo</th>
+          <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-500 dark:border-slate-700">
+            <th className="whitespace-nowrap px-3 py-2.5 font-semibold">Cod pedido</th>
+            <th className="min-w-[220px] px-3 py-2.5 font-semibold">Cliente</th>
+            <th className="whitespace-nowrap px-3 py-2.5 font-semibold">F. instalacion</th>
+            <th className="whitespace-nowrap px-3 py-2.5 font-semibold">F. garantia</th>
+            <th className="whitespace-nowrap px-3 py-2.5 font-semibold">Estado</th>
+            <th className="min-w-[160px] px-3 py-2.5 font-semibold">Cuadrilla</th>
+            <th className="min-w-[180px] px-3 py-2.5 font-semibold">Motivo</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
           {rows.map((row) => (
-            <tr key={row.id} className="align-top hover:bg-slate-50 dark:hover:bg-slate-800/70">
-              <td className="whitespace-nowrap px-3 py-2 font-medium tabular-nums text-slate-900 dark:text-slate-100">
+            <tr key={row.id} className="align-top hover:bg-slate-50 dark:hover:bg-slate-800/60">
+              <td className="whitespace-nowrap px-3 py-2.5 font-medium tabular-nums text-slate-900 dark:text-slate-100">
                 {row.codigoCliente || "-"}
                 <div className="text-[10px] font-normal text-slate-400">{row.ordenId}</div>
               </td>
-              <td className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">{row.cliente || "-"}</td>
-              <td className="whitespace-nowrap px-3 py-2 tabular-nums text-slate-600 dark:text-slate-300">{formatYmd(row.fechaInstalacionBase)}</td>
-              <td className="whitespace-nowrap px-3 py-2 tabular-nums text-slate-600 dark:text-slate-300">
+              <td className="px-3 py-2.5 font-medium text-slate-900 dark:text-slate-100">{row.cliente || "-"}</td>
+              <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-slate-600 dark:text-slate-300">{formatYmd(row.fechaInstalacionBase)}</td>
+              <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-slate-600 dark:text-slate-300">
                 {formatYmd(row.fechaGarantiaYmd)}
                 {typeof row.diasDesdeInstalacion === "number" ? <div className="text-[10px] text-slate-400">{row.diasDesdeInstalacion} dias</div> : null}
               </td>
-              <td className="whitespace-nowrap px-3 py-2 text-slate-600 dark:text-slate-300">{row.estado || "-"}</td>
-              <td className="px-3 py-2 text-xs text-slate-600 dark:text-slate-300">{row.cuadrilla || "-"}</td>
-              <td className="px-3 py-2 text-xs text-slate-600 dark:text-slate-300">{row.motivo || "-"}</td>
+              <td className="whitespace-nowrap px-3 py-2.5 text-slate-600 dark:text-slate-300">{row.estado || "-"}</td>
+              <td className="px-3 py-2.5 text-xs text-slate-600 dark:text-slate-300">{row.cuadrilla || "-"}</td>
+              <td className="px-3 py-2.5 text-xs text-slate-600 dark:text-slate-300">{row.motivo || "-"}</td>
             </tr>
           ))}
         </tbody>
@@ -397,11 +472,13 @@ function RedesSoloTable({ rows }: { rows: RedesGarantia[] }) {
   );
 }
 
+// ─── Componente principal ─────────────────────────────────────────────────────
+
 export default function GarantiasCruceClient() {
   const [instYm, setInstYm] = useState(() => {
-    if (typeof window === "undefined") return "2026-04";
+    if (typeof window === "undefined") return getDefaultInstYm();
     const fromUrl = new URLSearchParams(window.location.search).get("instYm") || "";
-    return /^\d{4}-\d{2}$/.test(fromUrl) ? fromUrl : "2026-04";
+    return /^\d{4}-\d{2}$/.test(fromUrl) ? fromUrl : getDefaultInstYm();
   });
   const [data, setData] = useState<Resp | null>(null);
   const [loading, setLoading] = useState(true);
@@ -416,6 +493,7 @@ export default function GarantiasCruceClient() {
     async function load() {
       setLoading(true);
       setError("");
+      setData(null);
       try {
         const res = await fetch(`/api/ordenes/garantias/cruce?instYm=${encodeURIComponent(instYm)}`, {
           cache: "no-store",
@@ -425,7 +503,7 @@ export default function GarantiasCruceClient() {
         if (!res.ok || !json?.ok) throw new Error(String(json?.error || "ERROR"));
         if (!cancelled) setData(json);
       } catch (e: any) {
-        if (!cancelled) {
+        if (!cancelled && e?.name !== "AbortError") {
           setData(null);
           setError(String(e?.message || "ERROR"));
         }
@@ -443,7 +521,7 @@ export default function GarantiasCruceClient() {
 
   const filteredCruce = useMemo(() => {
     const q = search.trim().toUpperCase();
-    const base = data?.detail.cruce || [];
+    const base = data?.detail?.cruce || [];
     const byView = base.filter((row) => {
       if (view === "coinciden") return Boolean(row.redes?.finalizada);
       if (view === "proveedor") return !row.redes?.finalizada;
@@ -467,125 +545,235 @@ export default function GarantiasCruceClient() {
         .toUpperCase();
       return txt.includes(q);
     });
-  }, [data?.detail.cruce, search, view]);
+  }, [data?.detail?.cruce, search, view]);
 
   const filteredRedesSolo = useMemo(() => {
-    const rows = data?.detail.redesSolo || [];
+    const rows = data?.detail?.redesSolo || [];
     const q = search.trim().toUpperCase();
     if (!q) return rows;
     return rows.filter((row) =>
       [row.codigoCliente, row.cliente, row.ordenId, row.cuadrilla, row.motivo].filter(Boolean).join(" ").toUpperCase().includes(q)
     );
-  }, [data?.detail.redesSolo, search]);
+  }, [data?.detail?.redesSolo, search]);
 
   const viewCounts = useMemo(() => {
-    const cruce = data?.detail.cruce || [];
+    const cruce = data?.detail?.cruce || [];
     return {
       resumen: cruce.length,
       coinciden: cruce.filter((row) => row.redes?.finalizada).length,
       proveedor: cruce.filter((row) => !row.redes?.finalizada).length,
       soloProveedor: cruce.filter((row) => row.status === "SOLO_PROVEEDOR").length,
-      soloRedes: data?.detail.redesSolo.length || 0,
+      soloRedes: data?.detail?.redesSolo?.length || 0,
     };
-  }, [data?.detail.cruce, data?.detail.redesSolo.length]);
+  }, [data?.detail?.cruce, data?.detail?.redesSolo]);
 
   const proveedorByMonthLabel = useMemo(() => {
-    if (!data?.series.providerByAttentionMonth.length) return "Sin atenciones";
+    if (!data?.series?.providerByAttentionMonth?.length) return null;
     return data.series.providerByAttentionMonth.map((row) => `${formatYm(row.ym)}: ${row.total}`).join(" | ");
-  }, [data?.series.providerByAttentionMonth]);
+  }, [data?.series?.providerByAttentionMonth]);
+
+  const matchPct = useMemo(() => {
+    const kpi = data?.kpi;
+    if (!kpi || !kpi.proveedorGarantias) return null;
+    return Number(((kpi.coincidenciasFinalizadas / kpi.proveedorGarantias) * 100).toFixed(1));
+  }, [data?.kpi]);
+
+  const periodLabel = formatPeriodLabel(instYm);
+  const hasKpi = data && !data.noData && data.kpi;
 
   return (
     <div className="space-y-5">
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <div className="text-xs font-semibold uppercase text-[#30518c]">Garantias</div>
-            <h1 className="mt-1 text-2xl font-semibold text-slate-950 dark:text-slate-100">Cruce Power BI / REDES</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-              Comparacion por fecha de instalacion, codigo de pedido y fecha de atencion usando el archivo del proveedor y las ordenes registradas en REDES.
+      {/* ── Header ──────────────────────────────────────────────────────── */}
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <div className="text-[11px] font-bold uppercase tracking-widest text-[#30518c]">Garantias · Analisis de Cruce</div>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <h1 className="text-2xl font-bold text-slate-950 dark:text-slate-100">
+                Power BI · REDES
+              </h1>
+              <PeriodBadge instYm={instYm} />
+            </div>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
+              Instalaciones de <span className="font-semibold text-slate-700 dark:text-slate-200">{periodLabel}</span> · Ventana de garantia de 30 dias desde la instalacion
             </p>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-[11rem_auto_auto_auto]">
-            <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300">
-              Mes instalacion
+          <div className="flex flex-wrap items-end gap-2">
+            {/* Navegacion de mes */}
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setInstYm(prevMonth(instYm))}
+                className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                title="Mes anterior"
+              >
+                ‹
+              </button>
               <input
                 type="month"
                 value={instYm}
-                onChange={(e) => setInstYm(e.target.value || "2026-04")}
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#30518c] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                onChange={(e) => setInstYm(e.target.value || getDefaultInstYm())}
+                className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-[#30518c] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
               />
-            </label>
-            {data ? (
               <button
                 type="button"
-                onClick={() => downloadWorkbook(data)}
-                className="self-end rounded-md bg-[#30518c] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#263f73]"
+                onClick={() => setInstYm(nextMonth(instYm))}
+                className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                title="Mes siguiente"
+              >
+                ›
+              </button>
+            </div>
+
+            {hasKpi && data.kpi ? (
+              <button
+                type="button"
+                onClick={() => downloadWorkbook(data as any)}
+                className="h-9 rounded-md bg-[#30518c] px-4 text-sm font-semibold text-white transition hover:bg-[#263f73]"
               >
                 Exportar Excel
               </button>
             ) : null}
             <Link
               href="/home/garantias/cruce/cargas"
-              className="self-end rounded-md border border-slate-300 px-4 py-2 text-center text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="flex h-9 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               Cargar Excel
             </Link>
-            {data?.period.powerBiUrl ? (
+            {data?.period?.powerBiUrl ? (
               <a
                 href={data.period.powerBiUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="self-end rounded-md border border-slate-300 px-4 py-2 text-center text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                className="flex h-9 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               >
-                Abrir Power BI
+                Power BI
               </a>
             ) : null}
           </div>
         </div>
 
-        {data ? (
-          <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
-            <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 dark:border-slate-700 dark:bg-slate-800">
-              Fuente: {data.period.source.mode === "firestore" ? "Carga guardada" : "Archivo local"}
+        {/* Metadata de la carga */}
+        {data && !data.noData && data.period.source ? (
+          <div className="mt-5 flex flex-wrap gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              <span className="font-medium">Archivo:</span> {data.period.source.fileName || data.period.workbookName}
             </span>
-            <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 dark:border-slate-700 dark:bg-slate-800">{data.period.source.fileName || data.period.workbookName}</span>
-            <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 dark:border-slate-700 dark:bg-slate-800">Hoja: {data.period.source.sheetName || data.period.workbookSheet}</span>
-            {data.period.source.uploadedAtText ? (
-              <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 dark:border-slate-700 dark:bg-slate-800">
-                Cargado: {formatDateTime(data.period.source.uploadedAtText)}
+            {data.period.source.sheetName ? (
+              <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                <span className="font-medium">Hoja:</span> {data.period.source.sheetName}
               </span>
             ) : null}
-            <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 dark:border-slate-700 dark:bg-slate-800">{data.period.powerBiPartner}</span>
-            <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 dark:border-slate-700 dark:bg-slate-800">Garantias: {formatYmd(data.period.garantiaFrom)} a {formatYmd(data.period.garantiaTo)}</span>
-            <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 dark:border-slate-700 dark:bg-slate-800">{proveedorByMonthLabel}</span>
+            {data.period.source.uploadedAtText ? (
+              <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                <span className="font-medium">Cargado:</span> {formatDateTime(data.period.source.uploadedAtText)}
+              </span>
+            ) : null}
+            {data.period.powerBiPartner ? (
+              <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                {data.period.powerBiPartner}
+              </span>
+            ) : null}
+            {proveedorByMonthLabel ? (
+              <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                Atenciones: {proveedorByMonthLabel}
+              </span>
+            ) : null}
           </div>
         ) : null}
       </section>
 
+      {/* ── Error ───────────────────────────────────────────────────────── */}
       {error ? (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div>
-      ) : null}
-
-      {loading ? (
-        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-          Cargando cruce de garantias...
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200">
+          <span className="font-semibold">Error al cargar:</span> {error}
         </div>
       ) : null}
 
-      {data ? (
+      {/* ── Loading ──────────────────────────────────────────────────────── */}
+      {loading ? (
+        <div className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center dark:border-slate-700 dark:bg-slate-900">
+          <div className="mx-auto mb-3 h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-[#30518c]" />
+          <p className="text-sm text-slate-500">Cargando analisis de garantias de {periodLabel}...</p>
+        </div>
+      ) : null}
+
+      {/* ── Sin datos ───────────────────────────────────────────────────── */}
+      {!loading && data?.noData ? (
+        <section className="rounded-xl border-2 border-dashed border-slate-200 bg-white px-8 py-16 text-center dark:border-slate-700 dark:bg-slate-900">
+          <div className="mx-auto max-w-md">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+              <svg className="h-7 w-7 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+              Sin datos para {periodLabel}
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+              No hay Excel del proveedor cargado para este periodo.
+              Carga el archivo de garantias para iniciar el analisis de cruce.
+            </p>
+            <Link
+              href="/home/garantias/cruce/cargas"
+              className="mt-6 inline-flex items-center gap-2 rounded-lg bg-[#30518c] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#263f73]"
+            >
+              Cargar Excel del proveedor
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+              </svg>
+            </Link>
+          </div>
+        </section>
+      ) : null}
+
+      {/* ── Datos cargados ───────────────────────────────────────────────── */}
+      {!loading && hasKpi && data.kpi && data.series && data.detail ? (
         <>
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-            <KpiCard label="Proveedor" value={data.kpi.proveedorGarantias} tone="blue" hint={`${formatPct(data.kpi.proveedorTasaPct)} sobre ${formatNum(data.kpi.instalacionesFinalizadas)} instalaciones`} />
-            <KpiCard label="REDES finalizadas" value={data.kpi.redesGarantiasFinalizadas} tone="emerald" hint={`${formatPct(data.kpi.redesTasaPct)} sobre el mismo denominador`} />
-            <KpiCard label="Brecha" value={data.kpi.brechaGarantias} tone={data.kpi.brechaGarantias > 0 ? "amber" : "slate"} hint={`${formatPct(data.kpi.brechaTasaPct)} puntos de diferencia`} />
-            <KpiCard label="Coinciden" value={data.kpi.coincidenciasFinalizadas} tone="emerald" hint="Proveedor y REDES finalizada" />
-            <KpiCard label="Proveedor revisar" value={data.kpi.proveedorSinRedes + data.kpi.proveedorRedesNoFinalizada} tone="rose" hint={`${data.kpi.proveedorSinRedes} sin REDES | ${data.kpi.proveedorRedesNoFinalizada} no finalizadas`} />
-            <KpiCard label="Solo REDES" value={data.kpi.redesSinProveedor} tone="amber" hint="Finalizadas no consideradas por proveedor" />
+          {/* KPIs */}
+          <section className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+            <KpiCard
+              label="WIN"
+              value={data.kpi.proveedorGarantias}
+              tone="blue"
+              hint={`${formatPct(data.kpi.proveedorTasaPct)} de ${formatNum(data.kpi.instalacionesFinalizadas)} instalaciones`}
+            />
+            <KpiCard
+              label="REDES finalizadas"
+              value={data.kpi.redesGarantiasFinalizadas}
+              tone="emerald"
+              hint={`${formatPct(data.kpi.redesTasaPct)} del mismo denominador`}
+            />
+            <KpiCard
+              label="Tasa de coincidencia"
+              value={matchPct !== null ? `${matchPct}%` : "-"}
+              tone={matchPct !== null && matchPct >= 70 ? "emerald" : matchPct !== null && matchPct >= 50 ? "amber" : "rose"}
+              hint={`${data.kpi.coincidenciasFinalizadas} de ${data.kpi.proveedorGarantias} registros de WIN`}
+            />
+            <KpiCard
+              label="Brecha"
+              value={data.kpi.brechaGarantias}
+              tone={data.kpi.brechaGarantias > 0 ? "amber" : "slate"}
+              hint={`${formatPct(Math.abs(data.kpi.brechaTasaPct))} pts de diferencia`}
+            />
+            <KpiCard
+              label="Revisar"
+              value={data.kpi.proveedorSinRedes + data.kpi.proveedorRedesNoFinalizada}
+              tone="rose"
+              hint={`${data.kpi.proveedorSinRedes} sin REDES · ${data.kpi.proveedorRedesNoFinalizada} no finalizadas`}
+            />
+            <KpiCard
+              label="Solo REDES"
+              value={data.kpi.redesSinProveedor}
+              tone="amber"
+              hint="Finalizadas no reportadas por WIN"
+            />
           </section>
 
-          <section className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]">
-            <Panel title="Garantias por fecha de atencion" subtitle="Proveedor vs REDES finalizadas">
+          {/* Graficos */}
+          <section className="grid gap-4 xl:grid-cols-[1.4fr_.6fr]">
+            <Panel title="Garantias por fecha de atencion" subtitle={`WIN vs REDES finalizadas · ${periodLabel}`}>
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={data.series.byDay} margin={{ left: 0, right: 12, top: 4, bottom: 0 }}>
@@ -593,37 +781,37 @@ export default function GarantiasCruceClient() {
                     <XAxis dataKey="ymd" tick={{ fontSize: 10, fill: "#64748b" }} tickFormatter={formatYmd} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} width={28} />
                     <Tooltip
-                      contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: 12 }}
+                      contentStyle={{ borderRadius: "10px", border: "1px solid #e2e8f0", fontSize: 12, boxShadow: "0 4px 12px rgba(0,0,0,.08)" }}
                       labelFormatter={(v) => formatYmd(String(v))}
-                      formatter={(value, name) => [value, name === "proveedor" ? "Proveedor" : "REDES"]}
+                      formatter={(value, name) => [value, name === "proveedor" ? "WIN" : "REDES"]}
                     />
-                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} formatter={(v) => (v === "proveedor" ? "Proveedor" : "REDES")} />
-                    <Bar dataKey="proveedor" fill="#30518c" radius={[4, 4, 0, 0]} maxBarSize={28} />
-                    <Bar dataKey="redes" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 10 }} formatter={(v) => (v === "proveedor" ? "WIN" : "REDES")} />
+                    <Bar dataKey="proveedor" fill="#30518c" radius={[4, 4, 0, 0]} maxBarSize={24} />
+                    <Bar dataKey="redes" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={24} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </Panel>
 
-            <Panel title="Brecha por cuadrilla" subtitle="Top diferencias absolutas">
+            <Panel title="Brecha por cuadrilla" subtitle="Top 20 diferencias absolutas">
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead>
-                    <tr className="border-b border-slate-200 text-left text-[11px] uppercase text-slate-500 dark:border-slate-700">
+                    <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-500 dark:border-slate-700">
                       <th className="px-3 py-2 font-semibold">Cuadrilla</th>
-                      <th className="px-3 py-2 text-right font-semibold">Proveedor</th>
+                      <th className="px-3 py-2 text-right font-semibold">WIN</th>
                       <th className="px-3 py-2 text-right font-semibold">REDES</th>
                       <th className="px-3 py-2 text-right font-semibold">Dif.</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {data.series.byCuadrilla.map((row) => (
-                      <tr key={row.cuadrilla} className="hover:bg-slate-50 dark:hover:bg-slate-800/70">
-                        <td className="max-w-[220px] truncate px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-100">{row.cuadrilla || "-"}</td>
-                        <td className="px-3 py-2 text-right tabular-nums text-slate-600 dark:text-slate-300">{row.proveedor}</td>
-                        <td className="px-3 py-2 text-right tabular-nums text-slate-600 dark:text-slate-300">{row.redes}</td>
-                        <td className={`px-3 py-2 text-right tabular-nums font-semibold ${row.diferencia > 0 ? "text-rose-600" : row.diferencia < 0 ? "text-amber-600" : "text-emerald-600"}`}>
-                          {row.diferencia}
+                      <tr key={row.cuadrilla} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                        <td className="max-w-[180px] truncate px-3 py-1.5 text-xs font-medium text-slate-900 dark:text-slate-100">{row.cuadrilla || "-"}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-slate-600 dark:text-slate-300">{row.proveedor}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-slate-600 dark:text-slate-300">{row.redes}</td>
+                        <td className={`px-3 py-1.5 text-right tabular-nums font-bold ${row.diferencia > 0 ? "text-rose-600" : row.diferencia < 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                          {row.diferencia > 0 ? `+${row.diferencia}` : row.diferencia}
                         </td>
                       </tr>
                     ))}
@@ -633,18 +821,22 @@ export default function GarantiasCruceClient() {
             </Panel>
           </section>
 
-          <Panel title="Detalle del cruce" subtitle={`${view === "soloRedes" ? filteredRedesSolo.length : filteredCruce.length} registros visibles`}>
+          {/* Detalle */}
+          <Panel
+            title="Detalle del cruce"
+            subtitle={`${view === "soloRedes" ? filteredRedesSolo.length : filteredCruce.length} registros visibles`}
+          >
             <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5">
                 {(Object.keys(VIEW_LABELS) as ViewKey[]).map((key) => (
                   <button
                     key={key}
                     type="button"
                     onClick={() => setView(key)}
-                    className={`rounded-md border px-3 py-2 text-xs font-semibold transition ${
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
                       view === key
-                        ? "border-[#30518c] bg-[#30518c] text-white"
-                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                        ? "border-[#30518c] bg-[#30518c] text-white shadow-sm"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                     }`}
                   >
                     {VIEW_LABELS[key]} ({viewCounts[key]})
@@ -655,8 +847,8 @@ export default function GarantiasCruceClient() {
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar codigo, cliente o cuadrilla"
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#30518c] lg:max-w-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                placeholder="Buscar codigo, cliente o cuadrilla..."
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#30518c] lg:max-w-xs dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
               />
             </div>
 

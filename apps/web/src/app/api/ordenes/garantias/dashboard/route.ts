@@ -136,6 +136,27 @@ function pct(n: number, total: number) {
   return Number(((n / total) * 100).toFixed(1));
 }
 
+// Campos mínimos que necesitamos de cada orden — reduce payload ~60%
+const ORDENES_SELECT = [
+  "fSoliYmd", "estado", "tipo", "tipoTraba", "idenServi", "tipoServicio",
+  "codiSeguiClien", "cliente", "ordenId", "cuadrillaNombre", "cuadrillaId",
+  "coordinadorCuadrilla", "fechaInstalacionBase", "diasDesdeInstalacion",
+  "motivoGarantia", "casoGarantia", "diagnosticoGarantia",
+  "motivoCancelacion", "motivoFinalizacion",
+  "responsableGarantia", "imputadoGarantia",
+] as const;
+
+// Parte consultas de N individuales a ceil(N/30) usando el operador IN de Firestore
+function chunkArr<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+// Caché en memoria por 90 s — útil cuando la misma pantalla se abre varias veces
+// en una reunión. La autenticación se valida antes de consultar el caché.
+const dashboardCache = new Map<string, { json: any; ts: number }>();
+
 export async function GET(req: Request) {
   try {
     const session = await getServerSession();
@@ -165,6 +186,13 @@ export async function GET(req: Request) {
     const cuadrillaFilter = String(searchParams.get("cuadrilla") || "").trim();
     const coordinadorFilter = String(searchParams.get("coordinadorUid") || "").trim();
 
+    // Caché keyed por todos los parámetros de la query
+    const cacheKey = `${ym}|${garantiaFrom}|${garantiaTo}|${instFrom}|${instTo}|${cuadrillaFilter}|${coordinadorFilter}`;
+    const cached = dashboardCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < 90_000) {
+      return NextResponse.json(cached.json);
+    }
+
     const startYmd = garantiaFrom <= garantiaTo ? garantiaFrom : garantiaTo;
     const endYmd = garantiaFrom <= garantiaTo ? garantiaTo : garantiaFrom;
 
@@ -177,7 +205,8 @@ export async function GET(req: Request) {
       .where("fSoliYmd", ">=", queryFrom)
       .where("fSoliYmd", "<=", endYmd)
       .orderBy("fSoliYmd", "asc")
-      .limit(15000)
+      .select(...ORDENES_SELECT)
+      .limit(12000)
       .get();
 
     const docs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
@@ -216,23 +245,31 @@ export async function GET(req: Request) {
     const relatedByCode = new Map<string, any[]>();
     for (const [code, items] of docsByCode.entries()) relatedByCode.set(code, items);
 
-    const missingRelatedSnaps = await Promise.all(
-      missingRelatedCodes.map((code) =>
-        adminDb()
-          .collection("ordenes")
-          .where("codiSeguiClien", "==", code)
-          .limit(300)
-          .get()
-      )
-    );
-    missingRelatedCodes.forEach((code, index) => {
-      const existing = relatedByCode.get(code) || [];
-      const fetched = missingRelatedSnaps[index].docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-      const mergedById = new Map<string, any>();
-      for (const item of existing) mergedById.set(String(item?.id || item?.ordenId || ""), item);
-      for (const item of fetched) mergedById.set(String(item?.id || item?.ordenId || ""), item);
-      relatedByCode.set(code, Array.from(mergedById.values()));
-    });
+    // Consultas secundarias en lotes de 30 con IN (antes era 1 query por código)
+    if (missingRelatedCodes.length > 0) {
+      const missingSet = new Set(missingRelatedCodes);
+      const batchSnaps = await Promise.all(
+        chunkArr(missingRelatedCodes, 30).map((batch) =>
+          adminDb()
+            .collection("ordenes")
+            .where("codiSeguiClien", "in", batch)
+            .select(...ORDENES_SELECT)
+            .limit(1500)
+            .get()
+        )
+      );
+      for (const batchSnap of batchSnaps) {
+        for (const doc of batchSnap.docs) {
+          const data = { id: doc.id, ...(doc.data() as any) };
+          const code = String(data?.codiSeguiClien || "").trim();
+          if (!code || !missingSet.has(code)) continue;
+          const existing = relatedByCode.get(code) || [];
+          const ids = new Set(existing.map((x: any) => String(x?.id || "")));
+          if (!ids.has(data.id)) existing.push(data);
+          relatedByCode.set(code, existing);
+        }
+      }
+    }
 
     const coordUids = Array.from(new Set(garantiaDocs.map((x) => String(x.coordinadorCuadrilla || "")).filter(Boolean)));
     const coordRefs = coordUids.map((uid) => adminDb().collection("usuarios").doc(uid));
@@ -514,7 +551,7 @@ export async function GET(req: Request) {
     }
     const byMonth = Array.from(byMonthMap.values()).sort((a, b) => a.ym.localeCompare(b.ym));
 
-    return NextResponse.json({
+    const responseJson = {
       ok: true,
       ym,
       filters: {
@@ -555,7 +592,15 @@ export async function GET(req: Request) {
         items: enrichedItems,
         recientes,
       },
-    });
+    };
+
+    dashboardCache.set(cacheKey, { json: responseJson, ts: Date.now() });
+    if (dashboardCache.size > 40) {
+      const oldest = [...dashboardCache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
+      if (oldest) dashboardCache.delete(oldest[0]);
+    }
+
+    return NextResponse.json(responseJson);
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }

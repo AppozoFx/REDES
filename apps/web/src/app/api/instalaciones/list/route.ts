@@ -213,7 +213,7 @@ export async function GET(req: Request) {
         coordinadorUid,
         cuadrillaNombre: data.cuadrillaNombre || orden.cuadrillaNombre || "",
         tipoCuadrilla: data.tipoCuadrilla || orden.tipoCuadrilla || "",
-        tipoOrden: orden.tipoOrden || orden.tipo || data.tipoOrden || "",
+        tipoOrden: orden.tipoOrden || data.tipoOrden || "",
         plan: planValue,
         orderId: data.ordenId || orden.ordenId || orden.ordenDocId || "",
         fechaInstalacion: fechaInstalacionAt,

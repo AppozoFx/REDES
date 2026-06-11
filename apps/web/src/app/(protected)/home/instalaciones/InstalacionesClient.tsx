@@ -621,7 +621,7 @@ export default function InstalacionesClient() {
     { k: "codigoCliente", lbl: "Codigo", w: "w-28" },
     { k: "documento", lbl: "Documento", w: "w-36" },
     { k: "cliente", lbl: "Cliente", w: "w-52" },
-    { k: "tipoOrden", lbl: "R/C", w: "w-24" },
+    { k: "tipoOrden", lbl: "Tipo Orden", w: "w-28" },
     { k: "plan", lbl: "Plan", w: "min-w-[220px]" },
     { k: "snONT", lbl: "SN ONT", w: "w-36" },
     { k: "snMESH", lbl: "SN MESH", w: "w-52" },

@@ -32,6 +32,8 @@ const RowSchema = z
     consumo: CountsSchema,
     promedio: CountsSchema,
     omitida: z.boolean().optional().default(false),
+    diasAutonomia: z.number().nullable().optional(),
+    criticidad: z.enum(["critico", "bajo", "medio", "ok", "sin_datos"]).optional(),
   })
   .strict();
 
@@ -89,7 +91,8 @@ function suggestedNeed(objetivoVal: number, consumoVal: number, promedioVal: num
   const promedio = toInt(promedioVal);
   const stock = toInt(stockVal);
   const recentNeed = Math.max(consumo, promedio);
-  const targetLevel = recentNeed > 0 ? Math.min(objetivo, recentNeed) : objetivo;
+  // El objetivo es el piso: si el consumo supera el objetivo se despacha según demanda real.
+  const targetLevel = Math.max(objetivo, recentNeed);
   return Math.max(0, Math.ceil(targetLevel - stock));
 }
 
@@ -129,7 +132,14 @@ function resolveScope(roles: string[], isAdmin: boolean): Scope {
   return "all";
 }
 
-function capByStock(base: Record<string, Counts>, stockAlmacen: Counts, omitidas: Record<string, boolean>) {
+const CRIT_ORDER: Record<string, number> = { critico: 0, bajo: 1, medio: 2, ok: 3, sin_datos: 4 };
+
+function capByStock(
+  base: Record<string, Counts>,
+  stockAlmacen: Counts,
+  omitidas: Record<string, boolean>,
+  critPriority?: Map<string, number>
+) {
   const out: Record<string, Counts> = {};
   for (const [id, v] of Object.entries(base)) {
     out[id] = {
@@ -158,8 +168,12 @@ function capByStock(base: Record<string, Counts>, stockAlmacen: Counts, omitidas
       assigned += quota;
     }
 
+    // Prioridad: cuadrillas con mayor criticidad reciben primero el remanente
     let rem = available - assigned;
-    for (const id of activeIds) {
+    const orderedActive = critPriority
+      ? [...activeIds].sort((a, b) => (critPriority.get(a) ?? 99) - (critPriority.get(b) ?? 99))
+      : activeIds;
+    for (const id of orderedActive) {
       if (!rem) break;
       out[id][k] += 1;
       rem -= 1;
@@ -167,6 +181,10 @@ function capByStock(base: Record<string, Counts>, stockAlmacen: Counts, omitidas
   }
 
   return { out, cappedMaterials };
+}
+
+function buildCritPriority(rows: z.infer<typeof RequestSchema>["rows"]) {
+  return new Map(rows.map((r) => [r.cuadrillaId, CRIT_ORDER[r.criticidad ?? "sin_datos"] ?? 4]));
 }
 
 function buildDeterministicSuggestion(input: z.infer<typeof RequestSchema>) {
@@ -185,7 +203,7 @@ function buildDeterministicSuggestion(input: z.infer<typeof RequestSchema>) {
       BOX: suggestedNeed(input.objetivo.BOX, row.consumo.BOX, row.promedio.BOX, row.stock.BOX),
     };
   }
-  return capByStock(result, input.stockAlmacen, omitidas);
+  return capByStock(result, input.stockAlmacen, omitidas, buildCritPriority(input.rows));
 }
 
 function normalizeAiSuggestion(
@@ -214,7 +232,7 @@ function normalizeAiSuggestion(
     if (!knownIds.has(key)) unknownIdsDropped.push(key);
   }
 
-  const capped = capByStock(merged, input.stockAlmacen, omitidas);
+  const capped = capByStock(merged, input.stockAlmacen, omitidas, buildCritPriority(input.rows));
   return {
     byCuadrilla: capped.out,
     cappedMaterials: capped.cappedMaterials,
@@ -246,20 +264,25 @@ function buildAiPrompt(input: z.infer<typeof RequestSchema>) {
       consumo: r.consumo,
       promedio: r.promedio,
       omitida: !!r.omitida,
+      diasAutonomia: r.diasAutonomia ?? null,
+      criticidad: r.criticidad ?? "sin_datos",
     })),
   };
 
   return [
     "Devuelve SOLO JSON valido con formato:",
     '{"byCuadrilla":{"CUADRILLA_ID":{"ONT":0,"MESH":0,"FONO":0,"BOX":0}}}',
+    "Contexto: diasAutonomia=dias de stock ONT restantes. criticidad: critico=0dias | bajo=1-2dias | medio=3-5dias | ok=6+dias | sin_datos=sin historial.",
     "Reglas:",
-    "1) Solo ids presentes en rows.",
+    "1) Solo incluye ids presentes en rows.",
     "2) Enteros >= 0.",
-    "3) Si omitida=true, todos 0.",
-    "4) Prioriza consumo reciente y promedio sobre el objetivo fijo.",
-    "5) Usa el objetivo como tope operativo, no como piso automatico.",
-    "6) Si el consumo reciente es bajo y la cuadrilla ya tiene stock, evita sobre-despachar.",
-    "7) No incluyas explicaciones ni texto adicional.",
+    "3) Si omitida=true, todos los valores deben ser 0.",
+    "4) El objetivo es el PISO minimo de seguridad, no un tope. Despacha al menos max(0, objetivo - stock) por material.",
+    "5) Si consumo o promedio supera el objetivo, despacha segun la demanda real (no limites al objetivo).",
+    "6) Prioriza cuadrillas criticas y bajas: deben recibir su cuota completa antes que las cuadrillas ok o medio.",
+    "7) Cuando el stock de almacen no alcanza para todas, reduce asignacion a cuadrillas ok/medio primero; nunca a las criticas.",
+    "8) Cuadrillas sin historial (sin_datos) tratalas como si necesitaran el objetivo completo.",
+    "9) No incluyas explicaciones ni texto adicional.",
     `DATA=${JSON.stringify(payload)}`,
   ].join("\n");
 }

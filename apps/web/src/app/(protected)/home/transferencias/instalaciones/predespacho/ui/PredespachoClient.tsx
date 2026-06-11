@@ -55,7 +55,8 @@ function suggestedNeed(objetivoVal: number, consumoVal: number, promedioVal: num
   const promedio = n(promedioVal);
   const stock = n(stockVal);
   const recentNeed = Math.max(consumo, promedio);
-  const targetLevel = recentNeed > 0 ? Math.min(objetivo, recentNeed) : objetivo;
+  // El objetivo es el piso de seguridad: si el consumo real supera el objetivo, despachar más.
+  const targetLevel = Math.max(objetivo, recentNeed);
   return Math.max(0, Math.ceil(targetLevel - stock));
 }
 function sumCounts(a: Counts, b: Counts): Counts {
@@ -68,6 +69,20 @@ function sumCounts(a: Counts, b: Counts): Counts {
 }
 function asDateInput() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function critColorClass(crit: string) {
+  if (crit === "critico") return "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300";
+  if (crit === "bajo") return "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300";
+  if (crit === "medio") return "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300";
+  if (crit === "ok") return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300";
+  return "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400";
+}
+
+function critRowClass(crit?: string) {
+  if (crit === "critico") return "bg-red-50/60 dark:bg-red-950/10";
+  if (crit === "bajo") return "bg-orange-50/60 dark:bg-orange-950/10";
+  return "";
 }
 
 export default function PredespachoClient() {
@@ -112,6 +127,8 @@ export default function PredespachoClient() {
   const [coordOpen, setCoordOpen] = useState(false);
   const [coordQuery, setCoordQuery] = useState("");
   const [cuadOpen, setCuadOpen] = useState(false);
+  const [sortByCrit, setSortByCrit] = useState(true);
+  const [showResources, setShowResources] = useState(false);
   const readOnly = scope !== "all";
   const aiRecommendation = usePredespachoAiRecommendation();
 
@@ -256,8 +273,9 @@ export default function PredespachoClient() {
     const rowsByGrupo = baseRows.filter((r) => {
       if (grupoDespacho === "all") return true;
       const grp = (cuadrillaModelGroup[r.id] || "NEUTRO").toUpperCase();
-      if (grupoDespacho === "huawei") return grp === "HUAWEI";
-      return grp === "ZTE";
+      // NEUTRO siempre incluida: cuadrillas sin modelo clasificado igual necesitan equipos
+      if (grupoDespacho === "huawei") return grp === "HUAWEI" || grp === "NEUTRO";
+      return grp === "ZTE" || grp === "NEUTRO";
     });
     return rowsByGrupo.filter((r) => {
       const saved = !!savedInfo[r.id]?.updatedAt;
@@ -277,6 +295,51 @@ export default function PredespachoClient() {
   const guardadasCount = baseRows.filter((r) => !!savedInfo[r.id]?.updatedAt).length;
   const pendientesCount = Math.max(0, totalRows - guardadasCount);
   const visiblesCount = uiRows.length;
+
+  // Días de autonomía ONT por cuadrilla (stock actual / promedio diario ONT)
+  const diasAutonomiaMap = useMemo(() => {
+    const out: Record<string, { dias: number | null; criticidad: "critico" | "bajo" | "medio" | "ok" | "sin_datos" }> = {};
+    for (const c of cuadrillas) {
+      const base = stockCuadrilla[c.id] || emptyCounts();
+      const byModel = stockCuadrillaModel[c.id] || emptyModelCounts();
+      let stockONT: number;
+      if (grupoDespacho === "huawei") stockONT = n(byModel.ONT_HUAWEI);
+      else if (grupoDespacho === "zte") stockONT = n(byModel.ONT_ZTE);
+      else stockONT = n(base.ONT);
+      const promONT = (promedioCuadrilla[c.id] || emptyCounts()).ONT;
+      const diasONT = promONT > 0 ? Math.floor(stockONT / promONT) : null;
+      const criticidad =
+        diasONT === null ? "sin_datos" :
+        diasONT <= 0 ? "critico" :
+        diasONT <= 2 ? "bajo" :
+        diasONT <= 5 ? "medio" : "ok";
+      out[c.id] = { dias: diasONT, criticidad };
+    }
+    return out;
+  }, [cuadrillas, promedioCuadrilla, stockCuadrilla, stockCuadrillaModel, grupoDespacho]);
+
+  // Filas ordenadas por criticidad para la tabla (critico → bajo → medio → ok → sin_datos)
+  const sortedRows = useMemo(() => {
+    if (!sortByCrit) return uiRows;
+    const order: Record<string, number> = { critico: 0, bajo: 1, medio: 2, ok: 3, sin_datos: 4 };
+    return [...uiRows].sort((a, b) => {
+      const ca = order[diasAutonomiaMap[a.id]?.criticidad ?? "sin_datos"] ?? 4;
+      const cb = order[diasAutonomiaMap[b.id]?.criticidad ?? "sin_datos"] ?? 4;
+      if (ca !== cb) return ca - cb;
+      return String(a.coordinadorNombre || "").localeCompare(String(b.coordinadorNombre || ""), "es", { sensitivity: "base" });
+    });
+  }, [uiRows, diasAutonomiaMap, sortByCrit]);
+
+  // Estadísticas de cobertura global (sobre baseRows activas, no solo las visibles)
+  const coverageStats = useMemo(() => {
+    const stats = { critico: 0, bajo: 0, medio: 0, ok: 0, sin_datos: 0 };
+    for (const c of baseRows) {
+      if (omitidas[c.id]) continue;
+      const crit = diasAutonomiaMap[c.id]?.criticidad ?? "sin_datos";
+      stats[crit as keyof typeof stats]++;
+    }
+    return stats;
+  }, [baseRows, omitidas, diasAutonomiaMap]);
 
   function stockForCuadrilla(cuadrillaId: string): Counts {
     const base = stockCuadrilla[cuadrillaId] || emptyCounts();
@@ -323,8 +386,8 @@ export default function PredespachoClient() {
     const rowsForPlan = baseRows.filter((r) => {
       if (grupoDespacho === "all") return true;
       const grp = (cuadrillaModelGroup[r.id] || "NEUTRO").toUpperCase();
-      if (grupoDespacho === "huawei") return grp === "HUAWEI";
-      return grp === "ZTE";
+      if (grupoDespacho === "huawei") return grp === "HUAWEI" || grp === "NEUTRO";
+      return grp === "ZTE" || grp === "NEUTRO";
     });
     for (const c of rowsForPlan) {
       const stock = stockForCuadrilla(c.id);
@@ -352,7 +415,9 @@ export default function PredespachoClient() {
         assigned += cuota;
       }
       let rem = disp - assigned;
-      for (const c of activas) {
+      // Prioridad: cuadrillas con stock más bajo reciben primero las unidades restantes
+      const activasPriority = [...activas].sort((a, b) => n(stockForCuadrilla(a.id)[k]) - n(stockForCuadrilla(b.id)[k]));
+      for (const c of activasPriority) {
         if (!rem) break;
         const consumo = consumoCuadrilla[c.id] || emptyCounts();
         const prom = promedioCuadrilla[c.id] || emptyCounts();
@@ -506,6 +571,8 @@ export default function PredespachoClient() {
         consumo: consumoCuadrilla[c.id] || emptyCounts(),
         promedio: promedioCuadrilla[c.id] || emptyCounts(),
         omitida: !!omitidas[c.id],
+        diasAutonomia: diasAutonomiaMap[c.id]?.dias ?? null,
+        criticidad: diasAutonomiaMap[c.id]?.criticidad ?? "sin_datos",
       }));
       if (!rows.length) {
         toast.error("No hay filas visibles para sugerencia IA");
@@ -564,6 +631,24 @@ export default function PredespachoClient() {
       return next;
     });
     toast.success("Sugerencia IA aplicada a valores manuales");
+  }
+
+  function applyAllSuggestions() {
+    const activas = uiRows.filter((c) => !omitidas[c.id]);
+    if (!activas.length) {
+      toast.error("No hay filas activas para aplicar sugerencias");
+      return;
+    }
+    setManual((prev) => {
+      const next = { ...prev };
+      for (const c of activas) {
+        const sug = sugerido[c.id];
+        if (!sug) continue;
+        next[c.id] = { ONT: n(sug.ONT), MESH: n(sug.MESH), FONO: n(sug.FONO), BOX: n(sug.BOX) };
+      }
+      return next;
+    });
+    toast.success(`Sugerencias aplicadas a ${activas.length} cuadrillas`);
   }
 
   async function savePredespacho() {
@@ -938,587 +1023,700 @@ export default function PredespachoClient() {
   }
 
   return (
-    <div className="space-y-5">
-      <section className="rounded-2xl border border-cyan-200 bg-gradient-to-r from-cyan-50 via-white to-blue-50 dark:border-cyan-800 dark:from-cyan-950/30 dark:via-slate-900 dark:to-blue-950/30 p-4 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="text-xs font-semibold tracking-wide text-cyan-700 dark:text-cyan-300">PREDESPACHO ASISTIDO</div>
-            <div className="text-sm text-slate-700 dark:text-slate-200">Modo: {modeLabel} · Ventana: {periodLabel || "sin datos"}</div>
+    <div className="space-y-4">
+
+      {/* ── HEADER PRINCIPAL ── */}
+      <section className="overflow-hidden rounded-2xl shadow-md">
+        <div className="bg-gradient-to-r from-[#1e3a5f] via-[#30518c] to-[#1a4a70] px-5 py-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xl font-bold tracking-tight text-white">Predespacho Instalaciones</span>
+                {readOnly && (
+                  <span className="rounded-full border border-amber-400/30 bg-amber-400/20 px-2 py-0.5 text-xs font-medium text-amber-200">
+                    Solo lectura
+                  </span>
+                )}
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-blue-200">
+                <span>📅 {anchor}</span>
+                {periodLabel && <span>· {periodLabel}</span>}
+                <span>· Alcance: <strong className="text-white">{scope}</strong></span>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                aiRecommendation.status === "ok"
+                  ? "border-emerald-500/30 bg-emerald-500/20 text-emerald-200"
+                  : aiRecommendation.status === "fallback"
+                    ? "border-amber-500/30 bg-amber-500/20 text-amber-200"
+                    : aiRecommendation.status === "loading"
+                      ? "border-cyan-500/30 bg-cyan-500/20 text-cyan-200"
+                      : "border-white/20 bg-white/10 text-blue-200"
+              }`}>
+                {aiStatusLabel}
+              </span>
+              {modeConfirmed && (
+                <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs text-blue-100">
+                  {modeLabel}
+                </span>
+              )}
+            </div>
           </div>
-          <div className={`rounded-full px-3 py-1 text-xs font-semibold ${
-            aiRecommendation.status === "ok"
-              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200"
-              : aiRecommendation.status === "fallback"
-                ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
-                : aiRecommendation.status === "loading"
-                  ? "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-200"
-                  : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-          }`}>
-            {aiStatusLabel}
-          </div>
+          {loading && (
+            <div className="mt-3 flex items-center gap-2 text-sm text-blue-200">
+              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-blue-300/30 border-t-blue-200" />
+              Cargando datos...
+            </div>
+          )}
         </div>
       </section>
 
+      {/* ── SELECCIÓN DE MODO ── */}
       {!modeConfirmed ? (
-        <section className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
-          <div className="mb-3">
-            <h2 className="text-lg font-semibold">Elegir tipo de predespacho</h2>
-            <p className="text-sm text-slate-600 dark:text-slate-300">Selecciona el escenario. La IA analizara consumo y stock para sugerir cantidades.</p>
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <div className="mb-4">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">Seleccionar tipo de predespacho</h2>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              La IA analizará consumo y stock disponible para sugerir cantidades óptimas.
+            </p>
           </div>
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
             {[
-              { id: "weekly", title: "Semanal general", desc: "Cubre cuadrillas en alcance para despacho semanal." },
-              { id: "coordinator", title: "Por coordinador", desc: "Despacho dirigido para uno o varios coordinadores." },
-              { id: "squad", title: "Por cuadrilla", desc: "Despacho puntual para cuadrilla especifica." },
-              { id: "urgent", title: "Reposicion urgente", desc: "Reposicion por falta de stock sin romper balance." },
+              { id: "weekly",      icon: "📦", title: "Semanal general",   desc: "Despacho completo para todas las cuadrillas del alcance." },
+              { id: "coordinator", icon: "👥", title: "Por coordinador",   desc: "Despacho dirigido a uno o varios coordinadores específicos." },
+              { id: "squad",       icon: "🔧", title: "Por cuadrilla",     desc: "Despacho puntual para una cuadrilla específica." },
+              { id: "urgent",      icon: "⚡", title: "Reposición urgente", desc: "Reposición por falta de stock sin romper el balance general." },
             ].map((mode) => (
               <button
                 key={mode.id}
                 type="button"
-                onClick={() => {
-                  setPredespachoMode(mode.id as PredespachoMode);
-                  setModeConfirmed(true);
-                }}
-                className="rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-cyan-300 hover:bg-cyan-50/60 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-cyan-700 dark:hover:bg-cyan-950/20"
+                onClick={() => { setPredespachoMode(mode.id as PredespachoMode); setModeConfirmed(true); }}
+                className="group flex flex-col gap-2 rounded-2xl border-2 border-slate-200 bg-white p-4 text-left transition-all hover:border-[#30518c] hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:hover:border-blue-500"
               >
-                <div className="mb-1 text-sm font-semibold text-slate-900 dark:text-slate-100">{mode.title}</div>
-                <div className="text-xs text-slate-600 dark:text-slate-300">{mode.desc}</div>
+                <span className="text-2xl">{mode.icon}</span>
+                <div>
+                  <div className="text-sm font-semibold text-slate-900 group-hover:text-[#30518c] dark:text-slate-100 dark:group-hover:text-blue-400">
+                    {mode.title}
+                  </div>
+                  <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{mode.desc}</div>
+                </div>
               </button>
             ))}
           </div>
         </section>
       ) : (
         <>
-      <section className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
-        <div className="grid gap-2 md:grid-cols-4">
-          {[
-            { id: 1, label: "Elegir tipo", done: modeConfirmed },
-            { id: 2, label: "Filtrar alcance", done: !!uiRows.length || !!selCoords.length || !!textoCuadrilla.trim() },
-            { id: 3, label: "Sugerencia IA", done: aiRecommendation.status === "ok" || aiRecommendation.status === "fallback" },
-            { id: 4, label: "Guardar despacho", done: !!selectedBatch },
-          ].map((step) => (
-            <div
-              key={`step-${step.id}`}
-              className={`rounded-xl border px-3 py-2 text-sm ${
-                step.done
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"
-                  : "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300"
-              }`}
-            >
-              <div className="text-[11px] uppercase tracking-wide">Paso {step.id}</div>
-              <div className="font-medium">{step.label}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
-        <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-9">
-          <div className="lg:col-span-1">
-            <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Fecha base</label>
-            <input type="date" value={anchor} onChange={(e) => setAnchor(e.target.value)} className="ui-input-inline w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm" />
+          {/* ── BARRA DE PROGRESO ── */}
+          <div className="flex items-center overflow-x-auto rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            {[
+              { id: 1, label: "Tipo elegido",       done: modeConfirmed },
+              { id: 2, label: "Alcance filtrado",   done: !!uiRows.length || !!selCoords.length || !!textoCuadrilla.trim() },
+              { id: 3, label: "Sugerencia IA",      done: aiRecommendation.status === "ok" || aiRecommendation.status === "fallback" },
+              { id: 4, label: "Despacho guardado",  done: !!selectedBatch },
+            ].map((step, i) => (
+              <div key={step.id} className="flex min-w-0 flex-1 items-center">
+                <div className={`flex min-w-0 flex-1 flex-col items-center gap-1 px-2 py-1 text-center ${step.done ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400 dark:text-slate-500"}`}>
+                  <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${step.done ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"}`}>
+                    {step.done ? "✓" : step.id}
+                  </div>
+                  <span className="text-[11px] font-medium leading-tight">{step.label}</span>
+                </div>
+                {i < 3 && <div className={`h-px w-4 flex-shrink-0 ${step.done ? "bg-emerald-300 dark:bg-emerald-700" : "bg-slate-200 dark:bg-slate-700"}`} />}
+              </div>
+            ))}
           </div>
-          <div className="lg:col-span-2">
-            <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Buscar cuadrilla {predespachoMode === "squad" ? "(obligatorio)" : ""}</label>
-            <div className="relative">
-              <input
-                value={textoCuadrilla}
-                onChange={(e) => {
-                  setTextoCuadrilla(e.target.value);
-                  setCuadOpen(true);
-                }}
-                onFocus={() => setCuadOpen(true)}
-                placeholder={predespachoMode === "squad" ? "Escribe nombre o codigo de cuadrilla" : "Nombre o codigo"}
-                className="w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm"
-              />
-              {cuadOpen && cuadrillaSuggestions.length > 0 && (
-                <div className="absolute z-30 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-1 shadow-xl">
-                  {cuadrillaSuggestions.map((c) => (
+
+          {/* ── FILTROS ── */}
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-9">
+              <div className="lg:col-span-1">
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Fecha base</label>
+                <input
+                  type="date"
+                  value={anchor}
+                  onChange={(e) => setAnchor(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+                />
+              </div>
+              <div className="lg:col-span-2">
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Cuadrilla {predespachoMode === "squad" && <span className="ml-1 text-rose-500">*</span>}
+                </label>
+                <div className="relative">
+                  <input
+                    value={textoCuadrilla}
+                    onChange={(e) => { setTextoCuadrilla(e.target.value); setCuadOpen(true); }}
+                    onFocus={() => setCuadOpen(true)}
+                    placeholder="Nombre o código..."
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+                  />
+                  {cuadOpen && cuadrillaSuggestions.length > 0 && (
+                    <div className="absolute z-30 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                      {cuadrillaSuggestions.map((c) => (
+                        <button
+                          key={`sug-${c.id}`}
+                          type="button"
+                          onClick={() => { setTextoCuadrilla(c.nombre || c.id); setCuadOpen(false); }}
+                          className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-slate-50 dark:hover:bg-slate-800"
+                        >
+                          {c.nombre || c.id}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {scope === "all" && (predespachoMode === "coordinator" || predespachoMode === "urgent") && (
+                <div className="lg:col-span-2">
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Coordinadores</label>
+                  <div className="relative">
                     <button
-                      key={`sug-${c.id}`}
                       type="button"
-                      onClick={() => {
-                        setTextoCuadrilla(c.nombre || c.id);
-                        setCuadOpen(false);
-                      }}
-                      className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-slate-50 dark:hover:bg-slate-800"
+                      onClick={() => setCoordOpen((v) => !v)}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm dark:border-slate-700 dark:bg-slate-900"
                     >
-                      {c.nombre || c.id}
+                      {selCoords.length ? `${selCoords.length} seleccionados` : "Elegir coordinadores"}
                     </button>
-                  ))}
+                    {coordOpen && (
+                      <div className="absolute z-30 mt-1 w-full rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                        <input
+                          value={coordQuery}
+                          onChange={(e) => setCoordQuery(e.target.value)}
+                          placeholder="Buscar..."
+                          className="mb-2 w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+                        />
+                        <div className="max-h-56 overflow-auto">
+                          {filteredCoords.map((c) => (
+                            <label key={c.id} className="flex items-center gap-2 rounded px-1 py-1 text-xs hover:bg-slate-50 dark:hover:bg-slate-800">
+                              <input
+                                type="checkbox"
+                                checked={selCoords.includes(c.id)}
+                                onChange={(e) => setSelCoords((prev) => e.target.checked ? Array.from(new Set([...prev, c.id])) : prev.filter((x) => x !== c.id))}
+                              />
+                              <span>{c.nombre}</span>
+                            </label>
+                          ))}
+                          {!filteredCoords.length && <div className="py-1 text-xs text-slate-500">Sin resultados</div>}
+                        </div>
+                        <div className="mt-2 flex gap-2">
+                          <button type="button" onClick={() => setSelCoords([])} className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900">Limpiar</button>
+                          <button type="button" onClick={() => setCoordOpen(false)} className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900">Cerrar</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
-            </div>
-          </div>
-          {scope === "all" && (predespachoMode === "coordinator" || predespachoMode === "urgent") && (
-            <div className="lg:col-span-2">
-              <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Coordinadores</label>
-              <div className="relative">
+              <div className="lg:col-span-1">
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Estado</label>
+                <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value as EstadoFiltro)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+                  <option value="todas">Todas</option>
+                  <option value="guardadas">Guardadas</option>
+                  <option value="pendientes">Pendientes</option>
+                  <option value="lote">Por lote</option>
+                </select>
+              </div>
+              <div className="lg:col-span-1">
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Modelo</label>
+                <select value={modeloFiltro} onChange={(e) => setModeloFiltro(e.target.value as ModeloFiltro)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+                  <option value="all">Todos</option>
+                  <option value="huawei">Huawei</option>
+                  <option value="zte">ZTE</option>
+                </select>
+              </div>
+              <div className="lg:col-span-1">
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Despacho</label>
+                <select value={grupoDespacho} onChange={(e) => setGrupoDespacho(e.target.value as GrupoDespachoFiltro)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+                  <option value="all">Todos</option>
+                  <option value="huawei">Huawei</option>
+                  <option value="zte">ZTE</option>
+                </select>
+              </div>
+              <div className="lg:col-span-1">
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Lote</label>
+                <select value={selectedBatch} onChange={(e) => setSelectedBatch(e.target.value)} disabled={estadoFiltro !== "lote"} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 disabled:opacity-50">
+                  <option value="">Seleccionar</option>
+                  {batchIds.map((b) => <option key={b} value={b}>{b.slice(0, 16).replace("T", " ")}</option>)}
+                </select>
+              </div>
+              <div className="flex items-end lg:col-span-1">
                 <button
                   type="button"
-                  onClick={() => setCoordOpen((v) => !v)}
-                  className="w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-left text-sm"
+                  onClick={() => loadData(anchor)}
+                  disabled={loading}
+                  className="w-full rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium transition hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:hover:bg-slate-700"
                 >
-                  {selCoords.length ? `${selCoords.length} coordinadores seleccionados` : "Elegir coordinadores"}
+                  {loading ? "..." : "↻ Actualizar"}
                 </button>
-                {coordOpen && (
-                  <div className="absolute z-30 mt-1 w-full rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-2 shadow-xl">
-                    <input
-                      value={coordQuery}
-                      onChange={(e) => setCoordQuery(e.target.value)}
-                      placeholder="Buscar coordinador..."
-                      className="mb-2 w-full rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1 text-xs"
-                    />
-                    <div className="max-h-56 overflow-auto">
-                      {filteredCoords.map((c) => (
-                        <label key={c.id} className="flex items-center gap-2 py-1 text-xs">
-                          <input
-                            type="checkbox"
-                            checked={selCoords.includes(c.id)}
-                            onChange={(e) => {
-                              setSelCoords((prev) => {
-                                if (e.target.checked) return Array.from(new Set([...prev, c.id]));
-                                return prev.filter((x) => x !== c.id);
-                              });
-                            }}
-                          />
-                          <span>{c.nombre}</span>
-                        </label>
-                      ))}
-                      {!filteredCoords.length && <div className="py-1 text-xs text-slate-500">Sin resultados</div>}
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                Periodo: {periodLabel || "-"}
+              </span>
+              <label className="flex cursor-pointer items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
+                <input type="checkbox" checked={verOmitidas} onChange={(e) => setVerOmitidas(e.target.checked)} className="h-3 w-3" />
+                Ver omitidas
+              </label>
+              <label className="flex cursor-pointer items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
+                <input type="checkbox" checked={sortByCrit} onChange={(e) => setSortByCrit(e.target.checked)} className="h-3 w-3" />
+                Ordenar por criticidad
+              </label>
+              <button
+                type="button"
+                onClick={() => setModeConfirmed(false)}
+                className="rounded-full border border-slate-300 px-2.5 py-1 text-[11px] text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                ← Cambiar modo
+              </button>
+              {aiRecommendation.status !== "idle" && (
+                <span className="rounded-full bg-violet-100 px-2.5 py-1 text-[11px] text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
+                  IA: {aiRecommendation.status}{aiRecommendation.data?.meta?.model ? ` · ${aiRecommendation.data.meta.model}` : ""}
+                </span>
+              )}
+            </div>
+          </section>
+
+          {/* ── PANEL DE RECURSOS (colapsable) ── */}
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <button
+              type="button"
+              onClick={() => setShowResources((v) => !v)}
+              className="flex w-full items-center justify-between px-5 py-3.5 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/60"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Panel de recursos</span>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">{totalRows} cuadrillas</span>
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">{guardadasCount} guardadas</span>
+                {pendientesCount > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">{pendientesCount} pendientes</span>}
+                {coverageStats.critico > 0 && <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] text-red-700 dark:bg-red-900/30 dark:text-red-300">{coverageStats.critico} críticas</span>}
+              </div>
+              <span className="text-sm text-slate-400 dark:text-slate-500">{showResources ? "▲" : "▼"}</span>
+            </button>
+
+            {showResources && (
+              <div className="space-y-4 border-t border-slate-200 p-4 dark:border-slate-700">
+
+                {/* Stock almacén + consumo */}
+                <div>
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Stock en almacén y consumo del periodo</div>
+                  <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-8">
+                    {EQUIPOS.map((k) => (
+                      <div key={`alm2-${k}`} className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 dark:border-slate-700 dark:bg-slate-800/60">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Almacén {k}</div>
+                        <div className="text-xl font-bold text-slate-900 dark:text-slate-100">{stockAlmacenActivo[k]}</div>
+                        {k === "ONT" && <div className="text-[10px] text-slate-400">H:{stockAlmacenModel.ONT_HUAWEI} / Z:{stockAlmacenModel.ONT_ZTE}</div>}
+                        {k === "MESH" && <div className="text-[10px] text-slate-400">H:{stockAlmacenModel.MESH_HUAWEI} / Z:{stockAlmacenModel.MESH_ZTE}</div>}
+                      </div>
+                    ))}
+                    {EQUIPOS.map((k) => (
+                      <div key={`con2-${k}`} className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 dark:border-slate-700 dark:bg-slate-800/60">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Consumo {k}</div>
+                        <div className="text-xl font-bold text-slate-900 dark:text-slate-100">{consumoTotal[k]}</div>
+                        <div className="text-[10px] text-slate-400">Prom: {promedioTotal[k]}/d</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* PRECON */}
+                <div>
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Stock PRECON en almacén</div>
+                  <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                    {PRECONS.map((p) => (
+                      <div key={`prc2-${p}`} className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 dark:border-slate-700 dark:bg-slate-800/60">
+                        <div className="text-[10px] text-slate-500">{p}</div>
+                        <div className="text-lg font-bold text-slate-900 dark:text-slate-100">{stockPrecon[p]}</div>
+                        <div className="text-[10px] text-slate-400">Asignado: {totalPreconAsignado[p]}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Cobertura ONT */}
+                <div>
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Cobertura de stock ONT · {baseRows.filter((r) => !omitidas[r.id]).length} cuadrillas activas
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+                    {([
+                      { key: "critico",   label: "Crítico",    sub: "0 días",       color: "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/20 dark:text-red-300" },
+                      { key: "bajo",      label: "Bajo",       sub: "1-2 días",     color: "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900 dark:bg-orange-950/20 dark:text-orange-300" },
+                      { key: "medio",     label: "Medio",      sub: "3-5 días",     color: "border-yellow-200 bg-yellow-50 text-yellow-700 dark:border-yellow-900 dark:bg-yellow-950/20 dark:text-yellow-300" },
+                      { key: "ok",        label: "OK",         sub: "6+ días",      color: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-300" },
+                      { key: "sin_datos", label: "Sin prom.",  sub: "sin historial", color: "border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400" },
+                    ] as const).map(({ key, label, sub, color }) => (
+                      <div key={key} className={`rounded-xl border p-3 ${color}`}>
+                        <div className="text-[11px] font-medium">{label}</div>
+                        <div className="text-[10px]">{sub}</div>
+                        <div className="text-2xl font-bold">{coverageStats[key]}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Resumen IA */}
+                <div>
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Resumen IA · {aiSummary.recommendationSource}</div>
+                  <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                    <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60">
+                      <div className="text-[11px] text-slate-500">Cuadrillas analizadas</div>
+                      <div className="text-lg font-semibold">{aiSummary.recommendationRows || visiblesCount}</div>
                     </div>
-                    <div className="mt-2 flex gap-2">
-                      <button type="button" onClick={() => setSelCoords([])} className="rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1 text-xs hover:bg-slate-50 dark:hover:bg-slate-800">
-                        Limpiar
-                      </button>
-                      <button type="button" onClick={() => setCoordOpen(false)} className="rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1 text-xs hover:bg-slate-50 dark:hover:bg-slate-800">
-                        Cerrar
-                      </button>
+                    <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60">
+                      <div className="text-[11px] text-slate-500">IA ONT / MESH</div>
+                      <div className="text-lg font-semibold">{aiSummary.recommendationTotal.ONT} / {aiSummary.recommendationTotal.MESH}</div>
+                    </div>
+                    <div className="rounded-xl bg-blue-50 p-3 dark:bg-blue-950/20">
+                      <div className="text-[11px] text-slate-500">ONT: {modelUsageSummary.ont}</div>
+                      <div className="mt-0.5 text-[11px] text-slate-500">MESH: {modelUsageSummary.mesh}</div>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60">
+                      <div className="text-[11px] text-slate-500">Modelo IA</div>
+                      <div className="text-sm font-semibold capitalize">{aiSummary.recommendationSource}</div>
+                      <div className="text-[10px] text-slate-400">{aiSummary.recommendationModel}</div>
                     </div>
                   </div>
+                </div>
+
+                {/* Objetivo operativo */}
+                <div>
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Objetivo operativo por cuadrilla (piso mínimo)</div>
+                  <div className="flex flex-wrap gap-4">
+                    {EQUIPOS.map((k) => (
+                      <div key={`obj2-${k}`} className="flex items-center gap-2">
+                        <label className="w-10 text-xs font-medium text-slate-600 dark:text-slate-300">{k}</label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={objetivo[k]}
+                          disabled={readOnly}
+                          onChange={(e) => setObjetivo((p) => ({ ...p, [k]: n(e.target.value) }))}
+                          className="w-16 rounded-lg border border-slate-300 bg-white px-2 py-1 text-right text-sm dark:border-slate-700 dark:bg-slate-900"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* ── CONTROL DE DISPONIBILIDAD ── */}
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Control de stock</div>
+                <div className="text-xs text-slate-500">Plan vs. disponible. El guardado se bloquea si el plan excede el stock.</div>
+              </div>
+              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${hasAvailabilityIssues ? "bg-rose-100 text-rose-700 dark:bg-rose-950/30 dark:text-rose-200" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200"}`}>
+                {hasAvailabilityIssues ? "⚠ Excede stock" : "✓ Stock OK"}
+              </span>
+            </div>
+            <div className="grid gap-2 md:grid-cols-4">
+              {EQUIPOS.map((k) => (
+                <div key={`avail2-${k}`} className={`rounded-xl border p-3 ${availability[k].exceeded ? "border-rose-300 bg-rose-50 dark:border-rose-900 dark:bg-rose-950/20" : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60"}`}>
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">{k}</span>
+                    {availability[k].exceeded && <span className="text-xs text-rose-600 dark:text-rose-400">⚠</span>}
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xl font-bold text-slate-900 dark:text-slate-100">{availability[k].planned}</span>
+                    <span className="text-xs text-slate-400">/ {availability[k].available}</span>
+                  </div>
+                  <div className="mt-1.5">
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                      <div
+                        className={`h-1.5 rounded-full transition-all ${availability[k].exceeded ? "bg-rose-500" : "bg-emerald-500"}`}
+                        style={{ width: `${Math.min(100, availability[k].available ? (availability[k].planned / availability[k].available) * 100 : 0)}%` }}
+                      />
+                    </div>
+                    <div className={`mt-1 text-[11px] ${availability[k].remaining < 0 ? "font-medium text-rose-600 dark:text-rose-400" : "text-slate-500"}`}>
+                      Saldo: {availability[k].remaining}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 grid gap-2 md:grid-cols-4">
+              {PRECONS.map((p) => (
+                <div key={`pa2-${p}`} className={`rounded-xl border px-3 py-2 ${preconAvailability[p].exceeded ? "border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20" : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60"}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-slate-500">{p}</span>
+                    {preconAvailability[p].exceeded && <span className="text-[11px] text-amber-600 dark:text-amber-400">⚠</span>}
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-base font-bold">{preconAvailability[p].planned}</span>
+                    <span className="text-[11px] text-slate-400">/ {preconAvailability[p].available}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {hasAvailabilityIssues ? (
+              <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-900 dark:bg-rose-950/20 dark:text-rose-200">
+                ⚠ Ajusta cantidades manuales o filas omitidas antes de guardar. Excedidos: <strong>{[...exceededEquipos, ...exceededPrecons].join(", ")}</strong>
+              </div>
+            ) : (
+              <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-200">
+                ✓ El plan actual está dentro del stock disponible para despacho.
+              </div>
+            )}
+          </section>
+
+          {/* ── TABLA DE DESPACHO ── */}
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            {/* Toolbar */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/60">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Predespacho por cuadrilla</h2>
+                <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] text-slate-600 dark:bg-slate-700 dark:text-slate-300">{visiblesCount} visibles</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={getAiSuggestion}
+                  disabled={loading || aiRecommendation.loading || !uiRows.length}
+                  className="flex items-center gap-1.5 rounded-xl border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-700 transition hover:bg-violet-100 disabled:opacity-50 dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300 dark:hover:bg-violet-950/50"
+                >
+                  {aiRecommendation.loading ? "⌛ Calculando..." : "✦ Sugerencia IA"}
+                </button>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={applyAiSuggestion}
+                    disabled={!aiRecommendation.data?.recommendation || aiRecommendation.loading || !uiRows.length}
+                    className="rounded-xl border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-700 transition hover:bg-violet-100 disabled:opacity-50 dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300 dark:hover:bg-violet-950/50"
+                  >
+                    Aplicar IA
+                  </button>
+                )}
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={applyAllSuggestions}
+                    disabled={!uiRows.length || loading}
+                    title="Aplica las cantidades sugeridas (determinístico) a todas las cuadrillas activas"
+                    className="rounded-xl border border-cyan-300 bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-700 transition hover:bg-cyan-100 disabled:opacity-50 dark:border-cyan-800 dark:bg-cyan-950/30 dark:text-cyan-300 dark:hover:bg-cyan-950/50"
+                  >
+                    Aplicar sugeridas
+                  </button>
+                )}
+                <button type="button" onClick={exportExcel} className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800">
+                  ⬇ Excel
+                </button>
+                <button type="button" onClick={exportPdf} className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800">
+                  ⬇ PDF
+                </button>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={savePredespacho}
+                    disabled={saving || loading || !uiRows.length || hasAvailabilityIssues}
+                    className="rounded-xl bg-[#30518c] px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#1e3a5f] disabled:opacity-50"
+                  >
+                    {saving ? "Guardando..." : "💾 Guardar despacho"}
+                  </button>
                 )}
               </div>
             </div>
-          )}
-          <div className="lg:col-span-1">
-            <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Estado</label>
-            <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value as EstadoFiltro)} className="ui-select-inline w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm">
-              <option value="todas">Todas</option>
-              <option value="guardadas">Guardadas</option>
-              <option value="pendientes">Pendientes</option>
-              <option value="lote">Por lote</option>
-            </select>
-          </div>
-          <div className="lg:col-span-1">
-            <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Modelo (ONT/MESH)</label>
-            <select value={modeloFiltro} onChange={(e) => setModeloFiltro(e.target.value as ModeloFiltro)} className="ui-select-inline w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm">
-              <option value="all">Todos</option>
-              <option value="huawei">Huawei</option>
-              <option value="zte">ZTE</option>
-            </select>
-          </div>
-          <div className="lg:col-span-1">
-            <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Grupo despacho</label>
-            <select value={grupoDespacho} onChange={(e) => setGrupoDespacho(e.target.value as GrupoDespachoFiltro)} className="ui-select-inline w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm">
-              <option value="all">Todos</option>
-              <option value="huawei">Huawei</option>
-              <option value="zte">ZTE</option>
-            </select>
-          </div>
-          <div className="lg:col-span-1">
-            <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Lote</label>
-            <select value={selectedBatch} onChange={(e) => setSelectedBatch(e.target.value)} className="ui-select-inline w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm" disabled={estadoFiltro !== "lote"}>
-              <option value="">Seleccionar</option>
-              {batchIds.map((b) => <option key={b} value={b}>{b.slice(0, 16).replace("T", " ")}</option>)}
-            </select>
-          </div>
-          <div className="lg:col-span-1 flex items-end gap-2">
-            <button type="button" onClick={() => loadData(anchor)} className="rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800" disabled={loading}>
-              {loading ? "Cargando..." : "Actualizar"}
-            </button>
-          </div>
-        </div>
-        <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-300">
-          <span>Periodo consumo: {periodLabel}</span>
-          <span>Scope: {scope}</span>
-          <span>Modelo ONT/MESH: {modeloFiltro === "all" ? "Todos" : modeloFiltro === "huawei" ? "Huawei" : "ZTE"}</span>
-          <span>Grupo despacho: {grupoDespacho === "all" ? "Todos" : grupoDespacho === "huawei" ? "Huawei" : "ZTE"}</span>
-          <label className="inline-flex items-center gap-2">
-            <input type="checkbox" checked={verOmitidas} onChange={(e) => setVerOmitidas(e.target.checked)} />
-            Ver omitidas
-          </label>
-          {aiRecommendation.status !== "idle" && (
-            <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5">
-              IA: {aiRecommendation.status}
-              {aiRecommendation.data?.meta?.model ? ` (${aiRecommendation.data.meta.model})` : ""}
-            </span>
-          )}
-        </div>
-      </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold">Resumen IA del escenario</div>
-            <div className="text-xs text-slate-500">Fuente: {aiSummary.recommendationSource} · Modelo: {aiSummary.recommendationModel}</div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setModeConfirmed(false)}
-            className="rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-slate-800"
-          >
-            Cambiar tipo de predespacho
-          </button>
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-          <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3">
-            <div className="text-[11px] text-slate-500">Cuadrillas analizadas</div>
-            <div className="text-lg font-semibold">{aiSummary.recommendationRows || visiblesCount}</div>
-          </div>
-          <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3">
-            <div className="text-[11px] text-slate-500">Sugerido IA ONT/MESH</div>
-            <div className="text-lg font-semibold">{aiSummary.recommendationTotal.ONT} / {aiSummary.recommendationTotal.MESH}</div>
-          </div>
-          <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3">
-            <div className="text-[11px] text-slate-500">Pool ONT H/Z</div>
-            <div className="text-lg font-semibold">{stockAlmacenModel.ONT_HUAWEI} / {stockAlmacenModel.ONT_ZTE}</div>
-          </div>
-          <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3">
-            <div className="text-[11px] text-slate-500">Pool MESH H/Z</div>
-            <div className="text-lg font-semibold">{stockAlmacenModel.MESH_HUAWEI} / {stockAlmacenModel.MESH_ZTE}</div>
-          </div>
-        </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-2">
-          <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
-            <div className="text-[11px] uppercase tracking-wide">Modelo ONT usado en analisis</div>
-            <div className="font-semibold">{modelUsageSummary.ont}</div>
-          </div>
-          <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-800 dark:border-indigo-900 dark:bg-indigo-950/30 dark:text-indigo-200">
-            <div className="text-[11px] uppercase tracking-wide">Modelo MESH usado en analisis</div>
-            <div className="font-semibold">{modelUsageSummary.mesh}</div>
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold">Control de despacho</div>
-            <div className="text-xs text-slate-500">Revision operativa antes de guardar. El sistema bloquea el guardado si el plan excede el stock disponible.</div>
-          </div>
-          <div className={`rounded-full px-3 py-1 text-xs font-semibold ${hasAvailabilityIssues ? "bg-rose-100 text-rose-700 dark:bg-rose-950/30 dark:text-rose-200" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200"}`}>
-            {hasAvailabilityIssues ? "Stock insuficiente" : "Stock validado"}
-          </div>
-        </div>
-        <div className="mt-3 grid gap-3 md:grid-cols-4">
-          {EQUIPOS.map((k) => (
-            <div key={`avail-${k}`} className={`rounded-xl border p-3 ${availability[k].exceeded ? "border-rose-300 bg-rose-50 dark:border-rose-900 dark:bg-rose-950/20" : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60"}`}>
-              <div className="text-[11px] uppercase tracking-wide text-slate-500">{k}</div>
-              <div className="mt-1 flex items-end justify-between gap-2">
-                <div>
-                  <div className="text-lg font-semibold">{availability[k].planned}</div>
-                  <div className="text-[11px] text-slate-500">Planificado</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-lg font-semibold">{availability[k].available}</div>
-                  <div className="text-[11px] text-slate-500">Disponible</div>
-                </div>
-              </div>
-              <div className={`mt-2 text-xs font-medium ${availability[k].remaining < 0 ? "text-rose-700 dark:text-rose-200" : "text-slate-600 dark:text-slate-300"}`}>
-                Saldo: {availability[k].remaining}
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="mt-3 grid gap-3 md:grid-cols-4">
-          {PRECONS.map((p) => (
-            <div key={`precon-avail-${p}`} className={`rounded-xl border p-3 ${preconAvailability[p].exceeded ? "border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20" : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60"}`}>
-              <div className="text-[11px] uppercase tracking-wide text-slate-500">{p}</div>
-              <div className="mt-1 flex items-end justify-between gap-2">
-                <div>
-                  <div className="text-lg font-semibold">{preconAvailability[p].planned}</div>
-                  <div className="text-[11px] text-slate-500">Asignado</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-lg font-semibold">{preconAvailability[p].available}</div>
-                  <div className="text-[11px] text-slate-500">Disponible</div>
-                </div>
-              </div>
-              <div className={`mt-2 text-xs font-medium ${preconAvailability[p].remaining < 0 ? "text-amber-700 dark:text-amber-200" : "text-slate-600 dark:text-slate-300"}`}>
-                Saldo: {preconAvailability[p].remaining}
-              </div>
-            </div>
-          ))}
-        </div>
-        {hasAvailabilityIssues ? (
-          <div className="mt-3 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/20 dark:text-rose-200">
-            Ajusta cantidades manuales, filas omitidas o PRECON asignado antes de guardar. Excedidos: {[...exceededEquipos, ...exceededPrecons].join(", ")}
-          </div>
-        ) : (
-          <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-200">
-            El plan actual se encuentra dentro del stock disponible para despacho.
-          </div>
-        )}
-      </section>
-
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
-          <div className="text-xs text-slate-500">Cuadrillas en alcance</div>
-          <div className="text-2xl font-semibold">{totalRows}</div>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
-          <div className="text-xs text-slate-500">Guardadas</div>
-          <div className="text-2xl font-semibold text-emerald-700">{guardadasCount}</div>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
-          <div className="text-xs text-slate-500">Pendientes</div>
-          <div className="text-2xl font-semibold text-amber-700">{pendientesCount}</div>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
-          <div className="text-xs text-slate-500">Mostrando en tabla</div>
-          <div className="text-2xl font-semibold">{visiblesCount}</div>
-        </div>
-      </section>
-
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {EQUIPOS.map((k) => (
-          <div key={`alm-${k}`} className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
-            <div className="text-xs uppercase text-slate-500">{k}</div>
-            <div className="text-2xl font-semibold">{stockAlmacenActivo[k]}</div>
-            <div className="text-xs text-slate-500">Stock almacen</div>
-            {k === "ONT" && (
-              <div className="text-[11px] text-slate-500">H:{stockAlmacenModel.ONT_HUAWEI} | Z:{stockAlmacenModel.ONT_ZTE}</div>
-            )}
-            {k === "MESH" && (
-              <div className="text-[11px] text-slate-500">H:{stockAlmacenModel.MESH_HUAWEI} | Z:{stockAlmacenModel.MESH_ZTE}</div>
-            )}
-          </div>
-        ))}
-        {EQUIPOS.map((k) => (
-          <div key={`con-${k}`} className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
-            <div className="text-xs uppercase text-slate-500">{k}</div>
-            <div className="text-xl font-semibold">{consumoTotal[k]}</div>
-            <div className="text-xs text-slate-500">Total periodo</div>
-            <div className="text-xs text-slate-400">Prom: {promedioTotal[k]}/dia</div>
-          </div>
-        ))}
-      </section>
-
-      <section className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
-        <div className="mb-2 text-sm font-semibold">Stock PRECON en almacen y asignacion</div>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {PRECONS.map((p) => (
-            <div key={p} className="rounded-xl border border-slate-200 bg-slate-50 dark:bg-slate-800/60 p-3">
-              <div className="text-xs text-slate-500">{p}</div>
-              <div className="text-xl font-semibold">{stockPrecon[p]}</div>
-              <div className="text-xs text-slate-500">Asignado: {totalPreconAsignado[p]}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
-        <div className="mb-2 text-sm font-semibold">Objetivo operativo por cuadrilla</div>
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-          {EQUIPOS.map((k) => (
-            <div key={`obj-${k}`}>
-              <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">{k}</label>
-              <input type="number" min={0} value={objetivo[k]} disabled={readOnly} onChange={(e) => setObjetivo((p) => ({ ...p, [k]: n(e.target.value) }))} className="ui-input-inline w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-right text-sm" />
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Predespacho por cuadrilla</h2>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={getAiSuggestion}
-              className="rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
-              disabled={loading || aiRecommendation.loading || !uiRows.length}
-            >
-              {aiRecommendation.loading ? "Calculando IA..." : "Obtener sugerencia IA"}
-            </button>
-            {!readOnly && (
-              <button
-                type="button"
-                onClick={applyAiSuggestion}
-                className="rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
-                disabled={!aiRecommendation.data?.recommendation || aiRecommendation.loading || !uiRows.length}
-              >
-                Aplicar sugerencia IA
-              </button>
-            )}
-            <button type="button" onClick={exportExcel} className="rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">Exportar Excel</button>
-            <button type="button" onClick={exportPdf} className="rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">Exportar PDF</button>
-            {!readOnly && (
-              <button type="button" onClick={savePredespacho} className="rounded bg-[#30518c] px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-50" disabled={saving || loading || !uiRows.length || hasAvailabilityIssues}>
-                {saving ? "Guardando..." : "Guardar filas visibles"}
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="overflow-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-              <tr className="text-left">
-                <th className="p-2">Coordinador</th>
-                <th className="p-2">Cuadrilla</th>
-                <th className="p-2">Consumo / Promedio</th>
-                <th className="p-2">Stock</th>
-                <th className="p-2">Sugerido</th>
-                <th className="p-2">Manual</th>
-                <th className="p-2">Final</th>
-                <th className="p-2">PRECON</th>
-                <th className="p-2">Omitir</th>
-                <th className="p-2">Resi</th>
-                <th className="p-2">Condo</th>
-                <th className="p-2">Guardado</th>
-              </tr>
-            </thead>
-            <tbody className="text-slate-800 dark:text-slate-100">
-              {!uiRows.length && <tr><td colSpan={12} className="p-4 text-center text-slate-500">Sin cuadrillas para mostrar.</td></tr>}
-              {uiRows.map((c) => {
-                const cons = consumoCuadrilla[c.id] || emptyCounts();
-                const prom = promedioCuadrilla[c.id] || emptyCounts();
-                const stock = stockForCuadrilla(c.id);
-                const sug = sugerido[c.id] || emptyCounts();
-                const aiSug = aiRecommendation.data?.recommendation?.byCuadrilla?.[c.id];
-                const man = manual[c.id] || {};
-                const hasManual = EQUIPOS.some((k) => Number.isFinite(Number(man[k])));
-                const final: Counts = {
-                  ONT: Number.isFinite(Number(man.ONT)) ? n(man.ONT) : n(sug.ONT),
-                  MESH: Number.isFinite(Number(man.MESH)) ? n(man.MESH) : n(sug.MESH),
-                  FONO: Number.isFinite(Number(man.FONO)) ? n(man.FONO) : n(sug.FONO),
-                  BOX: Number.isFinite(Number(man.BOX)) ? n(man.BOX) : n(sug.BOX),
-                };
-                return (
-                  <tr key={c.id} className={`border-t ${omitidas[c.id] ? "opacity-60" : ""}`}>
-                    <td className="p-2">{c.coordinadorNombre || "-"}</td>
-                    <td className="p-2 font-medium">{c.nombre || c.id}</td>
-                    <td className="p-2">
-                      <div className="flex flex-wrap gap-1">
-                        {EQUIPOS.map((k) => (
-                          <span
-                            key={`${c.id}-cons-${k}`}
-                            className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-800 dark:bg-slate-700 dark:text-slate-100"
-                          >
-                            {k}: {cons[k]} | P:{prom[k]}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="p-2">
-                      <div className="flex flex-wrap gap-1">
-                        {EQUIPOS.map((k) => (
-                          <span
-                            key={`${c.id}-stk-${k}`}
-                            className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-800 dark:bg-slate-700 dark:text-slate-100"
-                          >
-                            {k}: {stock[k]}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="p-2">
-                      <div className="flex flex-wrap gap-1">
-                        {EQUIPOS.map((k) => (
-                          <div key={`${c.id}-sug-${k}`} className="flex gap-1">
-                            <span className="rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-950/40 dark:text-blue-200">
-                              {k}: {sug[k]}
-                            </span>
-                            {aiSug ? (
-                              <span className="rounded bg-violet-50 px-2 py-0.5 text-xs text-violet-700 dark:bg-violet-950/40 dark:text-violet-200">
-                                IA: {n((aiSug as any)[k])}
-                              </span>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="p-2">
-                      <div className="grid grid-cols-4 gap-1">
-                        {EQUIPOS.map((k) => (
-                          <input
-                            key={`${c.id}-m-${k}`}
-                            type="number"
-                            min={0}
-                            value={man[k] ?? ""}
-                            placeholder={String(sug[k])}
-                            disabled={readOnly}
-                            onChange={(e) => setManual((p) => ({ ...p, [c.id]: { ...(p[c.id] || {}), [k]: e.target.value === "" ? undefined : n(e.target.value) } }))}
-                            className="w-14 rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-1 py-1 text-right text-xs"
-                          />
-                        ))}
-                      </div>
-                    </td>
-                    <td className="p-2">
-                      <div className="flex flex-wrap gap-1">
-                        {EQUIPOS.map((k) => (
-                          <span
-                            key={`${c.id}-fin-${k}`}
-                            className="rounded bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200"
-                          >
-                            {k}: {final[k]}
-                          </span>
-                        ))}
-                        {hasManual ? (
-                          <span className="rounded bg-amber-50 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
-                            Ajuste manual
-                          </span>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="p-2">
-                      <div className="grid grid-cols-2 gap-1">
-                        {PRECONS.map((p) => (
-                          <input
-                            key={`${c.id}-${p}`}
-                            type="number"
-                            min={0}
-                            value={preconAsignado[c.id]?.[p] ?? ""}
-                            placeholder={p.replace("PRECON_", "")}
-                            disabled={readOnly}
-                            onChange={(e) => setPreconAsignado((prev) => ({ ...prev, [c.id]: { ...(prev[c.id] || {}), [p]: e.target.value === "" ? undefined : n(e.target.value) } }))}
-                            className="w-16 rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-1 py-1 text-right text-xs"
-                          />
-                        ))}
-                      </div>
-                    </td>
-                    <td className="p-2"><input type="checkbox" checked={!!omitidas[c.id]} disabled={readOnly} onChange={(e) => setOmitidas((p) => ({ ...p, [c.id]: e.target.checked }))} /></td>
-                    <td className="p-2">
-                      <input type="number" min={0} value={bobinaResi[c.id] ?? 0} disabled={readOnly} onChange={(e) => setBobinaResi((p) => ({ ...p, [c.id]: n(e.target.value) }))} className="ui-input-inline w-16 rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-2 py-1 text-right text-xs" />
-                    </td>
-                    <td className="p-2"><input type="checkbox" checked={!!rolloCondo[c.id]} disabled={readOnly} onChange={(e) => setRolloCondo((p) => ({ ...p, [c.id]: e.target.checked }))} /></td>
-                    <td className="p-2 text-xs text-slate-600 dark:text-slate-300">
-                      {savedInfo[c.id]?.updatedAt
-                        ? `${savedInfo[c.id]?.updatedByName || "-"} | ${String(savedInfo[c.id]?.updatedAt).slice(0, 16).replace("T", " ")}`
-                        : "-"}
-                    </td>
+            {/* Tabla */}
+            <div className="overflow-auto">
+              <table className="min-w-full text-xs">
+                <thead>
+                  <tr className="bg-slate-100 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                    <th className="whitespace-nowrap px-3 py-2.5">Coordinador</th>
+                    <th className="whitespace-nowrap px-3 py-2.5">Cuadrilla</th>
+                    <th className="whitespace-nowrap px-3 py-2.5">Consumo / Prom.</th>
+                    <th className="whitespace-nowrap px-3 py-2.5">Stock</th>
+                    <th className="whitespace-nowrap px-3 py-2.5">Sugerido</th>
+                    <th className="whitespace-nowrap px-3 py-2.5">Manual</th>
+                    <th className="whitespace-nowrap bg-blue-50 px-3 py-2.5 text-blue-700 dark:bg-blue-950/20 dark:text-blue-300">Final</th>
+                    <th className="whitespace-nowrap px-3 py-2.5">PRECON</th>
+                    <th className="whitespace-nowrap px-3 py-2.5">Omitir</th>
+                    <th className="whitespace-nowrap px-3 py-2.5">Resi</th>
+                    <th className="whitespace-nowrap px-3 py-2.5">Condo</th>
+                    <th className="whitespace-nowrap px-3 py-2.5">Guardado</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-800 dark:divide-slate-800 dark:text-slate-100">
+                  {!uiRows.length && (
+                    <tr>
+                      <td colSpan={12} className="px-4 py-8 text-center text-slate-400">
+                        {loading ? "Cargando cuadrillas..." : "Sin cuadrillas con los filtros actuales."}
+                      </td>
+                    </tr>
+                  )}
+                  {sortedRows.map((c) => {
+                    const cons = consumoCuadrilla[c.id] || emptyCounts();
+                    const prom = promedioCuadrilla[c.id] || emptyCounts();
+                    const stock = stockForCuadrilla(c.id);
+                    const sug = sugerido[c.id] || emptyCounts();
+                    const aiSug = aiRecommendation.data?.recommendation?.byCuadrilla?.[c.id];
+                    const man = manual[c.id] || {};
+                    const hasManual = EQUIPOS.some((k) => Number.isFinite(Number(man[k])));
+                    const final: Counts = {
+                      ONT: Number.isFinite(Number(man.ONT)) ? n(man.ONT) : n(sug.ONT),
+                      MESH: Number.isFinite(Number(man.MESH)) ? n(man.MESH) : n(sug.MESH),
+                      FONO: Number.isFinite(Number(man.FONO)) ? n(man.FONO) : n(sug.FONO),
+                      BOX: Number.isFinite(Number(man.BOX)) ? n(man.BOX) : n(sug.BOX),
+                    };
+                    const autonomia = diasAutonomiaMap[c.id];
+                    const modelGrp = (cuadrillaModelGroup[c.id] || "NEUTRO").toUpperCase();
+                    const showNeutro = grupoDespacho !== "all" && modelGrp === "NEUTRO";
+                    const isSaved = !!savedInfo[c.id]?.updatedAt;
+                    return (
+                      <tr
+                        key={c.id}
+                        className={`transition ${omitidas[c.id] ? "opacity-40" : ""} ${sortByCrit ? critRowClass(autonomia?.criticidad) : ""} ${isSaved ? "bg-emerald-50/30 dark:bg-emerald-950/10" : ""}`}
+                      >
+                        <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{c.coordinadorNombre || "-"}</td>
+                        <td className="px-3 py-2">
+                          <div className="font-medium text-slate-900 dark:text-slate-100">{c.nombre || c.id}</div>
+                          <div className="mt-0.5 flex flex-wrap gap-1">
+                            {showNeutro && (
+                              <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] text-slate-500 dark:bg-slate-700 dark:text-slate-300">NEUTRO</span>
+                            )}
+                            {autonomia && (
+                              <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${critColorClass(autonomia.criticidad)}`}>
+                                {autonomia.dias !== null ? `${autonomia.dias}d` : "sin prom"}
+                              </span>
+                            )}
+                            {isSaved && (
+                              <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">✓</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                            {EQUIPOS.map((k) => (
+                              <div key={`${c.id}-cons-${k}`} className="flex items-baseline gap-1">
+                                <span className="w-8 text-[10px] font-medium text-slate-400">{k}</span>
+                                <span className="font-medium">{cons[k]}</span>
+                                <span className="text-[10px] text-slate-400">/{prom[k]}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                            {EQUIPOS.map((k) => (
+                              <div key={`${c.id}-stk-${k}`} className="flex items-baseline gap-1">
+                                <span className="w-8 text-[10px] font-medium text-slate-400">{k}</span>
+                                <span className="font-medium">{stock[k]}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                            {EQUIPOS.map((k) => (
+                              <div key={`${c.id}-sug-${k}`} className="flex items-baseline gap-1">
+                                <span className="w-8 text-[10px] font-medium text-slate-400">{k}</span>
+                                <span className="font-medium text-blue-700 dark:text-blue-300">{sug[k]}</span>
+                                {aiSug && <span className="text-[10px] text-violet-500 dark:text-violet-400">/{n((aiSug as any)[k])}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="grid grid-cols-2 gap-1">
+                            {EQUIPOS.map((k) => (
+                              <input
+                                key={`${c.id}-m-${k}`}
+                                type="number"
+                                min={0}
+                                value={man[k] ?? ""}
+                                placeholder={String(sug[k])}
+                                disabled={readOnly}
+                                title={k}
+                                onChange={(e) => setManual((p) => ({ ...p, [c.id]: { ...(p[c.id] || {}), [k]: e.target.value === "" ? undefined : n(e.target.value) } }))}
+                                className="w-12 rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-1 text-right text-xs focus:border-blue-400 focus:ring-1 focus:ring-blue-400/20 dark:border-slate-700 dark:bg-slate-900"
+                              />
+                            ))}
+                          </div>
+                        </td>
+                        <td className="bg-blue-50/50 px-3 py-2 dark:bg-blue-950/10">
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                            {EQUIPOS.map((k) => (
+                              <div key={`${c.id}-fin-${k}`} className="flex items-baseline gap-1">
+                                <span className="w-8 text-[10px] font-medium text-slate-400">{k}</span>
+                                <span className="font-semibold text-blue-800 dark:text-blue-200">{final[k]}</span>
+                              </div>
+                            ))}
+                          </div>
+                          {hasManual && (
+                            <span className="mt-1 inline-block rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">manual</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="grid grid-cols-2 gap-1">
+                            {PRECONS.map((p) => (
+                              <input
+                                key={`${c.id}-${p}`}
+                                type="number"
+                                min={0}
+                                value={preconAsignado[c.id]?.[p] ?? ""}
+                                placeholder={p.replace("PRECON_", "")}
+                                disabled={readOnly}
+                                title={p}
+                                onChange={(e) => setPreconAsignado((prev) => ({ ...prev, [c.id]: { ...(prev[c.id] || {}), [p]: e.target.value === "" ? undefined : n(e.target.value) } }))}
+                                className="w-14 rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-1 text-right text-xs focus:border-blue-400 dark:border-slate-700 dark:bg-slate-900"
+                              />
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <input type="checkbox" checked={!!omitidas[c.id]} disabled={readOnly} onChange={(e) => setOmitidas((p) => ({ ...p, [c.id]: e.target.checked }))} className="h-4 w-4 rounded" />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="number"
+                            min={0}
+                            value={bobinaResi[c.id] ?? 0}
+                            disabled={readOnly}
+                            onChange={(e) => setBobinaResi((p) => ({ ...p, [c.id]: n(e.target.value) }))}
+                            className="w-14 rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-1 text-right text-xs dark:border-slate-700 dark:bg-slate-900"
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <input type="checkbox" checked={!!rolloCondo[c.id]} disabled={readOnly} onChange={(e) => setRolloCondo((p) => ({ ...p, [c.id]: e.target.checked }))} className="h-4 w-4 rounded" />
+                        </td>
+                        <td className="px-3 py-2 text-slate-500 dark:text-slate-400">
+                          {savedInfo[c.id]?.updatedAt ? (
+                            <div>
+                              <div className="font-medium text-emerald-700 dark:text-emerald-400">{savedInfo[c.id]?.updatedByName || "-"}</div>
+                              <div className="text-[10px]">{String(savedInfo[c.id]?.updatedAt).slice(0, 16).replace("T", " ")}</div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-300 dark:text-slate-600">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-      <section className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
-        <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Totales finales a despachar (filas activas)</div>
-        <div className="mt-2 flex flex-wrap gap-3 text-sm">
-          {EQUIPOS.map((k) => (
-            <span
-              key={`tot-${k}`}
-              className="rounded-full bg-slate-100 px-3 py-1 text-slate-800 dark:bg-slate-800 dark:text-slate-100"
-            >
-              {k}: {totals.plan[k]}
-            </span>
-          ))}
-        </div>
-      </section>
-      </>
+            {/* Totales al pie de la tabla */}
+            <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/60">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">Totales a despachar:</span>
+                {EQUIPOS.map((k) => (
+                  <span
+                    key={`tot2-${k}`}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${availability[k].exceeded ? "bg-rose-100 text-rose-700 dark:bg-rose-950/30 dark:text-rose-200" : "bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-100"}`}
+                  >
+                    {k}: {totals.plan[k]}
+                  </span>
+                ))}
+                <span className="ml-auto text-[11px] text-slate-400">{visiblesCount} cuadrillas activas</span>
+              </div>
+            </div>
+          </section>
+        </>
       )}
     </div>
   );

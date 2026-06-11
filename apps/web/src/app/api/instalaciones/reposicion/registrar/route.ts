@@ -119,28 +119,39 @@ export async function POST(req: Request) {
     });
 
     await db.runTransaction(async (tx) => {
-      for (const it of parsed) {
-        const almRef = db.collection("almacen_stock").doc(it.materialId);
-        const cuadRef = db.collection("cuadrillas").doc(cuadrillaId).collection("stock").doc(it.materialId);
-        const [almSnap, cuadSnap] = await Promise.all([tx.get(almRef), tx.get(cuadRef)]);
+      // Fase 1: todas las lecturas antes de cualquier escritura
+      const almRefs = parsed.map((it) => db.collection("almacen_stock").doc(it.materialId));
+      const cuadRefs = parsed.map((it) =>
+        db.collection("cuadrillas").doc(cuadrillaId).collection("stock").doc(it.materialId)
+      );
+      const [almSnaps, cuadSnaps] = await Promise.all([
+        Promise.all(almRefs.map((r) => tx.get(r))),
+        Promise.all(cuadRefs.map((r) => tx.get(r))),
+      ]);
+
+      // Fase 2: validaciones y escrituras
+      for (let i = 0; i < parsed.length; i++) {
+        const it = parsed[i];
+        const almSnap = almSnaps[i];
+        const cuadSnap = cuadSnaps[i];
         if (!almSnap.exists) throw new Error(`STOCK_NOT_FOUND ${it.materialId}`);
         if (!cuadSnap.exists) throw new Error(`STOCK_CUADRILLA_INSUFICIENTE ${it.materialId}`);
 
         const alm = almSnap.data() as any;
         const cuad = cuadSnap.data() as any;
         if (it.unidadTipo === "UND") {
-          const stockAlmUnd = Number(alm?.stockUnd || 0);
-          if (stockAlmUnd - it.und < 0) throw new Error(`STOCK_INSUFICIENTE_ALMACEN ${it.materialId}`);
-          const stockCuadUnd = Number(cuad?.stockUnd || 0);
-          if (stockCuadUnd - it.und < 0) throw new Error(`STOCK_CUADRILLA_INSUFICIENTE ${it.materialId}`);
-          tx.update(almRef, { stockUnd: FieldValue.increment(-it.und), updatedAt: FieldValue.serverTimestamp() });
+          if (Number(alm?.stockUnd || 0) - it.und < 0) throw new Error(`STOCK_INSUFICIENTE_ALMACEN ${it.materialId}`);
+          if (Number(cuad?.stockUnd || 0) - it.und < 0) throw new Error(`STOCK_CUADRILLA_INSUFICIENTE ${it.materialId}`);
+          tx.update(almRefs[i], { stockUnd: FieldValue.increment(-it.und), updatedAt: FieldValue.serverTimestamp() });
         } else {
           const deltaCm = metersToCm(it.metros);
-          const stockAlmCm = Number(alm?.stockCm || 0);
-          if (stockAlmCm - deltaCm < 0) throw new Error(`STOCK_INSUFICIENTE_ALMACEN ${it.materialId}`);
-          const stockCuadCm = Number(cuad?.stockCm || 0);
-          if (stockCuadCm - deltaCm < 0) throw new Error(`STOCK_CUADRILLA_INSUFICIENTE ${it.materialId}`);
-          tx.update(almRef, { stockCm: FieldValue.increment(-deltaCm), updatedAt: FieldValue.serverTimestamp() });
+          if (Number(alm?.stockCm || 0) - deltaCm < 0) throw new Error(`STOCK_INSUFICIENTE_ALMACEN ${it.materialId}`);
+          // Reposicion es un canje: la cuadrilla devuelve el item malogrado (puede ser parcial).
+          // Solo verificar que tenga algo del material, sin exigir la cantidad exacta en cm.
+          const cuadCm = Number(cuad?.stockCm || 0);
+          const cuadUnd = Number(cuad?.stockUnd || 0);
+          if (cuadCm <= 0 && cuadUnd <= 0) throw new Error(`STOCK_CUADRILLA_INSUFICIENTE ${it.materialId}`);
+          tx.update(almRefs[i], { stockCm: FieldValue.increment(-deltaCm), updatedAt: FieldValue.serverTimestamp() });
         }
       }
     });

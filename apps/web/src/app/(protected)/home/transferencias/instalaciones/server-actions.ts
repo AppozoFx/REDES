@@ -449,8 +449,11 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
     });
     const itemsEquipos: { sn: string; status: "OK" | "ERROR"; reason?: string }[] = [];
     const movedTypes: Record<string, number> = {};
-    for (let i = 0; i < equiposToProcess.length; i += 20) {
-      const part = equiposToProcess.slice(i, i + 20);
+
+    // NORMAL y AVERIA: lotes de 20, todas las lecturas antes de escrituras
+    const equiposOtros = equiposToProcess.filter((x) => x.mode !== "GARANTIA_CORRECCION");
+    for (let i = 0; i < equiposOtros.length; i += 20) {
+      const part = equiposOtros.slice(i, i + 20);
       await db.runTransaction(async (tx) => {
         const refs = part.map((item) => ({
           sn: item.sn,
@@ -467,186 +470,6 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
           if (!snap.exists) { itemsEquipos.push({ sn, status: "ERROR", reason: "EQUIPO_NOT_FOUND" }); continue; }
           const e = snap.data() as any;
           const eqUb = String(e.ubicacion || "").toUpperCase();
-          const eqEstado = String(e.estado || "").toUpperCase();
-
-          if (mode === "GARANTIA_CORRECCION") {
-            if (!(eqUb === "INSTALADOS" && eqEstado === "INSTALADO")) {
-              itemsEquipos.push({ sn, status: "ERROR", reason: "EQUIPO_NO_INSTALADO_PARA_GARANTIA" });
-              continue;
-            }
-            const codigoCliente = String(e.codigoCliente || "").trim();
-            if (!codigoCliente) {
-              itemsEquipos.push({ sn, status: "ERROR", reason: "EQUIPO_SIN_CODIGO_CLIENTE" });
-              continue;
-            }
-            const instRef = db.collection("instalaciones").doc(codigoCliente);
-            const instSnap = await tx.get(instRef);
-            if (!instSnap.exists) {
-              itemsEquipos.push({ sn, status: "ERROR", reason: "INSTALACION_NOT_FOUND_FOR_SN" });
-              continue;
-            }
-            const inst = instSnap.data() as any;
-
-            let ordRef: FirebaseFirestore.DocumentReference | null = null;
-            const ordenDocId = String(inst?.ordenDocId || "").trim();
-            if (ordenDocId) {
-              const maybeOrdRef = db.collection("ordenes").doc(ordenDocId);
-              const maybeOrdSnap = await tx.get(maybeOrdRef);
-              if (maybeOrdSnap.exists) ordRef = maybeOrdRef;
-            }
-            if (!ordRef) {
-              const ordQuery = db.collection("ordenes").where("codiSeguiClien", "==", codigoCliente).limit(1);
-              const ordQuerySnap = await tx.get(ordQuery);
-              if (!ordQuerySnap.empty) ordRef = ordQuerySnap.docs[0].ref;
-            }
-
-            // Corregir instalacion: devolver al stock de cuadrilla todos los SN instalados
-            // excepto el SN que se esta enviando a garantia.
-            const equiposInstalados = Array.isArray(inst?.equiposInstalados) ? inst.equiposInstalados : [];
-            const restoreSns: string[] = Array.from(
-              new Set<string>(
-                equiposInstalados
-                  .map((x: any) => String(x?.sn || "").trim().toUpperCase())
-                  .filter((x: string) => !!x && x !== sn)
-              )
-            );
-
-            let targetCuadrillaId = input.cuadrillaId;
-            let targetCuadrillaNombre = c?.nombre || input.cuadrillaId;
-            if (ordRef) {
-              const ordSnap = await tx.get(ordRef);
-              if (ordSnap.exists) {
-                const ord = ordSnap.data() as any;
-                targetCuadrillaId = String(ord?.cuadrillaId || targetCuadrillaId).trim() || targetCuadrillaId;
-                targetCuadrillaNombre = String(ord?.cuadrillaNombre || targetCuadrillaNombre).trim() || targetCuadrillaNombre;
-              }
-            }
-            const restoreUb = normalizeUbicacion(targetCuadrillaNombre || targetCuadrillaId);
-            const restoreUbicacion = restoreUb.ubicacion;
-            const restoreEstado = restoreUb.estado;
-
-            const restoreRefs = restoreSns.map((rsn) => ({
-              rsn,
-              eqRef: db.collection("equipos").doc(rsn),
-              seriesRef: db
-                .collection("cuadrillas")
-                .doc(targetCuadrillaId)
-                .collection("equipos_series")
-                .doc(rsn),
-            }));
-            const restoreEqSnaps = await Promise.all(restoreRefs.map((r) => tx.get(r.eqRef)));
-            const restoreSeriesSnaps = await Promise.all(restoreRefs.map((r) => tx.get(r.seriesRef)));
-
-            for (let rIdx = 0; rIdx < restoreRefs.length; rIdx++) {
-              const { rsn, eqRef, seriesRef } = restoreRefs[rIdx];
-              const rEqSnap = restoreEqSnaps[rIdx];
-              const rSeriesSnap = restoreSeriesSnaps[rIdx];
-              if (!rEqSnap.exists) continue;
-
-              const rEq = rEqSnap.data() as any;
-              const rTipo = String(rEq?.equipo || "UNKNOWN").toUpperCase();
-
-              tx.update(eqRef, {
-                ubicacion: restoreUbicacion,
-                estado: restoreEstado,
-                audit: {
-                  ...(rEq?.audit || {}),
-                  updatedAt: FieldValue.serverTimestamp(),
-                  updatedBy: session.uid,
-                },
-              });
-
-              if (!rSeriesSnap.exists) {
-                tx.set(
-                  seriesRef,
-                  {
-                    SN: rsn,
-                    equipo: rTipo,
-                    descripcion: String(rEq?.descripcion || ""),
-                    ubicacion: restoreUbicacion,
-                    estado: restoreEstado,
-                    guia_despacho: "",
-                    updatedAt: FieldValue.serverTimestamp(),
-                  },
-                  { merge: true }
-                );
-              }
-
-              const rStockTipoRef = db
-                .collection("cuadrillas")
-                .doc(targetCuadrillaId)
-                .collection("equipos_stock")
-                .doc(rTipo);
-              tx.set(
-                rStockTipoRef,
-                {
-                  tipo: rTipo,
-                  cantidad: FieldValue.increment(1),
-                  updatedAt: FieldValue.serverTimestamp(),
-                },
-                { merge: true }
-              );
-            }
-
-            const fechaInstalacion = String(
-              inst?.fechaInstalacionYmd ||
-                inst?.fechaInstalacion ||
-                inst?.fechaOrdenYmd ||
-                ""
-            ).trim();
-            const clienteInst = String(inst?.cliente || "").trim();
-            const obsGarantia = `GARANTIA | Fecha: ${fechaInstalacion || "-"} | CodigoCliente: ${codigoCliente} | Cliente: ${clienteInst || "-"}`;
-
-            tx.update(ref, {
-              ubicacion: "GARANTIA",
-              estado: "ALMACEN",
-              f_devolucionAt: d.at,
-              f_devolucionYmd: d.ymd,
-              f_devolucionHm: d.hm,
-              guia_devolucion: guia,
-              observacion: obsGarantia,
-              audit: { ...(e.audit || {}), updatedAt: FieldValue.serverTimestamp(), updatedBy: session.uid },
-            });
-
-            tx.set(
-              instRef,
-              {
-                correccionPendiente: true,
-                corregidaAt: FieldValue.serverTimestamp(),
-                corregidaYmd: d.ymd,
-                corregidaHm: d.hm,
-                corregidaBy: session.uid,
-                corregidaMotivo: "GARANTIA_DESDE_DEVOLUCION",
-                equiposInstalados: [],
-                equiposByTipo: {},
-                updatedAt: FieldValue.serverTimestamp(),
-              },
-              { merge: true }
-            );
-
-            if (ordRef) {
-              tx.set(
-                ordRef,
-                {
-                  correccionPendiente: true,
-                  correccionAt: FieldValue.serverTimestamp(),
-                  correccionYmd: d.ymd,
-                  correccionHm: d.hm,
-                  correccionBy: session.uid,
-                  correccionMotivo: "GARANTIA_DESDE_DEVOLUCION",
-                  liquidadoAt: FieldValue.delete(),
-                  liquidadoBy: FieldValue.delete(),
-                  liquidadoYmd: FieldValue.delete(),
-                  "audit.updatedAt": FieldValue.serverTimestamp(),
-                  "audit.updatedBy": session.uid,
-                },
-                { merge: true }
-              );
-            }
-
-            itemsEquipos.push({ sn, status: "OK" });
-            continue;
-          }
 
           if (eqUb !== expectedUb) {
             itemsEquipos.push({ sn, status: "ERROR", reason: "EQUIPO_NOT_IN_CUADRILLA" });
@@ -672,6 +495,198 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
           tx.delete(seriesRef);
           itemsEquipos.push({ sn, status: "OK" });
         }
+      });
+    }
+
+    // GARANTIA_CORRECCION: una transaccion por item para que todas las lecturas
+    // dependientes (instRef, ordRef, restoreRefs) ocurran antes de las escrituras.
+    const equiposGarantia = equiposToProcess.filter((x) => x.mode === "GARANTIA_CORRECCION");
+    for (const gItem of equiposGarantia) {
+      const { sn } = gItem;
+      await db.runTransaction(async (tx) => {
+        const ref = db.collection("equipos").doc(sn);
+
+        // Fase 1: todas las lecturas
+        const snap = await tx.get(ref);
+        if (!snap.exists) { itemsEquipos.push({ sn, status: "ERROR", reason: "EQUIPO_NOT_FOUND" }); return; }
+        const e = snap.data() as any;
+        const eqUb = String(e.ubicacion || "").toUpperCase();
+        const eqEstado = String(e.estado || "").toUpperCase();
+
+        if (!(eqUb === "INSTALADOS" && eqEstado === "INSTALADO")) {
+          itemsEquipos.push({ sn, status: "ERROR", reason: "EQUIPO_NO_INSTALADO_PARA_GARANTIA" });
+          return;
+        }
+        const codigoCliente = String(e.codigoCliente || "").trim();
+        if (!codigoCliente) {
+          itemsEquipos.push({ sn, status: "ERROR", reason: "EQUIPO_SIN_CODIGO_CLIENTE" });
+          return;
+        }
+
+        const instRef = db.collection("instalaciones").doc(codigoCliente);
+        const instSnap = await tx.get(instRef);
+        if (!instSnap.exists) {
+          itemsEquipos.push({ sn, status: "ERROR", reason: "INSTALACION_NOT_FOUND_FOR_SN" });
+          return;
+        }
+        const inst = instSnap.data() as any;
+
+        let ordRef: FirebaseFirestore.DocumentReference | null = null;
+        const ordenDocId = String(inst?.ordenDocId || "").trim();
+        if (ordenDocId) {
+          const maybeOrdRef = db.collection("ordenes").doc(ordenDocId);
+          const maybeOrdSnap = await tx.get(maybeOrdRef);
+          if (maybeOrdSnap.exists) ordRef = maybeOrdRef;
+        }
+        if (!ordRef) {
+          const ordQuery = db.collection("ordenes").where("codiSeguiClien", "==", codigoCliente).limit(1);
+          const ordQuerySnap = await tx.get(ordQuery);
+          if (!ordQuerySnap.empty) ordRef = ordQuerySnap.docs[0].ref;
+        }
+
+        // Corregir instalacion: devolver al stock de cuadrilla todos los SN instalados
+        // excepto el SN que se esta enviando a garantia.
+        const equiposInstalados = Array.isArray(inst?.equiposInstalados) ? inst.equiposInstalados : [];
+        const restoreSns: string[] = Array.from(
+          new Set<string>(
+            equiposInstalados
+              .map((x: any) => String(x?.sn || "").trim().toUpperCase())
+              .filter((x: string) => !!x && x !== sn)
+          )
+        );
+
+        let targetCuadrillaId = input.cuadrillaId;
+        let targetCuadrillaNombre = c?.nombre || input.cuadrillaId;
+        if (ordRef) {
+          const ordSnap = await tx.get(ordRef);
+          if (ordSnap.exists) {
+            const ord = ordSnap.data() as any;
+            targetCuadrillaId = String(ord?.cuadrillaId || targetCuadrillaId).trim() || targetCuadrillaId;
+            targetCuadrillaNombre = String(ord?.cuadrillaNombre || targetCuadrillaNombre).trim() || targetCuadrillaNombre;
+          }
+        }
+
+        const restoreUb = normalizeUbicacion(targetCuadrillaNombre || targetCuadrillaId);
+        const restoreUbicacion = restoreUb.ubicacion;
+        const restoreEstado = restoreUb.estado;
+
+        const restoreRefs = restoreSns.map((rsn) => ({
+          rsn,
+          eqRef: db.collection("equipos").doc(rsn),
+          seriesRef: db.collection("cuadrillas").doc(targetCuadrillaId).collection("equipos_series").doc(rsn),
+        }));
+        const restoreEqSnaps = await Promise.all(restoreRefs.map((r) => tx.get(r.eqRef)));
+        const restoreSeriesSnaps = await Promise.all(restoreRefs.map((r) => tx.get(r.seriesRef)));
+
+        // Fase 2: todas las escrituras
+        for (let rIdx = 0; rIdx < restoreRefs.length; rIdx++) {
+          const { rsn, eqRef, seriesRef } = restoreRefs[rIdx];
+          const rEqSnap = restoreEqSnaps[rIdx];
+          const rSeriesSnap = restoreSeriesSnaps[rIdx];
+          if (!rEqSnap.exists) continue;
+
+          const rEq = rEqSnap.data() as any;
+          const rTipo = String(rEq?.equipo || "UNKNOWN").toUpperCase();
+
+          tx.update(eqRef, {
+            ubicacion: restoreUbicacion,
+            estado: restoreEstado,
+            audit: {
+              ...(rEq?.audit || {}),
+              updatedAt: FieldValue.serverTimestamp(),
+              updatedBy: session.uid,
+            },
+          });
+
+          if (!rSeriesSnap.exists) {
+            tx.set(
+              seriesRef,
+              {
+                SN: rsn,
+                equipo: rTipo,
+                descripcion: String(rEq?.descripcion || ""),
+                ubicacion: restoreUbicacion,
+                estado: restoreEstado,
+                guia_despacho: "",
+                updatedAt: FieldValue.serverTimestamp(),
+              },
+              { merge: true }
+            );
+          }
+
+          const rStockTipoRef = db
+            .collection("cuadrillas")
+            .doc(targetCuadrillaId)
+            .collection("equipos_stock")
+            .doc(rTipo);
+          tx.set(
+            rStockTipoRef,
+            {
+              tipo: rTipo,
+              cantidad: FieldValue.increment(1),
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+        }
+
+        const fechaInstalacion = String(
+          inst?.fechaInstalacionYmd ||
+            inst?.fechaInstalacion ||
+            inst?.fechaOrdenYmd ||
+            ""
+        ).trim();
+        const clienteInst = String(inst?.cliente || "").trim();
+        const obsGarantia = `GARANTIA | Fecha: ${fechaInstalacion || "-"} | CodigoCliente: ${codigoCliente} | Cliente: ${clienteInst || "-"}`;
+
+        tx.update(ref, {
+          ubicacion: "GARANTIA",
+          estado: "ALMACEN",
+          f_devolucionAt: d.at,
+          f_devolucionYmd: d.ymd,
+          f_devolucionHm: d.hm,
+          guia_devolucion: guia,
+          observacion: obsGarantia,
+          audit: { ...(e.audit || {}), updatedAt: FieldValue.serverTimestamp(), updatedBy: session.uid },
+        });
+
+        tx.set(
+          instRef,
+          {
+            correccionPendiente: true,
+            corregidaAt: FieldValue.serverTimestamp(),
+            corregidaYmd: d.ymd,
+            corregidaHm: d.hm,
+            corregidaBy: session.uid,
+            corregidaMotivo: "GARANTIA_DESDE_DEVOLUCION",
+            equiposInstalados: [],
+            equiposByTipo: {},
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        if (ordRef) {
+          tx.set(
+            ordRef,
+            {
+              correccionPendiente: true,
+              correccionAt: FieldValue.serverTimestamp(),
+              correccionYmd: d.ymd,
+              correccionHm: d.hm,
+              correccionBy: session.uid,
+              correccionMotivo: "GARANTIA_DESDE_DEVOLUCION",
+              liquidadoAt: FieldValue.delete(),
+              liquidadoBy: FieldValue.delete(),
+              liquidadoYmd: FieldValue.delete(),
+              "audit.updatedAt": FieldValue.serverTimestamp(),
+              "audit.updatedBy": session.uid,
+            },
+            { merge: true }
+          );
+        }
+
+        itemsEquipos.push({ sn, status: "OK" });
       });
     }
 

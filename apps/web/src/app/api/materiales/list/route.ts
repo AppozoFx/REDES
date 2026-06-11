@@ -27,7 +27,7 @@ export async function GET(req: Request) {
     q = q.where("estado", "==", "ACTIVO");
 
     const snap = await q
-      .select("unidadTipo", "nombre", "fotoUrl", "imagenUrl", "imageUrl", "vendible", "areas")
+      .select("unidadTipo", "nombre", "fotoUrl", "imagenUrl", "imageUrl", "vendible", "areas", "metrosPorUndCm")
       .limit(500)
       .get();
     const items = snap.docs
@@ -42,6 +42,7 @@ export async function GET(req: Request) {
           (d.data() as any)?.imagenUrl ??
           (d.data() as any)?.imageUrl ??
           "",
+        metrosPorUndCm: Number((d.data() as any)?.metrosPorUndCm || 0),
       }))
       .filter((it) => {
         if (!area) return true;

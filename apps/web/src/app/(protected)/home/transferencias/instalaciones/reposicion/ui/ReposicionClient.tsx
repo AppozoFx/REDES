@@ -5,7 +5,7 @@ import QRCode from "qrcode";
 import { toast } from "sonner";
 
 type CuadrillaOpt = { id: string; nombre: string; coordinadorUid?: string };
-type MaterialOpt = { id: string; nombre?: string; unidadTipo?: "UND" | "METROS" | null; fotoUrl?: string };
+type MaterialOpt = { id: string; nombre?: string; unidadTipo?: "UND" | "METROS" | null; fotoUrl?: string; metrosPorUndCm?: number };
 
 type ItemForm = {
   materialId: string;
@@ -76,9 +76,7 @@ function printThermalBlobTwice(pdf: jsPDF) {
     setTimeout(() => iframe.contentWindow?.print(), 1000);
   };
   setTimeout(() => {
-    try {
-      document.body.removeChild(iframe);
-    } catch {}
+    try { document.body.removeChild(iframe); } catch {}
     URL.revokeObjectURL(urlBlob);
   }, 15000);
 }
@@ -96,10 +94,7 @@ function enviarWhatsApp(numero: string, mensaje: string, preOpen?: Window | null
       return true;
     }
     const win = window.open(url, "_blank");
-    if (win) {
-      win.opener = null;
-      return true;
-    }
+    if (win) { win.opener = null; return true; }
     window.location.href = url;
     return true;
   } catch {
@@ -138,7 +133,6 @@ function generarPdf80mm(args: {
     y += 5;
   }
   pdf.setFont("helvetica", "normal");
-
   y += 2;
   pdf.setFont("helvetica", "bold");
   pdf.text("DETALLE", 40, y, C);
@@ -181,6 +175,7 @@ export default function ReposicionClient() {
   const [guardando, setGuardando] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
   const [openOtros, setOpenOtros] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   const [cuadrillaId, setCuadrillaId] = useState("");
   const [busquedaCuadrilla, setBusquedaCuadrilla] = useState("");
@@ -218,12 +213,36 @@ export default function ReposicionClient() {
       .slice(0, 80);
   }, [cuadrillas, busquedaCuadrilla]);
 
+  const previewItems = useMemo((): PayloadItem[] => {
+    return items.map((it) => {
+      const mat = materialById.get(it.materialId);
+      const isMetros = mat?.unidadTipo === "METROS";
+      // metrosPorUnd > 0 significa que el material tiene factor de conversion (ej: 100m por rollo)
+      const metrosPorUnd = isMetros && mat?.metrosPorUndCm ? mat.metrosPorUndCm / 100 : 0;
+
+      if (!isMetros) {
+        const und = Math.max(0, Math.floor(Number(it.und || 0)));
+        return { materialId: it.materialId, und, metros: 0, observacion: it.observacion };
+      }
+      if (metrosPorUnd > 0) {
+        // El usuario ingresa UND (rollos/unidades), se convierte a metros para el payload
+        const undQty = Math.max(0, Math.floor(Number(it.und || 0)));
+        const metros = undQty * metrosPorUnd;
+        return { materialId: it.materialId, und: 0, metros, observacion: it.observacion };
+      }
+      // Sin factor de conversion: el usuario ingresa metros directamente
+      const metros = Math.max(0, Number(it.metros || 0));
+      return { materialId: it.materialId, und: 0, metros, observacion: it.observacion };
+    });
+  }, [items, materialById]);
+
+  const cuadrillaNombreDisplay =
+    cuadrillaInfo.nombre ||
+    cuadrillas.find((c) => c.id === cuadrillaId)?.nombre ||
+    cuadrillaId;
+
   const loadHistorial = async (id: string) => {
-    if (!id) {
-      setHistorial([]);
-      setStock([]);
-      return;
-    }
+    if (!id) { setHistorial([]); setStock([]); return; }
     setLoadingHist(true);
     try {
       const res = await fetch(`/api/instalaciones/reposicion/historial?cuadrillaId=${encodeURIComponent(id)}`, { cache: "no-store" });
@@ -241,17 +260,11 @@ export default function ReposicionClient() {
   };
 
   const loadCuadrillaInfo = async (id: string) => {
-    if (!id) {
-      setCuadrillaInfo({});
-      return;
-    }
+    if (!id) { setCuadrillaInfo({}); return; }
     try {
       const res = await fetch(`/api/cuadrillas/info?id=${encodeURIComponent(id)}`, { cache: "no-store" });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok || !body?.ok) {
-        setCuadrillaInfo({});
-        return;
-      }
+      if (!res.ok || !body?.ok) { setCuadrillaInfo({}); return; }
       setCuadrillaInfo({
         coordinadorUid: String(body?.coordinadorUid || ""),
         coordinadorNombre: String(body?.coordinadorNombre || ""),
@@ -313,27 +326,23 @@ export default function ReposicionClient() {
 
   const buscarYSeleccionarCuadrilla = () => {
     const first = cuadrillasFiltradas[0];
-    if (!first) {
-      toast.error("No se encontro cuadrilla");
-      return;
-    }
+    if (!first) { toast.error("No se encontro cuadrilla"); return; }
     seleccionarCuadrilla(first);
   };
 
-  const submit = async () => {
-    if (!cuadrillaId) return toast.error("Selecciona cuadrilla");
-    if (!items.length) return toast.error("Agrega materiales");
-
-    const payloadItems: PayloadItem[] = items.map((it) => {
-      const mat = materialById.get(it.materialId);
-      const unidad = mat?.unidadTipo === "METROS" ? "METROS" : "UND";
-      const und = unidad === "UND" ? Math.max(0, Math.floor(Number(it.und || 0))) : 0;
-      const metros = unidad === "METROS" ? Math.max(0, Number(it.metros || 0)) : 0;
-      return { materialId: it.materialId, und, metros, observacion: it.observacion };
-    });
-    if (payloadItems.some((x) => x.und <= 0 && x.metros <= 0)) {
-      return toast.error("Completa cantidades validas");
+  const validarParaPreview = (): boolean => {
+    if (!cuadrillaId) { toast.error("Selecciona cuadrilla"); return false; }
+    if (!items.length) { toast.error("Agrega materiales"); return false; }
+    if (previewItems.some((x) => x.und <= 0 && x.metros <= 0)) {
+      toast.error("Completa cantidades validas");
+      return false;
     }
+    return true;
+  };
+
+  const submit = async () => {
+    setShowPreview(false);
+    const payloadItems = previewItems;
 
     setGuardando(true);
     try {
@@ -349,7 +358,7 @@ export default function ReposicionClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           cuadrillaId,
-          cuadrillaNombre: cuadrillaInfo.nombre || cuadrillas.find((c) => c.id === cuadrillaId)?.nombre || cuadrillaId,
+          cuadrillaNombre: cuadrillaNombreDisplay,
           coordinadorUid: cuadrillaInfo.coordinadorUid || "",
           coordinadorNombre: cuadrillaInfo.coordinadorNombre || "",
           observacion,
@@ -361,14 +370,15 @@ export default function ReposicionClient() {
 
       const guia = String(body?.guia || "");
       const usuarioNombre = String(body?.actorNombre || "Usuario");
-      const cuadrillaNombre = String(body?.cuadrillaNombre || cuadrillaInfo.nombre || cuadrillaId);
+      const cuadrillaNombre = String(body?.cuadrillaNombre || cuadrillaNombreDisplay);
       const coordinadorUid = String(body?.coordinadorUid || cuadrillaInfo.coordinadorUid || "");
       const coordinadorNombre = String(body?.coordinadorNombre || cuadrillaInfo.coordinadorNombre || "");
 
       if (guia) {
-        const token = typeof crypto?.randomUUID === "function"
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+        const token =
+          typeof crypto?.randomUUID === "function"
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
         const bucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "";
         const path = `guias/instalaciones/reposicion/${guia}.pdf`;
         const directUrl = bucket
@@ -448,17 +458,22 @@ export default function ReposicionClient() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+
+      {/* ─── PASO 1 ─── */}
       {step === 1 && (
-        <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 space-y-3">
-          <div className="rounded border p-3">
-            <div className="text-sm font-medium">Paso 1  -  Seleccionar cuadrilla</div>
-            <div className="text-xs text-slate-500">Escribe nombre o código y presiona Enter para tomar la primera coincidencia.</div>
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
+            <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">Paso 1 — Seleccionar cuadrilla</div>
+            <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              Escribe nombre o código y selecciona de la lista.
+            </div>
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
+
+          <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="text-xs text-slate-500">Cuadrilla</label>
-              <div className="relative mt-1 space-y-1">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Cuadrilla</label>
+              <div className="relative mt-1">
                 <input
                   value={busquedaCuadrilla}
                   onChange={(e) => {
@@ -472,332 +487,545 @@ export default function ReposicionClient() {
                   onFocus={() => setComboOpen(true)}
                   onBlur={() => setTimeout(() => setComboOpen(false), 150)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      buscarYSeleccionarCuadrilla();
-                    }
+                    if (e.key === "Enter") { e.preventDefault(); buscarYSeleccionarCuadrilla(); }
                     if (e.key === "Escape") setComboOpen(false);
                   }}
                   placeholder="Escribe nombre o código de cuadrilla..."
-                  className="w-full rounded border px-2 py-2 text-sm"
+                  className="w-full rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm placeholder:text-slate-400"
                 />
+                {cuadrillaId && (
+                  <div className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">Cuadrilla seleccionada</div>
+                )}
                 {comboOpen && (
-                  <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 max-h-52 overflow-auto rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 shadow">
+                  <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 max-h-56 overflow-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 shadow-lg">
                     {cuadrillasFiltradas.map((c) => (
                       <button
                         key={c.id}
                         type="button"
-                        className="w-full border-b px-2 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          seleccionarCuadrilla(c);
-                        }}
+                        className="w-full border-b border-slate-100 dark:border-slate-800 px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+                        onMouseDown={(e) => { e.preventDefault(); seleccionarCuadrilla(c); }}
                       >
                         <div className="font-medium">{c.nombre || c.id}</div>
-                        <div className="text-xs text-slate-500">{c.id}</div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">{c.id}</div>
                       </button>
                     ))}
                     {!cuadrillasFiltradas.length && (
-                      <div className="px-2 py-2 text-xs text-slate-500">Sin resultados</div>
+                      <div className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">Sin resultados</div>
                     )}
                   </div>
                 )}
               </div>
             </div>
-            <div className="rounded border bg-slate-50 dark:bg-slate-800/60 p-3 text-xs text-slate-600">
-              <div>Cuadrilla: <b>{cuadrillaInfo.nombre || "-"}</b></div>
-              <div>Coordinador: <b>{cuadrillaInfo.coordinadorNombre || "-"}</b></div>
-              <div>Tecnicos: <b>{(cuadrillaInfo.tecnicosNombres || []).slice(0, 3).join(", ") || "-"}</b></div>
-              <div>Segmento/Tipo: <b>{[cuadrillaInfo.segmento, cuadrillaInfo.tipo].filter(Boolean).join(" | ") || "-"}</b></div>
-              <div>Zona/Vehiculo: <b>{[cuadrillaInfo.zonaId, cuadrillaInfo.vehiculo].filter(Boolean).join(" | ") || "-"}</b></div>
-              <div>Stock considerado: <b>Stock de cuadrilla</b></div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm space-y-1.5 text-sm">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">
+                Info cuadrilla
+              </div>
+              {[
+                { label: "Cuadrilla",   value: cuadrillaInfo.nombre },
+                { label: "Coordinador", value: cuadrillaInfo.coordinadorNombre },
+                { label: "Tecnicos",    value: (cuadrillaInfo.tecnicosNombres || []).slice(0, 3).join(", ") || undefined },
+                { label: "Segmento",    value: [cuadrillaInfo.segmento, cuadrillaInfo.tipo].filter(Boolean).join(" · ") || undefined },
+                { label: "Zona",        value: [cuadrillaInfo.zonaId, cuadrillaInfo.vehiculo].filter(Boolean).join(" · ") || undefined },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex gap-2">
+                  <span className="min-w-[80px] text-slate-500 dark:text-slate-400">{label}</span>
+                  <span className="font-medium truncate text-slate-800 dark:text-slate-100">{value || "—"}</span>
+                </div>
+              ))}
             </div>
           </div>
-          <div className="flex gap-2">
+
+          <div>
             <button
               type="button"
               disabled={!cuadrillaId}
               onClick={() => setStep(2)}
-              className="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
+              className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
             >
               Siguiente
             </button>
           </div>
-        </section>
+        </div>
       )}
 
+      {/* ─── PASO 2 ─── */}
       {step === 2 && (
-        <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 space-y-3">
-          <div className="flex items-center justify-between gap-2">
+        <div className="space-y-4">
+          {/* Nav */}
+          <div className="flex items-center gap-3">
             <button
               type="button"
-              className="rounded border px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800"
               onClick={() => setStep(1)}
+              className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
             >
-              Paso 1
+              ← Paso 1
             </button>
-            <div className="rounded border px-3 py-2 text-xs">
-              <div className="font-medium">Cuadrilla</div>
-              <div>Cuadrilla: {cuadrillaInfo.nombre || "-"}</div>
-            </div>
-          </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="text-base font-semibold">Registro de reposicion</h2>
-            <p className="text-xs text-slate-500">Canje por material malogrado de cuadrilla (descuenta almacen, no suma almacen).</p>
-          </div>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={guardando || !cuadrillaId || !items.length}
-            className="rounded bg-emerald-700 px-3 py-2 text-sm text-white disabled:opacity-50"
-          >
-            {guardando ? "Registrando..." : "Registrar reposicion"}
-          </button>
-        </div>
-
-        <div>
-          <div className="mb-2 text-xs font-semibold text-slate-600">Materiales frecuentes</div>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {focusMaterials.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => addItem(m.id)}
-                className="w-32 shrink-0 rounded border p-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800"
-              >
-                {m.fotoUrl ? (
-                  <img
-                    src={m.fotoUrl}
-                    alt={m.nombre || m.id}
-                    className="mb-2 h-16 w-full rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-1 object-contain"
-                  />
-                ) : (
-                  <div className="mb-2 flex h-16 w-full items-center justify-center rounded bg-slate-100 text-xs text-slate-500">
-                    Sin foto
-                  </div>
-                )}
-                <div className="text-xs font-semibold">{m.id}</div>
-                <div className="text-[11px] text-slate-500">{m.nombre || "-"}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <details open={openOtros} onToggle={(e) => setOpenOtros((e.target as HTMLDetailsElement).open)} className="rounded border p-2">
-          <summary className="cursor-pointer text-sm font-medium">Otros materiales</summary>
-          <div className="relative mt-2">
-            <input
-              value={materialSearch}
-              onChange={(e) => {
-                setMaterialSearch(e.target.value);
-                setComboMatOpen(true);
-              }}
-              onFocus={() => setComboMatOpen(true)}
-              onBlur={() => setTimeout(() => setComboMatOpen(false), 150)}
-              placeholder="Buscar por código o nombre..."
-              className="w-full rounded border px-2 py-2 text-sm"
-            />
-            {comboMatOpen && (
-              <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 max-h-52 overflow-auto rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 shadow">
-                {otrosMateriales.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      addItem(m.id);
-                      setComboMatOpen(false);
-                    }}
-                    className="w-full border-b px-2 py-1 text-left text-xs hover:bg-slate-50 dark:hover:bg-slate-800"
-                  >
-                    {m.id} {m.nombre ? `- ${m.nombre}` : ""} ({m.unidadTipo || "UND"})
-                  </button>
-                ))}
-                {!otrosMateriales.length && (
-                  <div className="px-2 py-2 text-xs text-slate-500">Sin resultados</div>
-                )}
-              </div>
-            )}
-          </div>
-        </details>
-
-        <div>
-          <label className="text-xs text-slate-500">Observacion general</label>
-          <textarea
-            value={observacion}
-            onChange={(e) => setObservacion(e.target.value)}
-            rows={3}
-            className="mt-1 w-full rounded border px-2 py-2 text-sm"
-          />
-        </div>
-
-        <div className="overflow-x-auto rounded border">
-          <table className="min-w-full border-collapse text-sm">
-            <thead className="ui-thead">
-              <tr>
-                <th className="border p-2 text-left">Material</th>
-                <th className="border p-2 text-left">Cantidad</th>
-                <th className="border p-2 text-left">Observacion item</th>
-                <th className="border p-2 text-left">Accion</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((it) => {
-                const m = materialById.get(it.materialId);
-                const isMetros = m?.unidadTipo === "METROS";
-                return (
-                  <tr key={it.materialId}>
-                    <td className="border p-2">
-                      <div className="font-medium">{it.materialId}</div>
-                      <div className="text-xs text-slate-500">{m?.nombre || ""}</div>
-                    </td>
-                    <td className="border p-2">
-                      {isMetros ? (
-                        <input
-                          value={it.metros}
-                          onChange={(e) =>
-                            setItems((prev) => prev.map((p) => p.materialId === it.materialId ? { ...p, metros: e.target.value } : p))
-                          }
-                          className="w-28 rounded border px-2 py-1 text-sm"
-                          placeholder="Metros"
-                        />
-                      ) : (
-                        <input
-                          value={it.und}
-                          onChange={(e) =>
-                            setItems((prev) => prev.map((p) => p.materialId === it.materialId ? { ...p, und: e.target.value.replace(/\D/g, "") } : p))
-                          }
-                          className="w-28 rounded border px-2 py-1 text-sm"
-                          placeholder="UND"
-                        />
-                      )}
-                    </td>
-                    <td className="border p-2">
-                      <input
-                        value={it.observacion}
-                        onChange={(e) =>
-                          setItems((prev) => prev.map((p) => p.materialId === it.materialId ? { ...p, observacion: e.target.value } : p))
-                        }
-                        className="w-full rounded border px-2 py-1 text-sm"
-                      />
-                    </td>
-                    <td className="border p-2">
-                      <button type="button" onClick={() => removeItem(it.materialId)} className="text-red-600 hover:underline">
-                        Quitar
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {!items.length && (
-                <tr><td className="border p-3 text-center text-slate-500" colSpan={4}>Aun no hay materiales en la lista.</td></tr>
+            <div className="flex-1 rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60 px-3 py-2">
+              <div className="text-xs text-slate-500 dark:text-slate-400">Cuadrilla seleccionada</div>
+              <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{cuadrillaNombreDisplay || "—"}</div>
+              {(cuadrillaInfo.segmento || cuadrillaInfo.tipo) && (
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  {[cuadrillaInfo.segmento, cuadrillaInfo.tipo].filter(Boolean).join(" · ")}
+                </div>
               )}
-            </tbody>
-          </table>
-        </div>
-        </section>
-      )}
-
-      <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4">
-        <h2 className="text-lg font-semibold">Historial de reposicion de cuadrilla</h2>
-        {!cuadrillaId && <p className="mt-2 text-sm text-slate-500">Selecciona una cuadrilla para ver historial.</p>}
-        {cuadrillaId && (
-          <div className="mt-3 grid gap-3 lg:grid-cols-2">
-            <div className="rounded border p-3">
-              <div className="mb-2 text-sm font-semibold">Stock actual de cuadrilla</div>
-              <div className="max-h-56 overflow-auto text-sm">
-                {stock.map((s: any) => (
-                  <div key={s.id} className="border-b py-1">
-                    {s.materialId || s.id}:{" "}
-                    <b>{String(s.unidadTipo || "UND").toUpperCase() === "METROS" ? Number(s.stockCm || 0) / 100 : Number(s.stockUnd || 0)}</b>
-                  </div>
-                ))}
-                {!stock.length && <div className="text-slate-500">Sin stock registrado.</div>}
-              </div>
             </div>
-            <div className="rounded border p-3">
-              <div className="mb-2 text-sm font-semibold">Ultimas reposiciones</div>
-              <div className="max-h-56 overflow-auto text-sm">
-                {historial.slice(0, 8).map((h: any) => (
-                  <div key={h.id} className="border-b py-1">
-                    <div className="text-xs text-slate-500">{tsToStr(h.createdAt)}</div>
-                    <div>
-                      Guia:{" "}
-                      {h.guia ? (
+          </div>
+
+          {/* Header sección */}
+          <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">Registro de reposicion</h2>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                  Canje por material malogrado — descuenta almacen, no suma almacen.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { if (validarParaPreview()) setShowPreview(true); }}
+                disabled={guardando || !cuadrillaId || !items.length}
+                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {guardando ? "Registrando..." : "Revisar y confirmar"}
+              </button>
+            </div>
+          </div>
+
+          {/* Materiales frecuentes + Otros */}
+          <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm space-y-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Materiales frecuentes
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {focusMaterials.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => addItem(m.id)}
+                  className="w-32 shrink-0 rounded-xl border border-slate-200 dark:border-slate-700 p-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                >
+                  {m.fotoUrl ? (
+                    <img
+                      src={m.fotoUrl}
+                      alt={m.nombre || m.id}
+                      className="mb-2 h-16 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1 object-contain"
+                    />
+                  ) : (
+                    <div className="mb-2 flex h-16 w-full items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-xs text-slate-400">
+                      Sin foto
+                    </div>
+                  )}
+                  <div className="text-xs font-semibold text-slate-800 dark:text-slate-100">{m.id}</div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400">{m.nombre || "—"}</div>
+                </button>
+              ))}
+            </div>
+
+            <div>
+              <button
+                type="button"
+                onClick={() => setOpenOtros((v) => !v)}
+                className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100"
+              >
+                <span className={`text-xs transition-transform duration-150 inline-block ${openOtros ? "rotate-90" : ""}`}>▶</span>
+                Otros materiales
+              </button>
+              {openOtros && (
+                <div className="relative mt-2">
+                  <input
+                    value={materialSearch}
+                    onChange={(e) => { setMaterialSearch(e.target.value); setComboMatOpen(true); }}
+                    onFocus={() => setComboMatOpen(true)}
+                    onBlur={() => setTimeout(() => setComboMatOpen(false), 150)}
+                    placeholder="Buscar por código o nombre..."
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm placeholder:text-slate-400"
+                  />
+                  {comboMatOpen && (
+                    <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 max-h-52 overflow-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg">
+                      {otrosMateriales.map((m) => (
                         <button
+                          key={m.id}
                           type="button"
-                          onClick={() => abrirGuia(String(h.guia))}
-                          className="font-semibold text-blue-700 hover:underline"
+                          onMouseDown={(e) => { e.preventDefault(); addItem(m.id); setComboMatOpen(false); }}
+                          className="w-full border-b border-slate-100 dark:border-slate-800 px-3 py-2 text-left text-xs hover:bg-slate-50 dark:hover:bg-slate-800"
                         >
-                          {String(h.guia)}
+                          <span className="font-medium">{m.id}</span>
+                          {m.nombre ? <span className="text-slate-500 dark:text-slate-400"> — {m.nombre}</span> : null}
+                          <span className="ml-1 text-slate-400">({m.unidadTipo || "UND"})</span>
                         </button>
-                      ) : (
-                        <b>-</b>
+                      ))}
+                      {!otrosMateriales.length && (
+                        <div className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">Sin resultados</div>
                       )}
                     </div>
-                  </div>
-                ))}
-                {!historial.length && <div className="text-slate-500">Sin reposiciones.</div>}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
+
+          {/* Observacion */}
+          <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">
+              Observacion general
+            </label>
+            <textarea
+              value={observacion}
+              onChange={(e) => setObservacion(e.target.value)}
+              rows={3}
+              placeholder="Opcional..."
+              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 dark:bg-slate-900 px-3 py-2 text-sm placeholder:text-slate-400"
+            />
+          </div>
+
+          {/* Tabla de items */}
+          <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 shadow-sm overflow-hidden">
+            <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 px-4 py-3">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Items agregados
+              </span>
+              {items.length > 0 && (
+                <span className="rounded-full bg-blue-100 dark:bg-blue-900/40 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:text-blue-300">
+                  {items.length}
+                </span>
+              )}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full border-collapse text-sm">
+                <thead className="bg-slate-50 dark:bg-slate-800 text-xs text-slate-600 dark:text-slate-300">
+                  <tr>
+                    <th className="border-b border-slate-200 dark:border-slate-700 px-4 py-2.5 text-left font-semibold">Material</th>
+                    <th className="border-b border-slate-200 dark:border-slate-700 px-4 py-2.5 text-left font-semibold">Cantidad</th>
+                    <th className="border-b border-slate-200 dark:border-slate-700 px-4 py-2.5 text-left font-semibold">Observacion item</th>
+                    <th className="border-b border-slate-200 dark:border-slate-700 px-4 py-2.5"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {items.map((it) => {
+                    const m = materialById.get(it.materialId);
+                    const isMetros = m?.unidadTipo === "METROS";
+                    const metrosPorUnd = isMetros && m?.metrosPorUndCm ? m.metrosPorUndCm / 100 : 0;
+                    const undQty = Number(it.und || 0);
+                    return (
+                      <tr key={it.materialId} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                        <td className="px-4 py-2.5">
+                          <div className="font-medium text-slate-800 dark:text-slate-100">{it.materialId}</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400">{m?.nombre || ""}</div>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          {isMetros && metrosPorUnd === 0 ? (
+                            // Sin factor de conversion: input en metros directo
+                            <input
+                              value={it.metros}
+                              onChange={(e) =>
+                                setItems((prev) =>
+                                  prev.map((p) => p.materialId === it.materialId ? { ...p, metros: e.target.value } : p)
+                                )
+                              }
+                              className="w-28 rounded-lg border border-slate-300 dark:border-slate-700 dark:bg-slate-900 px-2 py-1 text-sm"
+                              placeholder="Metros"
+                            />
+                          ) : (
+                            // UND o METROS con factor: siempre input en UND
+                            <div className="space-y-0.5">
+                              <input
+                                value={it.und}
+                                onChange={(e) =>
+                                  setItems((prev) =>
+                                    prev.map((p) => p.materialId === it.materialId ? { ...p, und: e.target.value.replace(/\D/g, "") } : p)
+                                  )
+                                }
+                                className="w-28 rounded-lg border border-slate-300 dark:border-slate-700 dark:bg-slate-900 px-2 py-1 text-sm"
+                                placeholder="UND"
+                              />
+                              {isMetros && metrosPorUnd > 0 && (
+                                <div className="text-[11px] text-slate-400 dark:text-slate-500">
+                                  {undQty > 0
+                                    ? `= ${undQty * metrosPorUnd} m`
+                                    : `×${metrosPorUnd} m/und`}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <input
+                            value={it.observacion}
+                            onChange={(e) =>
+                              setItems((prev) =>
+                                prev.map((p) => p.materialId === it.materialId ? { ...p, observacion: e.target.value } : p)
+                              )
+                            }
+                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 dark:bg-slate-900 px-2 py-1 text-sm"
+                          />
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <button
+                            type="button"
+                            onClick={() => removeItem(it.materialId)}
+                            className="rounded-lg border border-red-200 dark:border-red-800 px-2 py-1 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                          >
+                            Quitar
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {!items.length && (
+                    <tr>
+                      <td className="px-4 py-6 text-center text-sm text-slate-400 dark:text-slate-500" colSpan={4}>
+                        Aun no hay materiales en la lista.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL PREVIEW ─── */}
+      {showPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-slate-900 shadow-xl overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-5 py-4">
+              <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">Confirmar reposicion</h2>
+              <button
+                type="button"
+                onClick={() => setShowPreview(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-lg leading-none"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="max-h-[60vh] overflow-y-auto px-5 py-4 space-y-4">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-4 text-sm space-y-1.5">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">Cuadrilla</div>
+                <div className="flex gap-2">
+                  <span className="text-slate-500 dark:text-slate-400 min-w-[80px]">Nombre</span>
+                  <b className="text-slate-800 dark:text-slate-100">{cuadrillaNombreDisplay || "—"}</b>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-slate-500 dark:text-slate-400 min-w-[80px]">Coordinador</span>
+                  <b className="text-slate-800 dark:text-slate-100">{cuadrillaInfo.coordinadorNombre || "—"}</b>
+                </div>
+                {(cuadrillaInfo.segmento || cuadrillaInfo.tipo) && (
+                  <div className="flex gap-2">
+                    <span className="text-slate-500 dark:text-slate-400 min-w-[80px]">Segmento</span>
+                    <b className="text-slate-800 dark:text-slate-100">
+                      {[cuadrillaInfo.segmento, cuadrillaInfo.tipo].filter(Boolean).join(" · ")}
+                    </b>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">
+                  Materiales ({previewItems.length} item{previewItems.length !== 1 ? "s" : ""})
+                </div>
+                <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+                  <table className="min-w-full border-collapse text-sm">
+                    <thead className="bg-slate-50 dark:bg-slate-800 text-xs text-slate-600 dark:text-slate-300">
+                      <tr>
+                        <th className="border-b border-slate-200 dark:border-slate-700 px-4 py-2.5 text-left font-semibold">Material</th>
+                        <th className="border-b border-slate-200 dark:border-slate-700 px-4 py-2.5 text-left font-semibold">Cantidad</th>
+                        <th className="border-b border-slate-200 dark:border-slate-700 px-4 py-2.5 text-left font-semibold">Obs.</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {previewItems.map((it) => {
+                        const m = materialById.get(it.materialId);
+                        return (
+                          <tr key={it.materialId}>
+                            <td className="px-4 py-2">
+                              <div className="font-medium text-slate-800 dark:text-slate-100">{it.materialId}</div>
+                              {m?.nombre && <div className="text-xs text-slate-500 dark:text-slate-400">{m.nombre}</div>}
+                            </td>
+                            <td className="px-4 py-2 font-semibold text-slate-800 dark:text-slate-100">
+                              {it.und > 0 ? `${it.und} UND` : `${it.metros} m`}
+                            </td>
+                            <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">
+                              {it.observacion || "—"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {observacion && (
+                <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-3 text-sm">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Observacion: </span>
+                  <span className="text-slate-700 dark:text-slate-300">{observacion}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-slate-200 dark:border-slate-700 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setShowPreview(false)}
+                className="rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={submit}
+                disabled={guardando}
+                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {guardando ? "Registrando..." : "Confirmar y registrar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── HISTORIAL ─── */}
+      <section className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm space-y-4">
+        <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">Historial de reposicion</h2>
+
+        {!cuadrillaId && (
+          <p className="text-sm text-slate-500 dark:text-slate-400">Selecciona una cuadrilla para ver historial.</p>
         )}
 
         {cuadrillaId && (
-          <div className="mt-3 overflow-x-auto rounded border">
-            <table className="min-w-full border-collapse text-sm">
-              <thead className="ui-thead">
-                <tr>
-                  <th className="border p-2 text-left">Fecha</th>
-                  <th className="border p-2 text-left">Guia</th>
-                  <th className="border p-2 text-left">Detalle</th>
-                  <th className="border p-2 text-left">Obs</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loadingHist && (
-                  <tr><td className="border p-3 text-center text-slate-500" colSpan={4}>Cargando historial...</td></tr>
-                )}
-                {!loadingHist && historial.map((h: any) => (
-                  <tr key={h.id}>
-                    <td className="border p-2 text-xs">{tsToStr(h.createdAt)}</td>
-                    <td className="border p-2">
-                      {h.guia ? (
-                        <button
-                          type="button"
-                          onClick={() => abrirGuia(String(h.guia))}
-                          className="text-blue-700 hover:underline"
-                        >
-                          {String(h.guia)}
-                        </button>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
-                    <td className="border p-2 text-xs">
-                      {(Array.isArray(h.items) ? h.items : []).map((it: any, idx: number) => (
-                        <div key={idx}>
-                          {it.materialId} {it.undEntregada ? `UND ${it.undEntregada}` : ""} {it.metrosEntregados ? `M ${it.metrosEntregados}` : ""}
-                        </div>
-                      ))}
-                    </td>
-                    <td className="border p-2 text-xs">{h.observacion || "Sin observaciones"}</td>
+          <>
+            <div className="grid gap-3 lg:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-3">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Stock actual de cuadrilla
+                </div>
+                <div className="max-h-56 overflow-auto space-y-1">
+                  {stock.map((s: any) => (
+                    <div
+                      key={s.id}
+                      className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 py-1 text-sm last:border-0"
+                    >
+                      <span className="text-slate-700 dark:text-slate-300">{s.materialId || s.id}</span>
+                      <b className="tabular-nums text-slate-900 dark:text-slate-100">
+                        {String(s.unidadTipo || "UND").toUpperCase() === "METROS"
+                          ? `${Number(s.stockCm || 0) / 100} m`
+                          : Number(s.stockUnd || 0)}
+                      </b>
+                    </div>
+                  ))}
+                  {!stock.length && (
+                    <div className="text-sm text-slate-400 dark:text-slate-500">Sin stock registrado.</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-3">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Ultimas reposiciones
+                </div>
+                <div className="max-h-56 overflow-auto space-y-2">
+                  {historial.slice(0, 8).map((h: any) => (
+                    <div key={h.id} className="border-b border-slate-200 dark:border-slate-700 pb-2 last:border-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-xs text-slate-500 dark:text-slate-400">{tsToStr(h.createdAt)}</div>
+                        {h.guia ? (
+                          <button
+                            type="button"
+                            onClick={() => abrirGuia(String(h.guia))}
+                            className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                          >
+                            {String(h.guia)}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-400">—</span>
+                        )}
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-slate-600 dark:text-slate-300">
+                        {(Array.isArray(h.items) ? h.items : []).slice(0, 4).map((it: any, idx: number) => (
+                          <span key={idx}>
+                            {it.materialId}
+                            {it.undEntregada ? ` ×${it.undEntregada}` : ""}
+                            {it.metrosEntregados ? ` ${it.metrosEntregados}m` : ""}
+                          </span>
+                        ))}
+                        {(Array.isArray(h.items) ? h.items : []).length > 4 && (
+                          <span className="text-slate-400">+{h.items.length - 4} más</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {!historial.length && (
+                    <div className="text-sm text-slate-400 dark:text-slate-500">Sin reposiciones.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+              <table className="min-w-full border-collapse text-sm">
+                <thead className="bg-slate-50 dark:bg-slate-800 text-xs text-slate-600 dark:text-slate-300">
+                  <tr>
+                    <th className="border-b border-slate-200 dark:border-slate-700 px-4 py-2.5 text-left font-semibold">Fecha</th>
+                    <th className="border-b border-slate-200 dark:border-slate-700 px-4 py-2.5 text-left font-semibold">Guia</th>
+                    <th className="border-b border-slate-200 dark:border-slate-700 px-4 py-2.5 text-left font-semibold">Detalle</th>
+                    <th className="border-b border-slate-200 dark:border-slate-700 px-4 py-2.5 text-left font-semibold">Obs</th>
                   </tr>
-                ))}
-                {!loadingHist && !historial.length && (
-                  <tr><td className="border p-3 text-center text-slate-500" colSpan={4}>Sin historial.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {loadingHist && (
+                    <tr>
+                      <td className="px-4 py-4 text-center text-sm text-slate-400" colSpan={4}>
+                        Cargando historial...
+                      </td>
+                    </tr>
+                  )}
+                  {!loadingHist &&
+                    historial.map((h: any) => (
+                      <tr key={h.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                        <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{tsToStr(h.createdAt)}</td>
+                        <td className="px-4 py-2">
+                          {h.guia ? (
+                            <button
+                              type="button"
+                              onClick={() => abrirGuia(String(h.guia))}
+                              className="font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                            >
+                              {String(h.guia)}
+                            </button>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-xs">
+                          {(Array.isArray(h.items) ? h.items : []).map((it: any, idx: number) => (
+                            <div key={idx} className="text-slate-700 dark:text-slate-300">
+                              {it.materialId}
+                              {it.undEntregada ? ` UND ${it.undEntregada}` : ""}
+                              {it.metrosEntregados ? ` M ${it.metrosEntregados}` : ""}
+                            </div>
+                          ))}
+                        </td>
+                        <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">
+                          {h.observacion || "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  {!loadingHist && !historial.length && (
+                    <tr>
+                      <td className="px-4 py-4 text-center text-sm text-slate-400" colSpan={4}>
+                        Sin historial.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </section>
     </div>
   );
 }
-
-
-
-

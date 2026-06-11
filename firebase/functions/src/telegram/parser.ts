@@ -48,6 +48,11 @@ function parsePedido(text: string): string | undefined {
     /\bPedido\b\s*:\s*([0-9]+)\b/im,
     /\bCod(?:igo|\.)?\s*de\s*Pedido\b\s*:?[^0-9]{0,12}([0-9]+)\b/im,
     /\bCod(?:igo|\.)?\s*Pedido\b\s*:?[^0-9]{0,12}([0-9]+)\b/im,
+    /\bN[°oO\.]\s*Pedido\s*:?\s*([0-9]+)/im,
+    /\bPedido\s+N[°oO\.]\s*:?\s*([0-9]+)/im,
+    /\bN[úu]m(?:ero)?\.?\s+(?:de\s+)?Pedido\s*:?[^0-9]{0,12}([0-9]+)/im,
+    /\b#\s*Pedido\s*:?[^0-9]{0,8}([0-9]+)/im,
+    /\bPedido\b[^0-9\n]{0,15}([0-9]{5,})\b/im,
   ];
   for (const pattern of patterns) {
     const raw = matchLine(text, pattern);
@@ -87,13 +92,32 @@ export function parseTelegramTemplate(rawInput: string): TelegramParsedTemplate 
   const snOnt =
     matchLine(normalized, /^.*\bSN\s*ONT\s*:\s*(.+)\s*$/im) ||
     matchLine(normalized, /^.*\bS\s*\/\s*N\s*ONT\s*:\s*(.+)\s*$/im) ||
-    matchLine(normalized, /^.*\bID\s*ONT\s*:\s*(.+)\s*$/im);
-  const receptorDocumento = matchLine(normalized, /^.*\bDOCUMENTO\s+DE\s+CONTACTO\s+RECEPTOR\s*:\s*:?\s*(.+)\s*$/im);
-  const receptorNombres = matchLine(normalized, /^.*\bNOMBRES\s+DE\s+CONTACTO\s+RECEPTOR\s*:\s*:?\s*(.+)\s*$/im);
-  const receptorTelefono = matchLine(normalized, /^.*\bTEL(?:E|É)FONO\s+DE\s+CONTACTO\s+RECEPTOR\s*:\s*:?\s*(.+)\s*$/im);
-  const snFono =
+    matchLine(normalized, /^.*\bID\s*ONT\s*:\s*(.+)\s*$/im) ||
+    matchLine(normalized, /^.*\bMAC\s*ONT\s*:\s*(.+)\s*$/im) ||
+    matchLine(normalized, /^.*\bN[úu]m(?:ero)?\.?\s+de\s+Serie\s+ONT\s*:\s*(.+)\s*$/im) ||
+    matchLine(normalized, /^.*\bSerie\s+ONT\s*:\s*(.+)\s*$/im);
+  const receptorDocumento =
+    matchLine(normalized, /^.*\bDOCUMENTO\s+DE\s+CONTACTO\s+RECEPTOR\s*:\s*:?\s*(.+)\s*$/im) ||
+    matchLine(normalized, /^.*\bD\.?N\.?I\.?\s*(?:del\s+(?:receptor|cliente))?\s*:\s*(.+)\s*$/im) ||
+    matchLine(normalized, /^.*\bDocumento\s+(?:del\s+)?(?:receptor|cliente|contacto)\s*:\s*(.+)\s*$/im);
+  const receptorNombres =
+    matchLine(normalized, /^.*\bNOMBRES\s+DE\s+CONTACTO\s+RECEPTOR\s*:\s*:?\s*(.+)\s*$/im) ||
+    matchLine(normalized, /^.*\bNombres?\s+(?:del\s+)?(?:receptor|cliente|contacto)\s*:\s*(.+)\s*$/im);
+  const receptorTelefono =
+    matchLine(normalized, /^.*\bTEL(?:E|É)FONO\s+DE\s+CONTACTO\s+RECEPTOR\s*:\s*:?\s*(.+)\s*$/im) ||
+    matchLine(normalized, /^.*\bTel(?:é|e)fono\s+(?:del\s+)?(?:receptor|cliente|contacto)?\s*:\s*(.+)\s*$/im) ||
+    matchLine(normalized, /^.*\bCel(?:ular)?\s*:\s*(.+)\s*$/im);
+  const snFonoRaw =
     matchLine(normalized, /^.*\bFONOWIN\b\s*,?\s*N[UÚ]MERO\s+DE\s+SERIE\s*:\s*(.+)\s*$/im) ||
-    matchLine(normalized, /^.*\bSN\s*FONO\s*:\s*(.+)\s*$/im);
+    matchLine(normalized, /^.*\bSN\s*FONO\s*:\s*(.+)\s*$/im) ||
+    matchLine(normalized, /^.*\bFono\s*Win\s*:\s*(.+)\s*$/im) ||
+    matchLine(normalized, /^.*\bFONO\s*:\s*(.+)\s*$/im);
+  const invalidScalar = (v?: string) => {
+    if (!v) return true;
+    const u = v.toUpperCase().trim();
+    return u === "NO" || u === "N/A" || u === "NA" || u === "-" || u === "NO TIENE" || u === "NO PRESENTA";
+  };
+  const snFono = invalidScalar(snFonoRaw) ? undefined : snFonoRaw;
 
   const meshes: string[] = [];
   const meshRegex = /^.*\bMESH\s*\(\s*\d+\s*\)\s*:\s*(.+)\s*$/gim;

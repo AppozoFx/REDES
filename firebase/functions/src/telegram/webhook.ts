@@ -35,7 +35,7 @@ const PRELIQ_RETRY_MAX_ATTEMPTS = 10;
 const PRELIQ_RETRY_INTERVAL_MS = 30 * 60 * 1000;
 const PRELIQ_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const RESPONSABLE_CONFIDENCE_MIN_MENTION = 45;
-const RESPONSABLE_SWITCH_CANDIDATE_MIN = 1;
+const RESPONSABLE_SWITCH_CANDIDATE_MIN = 2;
 
 type TelegramChat = { id?: number | string };
 type TelegramFrom = {
@@ -94,6 +94,14 @@ function isOrdenEstadoValido(estadoRaw: unknown): boolean {
 
 function isOrdenEstadoFinalizada(estadoRaw: unknown): boolean {
   return String(estadoRaw || "").trim().toUpperCase() === "FINALIZADA";
+}
+
+function isInstLiquidada(inst: Record<string, unknown>): boolean {
+  return (
+    String((inst.liquidacion as Record<string, unknown> | undefined)?.estado || "")
+      .trim()
+      .toUpperCase() === "LIQUIDADO" && !inst.correccionPendiente
+  );
 }
 
 function normalizeTextKey(value: unknown): string {
@@ -448,13 +456,21 @@ function shouldAttemptAiEnrichment(rawText: string, parsed: ParsedTemplate | nul
   const text = String(rawText || "");
   const mentionsMesh = /\bmesh\b/i.test(text);
   const mentionsBox = /\b(?:winbox|sn\s*box|box)\b/i.test(text);
-  const mentionsOnt = /\b(?:sn|s\s*\/\s*n|id)\s*ont\b/i.test(text);
-  const mentionsFono = /\b(?:fono|fonowin)\b/i.test(text);
+  const mentionsOnt = /\b(?:sn|s\s*\/\s*n|id|mac|serie)\s*ont\b/i.test(text);
+  const mentionsFono = /\b(?:fono|fonowin|fono\s*win)\b/i.test(text);
+  const mentionsCto = /\b(?:cto|nap|cto\s*\/\s*nap)\b/i.test(text);
+  const mentionsReceptor = /\b(?:receptor|contacto|dni|documento|nombre|telefono|celular)\b/i.test(text);
 
   if (mentionsMesh && (!Array.isArray(parsed.meshes) || parsed.meshes.length === 0)) return true;
   if (mentionsBox && (!Array.isArray(parsed.boxes) || parsed.boxes.length === 0)) return true;
   if (mentionsOnt && !cleanValue(parsed.snOnt || "")) return true;
   if (mentionsFono && !cleanValue(parsed.snFono || "")) return true;
+  if (mentionsCto && !cleanValue(parsed.ctoNap || "")) return true;
+  if (mentionsReceptor && (
+    !cleanValue(parsed.receptorDocumento || "") ||
+    !cleanValue(parsed.receptorNombres || "") ||
+    !cleanValue(parsed.receptorTelefono || "")
+  )) return true;
   return false;
 }
 
@@ -487,6 +503,26 @@ async function fetchOrdenByPedido(pedido: string): Promise<{
   return candidates[0];
 }
 
+async function fetchInstLiquidadasMap(
+  ordenes: Array<Record<string, unknown>>
+): Promise<Map<string, Record<string, unknown>>> {
+  const pedidos = Array.from(
+    new Set(
+      ordenes
+        .map((o) => cleanValue(o.codiSeguiClien || o.ordenId || ""))
+        .filter(Boolean)
+    )
+  );
+  if (!pedidos.length) return new Map();
+  const refs = pedidos.map((p) => db.collection("instalaciones").doc(p));
+  const snaps = await db.getAll(...refs);
+  return new Map(
+    snaps
+      .filter((s) => s.exists)
+      .map((s) => [s.id, (s.data() || {}) as Record<string, unknown>])
+  );
+}
+
 async function fetchOrdenesFinalizadasDocsByYmd(
   ymd: string
 ): Promise<Array<Record<string, unknown>>> {
@@ -503,9 +539,21 @@ async function fetchOrdenesFinalizadasDocsByYmd(
       .limit(5000)
       .get();
   }
-  return snap.docs
+  const candidates = snap.docs
     .map((doc) => (doc.data() || {}) as Record<string, unknown>)
-    .filter((orden) => isOrdenConsiderada(orden) && isOrdenEstadoFinalizada(orden.estado));
+    .filter(isOrdenConsiderada);
+
+  const finalizadas = candidates.filter((o) => isOrdenEstadoFinalizada(o.estado));
+  const iniciadas = candidates.filter((o) => !isOrdenEstadoFinalizada(o.estado));
+  if (!iniciadas.length) return finalizadas;
+
+  const instMap = await fetchInstLiquidadasMap(iniciadas);
+  const aprobadas = iniciadas.filter((o) => {
+    const pedido = cleanValue(o.codiSeguiClien || o.ordenId || "");
+    const inst = pedido ? instMap.get(pedido) : null;
+    return inst ? isInstLiquidada(inst) : false;
+  });
+  return [...finalizadas, ...aprobadas];
 }
 
 async function fetchOrdenesFinalizadasByYmd(ymd: string): Promise<OrdenResumen[]> {
@@ -521,9 +569,7 @@ async function fetchOrdenesFinalizadasByRange(startYmd: string, endYmd: string):
     for (const doc of snap.docs) {
       if (docsById.has(doc.id)) continue;
       const data = (doc.data() || {}) as Record<string, unknown>;
-      if (isOrdenConsiderada(data) && isOrdenEstadoFinalizada(data.estado)) {
-        docsById.set(doc.id, data);
-      }
+      if (isOrdenConsiderada(data)) docsById.set(doc.id, data);
     }
   };
 
@@ -544,7 +590,27 @@ async function fetchOrdenesFinalizadasByRange(startYmd: string, endYmd: string):
   collect(snap1);
   collect(snap2);
 
-  const rows = Array.from(docsById.values())
+  const finalizadasMap = new Map<string, Record<string, unknown>>();
+  const iniciadasList: Array<Record<string, unknown>> = [];
+  for (const [id, data] of docsById) {
+    if (isOrdenEstadoFinalizada(data.estado)) {
+      finalizadasMap.set(id, data);
+    } else {
+      iniciadasList.push(data);
+    }
+  }
+
+  if (iniciadasList.length > 0) {
+    const instMap = await fetchInstLiquidadasMap(iniciadasList);
+    for (const [id, data] of docsById) {
+      if (isOrdenEstadoFinalizada(data.estado)) continue;
+      const pedido = cleanValue(data.codiSeguiClien || data.ordenId || "");
+      const inst = pedido ? instMap.get(pedido) : null;
+      if (inst && isInstLiquidada(inst)) finalizadasMap.set(id, data);
+    }
+  }
+
+  const rows = Array.from(finalizadasMap.values())
     .filter((orden) => {
       const primaryYmd = cleanValue(String(orden.fSoliYmd || ""));
       const fallbackYmd = cleanValue(String(orden.fechaFinVisiYmd || ""));
@@ -1022,15 +1088,16 @@ function parseCuadrillaDetailCommand(
 
 function parseModeDateOnlyCommand(
   text: string
-): { mode: "LIQUIDADAS" | "PENDIENTES"; ymd: string } | null {
+): { mode: "LIQUIDADAS" | "PENDIENTES"; ymd: string; hasExplicitDate: boolean } | null {
   const raw = String(text || "").trim();
   const m = /^(liquidadas|pendientes)(?:\s+(\S+))?$/i.exec(raw);
   if (!m) return null;
   const mode = String(m[1]).toUpperCase() === "LIQUIDADAS" ? "LIQUIDADAS" : "PENDIENTES";
   const dateRaw = String(m[2] || "").trim();
+  const hasExplicitDate = !!dateRaw;
   const ymd = dateRaw ? parseFlexibleDateToYmd(dateRaw) : todayLimaYmd();
   if (!ymd) return null;
-  return { mode, ymd };
+  return { mode, ymd, hasExplicitDate };
 }
 
 function parseResumenCommand(text: string): string | null {
@@ -1080,13 +1147,15 @@ async function sendCuadrillaStatus(
   cuadrilla: string,
   ymd: string
 ) {
-  const todayOrders = await fetchOrdenesFinalizadasByYmd(ymd);
-  const foundToday = await fetchTelegramFoundByYmd(chatId, ymd);
+  const [allDoneOrders, preliqKeys] = await Promise.all([
+    fetchOrdenesFinalizadasByYmd(ymd),
+    fetchPreliqKeysByRange(chatId, ymd, ymd),
+  ]);
   const byCuadrilla = (row: OrdenResumen) =>
     row.cuadrillaNombre === cuadrilla || row.cuadrillaId === cuadrilla;
-  const liquidated = foundToday.filter(byCuadrilla);
-  const liquidatedPedidos = new Set(liquidated.map((r) => r.pedido));
-  const pending = todayOrders.filter((row) => byCuadrilla(row) && !liquidatedPedidos.has(row.pedido));
+  const cuadrillaOrders = allDoneOrders.filter(byCuadrilla);
+  const liquidated = cuadrillaOrders.filter((row) => preliqKeys.has(row.pedido));
+  const pending = cuadrillaOrders.filter((row) => !preliqKeys.has(row.pedido));
   const text = buildCuadrillaStatusMessage({
     cuadrillaName: cuadrilla,
     liquidated,
@@ -1100,11 +1169,15 @@ async function getResumenRows(
   mode: "LIQUIDADAS" | "PENDIENTES",
   ymd: string
 ): Promise<OrdenResumen[]> {
-  const todayOrders = await fetchOrdenesFinalizadasByYmd(ymd);
-  const foundToday = await fetchTelegramFoundByYmd(chatId, ymd);
-  if (mode === "LIQUIDADAS") return foundToday;
-  const foundSet = new Set(foundToday.map((row) => row.pedido));
-  return todayOrders.filter((row) => !foundSet.has(row.pedido));
+  if (mode === "LIQUIDADAS") {
+    return fetchTelegramFoundByYmd(chatId, ymd);
+  }
+  // PENDIENTES: órdenes terminadas (FINALIZADA o liquidadas vía app) que NO tienen plantilla Telegram
+  const [allDoneOrders, preliqKeys] = await Promise.all([
+    fetchOrdenesFinalizadasByYmd(ymd),
+    fetchPreliqKeysByRange(chatId, ymd, ymd),
+  ]);
+  return allDoneOrders.filter((row) => !preliqKeys.has(row.pedido));
 }
 
 async function sendResumenCount(
@@ -1177,7 +1250,7 @@ async function sendPendientesDetalladoPorCuadrilla(
     await sendTelegramMessage({
       token,
       chatId,
-      text: `CUADRILLA: ${payload.label}\n${mention}`,
+      text: `👷 *${payload.label}*\n${mention}\n📋 Pendientes: ${payload.rows.length}`,
     });
     const blocks = buildCuadrillaDetailBlocks(payload.label, payload.rows);
     for (const block of blocks) {
@@ -1209,7 +1282,11 @@ async function sendPendientesDetalladoPorCuadrillaRange(
 
   for (const [key, payload] of sorted) {
     const mention = buildResponsableMention(responsables.get(key));
-    await sendTelegramMessage({ token, chatId, text: `CUADRILLA: ${payload.label}\n${mention}` });
+    await sendTelegramMessage({
+      token,
+      chatId,
+      text: `👷 *${payload.label}*\n${mention}\n📋 Pendientes: ${payload.rows.length}`,
+    });
     const blocks = buildCuadrillaDetailBlocks(payload.label, payload.rows);
     for (const block of blocks) {
       await sendTelegramMessage({ token, chatId, text: block });
@@ -1325,44 +1402,62 @@ async function upsertPreliquidacion(params: {
   orderDocId: string;
   orderMeta: OrdenResumen;
   parsed: NonNullable<ReturnType<typeof parseTelegramTemplate>>;
+  parseSource?: string;
 }) {
   const parsed = params.parsed;
-
   const docId = preliqDocId(params.pedido, params.ymd);
   const ref = db.collection(PRELIQ_COLLECTION).doc(docId);
-  await ref.set(
-    {
-      pedido: params.pedido,
-      ymd: params.ymd,
-      chatId: params.chatId,
-      fromId: params.fromId || null,
-      orderDocId: params.orderDocId,
-      cuadrillaId: params.orderMeta.cuadrillaId || null,
-      cuadrillaNombre: params.orderMeta.cuadrillaNombre || null,
-      cliente: params.orderMeta.cliente || null,
-      fecha: params.orderMeta.fecha || null,
-      tramo: params.orderMeta.tramo || null,
-      preliquidacion: {
-        snOnt: cleanValue(parsed.snOnt || "") || null,
-        snMeshes: cleanSeriesList(parsed.meshes, 4),
-        snBoxes: cleanSeriesList(parsed.boxes, 4),
-        snFono: cleanValue(parsed.snFono || "") || null,
-        rotuloNapCto: cleanValue(parsed.ctoNap || "") || null,
-        puerto: cleanValue(parsed.puerto || "") || null,
-        potenciaCtoNapDbm: cleanValue(parsed.potenciaCtoNapDbm || "") || null,
-        receptorDocumento: cleanValue(parsed.receptorDocumento || "") || null,
-        receptorNombres: cleanValue(parsed.receptorNombres || "") || null,
-        receptorTelefono: cleanValue(parsed.receptorTelefono || "") || null,
-        receptorDocumentoNorm: normalizeDigits(parsed.receptorDocumento || ""),
-        receptorNombresNorm: normalizeAuditName(parsed.receptorNombres || ""),
-        receptorTelefonoNorm: normalizeDigits(parsed.receptorTelefono || ""),
-      },
-      source: "TELEGRAM",
-      updatedAt: FieldValue.serverTimestamp(),
-      createdAt: FieldValue.serverTimestamp(),
+
+  const existingSnap = await ref.get();
+  const existingPreliq = existingSnap.exists
+    ? ((existingSnap.data() as Record<string, unknown>)?.preliquidacion as Record<string, unknown> | null) ?? {}
+    : {};
+
+  const mergeStr = (newVal: string | null | undefined, existingKey: string): string | null =>
+    newVal || (existingPreliq[existingKey] as string | null) || null;
+  const mergeSeries = (newArr: string[], existingKey: string): string[] =>
+    newArr.length > 0 ? newArr : ((existingPreliq[existingKey] as string[]) || []);
+
+  const newSnOnt = cleanValue(parsed.snOnt || "") || null;
+  const newSnMeshes = cleanSeriesList(parsed.meshes, 4);
+  const newSnBoxes = cleanSeriesList(parsed.boxes, 4);
+
+  const data: Record<string, unknown> = {
+    pedido: params.pedido,
+    ymd: params.ymd,
+    chatId: params.chatId,
+    fromId: params.fromId || null,
+    orderDocId: params.orderDocId,
+    cuadrillaId: params.orderMeta.cuadrillaId || null,
+    cuadrillaNombre: params.orderMeta.cuadrillaNombre || null,
+    cliente: params.orderMeta.cliente || null,
+    fecha: params.orderMeta.fecha || null,
+    tramo: params.orderMeta.tramo || null,
+    preliquidacion: {
+      snOnt: mergeStr(newSnOnt, "snOnt"),
+      snMeshes: mergeSeries(newSnMeshes, "snMeshes"),
+      snBoxes: mergeSeries(newSnBoxes, "snBoxes"),
+      snFono: mergeStr(cleanValue(parsed.snFono || "") || null, "snFono"),
+      rotuloNapCto: mergeStr(cleanValue(parsed.ctoNap || "") || null, "rotuloNapCto"),
+      puerto: mergeStr(cleanValue(parsed.puerto || "") || null, "puerto"),
+      potenciaCtoNapDbm: mergeStr(cleanValue(parsed.potenciaCtoNapDbm || "") || null, "potenciaCtoNapDbm"),
+      receptorDocumento: mergeStr(cleanValue(parsed.receptorDocumento || "") || null, "receptorDocumento"),
+      receptorNombres: mergeStr(cleanValue(parsed.receptorNombres || "") || null, "receptorNombres"),
+      receptorTelefono: mergeStr(cleanValue(parsed.receptorTelefono || "") || null, "receptorTelefono"),
+      receptorDocumentoNorm: normalizeDigits(parsed.receptorDocumento || "") || (existingPreliq.receptorDocumentoNorm as string) || "",
+      receptorNombresNorm: normalizeAuditName(parsed.receptorNombres || "") || (existingPreliq.receptorNombresNorm as string) || "",
+      receptorTelefonoNorm: normalizeDigits(parsed.receptorTelefono || "") || (existingPreliq.receptorTelefonoNorm as string) || "",
     },
-    { merge: true }
-  );
+    source: "TELEGRAM",
+    parseSource: params.parseSource || null,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+
+  if (!existingSnap.exists) {
+    data.createdAt = FieldValue.serverTimestamp();
+  }
+
+  await ref.set(data, { merge: true });
 }
 
 function parsedFromRecord(record: Record<string, unknown>): ReturnType<typeof parseTelegramTemplate> | null {
@@ -1391,6 +1486,8 @@ async function enqueuePreliqRetry(params: {
   ymd: string;
   parsed: NonNullable<ReturnType<typeof parseTelegramTemplate>>;
   reason: string;
+  dedupeId?: string;
+  parseSource?: string;
 }) {
   const docId = preliqRetryDocId(params.pedido);
   const ref = db.collection(PRELIQ_RETRY_COLLECTION).doc(docId);
@@ -1408,6 +1505,8 @@ async function enqueuePreliqRetry(params: {
         chatId: params.chatId,
         fromId: params.fromId || null,
         ymd: params.ymd,
+        dedupeId: params.dedupeId || current.dedupeId || null,
+        parseSource: params.parseSource || current.parseSource || null,
         status: "PENDING_ORDER",
         attempts,
         nextRetryAt,
@@ -1427,7 +1526,6 @@ async function enqueuePreliqRetry(params: {
           rawText: params.parsed.rawText || "",
         },
         updatedAt: FieldValue.serverTimestamp(),
-        // Mantener la primera creacion para cortar reintentos a las 24h.
         createdAt: current.createdAt || FieldValue.serverTimestamp(),
       },
       { merge: true }
@@ -1529,6 +1627,7 @@ async function processPreliqRetryDoc(
 
   const orderMeta = buildOrdenResumen(orderResult.data);
   const operacionYmd = resolveOperacionYmdFromOrden(orderResult.data);
+  const retryParseSource = cleanValue(row.parseSource || "") || undefined;
   await upsertPreliquidacion({
     chatId: cleanValue(row.chatId || ""),
     fromId: cleanValue(row.fromId || ""),
@@ -1537,6 +1636,7 @@ async function processPreliqRetryDoc(
     orderDocId: orderResult.id,
     orderMeta,
     parsed,
+    parseSource: retryParseSource,
   });
   await docSnap.ref.set(
     {
@@ -1548,6 +1648,14 @@ async function processPreliqRetryDoc(
     },
     { merge: true }
   );
+
+  const originalDedupeId = cleanValue(row.dedupeId || "");
+  if (originalDedupeId) {
+    await db.collection(UPDATES_COLLECTION).doc(originalDedupeId).set(
+      { ymd: operacionYmd, ymdResolved: operacionYmd, updatedAt: FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+  }
 
   const targetChatId = cleanValue(row.chatId || "");
   if (token && targetChatId) {
@@ -1649,13 +1757,16 @@ async function processAllPendingPreliqRetries(
       }
     } catch (error) {
       const row = (docSnap.data() || {}) as Record<string, unknown>;
-      const attempts = Number(row.attempts || 0);
       const pedido = cleanValue(row.pedido || "");
+      logger.error("processPreliqRetryDoc unexpected error", {
+        error: String((error as Error)?.message || error),
+        pedido,
+      });
       await docSnap.ref.set(
         {
-          attempts: attempts + 1,
-          status: attempts + 1 >= PRELIQ_RETRY_MAX_ATTEMPTS ? "FAILED_FINAL" : "PENDING_ORDER",
-          lastError: String((error as Error)?.message || error),
+          attempts: FieldValue.increment(1),
+          status: "PENDING_ORDER",
+          lastError: `UNEXPECTED: ${String((error as Error)?.message || error)}`,
           nextRetryAt: new Date(Date.now() + PRELIQ_RETRY_INTERVAL_MS),
           updatedAt: FieldValue.serverTimestamp(),
         },
@@ -1736,7 +1847,12 @@ async function handleCallback(update: TelegramUpdate, token: string) {
     await sendTelegramMessage({
       token,
       chatId,
-      text: `Escribe: K24 MOTO (hoy) o K24 MOTO 12/04/26`,
+      text:
+        "📋 Para ver el estado de una cuadrilla específica, escribe:\n\n" +
+        "*K24 MOTO* → pendientes del mes actual\n" +
+        "*K24 MOTO 12/06/26* → estado en una fecha específica\n" +
+        "*K24 RESIDENCIAL* → funciona igual para cuadrillas residenciales\n\n" +
+        "Reemplaza K24 con el número de tu cuadrilla.",
     });
     return;
   }
@@ -1744,7 +1860,12 @@ async function handleCallback(update: TelegramUpdate, token: string) {
     await sendTelegramMessage({
       token,
       chatId,
-      text: `Escribe: K24 MOTO (hoy) o K24 MOTO 12/04/26`,
+      text:
+        "📋 Para ver los pendientes de una cuadrilla específica, escribe:\n\n" +
+        "*K24 MOTO* → pendientes del mes actual\n" +
+        "*K24 MOTO 12/06/26* → pendientes en una fecha específica\n" +
+        "*K24 RESIDENCIAL* → funciona igual para cuadrillas residenciales\n\n" +
+        "Reemplaza K24 con el número de tu cuadrilla.",
     });
     return;
   }
@@ -1854,7 +1975,7 @@ export const telegramWebhook = onRequest(
       await sendTelegramMessage({
         token,
         chatId,
-        text: "Solo se permite plantilla de finalizacion en texto.",
+        text: "⚠️ Solo se aceptan plantillas de finalización en texto.\nPor favor reenvía como mensaje de texto.",
       });
       res.status(200).json({ ok: true, ignored: "PHOTO_NOT_ALLOWED" });
       return;
@@ -2023,15 +2144,53 @@ export const telegramWebhook = onRequest(
 
     const modeDateCmd = parseModeDateOnlyCommand(text);
     if (modeDateCmd) {
-      await sendResumenCount(
-        chatId,
-        token,
-        modeDateCmd.mode,
-        modeDateCmd.ymd,
-        true
-      );
-      if (modeDateCmd.mode === "PENDIENTES") {
-        await sendPendientesDetalladoPorCuadrilla(chatId, token, modeDateCmd.ymd);
+      if (modeDateCmd.mode === "PENDIENTES" && !modeDateCmd.hasExplicitDate) {
+        // Sin fecha → pendientes del mes completo con detalle por cuadrilla y responsable
+        const todayYmd = todayLimaYmd();
+        const startYmd = monthStartFromYmd(todayYmd);
+        const pendingRows = await getPendientesByRange(chatId, startYmd, todayYmd);
+        const cuadrillaCount = new Set(
+          pendingRows.map((r) => r.cuadrillaNombre || r.cuadrillaId || "SIN_CUADRILLA")
+        ).size;
+        await sendTelegramMessage({
+          token,
+          chatId,
+          text: [
+            `📊 *Pendientes de Plantilla del Mes*`,
+            `Del ${formatYmdDdMm(startYmd)} al ${formatYmdDdMm(todayYmd)}`,
+            `📦 Órdenes pendientes: ${pendingRows.length}`,
+            `👥 Cuadrillas con pendientes: ${cuadrillaCount}`,
+            pendingRows.length === 0 ? "✅ ¡Todo al día!" : "",
+          ].filter(Boolean).join("\n"),
+        });
+        if (pendingRows.length > 0) {
+          await sendPendientesDetalladoPorCuadrillaRange(chatId, token, startYmd, todayYmd, pendingRows);
+        }
+      } else if (modeDateCmd.mode === "PENDIENTES") {
+        // Con fecha → pendientes de ese día con detalle por cuadrilla y responsable
+        const pendingRows = await getResumenRows(chatId, "PENDIENTES", modeDateCmd.ymd);
+        const cuadrillaCount = new Set(
+          pendingRows.map((r) => r.cuadrillaNombre || r.cuadrillaId || "SIN_CUADRILLA")
+        ).size;
+        await sendTelegramMessage({
+          token,
+          chatId,
+          text: [
+            `📊 *Pendientes de Plantilla*`,
+            `Fecha: ${formatYmdDdMm(modeDateCmd.ymd)}`,
+            `📦 Órdenes pendientes: ${pendingRows.length}`,
+            `👥 Cuadrillas con pendientes: ${cuadrillaCount}`,
+            pendingRows.length === 0 ? "✅ ¡Todo al día!" : "",
+          ].filter(Boolean).join("\n"),
+        });
+        if (pendingRows.length > 0) {
+          await sendPendientesDetalladoPorCuadrillaRange(
+            chatId, token, modeDateCmd.ymd, modeDateCmd.ymd, pendingRows
+          );
+        }
+      } else {
+        // LIQUIDADAS → resumen con botones (comportamiento anterior)
+        await sendResumenCount(chatId, token, "LIQUIDADAS", modeDateCmd.ymd, true);
       }
       res.status(200).json({ ok: true, handled: "MODE_DATE_CMD" });
       return;
@@ -2122,8 +2281,8 @@ export const telegramWebhook = onRequest(
           token,
           chatId,
           text:
-            "No pude identificar el codigo de pedido en la plantilla.\n" +
-            "Por favor verifica que incluya 'Pedido' o 'Cod. de Pedido' con su numero.",
+            "⚠️ No pude identificar el código de pedido en la plantilla.\n" +
+            "Por favor verifica que incluya *Pedido* o *Cod. de Pedido* con su número.",
         });
       }
       await updateRef.set(
@@ -2146,10 +2305,10 @@ export const telegramWebhook = onRequest(
         token,
         chatId,
         text:
-          `Orden ${parsed.pedido}: aun no aparece en la base de ordenes.\n` +
-          "Tu plantilla ya fue recibida y quedara en cola.\n" +
-          "Cuando la orden se actualice, se preliquidara automaticamente.\n" +
-          "No es necesario reenviarla. Gracias por su gestion.",
+          `🕐 Orden *${parsed.pedido}*: aún no aparece en la base de órdenes.\n` +
+          "✅ Tu plantilla ya fue recibida y quedará en cola.\n" +
+          "Cuando la orden se actualice en el sistema, se preliquidará automáticamente.\n" +
+          "No es necesario reenviarla. ¡Gracias por tu gestión! 🙏",
       });
       await updateRef.set(
         {
@@ -2168,6 +2327,8 @@ export const telegramWebhook = onRequest(
         ymd,
         parsed,
         reason: "ORDER_NOT_FOUND",
+        dedupeId,
+        parseSource,
       });
       await registerAudit({
         fromId,
@@ -2202,8 +2363,8 @@ export const telegramWebhook = onRequest(
         token,
         chatId,
         text:
-          `Orden ${parsed.pedido}: ya fue preliquidada anteriormente.\n` +
-          "No es necesario volver a enviarla. Gracias por su gestion.",
+          `ℹ️ Orden *${parsed.pedido}*: ya fue preliquidada anteriormente.\n` +
+          "No es necesario volver a enviarla. ¡Gracias por tu gestión! 🙏",
       });
       await sendCuadrillaStatus(
         chatId,
@@ -2295,6 +2456,7 @@ export const telegramWebhook = onRequest(
           orderDocId: orderResult.id,
           orderMeta,
           parsed,
+          parseSource,
         });
         await clearPreliqRetry(parsed.pedido);
       } catch (error) {
@@ -2308,8 +2470,8 @@ export const telegramWebhook = onRequest(
         token,
         chatId,
         text:
-          `Orden ${parsed.pedido}: preliquidacion registrada correctamente.\n` +
-          "Gracias por su gestion.",
+          `✅ Orden *${parsed.pedido}*: preliquidación registrada correctamente.\n` +
+          "¡Gracias por tu gestión! 💪",
       });
       await sendCuadrillaStatus(
         chatId,
@@ -2390,12 +2552,15 @@ export const telegramPreliqRetryWorker = onSchedule(
         await processPreliqRetryDoc(docSnap, token);
       } catch (error) {
         const row = (docSnap.data() || {}) as Record<string, unknown>;
-        const attempts = Number(row.attempts || 0);
+        logger.error("telegramPreliqRetryWorker unexpected error", {
+          error: String((error as Error)?.message || error),
+          pedido: cleanValue(row.pedido || ""),
+        });
         await docSnap.ref.set(
           {
-            attempts: attempts + 1,
-            status: attempts + 1 >= PRELIQ_RETRY_MAX_ATTEMPTS ? "FAILED_FINAL" : "PENDING_ORDER",
-            lastError: String((error as Error)?.message || error),
+            attempts: FieldValue.increment(1),
+            status: "PENDING_ORDER",
+            lastError: `UNEXPECTED: ${String((error as Error)?.message || error)}`,
             nextRetryAt: new Date(Date.now() + PRELIQ_RETRY_INTERVAL_MS),
             updatedAt: FieldValue.serverTimestamp(),
           },
@@ -2407,32 +2572,32 @@ export const telegramPreliqRetryWorker = onSchedule(
 );
 
 function reminderTextByHour(hourLima: number): string | null {
-  const generic =
-    "*RECORDAR ENVIAR SUS PLANTILLAS DE FINALIZACION, " +
-    "PARA UN MAYOR ABASTECIMIENTO DE EQUIPOS Y EVITAR ESCASEZ " +
-    "DE EQUIPOS Y DEMORAS EN LA GESTION.*";
+  const base =
+    "📋 *Recordatorio: Envío de Plantillas de Finalización*\n" +
+    "Por favor envía tu plantilla al terminar cada instalación.\n" +
+    "Esto nos permite mantener el stock de equipos actualizado y evitar demoras en la gestión. 🙏";
   if (hourLima === 10 || hourLima === 14 || hourLima === 18) {
-    return generic;
+    return base;
   }
   if (hourLima === 12) {
     return (
-      "*RECORDAR ENVIAR SUS PLANTILLAS DE FINALIZACION DEL PRIMER TRAMO, " +
-      "PARA UN MAYOR ABASTECIMIENTO DE EQUIPOS Y EVITAR ESCASEZ " +
-      "DE EQUIPOS Y DEMORAS EN LA GESTION.*"
+      "📋 *Recordatorio — Primer Tramo*\n" +
+      "Si ya completaste instalaciones del primer tramo, no olvides enviar tu plantilla de finalización.\n" +
+      "Tu reporte a tiempo garantiza el abastecimiento de equipos para todos. 🙏"
     );
   }
   if (hourLima === 16) {
     return (
-      "*RECORDAR ENVIAR SUS PLANTILLAS DE FINALIZACION DEL SEGUNDO TRAMO, " +
-      "PARA UN MAYOR ABASTECIMIENTO DE EQUIPOS Y EVITAR ESCASEZ " +
-      "DE EQUIPOS Y DEMORAS EN LA GESTION.*"
+      "📋 *Recordatorio — Segundo Tramo*\n" +
+      "Si ya completaste instalaciones del segundo tramo, recuerda enviar tu plantilla de finalización.\n" +
+      "Con tus datos podemos gestionar mejor el stock y evitar escasez de equipos. 🙏"
     );
   }
   if (hourLima === 20) {
     return (
-      "*RECORDAR ENVIAR SUS PLANTILLAS DE FINALIZACION DEL TERCER TRAMO, " +
-      "PARA UN MAYOR ABASTECIMIENTO DE EQUIPOS Y EVITAR ESCASEZ " +
-      "DE EQUIPOS Y DEMORAS EN LA GESTION.*"
+      "📋 *Recordatorio — Tercer Tramo*\n" +
+      "Antes de cerrar el día, envía tu plantilla de finalización si completaste instalaciones.\n" +
+      "¡Gracias por mantener el registro actualizado! 💪"
     );
   }
   return null;
@@ -2473,14 +2638,55 @@ export const telegramPendientesReminder = onSchedule(
         token,
         chatId,
         text: [
-          `PENDIENTES DE PLANTILLA EN EL MES`,
+          `📊 *Pendientes de Plantilla del Mes*`,
           `Del ${formatYmdDdMm(startYmd)} al ${formatYmdDdMm(todayYmd)}`,
-          `Total ordenes: ${pendingRows.length}`,
-          `Cuadrillas con pendientes: ${cuadrillaCount}`,
-        ].join("\n"),
+          `📦 Órdenes pendientes: ${pendingRows.length}`,
+          `👥 Cuadrillas con pendientes: ${cuadrillaCount}`,
+          pendingRows.length === 0 ? "✅ ¡Todo al día!" : "",
+        ].filter(Boolean).join("\n"),
       });
 
-      await sendPendientesDetalladoPorCuadrillaRange(chatId, token, startYmd, todayYmd, pendingRows);
+      if (pendingRows.length > 0) {
+        await sendPendientesDetalladoPorCuadrillaRange(chatId, token, startYmd, todayYmd, pendingRows);
+      }
     }
+  }
+);
+
+export const telegramCleanupWorker = onSchedule(
+  {
+    region: "us-central1",
+    schedule: "0 3 * * 0",
+    timeZone: "America/Lima",
+    secrets: [],
+  },
+  async () => {
+    const now = Date.now();
+    const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
+    const twoHoursAgo = new Date(now - 2 * 60 * 60 * 1000);
+
+    const [updatesSnap, guardsSnap] = await Promise.all([
+      db.collection(UPDATES_COLLECTION)
+        .where("createdAt", "<", thirtyDaysAgo)
+        .limit(500)
+        .get(),
+      db.collection(FOUND_GUARDS_COLLECTION)
+        .where("createdAt", "<", twoHoursAgo)
+        .limit(500)
+        .get(),
+    ]);
+
+    const batchUpdates = db.batch();
+    for (const doc of updatesSnap.docs) batchUpdates.delete(doc.ref);
+    if (updatesSnap.size > 0) await batchUpdates.commit();
+
+    const batchGuards = db.batch();
+    for (const doc of guardsSnap.docs) batchGuards.delete(doc.ref);
+    if (guardsSnap.size > 0) await batchGuards.commit();
+
+    logger.info("telegramCleanupWorker completed", {
+      updatesDeleted: updatesSnap.size,
+      guardsDeleted: guardsSnap.size,
+    });
   }
 );

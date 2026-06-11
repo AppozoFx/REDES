@@ -4,13 +4,29 @@ function cleanValue(value: unknown): string {
   return String(value || "").trim();
 }
 
+function isInvalidSerialValue(v: string): boolean {
+  const u = v.toUpperCase().trim();
+  return (
+    !u ||
+    u === "NO" ||
+    u === "N/A" ||
+    u === "NA" ||
+    u === "-" ||
+    u === "NO TIENE" ||
+    u === "NO PRESENTA" ||
+    u === "SIN SERIE" ||
+    u === "S/N" ||
+    u === "NINGUNO"
+  );
+}
+
 function cleanSeries(values: unknown, maxItems = 4): string[] {
   if (!Array.isArray(values)) return [];
   const out: string[] = [];
   const seen = new Set<string>();
   for (const raw of values) {
     const v = cleanValue(raw);
-    if (!v) continue;
+    if (!v || isInvalidSerialValue(v)) continue;
     const key = v.toUpperCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -47,18 +63,22 @@ function extractJson(text: string): unknown | null {
 function normalizeParsed(raw: any, inputText: string): TelegramParsedTemplate | null {
   const pedido = cleanValue(raw?.pedido || "").replace(/\D/g, "");
   if (!pedido) return null;
+  const normalizeScalar = (v: unknown) => {
+    const s = cleanValue(v || "");
+    return s && !isInvalidSerialValue(s) ? s : undefined;
+  };
   return {
     pedido,
-    ctoNap: cleanValue(raw?.ctoNap || "") || undefined,
-    puerto: cleanValue(raw?.puerto || "") || undefined,
-    potenciaCtoNapDbm: cleanValue(raw?.potenciaCtoNapDbm || "") || undefined,
-    snOnt: cleanValue(raw?.snOnt || "") || undefined,
-    receptorDocumento: cleanValue(raw?.receptorDocumento || "") || undefined,
-    receptorNombres: cleanValue(raw?.receptorNombres || "") || undefined,
-    receptorTelefono: cleanValue(raw?.receptorTelefono || "") || undefined,
+    ctoNap: normalizeScalar(raw?.ctoNap),
+    puerto: normalizeScalar(raw?.puerto),
+    potenciaCtoNapDbm: normalizeScalar(raw?.potenciaCtoNapDbm),
+    snOnt: normalizeScalar(raw?.snOnt),
+    receptorDocumento: normalizeScalar(raw?.receptorDocumento),
+    receptorNombres: normalizeScalar(raw?.receptorNombres),
+    receptorTelefono: normalizeScalar(raw?.receptorTelefono),
     meshes: cleanSeries(raw?.meshes, 4),
     boxes: cleanSeries(raw?.boxes, 4),
-    snFono: cleanValue(raw?.snFono || "") || undefined,
+    snFono: normalizeScalar(raw?.snFono),
     rawText: String(inputText || "").trim(),
   };
 }
@@ -74,14 +94,23 @@ export async function parseTelegramTemplateWithAI(params: {
 
   const model = String(params.model || "gpt-4.1-mini").trim() || "gpt-4.1-mini";
   const prompt = [
-    "Extrae campos de plantilla de liquidacion tecnica.",
-    "Devuelve SOLO JSON valido con estas keys:",
+    "Eres un extractor de datos para plantillas de liquidacion tecnica de instalaciones de fibra optica.",
+    "Extrae los campos del texto y devuelve SOLO JSON valido con exactamente estas keys:",
     '{"pedido":"","ctoNap":"","puerto":"","potenciaCtoNapDbm":"","snOnt":"","receptorDocumento":"","receptorNombres":"","receptorTelefono":"","meshes":[],"boxes":[],"snFono":""}',
+    "",
     "Reglas:",
-    "1) pedido solo digitos.",
-    "2) si no encuentras un campo, deja string vacio o arreglo vacio.",
-    "3) sin texto adicional, sin markdown.",
-    `TEXTO=${text}`,
+    "1) pedido: solo digitos, busca 'Pedido', 'Cod. de Pedido', 'N° Pedido', 'Num. Pedido', 'Pedido N°'.",
+    "2) snOnt: numero de serie de la ONT. Busca 'SN ONT', 'S/N ONT', 'ID ONT', 'MAC ONT', 'Serie ONT'.",
+    "3) meshes y boxes: arrays de numeros de serie. Busca 'MESH (N)', 'SN MESH', 'WINBOX', 'SN BOX'.",
+    "4) ctoNap: identificador de caja NAP o CTO. Busca 'CTO/NAP', 'CTO', 'NAP'.",
+    "5) receptorDocumento: DNI u otro documento del receptor. Busca 'DNI', 'DOCUMENTO DE CONTACTO RECEPTOR', 'Documento del receptor'.",
+    "6) receptorNombres: nombre completo del receptor. Busca 'NOMBRES DE CONTACTO RECEPTOR', 'Nombres del receptor', 'Cliente receptor'.",
+    "7) receptorTelefono: telefono del receptor. Busca 'TELEFONO DE CONTACTO RECEPTOR', 'Tel.', 'Cel.'.",
+    "8) snFono: numero de serie del telefono. Busca 'FONOWIN', 'SN FONO', 'Fono Win'.",
+    "9) Si un campo no existe o tiene valor 'NO', 'N/A', 'NO TIENE', 'NO PRESENTA', deja string vacio o arreglo vacio.",
+    "10) Sin texto adicional, sin markdown, sin explicaciones.",
+    "",
+    `TEXTO:\n${text}`,
   ].join("\n");
 
   const response = await fetch("https://api.openai.com/v1/responses", {

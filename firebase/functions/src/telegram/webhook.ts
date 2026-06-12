@@ -1151,9 +1151,34 @@ async function sendCuadrillaStatus(
     fetchOrdenesFinalizadasByYmd(ymd),
     fetchPreliqKeysByRange(chatId, ymd, ymd),
   ]);
+
+  // Órdenes con preliq que aún no aparecen en allDoneOrders (estado "Iniciada"
+  // sin instalación liquidada todavía — WinBo no actualizó "Finalizada" aún).
+  const doneSet = new Set(allDoneOrders.map((r) => r.pedido));
+  const missingKeys = [...preliqKeys].filter((k) => !doneSet.has(k));
+  let extraOrders: OrdenResumen[] = [];
+  if (missingKeys.length > 0) {
+    const chunks: string[][] = [];
+    for (let i = 0; i < missingKeys.length; i += 30) chunks.push(missingKeys.slice(i, i + 30));
+    for (const batch of chunks) {
+      const snap = await db
+        .collection(ORDENES_COLLECTION)
+        .where("fSoliYmd", "==", ymd)
+        .where("codiSeguiClien", "in", batch)
+        .get();
+      for (const doc of snap.docs) {
+        const data = (doc.data() || {}) as Record<string, unknown>;
+        if (!isOrdenConsiderada(data)) continue;
+        const row = buildOrdenResumen(data);
+        if (row.pedido && !doneSet.has(row.pedido)) extraOrders.push(row);
+      }
+    }
+  }
+
+  const allOrders = dedupeListByPedido([...allDoneOrders, ...extraOrders]);
   const byCuadrilla = (row: OrdenResumen) =>
     row.cuadrillaNombre === cuadrilla || row.cuadrillaId === cuadrilla;
-  const cuadrillaOrders = allDoneOrders.filter(byCuadrilla);
+  const cuadrillaOrders = allOrders.filter(byCuadrilla);
   const liquidated = cuadrillaOrders.filter((row) => preliqKeys.has(row.pedido));
   const pending = cuadrillaOrders.filter((row) => !preliqKeys.has(row.pedido));
   const text = buildCuadrillaStatusMessage({

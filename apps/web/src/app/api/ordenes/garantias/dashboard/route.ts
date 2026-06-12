@@ -139,7 +139,7 @@ function pct(n: number, total: number) {
 // Campos mínimos que necesitamos de cada orden — reduce payload ~60%
 const ORDENES_SELECT = [
   "fSoliYmd", "estado", "tipo", "tipoTraba", "idenServi", "tipoServicio",
-  "codiSeguiClien", "cliente", "ordenId", "cuadrillaNombre", "cuadrillaId",
+  "codiSeguiClien", "codiSegui", "tipoSeguiClien", "cliente", "ordenId", "cuadrillaNombre", "cuadrillaId",
   "coordinadorCuadrilla", "fechaInstalacionBase", "diasDesdeInstalacion",
   "motivoGarantia", "casoGarantia", "diagnosticoGarantia",
   "motivoCancelacion", "motivoFinalizacion",

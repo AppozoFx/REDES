@@ -181,6 +181,8 @@ function pickBusinessComparable(doc: Partial<OrdenDoc>): Record<string, any> {
     "region",
     "zonaDistrito",
     "codiSeguiClien",
+    "codiSegui",
+    "tipoSeguiClien",
     "numeroDocumento",
     "telefono",
     "motivoCancelacion",
@@ -220,6 +222,13 @@ function pickBusinessComparable(doc: Partial<OrdenDoc>): Record<string, any> {
   return out;
 }
 
+function deriveTipoSeguiClien(raw?: string): "GAR" | "AT" | undefined {
+  if (!raw) return undefined;
+  if (raw.startsWith("GAR-")) return "GAR";
+  if (raw.startsWith("AT-")) return "AT";
+  return undefined;
+}
+
 export async function upsertOrden(input: {
   ordenId: string;
   tipoOrden?: string;
@@ -236,6 +245,7 @@ export async function upsertOrden(input: {
   region?: string;
   zonaDistrito?: string;
   codiSeguiClien?: string;
+  codiSegui?: string;
   numeroDocumento?: string;
   telefono?: string;
   fechaFinVisi?: Date | null;
@@ -288,6 +298,8 @@ export async function upsertOrden(input: {
     region: input.region || undefined,
     zonaDistrito: input.zonaDistrito || undefined,
     codiSeguiClien: input.codiSeguiClien || undefined,
+    codiSegui: input.codiSegui || undefined,
+    tipoSeguiClien: deriveTipoSeguiClien(input.codiSegui),
     numeroDocumento: input.numeroDocumento || undefined,
     telefono: input.telefono || undefined,
     motivoCancelacion: input.motivoCancelacion || undefined,

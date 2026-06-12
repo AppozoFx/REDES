@@ -16,6 +16,8 @@ export const OrdenDocSchema = z.object({
   region: z.string().optional(),
   zonaDistrito: z.string().optional(),
   codiSeguiClien: z.string().optional(),
+  codiSegui: z.string().optional(),
+  tipoSeguiClien: z.enum(["GAR", "AT"]).optional(),
   numeroDocumento: z.string().optional(),
   telefono: z.string().optional(),
   motivoCancelacion: z.string().optional(),

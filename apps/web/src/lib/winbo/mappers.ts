@@ -14,6 +14,7 @@ export type OrdenImportInput = {
   region?: string;
   zonaDistrito?: string;
   codiSeguiClien?: string;
+  codiSegui?: string;
   numeroDocumento?: string;
   telefono?: string;
   fechaFinVisi?: Date | null;
@@ -125,6 +126,7 @@ function buildPayload(row: ParsedWinboRow): OrdenImportInput | null {
     region: emptyToUndefined(firstNonEmpty(row, ["region"])),
     zonaDistrito: emptyToUndefined(firstNonEmpty(row, ["zonadistrito", "zona", "distrito"])),
     codiSeguiClien: emptyToUndefined(firstNonEmpty(row, ["codiseguiclien", "codigoseguimientocliente", "codigocliente"])),
+    codiSegui: emptyToUndefined(firstNonEmpty(row, ["codisegui"])),
     numeroDocumento: emptyToUndefined(firstNonEmpty(row, ["numerodocumento", "documento", "dni"])),
     telefono: emptyToUndefined(
       firstNonEmpty(row, ["telefono", "telefono1", "celular", "telemovilnume", "telemovil", "movil"])

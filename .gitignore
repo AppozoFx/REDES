@@ -50,5 +50,9 @@ coverage/
 
 # Firebase Emulator persisted data
 /firebase/.emulator-data/
-/firebase/.emulator-data/
 /firebase/emulator-debug.log*
+
+# Claude Code — solo configuración local personal
+.claude/settings.local.json
+CLAUDE.md
+.mcp.json

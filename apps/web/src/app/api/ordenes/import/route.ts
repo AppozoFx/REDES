@@ -28,11 +28,13 @@ type OrdenImportInput = {
   region?: string;
   zonaDistrito?: string;
   codiSeguiClien?: string;
+  codiSegui?: string;
   numeroDocumento?: string;
   telefono?: string;
   fechaFinVisi?: Date | null;
   fechaIniVisi?: Date | null;
   motivoCancelacion?: string;
+  motivoFinalizacion?: string;
   georeferencia?: string;
 };
 
@@ -82,12 +84,14 @@ export async function POST(req: Request) {
         region: String(row[12] ?? "").trim() || undefined,
         zonaDistrito: String(row[13] ?? "").trim() || undefined,
         codiSeguiClien: String(row[14] ?? "").trim() || undefined,
-        numeroDocumento: String(row[15] ?? "").trim() || undefined,
-        telefono: String(row[16] ?? "").trim() || undefined,
-        fechaFinVisi: getDateOrNull(row[17]),
-        fechaIniVisi: getDateOrNull(row[18]),
-        motivoCancelacion: String(row[19] ?? "").trim() || undefined,
-        georeferencia: String(row[20] ?? "").trim() || undefined,
+        codiSegui: String(row[15] ?? "").trim() || undefined,
+        numeroDocumento: String(row[16] ?? "").trim() || undefined,
+        telefono: String(row[17] ?? "").trim() || undefined,
+        fechaFinVisi: getDateOrNull(row[18]),
+        fechaIniVisi: getDateOrNull(row[19]),
+        motivoCancelacion: String(row[20] ?? "").trim() || undefined,
+        motivoFinalizacion: String(row[21] ?? "").trim() || undefined,
+        georeferencia: String(row[22] ?? "").trim() || undefined,
       });
     }
 

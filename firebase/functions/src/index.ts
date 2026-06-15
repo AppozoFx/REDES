@@ -10,3 +10,4 @@ export { telegramPreliqRetryWorker } from "./telegram/webhook";
 export { telegramCleanupWorker } from "./telegram/webhook";
 export { winboOrdenesAutoSync } from "./winboScheduler";
 export { tramoAlerta1, tramoAlerta2, tramoAlerta3, tramoAlertaCierreRuta } from "./tramoAlertas";
+export { garantiasCruceSync } from "./garantiasCruceSync";

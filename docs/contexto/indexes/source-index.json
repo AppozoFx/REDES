@@ -1,0 +1,242 @@
+﻿{
+    "project":  "REDES",
+    "scan_date":  "2026-06-15",
+    "phase":  "3-incremental-maintenance",
+    "coverage":  "partial-changed-units",
+    "root":  "C:\\Proyectos\\REDES",
+    "excluded_from_deep_read":  [
+                                    ".git",
+                                    "node_modules",
+                                    ".next",
+                                    "dist",
+                                    "build",
+                                    "__pycache__",
+                                    "binary assets",
+                                    "local secrets",
+                                    "temporary unzip/build artifacts"
+                                ],
+    "units":  [
+                  {
+                      "title":  "Cruce de garantias WIN/REDES",
+                      "type":  "api-route-flow-bigquery",
+                      "source_path":  "apps/web/src/app/api/ordenes/garantias/cruce",
+                      "documentation_path":  "docs/contexto/web/garantias-cruce.md",
+                      "status":  "review",
+                      "priority":  "high",
+                      "last_documented":  "2026-06-15",
+                      "notes":  "Revision incremental 2026-06-15: actualizado contrato KPI/matching. GAR REDES incluye Finalizada/Cancelada, tasa usa clientes unicos, denominador usa tipos explicitos de instalacion. Faltan import/preview, SQL/backfills, reglas Firestore y validacion BigQuery."
+                  },
+                  {
+                      "title":  "Auth/RBAC mobile",
+                      "type":  "auth-rbac-flow",
+                      "source_path":  "apps/web/src/core/auth",
+                      "documentation_path":  "docs/contexto/web/auth-rbac-mobile.md",
+                      "status":  "review",
+                      "priority":  "high",
+                      "last_documented":  "2026-06-14",
+                      "paired_project":  "REDES-MOBILE",
+                      "paired_source_path":  "C:\\Proyectos\\REDES-MOBILE\\app\\src\\main\\java\\com\\redes\\app\\data\\session",
+                      "notes":  "Firebase Admin auth, accessContext, effective permissions, bootstrap, /api/mobile/me y cruce Android documentados. Requiere validar defaultRole mobile, 401/403 y permisos no usados por Android."
+                  },
+                  {
+                      "title":  "API mobile REDES + Network/API REDES-MOBILE",
+                      "type":  "api-route-group",
+                      "source_path":  "apps/web/src/app/api/mobile",
+                      "documentation_path":  "docs/contexto/web/api-routes.md",
+                      "status":  "review",
+                      "priority":  "high",
+                      "last_documented":  "2026-06-13",
+                      "paired_project":  "REDES-MOBILE",
+                      "paired_source_path":  "C:\\Proyectos\\REDES-MOBILE\\app\\src\\main\\java\\com\\redes\\app\\network",
+                      "notes":  "Contrato backend/Android documentado. Requiere validar inconsistencias puntuales antes de marcar Documentado."
+                  },
+                  {
+                      "title":  "Web App Router",
+                      "type":  "route-group",
+                      "source_path":  "apps/web/src/app",
+                      "documentation_path":  "docs/contexto/web/routes.md",
+                      "status":  "pending",
+                      "priority":  "high"
+                  },
+                  {
+                      "title":  "Domain services",
+                      "type":  "service-group",
+                      "source_path":  "apps/web/src/domain",
+                      "documentation_path":  "docs/contexto/web/domain-services.md",
+                      "status":  "pending",
+                      "priority":  "high"
+                  },
+                  {
+                      "title":  "Firebase rules and functions",
+                      "type":  "firebase",
+                      "source_path":  "firebase",
+                      "documentation_path":  "docs/contexto/firebase/auth-firestore-rules.md",
+                      "status":  "pending",
+                      "priority":  "high"
+                  },
+                  {
+                      "title":  "Cloud Run acta-engine",
+                      "type":  "cloudrun-service",
+                      "source_path":  "cloudrun/acta-engine",
+                      "documentation_path":  "docs/contexto/cloudrun/acta-engine.md",
+                      "status":  "pending",
+                      "priority":  "medium"
+                  },
+                  {
+                      "title":  "Scripts operativos",
+                      "type":  "script-family",
+                      "source_path":  "scripts",
+                      "documentation_path":  "docs/contexto/scripts/maintenance-scripts.md",
+                      "status":  "pending",
+                      "priority":  "medium"
+                  }
+              ],
+    "deep_dive_api_mobile":  {
+                                 "status":  "review",
+                                 "source_path":  "C:\\Proyectos\\REDES\\apps\\web\\src\\app\\api\\mobile",
+                                 "documentation_path":  "C:\\Proyectos\\REDES\\docs\\contexto\\web\\api-routes.md",
+                                 "routes_read_count":  30,
+                                 "backend_dependency_files_read":  [
+                                                                       "apps/web/src/core/auth/mobile.ts",
+                                                                       "apps/web/src/core/auth/mobileBootstrap.ts",
+                                                                       "apps/web/src/core/auth/mobileTecnico.ts",
+                                                                       "apps/web/src/core/auth/mobileSupervisor.ts",
+                                                                       "apps/web/src/core/auth/mobileCoordinador.ts"
+                                                                   ],
+                                 "route_files_read":  [
+                                                          "apps/web/src/app/api/mobile/alertas-app/route.ts",
+                                                          "apps/web/src/app/api/mobile/bootstrap/route.ts",
+                                                          "apps/web/src/app/api/mobile/comunicados/[id]/seen/route.ts",
+                                                          "apps/web/src/app/api/mobile/coordinador/auditoria/route.ts",
+                                                          "apps/web/src/app/api/mobile/coordinador/auditoria/sustentar/route.ts",
+                                                          "apps/web/src/app/api/mobile/coordinador/cuadrillas/route.ts",
+                                                          "apps/web/src/app/api/mobile/coordinador/inicio/route.ts",
+                                                          "apps/web/src/app/api/mobile/coordinador/mapa/route.ts",
+                                                          "apps/web/src/app/api/mobile/coordinador/plantillas/route.ts",
+                                                          "apps/web/src/app/api/mobile/coordinador/predespacho/route.ts",
+                                                          "apps/web/src/app/api/mobile/coordinador/stock/route.ts",
+                                                          "apps/web/src/app/api/mobile/coordinador/ventas/route.ts",
+                                                          "apps/web/src/app/api/mobile/inicio-jornada/route.ts",
+                                                          "apps/web/src/app/api/mobile/me/route.ts",
+                                                          "apps/web/src/app/api/mobile/presencia/route.ts",
+                                                          "apps/web/src/app/api/mobile/supervisor/cuadrillas-mapa/route.ts",
+                                                          "apps/web/src/app/api/mobile/supervisor/garantias/update/route.ts",
+                                                          "apps/web/src/app/api/mobile/supervisor/home/route.ts",
+                                                          "apps/web/src/app/api/mobile/supervisor/jornada/route.ts",
+                                                          "apps/web/src/app/api/mobile/supervisor/mapa/route.ts",
+                                                          "apps/web/src/app/api/mobile/supervisor/ordenes/[id]/route.ts",
+                                                          "apps/web/src/app/api/mobile/supervisor/ordenes/route.ts",
+                                                          "apps/web/src/app/api/mobile/supervisor/supervision/route.ts",
+                                                          "apps/web/src/app/api/mobile/tecnico/cuadrillas-mapa/route.ts",
+                                                          "apps/web/src/app/api/mobile/tecnico/home/route.ts",
+                                                          "apps/web/src/app/api/mobile/tecnico/mapa/route.ts",
+                                                          "apps/web/src/app/api/mobile/tecnico/ordenes/[id]/route.ts",
+                                                          "apps/web/src/app/api/mobile/tecnico/ordenes/route.ts",
+                                                          "apps/web/src/app/api/mobile/tecnico/stock/route.ts",
+                                                          "apps/web/src/app/api/mobile/tracking/route.ts"
+                                                      ],
+                                 "review_items":  [
+                                                      "RemoteSupervisorRepository.iniciarJornada llama endpoint tecnico /api/mobile/inicio-jornada.",
+                                                      "COORDINADOR_CUADRILLAS_MAPA usa /api/mobile/tecnico/cuadrillas-mapa.",
+                                                      "Errores de rol lanzados por helpers mobile no siempre se traducen a 403.",
+                                                      "Mensajes Android de 404 dicen que endpoints existentes aun no existen."
+                                                  ],
+                                 "closure_notes":  [
+                                                       "Cierre corto 2026-06-13: consumidores Android revisados sin repetir deep dive; LocationTrackingService.kt existe en REDES-MOBILE bajo app/src/main/java/com/redes/app/data/tracking.",
+                                                       "La unidad se mantiene en review porque las inconsistencias de contrato requieren decision humana."
+                                                   ]
+                             },
+    "deep_dive_auth_rbac_mobile":  {
+                                       "status":  "review",
+                                       "source_path":  "C:\\Proyectos\\REDES\\apps\\web\\src\\core\\auth",
+                                       "documentation_path":  "C:\\Proyectos\\REDES\\docs\\contexto\\web\\auth-rbac-mobile.md",
+                                       "last_documented":  "2026-06-14",
+                                       "backend_files_read":  [
+                                                                  "apps/web/src/core/auth/mobile.ts",
+                                                                  "apps/web/src/core/auth/mobileBootstrap.ts",
+                                                                  "apps/web/src/core/auth/accessContext.ts",
+                                                                  "apps/web/src/core/auth/accessContext.cached.ts",
+                                                                  "apps/web/src/core/auth/mobileTecnico.ts",
+                                                                  "apps/web/src/core/auth/mobileSupervisor.ts",
+                                                                  "apps/web/src/core/auth/mobileCoordinador.ts",
+                                                                  "apps/web/src/core/rbac/homeRoute.ts",
+                                                                  "apps/web/src/core/rbac/menu.ts",
+                                                                  "apps/web/src/core/rbac/buildHomeNav.ts",
+                                                                  "apps/web/src/lib/rbac.ts",
+                                                                  "apps/web/src/domain/roles/repo.ts",
+                                                                  "apps/web/src/domain/comunicados/service.ts",
+                                                                  "apps/web/src/app/api/mobile/bootstrap/route.ts",
+                                                                  "apps/web/src/app/api/mobile/me/route.ts",
+                                                                  "apps/web/src/app/api/mobile/comunicados/[id]/seen/route.ts"
+                                                              ],
+                                       "review_items":  [
+                                                            "/api/mobile/me existe pero no se encontro consumidor Android directo.",
+                                                            "getMobileAuthContext devuelve null tanto para token invalido como para access inexistente o inhabilitado.",
+                                                            "defaultRole reutiliza prioridad web y puede devolver roles sin shell Android.",
+                                                            "Permisos efectivos se devuelven a Android, pero no se observo gating por permisos.",
+                                                            "accessContextCached puede mantener roles/permisos hasta 60 segundos en produccion.",
+                                                            "Errores de rol de helpers mobile no siempre se traducen a 403.",
+                                                            "Force update no esta reforzado por bootstrap backend."
+                                                        ],
+                                       "closure_notes":  [
+                                                             "Cierre corto 2026-06-14: ruta apps/web/src/app/api/mobile/comunicados/[id]/seen/route.ts validada con Get-Content -LiteralPath; endpoint autentica con getMobileAuthContext, valida id y marca visto con markMobileComunicadoSeen.",
+                                                             "La unidad queda en review porque las inconsistencias restantes requieren decision humana."
+                                                         ]
+                                   },
+    "next_recommended_unit":  "Firebase Functions + BigQuery scripts de garantias",
+    "incremental_refresh_2026_06_14":  {
+                                           "status":  "review",
+                                           "changed_files":  [
+                                                                 "apps/web/src/app/(protected)/home/ordenes/garantias/cruce/GarantiasCruceClient.tsx",
+                                                                 "apps/web/src/app/api/ordenes/garantias/cruce/route.ts",
+                                                                 "firebase/functions/src/index.ts",
+                                                                 "firebase/functions/src/garantiasCruceSync.ts",
+                                                                 "scripts/backfill_garantias_cruce_bq.ts",
+                                                                 "scripts/bigquery_garantias_cruce_setup.sql",
+                                                                 "scripts/bigquery_garantias_dashboard.sql",
+                                                                 "scripts/bigquery_update_vw_instalacion_garantia.sql"
+                                                             ],
+                                           "documentation_updates":  [
+                                                                         "docs/contexto/web/garantias-cruce.md",
+                                                                         "docs/contexto/INDEX.md",
+                                                                         "docs/contexto/PENDIENTES.md",
+                                                                         "docs/contexto/CHANGELOG-CONTEXTO.md"
+                                                                     ],
+                                           "new_pending":  [
+                                                               "cruce import/preview routes",
+                                                               "SQL/backfills BigQuery garantias",
+                                                               "Firestore rules for garantias_cruce_*",
+                                                               "BigQuery sync failure tolerance"
+                                                           ]
+                                       },
+    "incremental_refresh_2026_06_15":  {
+                                           "status":  "review",
+                                           "changed_files":  [
+                                                                 "apps/web/src/app/(protected)/home/ordenes/garantias/cruce/GarantiasCruceClient.tsx",
+                                                                 "apps/web/src/app/api/ordenes/garantias/cruce/route.ts",
+                                                                 "firebase/functions/package-lock.json",
+                                                                 "firebase/functions/package.json",
+                                                                 "firebase/functions/src/index.ts",
+                                                                 "firebase/functions/src/garantiasCruceSync.ts",
+                                                                 "firebase/functions/backfill_garantias_cruce_bq.ts",
+                                                                 "scripts/backfill_garantias_cruce_bq.ts",
+                                                                 "scripts/backfill_instalaciones_abril_bq.ts",
+                                                                 "scripts/bigquery_garantias_cruce_setup.sql",
+                                                                 "scripts/bigquery_garantias_dashboard.sql",
+                                                                 "scripts/bigquery_update_vw_instalacion_garantia.sql"
+                                                             ],
+                                           "documentation_updates":  [
+                                                                         "docs/contexto/web/garantias-cruce.md",
+                                                                         "docs/contexto/INDEX.md",
+                                                                         "docs/contexto/PENDIENTES.md",
+                                                                         "docs/contexto/CHANGELOG-CONTEXTO.md"
+                                                                     ],
+                                           "new_pending":  [
+                                                               "validar KPI redesGarTotal con negocio",
+                                                               "documentar SQL/backfills BigQuery garantias",
+                                                               "comparar variantes de backfill",
+                                                               "mantener BBDD_M&D_01-06-2026.xlsx como sensible/no abierto"
+                                                           ],
+                                           "notion_sync":  "hub_updated_37e35bc7-7253-8166-be5c-ec09e4f30877"
+                                       }
+}

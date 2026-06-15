@@ -49,6 +49,7 @@ type RedesGarantia = {
   diasDesdeInstalacion: number | null;
   estado: string;
   finalizada: boolean;
+  cancelada: boolean;
   cuadrilla: string;
   motivo: string;
   coordinadorUid: string;
@@ -60,7 +61,7 @@ type RedesGarantia = {
 };
 
 type CruceRow = {
-  status: "COINCIDE" | "COINCIDE_FECHA_DIFERENTE" | "PROVEEDOR_REDES_NO_FINALIZADA" | "SOLO_PROVEEDOR";
+  status: "COINCIDE" | "COINCIDE_FECHA_DIFERENTE" | "PROVEEDOR_REDES_PENDIENTE" | "SOLO_PROVEEDOR";
   statusLabel: string;
   exactFechaGarantia: boolean;
   exactFechaInstalacion: boolean;
@@ -138,9 +139,16 @@ function isFinalizada(raw: string) {
   return normalizeEstado(raw) === "Finalizada";
 }
 
+function isCancelada(raw: string) {
+  return normalizeEstado(raw) === "Cancelada";
+}
+
 function isGarantia(x: any) {
   const txt = `${String(x?.tipo || "")} ${String(x?.tipoTraba || "")} ${String(x?.idenServi || "")} ${String(x?.tipoServicio || "")} ${String(x?.estado || "")}`.toUpperCase();
-  return txt.includes("GARANTIA");
+  if (!txt.includes("GARANTIA")) return false;
+  // Solo contar GAR; excluir AT (Atención Técnica)
+  const tipoSeguiClien = String(x?.tipoSeguiClien || "").trim().toUpperCase();
+  return tipoSeguiClien === "GAR" || tipoSeguiClien === "";
 }
 
 function normalizeMotivo(row: any) {
@@ -230,6 +238,7 @@ function buildRedesGarantia(raw: any, relatedByCode: Map<string, any[]>, coordMa
     diasDesdeInstalacion,
     estado,
     finalizada: isFinalizada(estado),
+    cancelada: isCancelada(estado),
     cuadrilla: String(raw.cuadrillaNombre || raw.cuadrillaId || ""),
     motivo: normalizeMotivo(raw),
     coordinadorUid,
@@ -246,7 +255,7 @@ function scoreCandidate(provider: ProviderGarantia, redes: RedesGarantia) {
   if (provider.codPedido && provider.codPedido === redes.codigoCliente) score += 20;
   if (provider.fechaAtencionYmd && provider.fechaAtencionYmd === redes.fechaGarantiaYmd) score += 8;
   if (provider.fechaInstalacionYmd && provider.fechaInstalacionYmd === redes.fechaInstalacionBase) score += 6;
-  if (redes.finalizada) score += 3;
+  if (redes.finalizada || redes.cancelada) score += 3;
   const pName = normalizeText(provider.nombre);
   const rName = normalizeText(redes.cliente);
   if (pName && rName && (pName === rName || pName.includes(rName) || rName.includes(pName))) score += 2;
@@ -265,7 +274,7 @@ function findBestRedesMatch(provider: ProviderGarantia, redesItems: RedesGaranti
 }
 
 function buildCruce(providerRows: ProviderGarantia[], redesItems: RedesGarantia[]) {
-  const matchedRedesFinalizadas = new Set<string>();
+  const matchedRedesGar = new Set<string>();
   const cruceRows: CruceRow[] = providerRows.map((provider) => {
     const redes = findBestRedesMatch(provider, redesItems);
     if (!redes) {
@@ -281,12 +290,13 @@ function buildCruce(providerRows: ProviderGarantia[], redesItems: RedesGarantia[
 
     const exactFechaGarantia = provider.fechaAtencionYmd === redes.fechaGarantiaYmd;
     const exactFechaInstalacion = provider.fechaInstalacionYmd === redes.fechaInstalacionBase;
-    if (redes.finalizada) matchedRedesFinalizadas.add(redes.id);
 
-    if (!redes.finalizada) {
+    if (redes.finalizada || redes.cancelada) {
+      matchedRedesGar.add(redes.id);
+      const status = exactFechaGarantia && exactFechaInstalacion ? "COINCIDE" : "COINCIDE_FECHA_DIFERENTE";
       return {
-        status: "PROVEEDOR_REDES_NO_FINALIZADA",
-        statusLabel: "WIN cuenta / REDES no finalizada",
+        status,
+        statusLabel: status === "COINCIDE" ? "Coincide" : "Coincide con fecha diferente",
         exactFechaGarantia,
         exactFechaInstalacion,
         provider,
@@ -294,10 +304,9 @@ function buildCruce(providerRows: ProviderGarantia[], redesItems: RedesGarantia[
       };
     }
 
-    const status = exactFechaGarantia && exactFechaInstalacion ? "COINCIDE" : "COINCIDE_FECHA_DIFERENTE";
     return {
-      status,
-      statusLabel: status === "COINCIDE" ? "Coincide" : "Coincide con fecha diferente",
+      status: "PROVEEDOR_REDES_PENDIENTE",
+      statusLabel: "WIN cuenta / REDES pendiente",
       exactFechaGarantia,
       exactFechaInstalacion,
       provider,
@@ -306,8 +315,8 @@ function buildCruce(providerRows: ProviderGarantia[], redesItems: RedesGarantia[
   });
 
   const redesSolo = redesItems
-    .filter((item) => item.finalizada)
-    .filter((item) => !matchedRedesFinalizadas.has(item.id))
+    .filter((item) => item.finalizada || item.cancelada)
+    .filter((item) => !matchedRedesGar.has(item.id))
     .sort((a, b) => {
       const dateCmp = a.fechaGarantiaYmd.localeCompare(b.fechaGarantiaYmd);
       if (dateCmp !== 0) return dateCmp;
@@ -356,6 +365,7 @@ function countByCuadrilla(providerRows: ProviderGarantia[], redesFinalizadas: Re
 
 const ORDENES_SELECT = [
   "fSoliYmd", "estado", "tipo", "tipoTraba", "idenServi", "tipoServicio",
+  "tipoSeguiClien",
   "codiSeguiClien", "cliente", "ordenId", "cuadrillaNombre", "cuadrillaId",
   "coordinadorCuadrilla", "fechaInstalacionBase", "diasDesdeInstalacion",
   "motivoGarantia", "casoGarantia", "diagnosticoGarantia",
@@ -502,17 +512,27 @@ export async function GET(req: Request) {
       return { ...item, recurrente: (recurrenceGroups.get(key) || 0) > 1 };
     });
 
-    const redesFinalizadas = redesItems.filter((item) => item.finalizada);
+    const redesGarValidas = redesItems.filter((item) => item.finalizada || item.cancelada);
+    // Reincidentes cuentan 1 vez: deduplicar por codigoCliente para la tasa
+    const redesGarClientesSet = new Set(redesGarValidas.map((i) => i.codigoCliente || i.id));
+    const TIPOS_INSTALACION = new Set([
+      "INSTALACION",
+      "INSTALACION POSIBLE FRAUDE",
+      "WINBOX EN COMODATO",
+      "MESH + WINBOX EN COMODATO",
+      "PAGO ADELANTADO",
+    ]);
     const instalacionesFinalizadas = docs.filter((x) => {
-      if (isGarantia(x)) return false;
+      const tipoTraba = String(x?.tipoTraba || "").trim().toUpperCase();
+      if (!TIPOS_INSTALACION.has(tipoTraba)) return false;
       if (!isFinalizada(String(x?.estado || ""))) return false;
       const ymd = String(x?.fSoliYmd || "").trim();
       return ymd >= bounds.startYmd && ymd <= bounds.endYmd;
     }).length;
 
     const { cruceRows, redesSolo } = buildCruce(providerRows, redesItems);
-    const coincidenciasFinalizadas = cruceRows.filter((row) => row.redes?.finalizada).length;
-    const proveedorRedesNoFinalizada = cruceRows.filter((row) => row.status === "PROVEEDOR_REDES_NO_FINALIZADA").length;
+    const coincidenciasGar = cruceRows.filter((row) => row.redes?.finalizada || row.redes?.cancelada).length;
+    const proveedorRedesPendiente = cruceRows.filter((row) => row.status === "PROVEEDOR_REDES_PENDIENTE").length;
     const proveedorSinRedes = cruceRows.filter((row) => row.status === "SOLO_PROVEEDOR").length;
 
     const responseJson = {
@@ -532,28 +552,31 @@ export async function GET(req: Request) {
       },
       kpi: {
         proveedorGarantias: providerRows.length,
-        redesGarantiasFinalizadas: redesFinalizadas.length,
+        redesGarTotal: redesGarClientesSet.size,
+        redesGarOrdenes: redesGarValidas.length,
+        redesGarFinalizadas: redesItems.filter((item) => item.finalizada).length,
+        redesGarCanceladas: redesItems.filter((item) => item.cancelada).length,
         redesGarantiasTotal: redesItems.length,
         instalacionesFinalizadas,
         proveedorTasaPct: pct(providerRows.length, instalacionesFinalizadas),
-        redesTasaPct: pct(redesFinalizadas.length, instalacionesFinalizadas),
-        brechaGarantias: providerRows.length - redesFinalizadas.length,
-        brechaTasaPct: Number((pct(providerRows.length, instalacionesFinalizadas) - pct(redesFinalizadas.length, instalacionesFinalizadas)).toFixed(2)),
-        coincidenciasFinalizadas,
+        redesTasaPct: pct(redesGarClientesSet.size, instalacionesFinalizadas),
+        brechaGarantias: providerRows.length - redesGarClientesSet.size,
+        brechaTasaPct: Number((pct(providerRows.length, instalacionesFinalizadas) - pct(redesGarClientesSet.size, instalacionesFinalizadas)).toFixed(2)),
+        coincidenciasGar,
         proveedorSinRedes,
-        proveedorRedesNoFinalizada,
+        proveedorRedesPendiente,
         redesSinProveedor: redesSolo.length,
       },
       series: {
         providerByAttentionMonth: countByAttentionMonth(providerRows),
-        byDay: countByDay(providerRows, redesFinalizadas),
-        byCuadrilla: countByCuadrilla(providerRows, redesFinalizadas),
+        byDay: countByDay(providerRows, redesGarValidas),
+        byCuadrilla: countByCuadrilla(providerRows, redesGarValidas),
       },
       detail: {
         cruce: cruceRows,
         redesSolo,
         providerRows,
-        redesFinalizadas,
+        redesGarValidas,
       },
     };
 

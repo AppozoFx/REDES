@@ -42,6 +42,7 @@ type RedesGarantia = {
   diasDesdeInstalacion: number | null;
   estado: string;
   finalizada: boolean;
+  cancelada: boolean;
   cuadrilla: string;
   motivo: string;
   coordinadorUid: string;
@@ -53,7 +54,7 @@ type RedesGarantia = {
 };
 
 type CruceRow = {
-  status: "COINCIDE" | "COINCIDE_FECHA_DIFERENTE" | "PROVEEDOR_REDES_NO_FINALIZADA" | "SOLO_PROVEEDOR";
+  status: "COINCIDE" | "COINCIDE_FECHA_DIFERENTE" | "PROVEEDOR_REDES_PENDIENTE" | "SOLO_PROVEEDOR";
   statusLabel: string;
   exactFechaGarantia: boolean;
   exactFechaInstalacion: boolean;
@@ -83,16 +84,19 @@ type PeriodInfo = {
 
 type KpiData = {
   proveedorGarantias: number;
-  redesGarantiasFinalizadas: number;
+  redesGarTotal: number;
+  redesGarOrdenes?: number;
+  redesGarFinalizadas: number;
+  redesGarCanceladas: number;
   redesGarantiasTotal: number;
   instalacionesFinalizadas: number;
   proveedorTasaPct: number;
   redesTasaPct: number;
   brechaGarantias: number;
   brechaTasaPct: number;
-  coincidenciasFinalizadas: number;
+  coincidenciasGar: number;
   proveedorSinRedes: number;
-  proveedorRedesNoFinalizada: number;
+  proveedorRedesPendiente: number;
   redesSinProveedor: number;
 };
 
@@ -110,7 +114,7 @@ type Resp = {
     cruce: CruceRow[];
     redesSolo: RedesGarantia[];
     providerRows: ProviderGarantia[];
-    redesFinalizadas: RedesGarantia[];
+    redesGarValidas: RedesGarantia[];
   };
 };
 
@@ -203,8 +207,8 @@ function formatPct(n: number) {
 
 const VIEW_LABELS: Record<ViewKey, string> = {
   resumen: "Todo el cruce",
-  coinciden: "Coinciden",
-  proveedor: "WIN cuenta / REDES no finalizadas",
+  coinciden: "Coinciden con WIN",
+  proveedor: "WIN tiene / REDES pendiente",
   soloProveedor: "Solo WIN",
   soloRedes: "Solo REDES",
 };
@@ -212,7 +216,7 @@ const VIEW_LABELS: Record<ViewKey, string> = {
 function statusClass(status: CruceRow["status"]) {
   if (status === "COINCIDE") return "border-emerald-200 bg-emerald-50 text-emerald-800";
   if (status === "COINCIDE_FECHA_DIFERENTE") return "border-blue-200 bg-blue-50 text-blue-800";
-  if (status === "PROVEEDOR_REDES_NO_FINALIZADA") return "border-amber-200 bg-amber-50 text-amber-800";
+  if (status === "PROVEEDOR_REDES_PENDIENTE") return "border-amber-200 bg-amber-50 text-amber-800";
   return "border-rose-200 bg-rose-50 text-rose-800";
 }
 
@@ -351,26 +355,29 @@ function downloadWorkbook(data: Required<Pick<Resp, "period" | "kpi" | "series" 
     [""],
     ["Metrica", "Valor"],
     ["Garantias WIN", data.kpi.proveedorGarantias],
-    ["Garantias REDES finalizadas", data.kpi.redesGarantiasFinalizadas],
+    ["Garantias REDES GAR (clientes unicos, fin. + cancel.)", data.kpi.redesGarTotal],
+    ["  - REDES ordenes totales", data.kpi.redesGarOrdenes ?? data.kpi.redesGarTotal],
+    ["  - REDES finalizadas", data.kpi.redesGarFinalizadas],
+    ["  - REDES canceladas", data.kpi.redesGarCanceladas],
     ["Instalaciones finalizadas", data.kpi.instalacionesFinalizadas],
     ["Tasa WIN", data.kpi.proveedorTasaPct],
     ["Tasa REDES", data.kpi.redesTasaPct],
     ["Brecha garantias", data.kpi.brechaGarantias],
-    ["Coincidencias finalizadas", data.kpi.coincidenciasFinalizadas],
+    ["Coincidencias GAR", data.kpi.coincidenciasGar],
     ["WIN sin REDES", data.kpi.proveedorSinRedes],
-    ["WIN con REDES no finalizada", data.kpi.proveedorRedesNoFinalizada],
+    ["WIN con REDES pendiente", data.kpi.proveedorRedesPendiente],
     ["REDES sin WIN", data.kpi.redesSinProveedor],
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumen), "Resumen");
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.detail.cruce.map(toCruceExportRow)), "Cruce");
   XLSX.utils.book_append_sheet(
     wb,
-    XLSX.utils.json_to_sheet(data.detail.cruce.filter((r) => r.redes?.finalizada).map(toCruceExportRow)),
+    XLSX.utils.json_to_sheet(data.detail.cruce.filter((r) => r.redes?.finalizada || r.redes?.cancelada).map(toCruceExportRow)),
     "Coinciden"
   );
   XLSX.utils.book_append_sheet(
     wb,
-    XLSX.utils.json_to_sheet(data.detail.cruce.filter((r) => !r.redes?.finalizada).map(toCruceExportRow)),
+    XLSX.utils.json_to_sheet(data.detail.cruce.filter((r) => !r.redes?.finalizada && !r.redes?.cancelada).map(toCruceExportRow)),
     "WIN revisar"
   );
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.detail.redesSolo.map(toRedesExportRow)), "Solo REDES");
@@ -549,8 +556,8 @@ export default function GarantiasCruceClient() {
     const q = search.trim().toUpperCase();
     const base = data?.detail?.cruce || [];
     const byView = base.filter((row) => {
-      if (view === "coinciden") return Boolean(row.redes?.finalizada);
-      if (view === "proveedor") return !row.redes?.finalizada;
+      if (view === "coinciden") return Boolean(row.redes?.finalizada || row.redes?.cancelada);
+      if (view === "proveedor") return row.status === "PROVEEDOR_REDES_PENDIENTE";
       if (view === "soloProveedor") return row.status === "SOLO_PROVEEDOR";
       return view === "resumen";
     });
@@ -586,8 +593,8 @@ export default function GarantiasCruceClient() {
     const cruce = data?.detail?.cruce || [];
     return {
       resumen: cruce.length,
-      coinciden: cruce.filter((row) => row.redes?.finalizada).length,
-      proveedor: cruce.filter((row) => !row.redes?.finalizada).length,
+      coinciden: cruce.filter((row) => row.redes?.finalizada || row.redes?.cancelada).length,
+      proveedor: cruce.filter((row) => row.status === "PROVEEDOR_REDES_PENDIENTE").length,
       soloProveedor: cruce.filter((row) => row.status === "SOLO_PROVEEDOR").length,
       soloRedes: data?.detail?.redesSolo?.length || 0,
     };
@@ -601,7 +608,7 @@ export default function GarantiasCruceClient() {
   const matchPct = useMemo(() => {
     const kpi = data?.kpi;
     if (!kpi || !kpi.proveedorGarantias) return null;
-    return Number(((kpi.coincidenciasFinalizadas / kpi.proveedorGarantias) * 100).toFixed(1));
+    return Number(((kpi.coincidenciasGar / kpi.proveedorGarantias) * 100).toFixed(1));
   }, [data?.kpi]);
 
   const periodLabel = formatPeriodLabel(instYm);
@@ -766,16 +773,17 @@ export default function GarantiasCruceClient() {
               hint={`${formatPct(data.kpi.proveedorTasaPct)} de ${formatNum(data.kpi.instalacionesFinalizadas)} instalaciones`}
             />
             <KpiCard
-              label="REDES finalizadas"
-              value={data.kpi.redesGarantiasFinalizadas}
+              label="REDES GAR"
+              value={data.kpi.redesGarTotal}
+              sub={data.kpi.redesGarOrdenes != null ? `${data.kpi.redesGarOrdenes} órdenes` : undefined}
               tone="emerald"
-              hint={`${formatPct(data.kpi.redesTasaPct)} del mismo denominador`}
+              hint={`${formatPct(data.kpi.redesTasaPct)} · ${data.kpi.redesGarFinalizadas} fin. / ${data.kpi.redesGarCanceladas} cancel.`}
             />
             <KpiCard
               label="Tasa de coincidencia"
               value={matchPct !== null ? `${matchPct}%` : "-"}
               tone={matchPct !== null && matchPct >= 70 ? "emerald" : matchPct !== null && matchPct >= 50 ? "amber" : "rose"}
-              hint={`${data.kpi.coincidenciasFinalizadas} de ${data.kpi.proveedorGarantias} registros de WIN`}
+              hint={`${data.kpi.coincidenciasGar} de ${data.kpi.proveedorGarantias} registros de WIN`}
             />
             <KpiCard
               label="Brecha"
@@ -784,22 +792,22 @@ export default function GarantiasCruceClient() {
               hint={`${formatPct(Math.abs(data.kpi.brechaTasaPct))} pts de diferencia`}
             />
             <KpiCard
-              label="Revisar"
-              value={data.kpi.proveedorSinRedes + data.kpi.proveedorRedesNoFinalizada}
+              label="WIN sin REDES"
+              value={data.kpi.proveedorSinRedes + data.kpi.proveedorRedesPendiente}
               tone="rose"
-              hint={`${data.kpi.proveedorSinRedes} sin REDES · ${data.kpi.proveedorRedesNoFinalizada} no finalizadas`}
+              hint={`${data.kpi.proveedorSinRedes} sin registro · ${data.kpi.proveedorRedesPendiente} pendientes`}
             />
             <KpiCard
               label="Solo REDES"
               value={data.kpi.redesSinProveedor}
               tone="amber"
-              hint="Finalizadas no reportadas por WIN"
+              hint="GAR no reportadas por WIN"
             />
           </section>
 
           {/* Graficos */}
           <section className="grid gap-4 xl:grid-cols-[1.4fr_.6fr]">
-            <Panel title="Garantias por fecha de atencion" subtitle={`WIN vs REDES finalizadas · ${periodLabel}`}>
+            <Panel title="Garantias por fecha de atencion" subtitle={`WIN vs REDES GAR (final. + cancel.) · ${periodLabel}`}>
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={data.series.byDay} margin={{ left: 0, right: 12, top: 4, bottom: 0 }}>

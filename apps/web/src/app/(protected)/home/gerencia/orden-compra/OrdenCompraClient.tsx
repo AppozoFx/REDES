@@ -76,13 +76,31 @@ function defaultPeriodo() {
   };
 }
 
+// Para Mantenimiento el default es el mes anterior (ya cerrado)
+function defaultPeriodoMant() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const end = new Date(now.getFullYear(), now.getMonth(), 0);
+  return {
+    desde: start.toISOString().slice(0, 10),
+    hasta: end.toISOString().slice(0, 10),
+  };
+}
+
 function money(v: number) {
-  return `S/ ${Number(v || 0).toFixed(2)}`;
+  return `S/ ${Number(v || 0).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function defaultObservacion(tipoOc: TipoOc, periodo: { desde: string }) {
   const year = String(periodo?.desde || "").slice(0, 4) || String(new Date().getFullYear());
   return `${tipoOc} ${year}`;
+}
+
+function formatMesAnio(desde: string) {
+  if (!desde) return "-";
+  const [y, m] = desde.split("-").map(Number);
+  const d = new Date(y, m - 1, 1);
+  return d.toLocaleDateString("es-PE", { month: "long", year: "numeric" });
 }
 
 function buildItemsFromResumen(s: Resumen): Item[] {
@@ -478,6 +496,14 @@ export default function OrdenCompraClient() {
     return { subtotal, igv, total };
   }, [cleanItems]);
 
+  // El período de Mantenimiento es válido solo si el mes ya cerró (hasta < hoy)
+  const periodoYaCerrado = useMemo(() => {
+    if (!periodo.hasta) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return new Date(periodo.hasta + "T00:00:00") < today;
+  }, [periodo.hasta]);
+
   useEffect(() => {
     setCoordinadorUid("");
     setResumen(null);
@@ -486,6 +512,8 @@ export default function OrdenCompraClient() {
     setSelectedCuadrillaIds([]);
     setFaltasByCuadrilla({});
     setItems([]);
+    // Al cambiar de tipo, resetear período al default correspondiente
+    setPeriodo(tipoOc === "MANTENIMIENTO" ? defaultPeriodoMant() : defaultPeriodo());
   }, [tipoOc]);
 
   useEffect(() => {
@@ -629,6 +657,12 @@ export default function OrdenCompraClient() {
       toast.error("Selecciona al menos una cuadrilla de mantenimiento");
       return;
     }
+    if (tipoOc === "MANTENIMIENTO" && !periodoYaCerrado) {
+      toast.error(
+        `El período de ${formatMesAnio(periodo.desde)} aún no ha cerrado. Las OCs de Mantenimiento solo se generan para meses ya finalizados.`
+      );
+      return;
+    }
 
     setSaving(true);
     try {
@@ -760,42 +794,87 @@ export default function OrdenCompraClient() {
               ))}
             </select>
           </div>
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">Desde</label>
-            <input
-              type="date"
-              value={periodo.desde}
-              onChange={(e) => setPeriodo((p) => ({ ...p, desde: e.target.value }))}
-              className="h-10 w-full rounded border border-slate-300 px-3 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">Hasta</label>
-            <input
-              type="date"
-              value={periodo.hasta}
-              onChange={(e) => setPeriodo((p) => ({ ...p, hasta: e.target.value }))}
-              className="h-10 w-full rounded border border-slate-300 px-3 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-            />
-          </div>
+          {tipoOc === "MANTENIMIENTO" ? (
+            <div className="md:col-span-2 space-y-2">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                  Mes de facturación
+                </label>
+                <input
+                  type="month"
+                  value={periodo.desde.slice(0, 7)}
+                  onChange={(e) => {
+                    const ym = e.target.value;
+                    if (!ym) return;
+                    const [y, m] = ym.split("-").map(Number);
+                    const desde = `${ym}-01`;
+                    const hasta = new Date(y, m, 0).toISOString().slice(0, 10);
+                    setPeriodo({ desde, hasta });
+                  }}
+                  className={`h-10 w-full rounded border px-3 text-sm dark:bg-slate-900 dark:text-slate-100 ${
+                    periodoYaCerrado
+                      ? "border-emerald-400 dark:border-emerald-600"
+                      : "border-amber-400 dark:border-amber-600"
+                  }`}
+                />
+              </div>
+              {periodoYaCerrado ? (
+                <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                  ✓ Período cerrado — listo para generar ({formatMesAnio(periodo.desde)})
+                </p>
+              ) : (
+                <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                  ⚠ {formatMesAnio(periodo.desde)} aún no ha cerrado. Selecciona un mes ya finalizado.
+                </p>
+              )}
+              <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-800 dark:bg-sky-900/20 dark:text-sky-300">
+                <b>Regla:</b> Las OCs de Mantenimiento se generan para meses ya cerrados.
+                Ej: el pago del <b>10 de junio</b> corresponde al período{" "}
+                <b>01/05 al 31/05</b>.
+              </div>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">Desde</label>
+                <input
+                  type="date"
+                  value={periodo.desde}
+                  onChange={(e) => setPeriodo((p) => ({ ...p, desde: e.target.value }))}
+                  className="h-10 w-full rounded border border-slate-300 px-3 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">Hasta</label>
+                <input
+                  type="date"
+                  value={periodo.hasta}
+                  onChange={(e) => setPeriodo((p) => ({ ...p, hasta: e.target.value }))}
+                  className="h-10 w-full rounded border border-slate-300 px-3 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                />
+              </div>
+            </>
+          )}
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={loadInstalaciones}
-            disabled={loadingData || tipoOc !== "INSTALACIONES"}
-            className="rounded bg-[#30518c] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            {tipoOc === "INSTALACIONES" ? (loadingData ? "Cargando..." : "Cargar Instalaciones") : "Solo aplica a Instalaciones"}
-          </button>
+          {tipoOc === "INSTALACIONES" && (
+            <button
+              type="button"
+              onClick={loadInstalaciones}
+              disabled={loadingData}
+              className="rounded bg-[#30518c] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              {loadingData ? "Cargando..." : "Cargar Instalaciones"}
+            </button>
+          )}
           <button
             type="button"
             onClick={agregarItem}
             disabled={tipoOc === "MANTENIMIENTO"}
-            className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+            className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
           >
-            {tipoOc === "MANTENIMIENTO" ? "Items generados automaticamente" : "Agregar item"}
+            {tipoOc === "MANTENIMIENTO" ? "Ítems generados automáticamente" : "Agregar ítem"}
           </button>
         </div>
       </section>

@@ -46,6 +46,15 @@ function toFiniteNumber(v: unknown): number | null {
   return null;
 }
 
+function toInt(v: unknown): number {
+  if (typeof v === "number" && Number.isFinite(v)) return Math.trunc(v);
+  if (typeof v === "string" && v.trim()) {
+    const n = Number(v);
+    if (Number.isFinite(n)) return Math.trunc(n);
+  }
+  return 0;
+}
+
 function toTimestampMs(v: unknown): number | null {
   if (!v) return null;
   if (typeof (v as any)?.toDate === "function") { try { return (v as any).toDate().getTime(); } catch { return null; } }
@@ -138,6 +147,9 @@ export async function GET(req: Request) {
         hora: String(o?.fSoliHm || o?.fechaFinVisiHm || "").trim(),
         tipo: String(o?.tipoTraba || o?.tipo || "").trim(),
         direccion: String(o?.direccion || o?.direccion1 || "").trim(),
+        cantMesh: toInt(o?.cantMESHwin),
+        cantFono: toInt(o?.cantFONOwin),
+        cantBox: toInt(o?.cantBOXwin),
       });
     }
 

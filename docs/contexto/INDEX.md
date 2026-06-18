@@ -1,6 +1,6 @@
 # Indice de Contexto - REDES
 
-Actualizado: 2026-06-16.
+Actualizado: 2026-06-18.
 
 Estado actual: unidad **Dominio critico: mantenimientoLiquidaciones** documentada. Se mantienen pendientes por permisos granulares, borrado fisico, concurrencia de visitas, correccion con cambio de cuadrilla, limite de export e indices.
 
@@ -11,7 +11,7 @@ Estado actual: unidad **Dominio critico: mantenimientoLiquidaciones** documentad
 | Arquitectura inicial | Documentado | `C:\Proyectos\REDES` | `architecture/overview.md` | Alta | Fase 0 superficial |
 | Diagramas iniciales | Documentado | `C:\Proyectos\REDES` | `architecture/diagrams.md` | Alta | Mermaid de alto nivel |
 | Web App Router | Revisar | `apps\web\src\app\(protected)` | `web/routes.md` | Alta | Rutas protegidas documentadas; revisar paginas sin guard propio y divergencia nav/guards |
-| API mobile REDES + Network/API REDES-MOBILE | Revisar | `apps\web\src\app\api\mobile` + `C:\Proyectos\REDES-MOBILE\app\src\main\java\com\redes\app\network` | `web/api-routes.md` + `C:\Proyectos\REDES-MOBILE\docs\contexto\android\network.md` | Alta | Deep dive documentado; requiere validar inconsistencias puntuales del contrato |
+| API mobile REDES + Network/API REDES-MOBILE | Revisar | `apps\web\src\app\api\mobile` + `C:\Proyectos\REDES-MOBILE\app\src\main\java\com\redes\app\network` | `web/api-routes.md` + `C:\Proyectos\REDES-MOBILE\docs\contexto\android\network.md` | Alta | Deep dive documentado + cambios predespacho 2026-06-18 aplicados (coleccion Firestore, respuesta con precon, backend reescrito) |
 | Cruce de garantias WIN/REDES | Revisar | `apps\web\src\app\api\ordenes\garantias\cruce`, `apps\web\src\core\garantias\cruceProveedor.ts`, `firebase\functions\src\garantiasCruceSync.ts` | `web/garantias-cruce.md` + `web/garantias-import-preview.md` | Alta | Import/preview documentados; faltan decisiones de permisos, carrera import/sync, reglas Firestore y validacion BigQuery |
 | Domain services | Revisar | `apps\web\src\domain` | `web/domain-services.md` | Alta | Mapa de 19 dominios documentado; profundizar modulos criticos antes de cambios |
 | Mantenimiento liquidaciones | Revisar | `apps\web\src\domain\mantenimientoLiquidaciones`, `apps\web\src\app\api\mantenimiento\liquidaciones`, pantallas `/home/mantenimiento/liquidaciones` | `web/mantenimiento-liquidaciones.md` | Alta | Deep dive documentado; revisar permisos granulares, borrado fisico, visitas concurrentes, correccion de stock y export limitado |

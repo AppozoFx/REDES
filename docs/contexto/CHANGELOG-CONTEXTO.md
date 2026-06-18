@@ -1,5 +1,28 @@
 # Changelog de Contexto - REDES
 
+## 2026-06-18 - Feature: coordinador cuadrillas con equipos y detalle de orden
+
+- **Backend `cuadrillas/route.ts`**: agregados `cantMesh`, `cantFono`, `cantBox` a cada item de `ordenes.items` leyendo `cantMESHwin`/`cantFONOwin`/`cantBOXwin` de la coleccion `ordenes`.
+- **Nuevo endpoint** `GET /api/mobile/coordinador/ordenes/[id]`: devuelve detalle de orden (cliente, documento, telefono, tipo, fecha, region, cuadrilla, lat/lng, cantMesh/cantFono/cantBox); valida que la orden pertenezca a una cuadrilla del coordinador, devuelve 403 si no.
+- Actualizado `web/api-routes.md` con la nueva fila y la actualizacion del row de cuadrillas.
+- No se modifico Gradle, configs, Firebase rules, package files, lockfiles, credenciales ni binarios.
+
+## 2026-06-18 - Fix: updatedByName mostraba UID en lugar de nombre
+
+- **Causa**: `PredespachoClient.tsx` no enviaba `userName` en el body del `POST /api/instalaciones/predespacho/save`. El servidor usaba `uid` como fallback, almacenando el UID de Firebase en `updatedByName`.
+- **Fix dashboard** (`api/instalaciones/predespacho/dashboard/route.ts`): agrega `currentUserName` a la respuesta usando el indice `usersIdx` que ya existia (uid → nombre corto: primer nombre + primer apellido).
+- **Fix cliente** (`PredespachoClient.tsx`): nuevo estado `currentUserName` cargado desde la respuesta del dashboard; incluido como `userName` en el body del guardado.
+- `save/route.ts`: sin cambios — ya tenia `body?.userName || uid`.
+- Registros guardados antes de esta fecha conservan el UID; los nuevos guardados muestran el nombre correctamente.
+- Beneficio mobile: `GET /api/mobile/coordinador/predespacho` devuelve `updatedByName` directo de Firestore, por lo que REDES-MOBILE tambien mostrara el nombre correcto en nuevos guardados sin cambios de codigo Android.
+
+## 2026-06-18 - Implementacion predespacho coordinador (mobile backend + web UI)
+
+- **`api/mobile/coordinador/predespacho/route.ts`** reescrito: ahora lee `instalaciones_predespacho` (coleccion activa) en lugar de `instalaciones_predespacho_rows` (legacy). Batches de 30 por `cuadrillaId in [...]`, filtro en memoria `startYmd <= ymd <= endYmd`, agregacion sumando `final.ONT/MESH/FONO/BOX`, extraccion de `precon/bobinaResi/rolloCondo` solo de docs `ALL` o `SHARED`. La respuesta incluye `precon: { PRECON_50, PRECON_100, PRECON_150, PRECON_200 }` por fila.
+- **`PredespachoClient.tsx`** (web): para `scope === "coordinador"`: auto-confirma modo (sin selector), muestra solo cuadrillas con `savedInfo[id]?.updatedAt`, oculta filtros Estado/Modelo/Grupo/Lote, oculta chips "Ver omitidas"/"Cambiar modo"/estado IA, oculta Panel de recursos completo.
+- Actualizado `web/api-routes.md`: descripcion de respuesta del endpoint predespacho + coleccion Firestore activa.
+- No se modifico Gradle, configs, Firebase rules, package files, lockfiles, credenciales ni binarios.
+
 ## 2026-06-18 - Cruce tecnico mobile alertas/cierre de ruta
 
 - Revisado el cruce backend de la unidad REDES-MOBILE `Tecnico alertas/notificaciones y cierre de ruta`.

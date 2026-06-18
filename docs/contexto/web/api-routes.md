@@ -64,12 +64,13 @@ Roles directos:
 | `/api/mobile/supervisor/jornada` | POST | `apps\web\src\app\api\mobile\supervisor\jornada\route.ts` | JSON `{ tipo, lat?, lng? }`, tipo `INICIO_RUTA`, `FIN_RUTA`, `INICIO_REFRIGERIO`, `FIN_REFRIGERIO` | `{ ok, jornada }` | Supervisor/admin; `INICIO_RUTA` puede requerir geofence de oficina | `RemoteSupervisorRepository.postJornadaEvento` |
 | `/api/mobile/supervisor/garantias/update` | POST | `apps\web\src\app\api\mobile\supervisor\garantias\update\route.ts` | JSON `ordenId` y campos garantia | `{ ok, ordenId }` | Supervisor/admin; orden en cuadrillas asignadas | `RemoteSupervisorRepository.updateGarantia` |
 | `/api/mobile/coordinador/inicio?ym=` | GET | `apps\web\src\app\api\mobile\coordinador\inicio\route.ts` | Query `ym` `YYYY-MM`, default mes Lima | `{ ok, ym, resumen, cuadrillas }` | Coordinador/admin | `RemoteCoordinadorRepository.fetchResumen` |
-| `/api/mobile/coordinador/cuadrillas?ymd=` | GET | `apps\web\src\app\api\mobile\coordinador\cuadrillas\route.ts` | Query `ymd`, default hoy Lima | `{ ok, ymd, updateInfo, cuadrillas }` | Coordinador/admin | `RemoteCoordinadorRepository.fetchCuadrillas` |
+| `/api/mobile/coordinador/cuadrillas?ymd=` | GET | `apps\web\src\app\api\mobile\coordinador\cuadrillas\route.ts` | Query `ymd`, default hoy Lima | `{ ok, ymd, updateInfo, cuadrillas }` donde cada item de `ordenes.items` incluye `cantMesh`, `cantFono`, `cantBox` | Coordinador/admin | `RemoteCoordinadorRepository.fetchCuadrillas` |
+| `/api/mobile/coordinador/ordenes/{id}` | GET | `apps\web\src\app\api\mobile\coordinador\ordenes\[id]\route.ts` | Path `id` | `{ ok, item }` con detalle de orden (mismo contrato que supervisor pero sin supervision/garantia) y `cantMesh`, `cantFono`, `cantBox` | Coordinador/admin; orden debe pertenecer a una cuadrilla del coordinador | `RemoteCoordinadorRepository.fetchOrdenDetail` |
 | `/api/mobile/coordinador/mapa?ymd=` | GET | `apps\web\src\app\api\mobile\coordinador\mapa\route.ts` | Query `ymd`, default hoy Lima | `{ ok, ymd, items }` | Coordinador/admin | `RemoteCoordinadorRepository.fetchMapa` |
 | `/api/mobile/coordinador/stock` | GET | `apps\web\src\app\api\mobile\coordinador\stock\route.ts` | Sin query | `{ ok, cuadrillas }` | Coordinador/admin | `RemoteCoordinadorRepository.fetchStock` |
 | `/api/mobile/coordinador/auditoria` | GET | `apps\web\src\app\api\mobile\coordinador\auditoria\route.ts` | Sin query | `{ ok, cuadrillas }` | Coordinador/admin | `RemoteCoordinadorRepository.fetchAuditoria` |
 | `/api/mobile/coordinador/auditoria/sustentar` | POST | `apps\web\src\app\api\mobile\coordinador\auditoria\sustentar\route.ts` | FormData `cuadrillaId`, `sn`, `file` | `{ ok, item }` | Coordinador/admin; cuadrilla debe pertenecer al coordinador | `RemoteCoordinadorRepository.sustainEquipo` |
-| `/api/mobile/coordinador/predespacho?ymd=` | GET | `apps\web\src\app\api\mobile\coordinador\predespacho\route.ts` | Query `ymd`, default hoy Lima | `{ ok, tienePredespacho, ymd, rows }` | Coordinador/admin | `RemoteCoordinadorRepository.fetchPredespacho` |
+| `/api/mobile/coordinador/predespacho?ymd=` | GET | `apps\web\src\app\api\mobile\coordinador\predespacho\route.ts` | Query `ymd`, default hoy Lima | `{ ok, tienePredespacho, ymd, rows }` donde cada row incluye `{ cuadrillaId, cuadrillaNombre, ont, mesh, fono, box, bobinaResi, rolloCondo, updatedByName, updatedAt, precon: { PRECON_50, PRECON_100, PRECON_150, PRECON_200 } }` | Coordinador/admin | `RemoteCoordinadorRepository.fetchPredespacho` |
 | `/api/mobile/coordinador/ventas?year=&month=` | GET | `apps\web\src\app\api\mobile\coordinador\ventas\route.ts` | Query `year`, `month` opcionales | `{ ok, items }` | Coordinador/admin | `RemoteCoordinadorRepository.fetchVentas` |
 | `/api/mobile/coordinador/plantillas?ym=` | GET | `apps\web\src\app\api\mobile\coordinador\plantillas\route.ts` | Query `ym` `YYYY-MM` | `{ ok, ym, pendientesByCuadrilla }` o `400 YM_INVALID` | Coordinador/admin | `RemoteCoordinadorRepository.fetchPlantillas` |
 
@@ -92,7 +93,7 @@ Roles directos:
 - `notificaciones_tecnico`: inbox persistido por cuadrilla para respuestas de alertas y cambios operativos.
 - `notificaciones`: metadata de ultima importacion de ordenes.
 - `telegram_preliquidaciones` y `telegram_preliquidacion_retries`: estado de plantillas/preliquidacion.
-- `instalaciones_predespacho_rows`: predespacho del coordinador.
+- `instalaciones_predespacho`: predespacho del coordinador (coleccion activa desde 2026-06-18; la coleccion legacy `instalaciones_predespacho_rows` ya no se usa en el endpoint mobile).
 - `ventas`: ventas asociadas a coordinador.
 - Firebase Storage: evidencias de auditoria en `auditoria/{SN}.{ext}`.
 

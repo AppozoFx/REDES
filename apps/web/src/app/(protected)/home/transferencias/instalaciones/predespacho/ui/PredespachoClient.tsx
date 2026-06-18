@@ -89,6 +89,7 @@ export default function PredespachoClient() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [scope, setScope] = useState<Scope>("all");
+  const [currentUserName, setCurrentUserName] = useState("");
   const [anchor, setAnchor] = useState(asDateInput());
   const [periodLabel, setPeriodLabel] = useState("");
 
@@ -159,6 +160,7 @@ export default function PredespachoClient() {
       if (!res.ok || !body?.ok) throw new Error(String(body?.error || "ERROR"));
 
       setScope(body.scope || "all");
+      setCurrentUserName(body.currentUserName || "");
       setCuadrillas(Array.isArray(body.cuadrillas) ? body.cuadrillas : []);
       setCoordinadores(Array.isArray(body.coordinadores) ? body.coordinadores : []);
       setStockAlmacen(body.stockAlmacen || emptyCounts());
@@ -670,6 +672,7 @@ export default function PredespachoClient() {
           anchor,
           rows,
           batchId,
+          userName: currentUserName,
           dispatchGroup: grupoDespacho,
           availableStock: stockAlmacenActivo,
           availablePrecon: stockPrecon,

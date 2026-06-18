@@ -857,6 +857,7 @@ export async function GET(req: Request) {
       modelFilter,
       dispatchGroup,
       scope,
+      currentUserName: usersIdx.get(session.uid) || session.uid,
       period,
       cuadrillas,
       coordinadores,

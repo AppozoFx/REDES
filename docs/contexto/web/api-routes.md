@@ -89,6 +89,7 @@ Roles directos:
 - `asistencia_supervisores`: jornada supervisor.
 - `configuracion_app/supervisor_jornada`: oficina y radio geofence.
 - `alertas_app`: solicitudes de cierre de ruta o atencion.
+- `notificaciones_tecnico`: inbox persistido por cuadrilla para respuestas de alertas y cambios operativos.
 - `notificaciones`: metadata de ultima importacion de ordenes.
 - `telegram_preliquidaciones` y `telegram_preliquidacion_retries`: estado de plantillas/preliquidacion.
 - `instalaciones_predespacho_rows`: predespacho del coordinador.
@@ -106,6 +107,18 @@ Roles directos:
 - Coordinador plantillas: `YM_INVALID`.
 - Alertas app: `TIPO_REQUIRED`, `TIPO_INVALIDO`.
 
+## Cruce Tecnico Cierre De Ruta Y Alertas
+
+Actualizacion 2026-06-18 desde unidad REDES-MOBILE `android/tecnico-alertas-cierre-ruta.md`:
+
+- `/api/mobile/alertas-app` crea o reutiliza una alerta `PENDIENTE` en `alertas_app` para `CERRAR_RUTA` o `REQUIERE_ATENCION`; no cambia directamente `cuadrilla_estado_diario`.
+- El cierre oficial de ruta ocurre en `apps\web\src\app\api\alertas-app\[id]\responder\route.ts`, fuera del namespace mobile. Si un rol web permitido (`GESTOR`, `JEFATURA`, `GERENCIA` o admin) responde `ACEPTAR` a una alerta `CERRAR_RUTA`, backend escribe `estadoRuta: "RUTA_CERRADA"` en `cuadrilla_estado_diario/{ymd}_{cuadrillaId}`.
+- La misma respuesta web crea una notificacion en `notificaciones_tecnico/{cuadrillaId}/items`: `CERRAR_RUTA_APROBADA` para cierre y `ATENCION_ATENDIDA` para atencion.
+- Android escucha `alertas_app/{alertaId}` para actualizar el estado local de la solicitud, y escucha `notificaciones_tecnico/{cuadrillaId}/items` como inbox persistido. Tambien marca `leido=true` directo desde Firestore.
+- `/api/mobile/tecnico/cuadrillas-mapa` excluye cuadrillas con `RUTA_CERRADA` del dia consultando `cuadrilla_estado_diario`.
+
+Riesgos de contrato: validar Firestore rules para los listeners/updates directos de Android, decidir manejo de rechazo de cierre y confirmar si Android debe refrescar el estado oficial despues de `ACEPTADA`.
+
 ## Inconsistencias Para Revisar
 
 1. `RemoteSupervisorRepository.iniciarJornada` llama `RedesApiClient.postInicioJornada`, que usa `/api/mobile/inicio-jornada`; ese backend exige `getTecnicoContext`, no supervisor. No se encontro uso UI directo salvo tecnico, pero el metodo queda expuesto en `SupervisorRepository`.
@@ -120,4 +133,4 @@ Roles directos:
 - Revisar formalmente el flujo `Sesion/bootstrap/auth` y seleccion de rol en REDES-MOBILE, porque esta unidad solo documento el contrato network/backend.
 - Revisar permisos/RBAC y `getUserAccessContextCached` en una unidad separada.
 - Revisar reglas Firestore para validar que las escrituras directas Android a `alertas_app` listener y `notificaciones_tecnico` update son coherentes con seguridad.
-
+- Revisar si la respuesta de alerta de cierre debe notificar tambien rechazos y si el flujo mobile debe reactivar tracking cuando una solicitud queda `RECHAZADA`.

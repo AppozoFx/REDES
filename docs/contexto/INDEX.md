@@ -1,8 +1,8 @@
 # Indice de Contexto - REDES
 
-Actualizado: 2026-06-15.
+Actualizado: 2026-06-16.
 
-Estado actual: revision incremental diaria ejecutada. Se actualizo el contrato del **Cruce de garantias WIN/REDES** por cambios de KPI/matching y se marcaron pendientes de BigQuery/backfill. Siguiente unidad recomendada: **Firebase Functions + BigQuery scripts de garantias**.
+Estado actual: unidad **Dominio critico: mantenimientoLiquidaciones** documentada. Se mantienen pendientes por permisos granulares, borrado fisico, concurrencia de visitas, correccion con cambio de cuadrilla, limite de export e indices.
 
 ## Estado General
 
@@ -10,26 +10,25 @@ Estado actual: revision incremental diaria ejecutada. Se actualizo el contrato d
 | --- | --- | --- | --- | --- | --- |
 | Arquitectura inicial | Documentado | `C:\Proyectos\REDES` | `architecture/overview.md` | Alta | Fase 0 superficial |
 | Diagramas iniciales | Documentado | `C:\Proyectos\REDES` | `architecture/diagrams.md` | Alta | Mermaid de alto nivel |
-| Web App Router | Pendiente | `apps\web\src\app` | `web/routes.md` | Alta | Detectadas rutas admin, home, temporales y API |
+| Web App Router | Revisar | `apps\web\src\app\(protected)` | `web/routes.md` | Alta | Rutas protegidas documentadas; revisar paginas sin guard propio y divergencia nav/guards |
 | API mobile REDES + Network/API REDES-MOBILE | Revisar | `apps\web\src\app\api\mobile` + `C:\Proyectos\REDES-MOBILE\app\src\main\java\com\redes\app\network` | `web/api-routes.md` + `C:\Proyectos\REDES-MOBILE\docs\contexto\android\network.md` | Alta | Deep dive documentado; requiere validar inconsistencias puntuales del contrato |
-| Cruce de garantias WIN/REDES | Revisar | `apps\web\src\app\api\ordenes\garantias\cruce`, `apps\web\src\core\garantias\cruceProveedor.ts`, `firebase\functions\src\garantiasCruceSync.ts` | `web/garantias-cruce.md` | Alta | Actualizado 2026-06-15: GAR incluye finalizadas/canceladas, tasa por clientes unicos, denominador por tipos de instalacion; faltan import/preview, SQL/backfills y validacion BigQuery |
-| Domain services | Pendiente | `apps\web\src\domain` | `web/domain-services.md` | Alta | Repos/esquemas por dominio |
+| Cruce de garantias WIN/REDES | Revisar | `apps\web\src\app\api\ordenes\garantias\cruce`, `apps\web\src\core\garantias\cruceProveedor.ts`, `firebase\functions\src\garantiasCruceSync.ts` | `web/garantias-cruce.md` + `web/garantias-import-preview.md` | Alta | Import/preview documentados; faltan decisiones de permisos, carrera import/sync, reglas Firestore y validacion BigQuery |
+| Domain services | Revisar | `apps\web\src\domain` | `web/domain-services.md` | Alta | Mapa de 19 dominios documentado; profundizar modulos criticos antes de cambios |
+| Mantenimiento liquidaciones | Revisar | `apps\web\src\domain\mantenimientoLiquidaciones`, `apps\web\src\app\api\mantenimiento\liquidaciones`, pantallas `/home/mantenimiento/liquidaciones` | `web/mantenimiento-liquidaciones.md` | Alta | Deep dive documentado; revisar permisos granulares, borrado fisico, visitas concurrentes, correccion de stock y export limitado |
 | Auth/RBAC mobile | Revisar | `apps\web\src\core\auth`, `apps\web\src\core\rbac`, rutas `/api/mobile/bootstrap` y `/api/mobile/me` | `web/auth-rbac-mobile.md` | Alta | Deep dive completado; revisar defaultRole mobile, permisos no usados por Android y 401/403 |
-| Firebase rules/indexes | Pendiente | `firebase\firestore.rules`, `firebase\firestore.indexes.json` | `firebase/auth-firestore-rules.md` | Alta | No leer valores sensibles |
-| Firebase Functions | Actualizar | `firebase\functions\src` | `firebase/functions.md` | Alta | Nueva `garantiasCruceSync` exportada; requiere deep dive de functions |
-| Cloud Run acta-engine | Pendiente | `cloudrun\acta-engine` | `cloudrun/acta-engine.md` | Media | README existente revisado superficialmente |
-| Scripts operativos | Actualizar | `scripts` | `scripts/maintenance-scripts.md` | Media | Nuevos SQL/backfills BigQuery de garantias detectados |
+| Firebase rules/indexes | Revisar | `firebase\firestore.rules`, `firebase\firestore.indexes.json` | `firebase/auth-firestore-rules.md` | Alta | Rules/indexes documentados; revisar listeners directos en `alertas_app` y `cuadrillas/{id}/stock` |
+| Firebase Functions | Revisar | `firebase\functions\src` | `firebase/functions.md` + `firebase/functions-restantes.md` | Alta | `garantiasCruceSync`, Telegram, tramos, `usersCreate` y `bootstrapAdmin` documentados; revisar decisiones pendientes |
+| Cloud Run acta-engine | Revisar | `cloudrun\acta-engine` | `cloudrun/acta-engine.md` | Media | Servicio Flask/PyMuPDF/pyzbar documentado; validar token, modo default active, limites y timeout |
+| Scripts operativos | Revisar | `scripts` | `scripts/maintenance-scripts.md` | Media | SQL/backfills de garantias documentados; requiere decisiones antes de ejecutar |
+| Integracion Winbo | Revisar | `apps\web\src\lib\winbo`, rutas `/api/ordenes/import/winbo`, `firebase\functions\src\winboScheduler.ts` | `web/winbo-integracion.md` | Media | Cliente export XLSX, parser/mapper, sync manual/cron, lock y scheduler documentados |
+| UI compartida, notificaciones y presencia | Revisar | `apps\web\src\ui`, `apps\web\src\domain\notificaciones`, `apps\web\src\domain\alertas-app`, rutas de presencia | `web/ui-notificaciones-presencia.md` | Baja | Topbars, campanas, toasts, presencia web/mobile y alertas app documentados |
+| Tipos compartidos y contratos usuario/permisos | Revisar | `apps\web\src\types`, `apps\web\src\core\auth`, `apps\web\src\core\rbac`, dominios usuarios/roles/permissions | `web/types-auth-permisos.md` | Baja | `UserAccess`, `AccessContext`, `ServerSession`, schemas Zod, guards y navegacion RBAC documentados |
 | Indice de fuente | Documentado | estructura superficial | `indexes/source-index.json` | Media | No es cobertura completa |
 
 ## Orden Propuesto De Documentacion
 
-1. Firebase Functions + BigQuery scripts de garantias.
-2. Rutas `import` y `preview` del cruce de garantias.
-3. Firebase rules, colecciones e indexes.
-4. Rutas web protegidas por dominio de negocio.
-5. Domain services y repositorios web.
-6. Cloud Run `acta-engine`.
-7. UI compartida, notificaciones y presencia.
+1. Dominio critico: transferencias/instalaciones.
+2. Dominio critico: cuadrillas.
 
 ## Evidencia De Manifests
 

@@ -240,6 +240,10 @@ export default function PredespachoClient() {
     }
   }, [predespachoMode, scope]);
 
+  useEffect(() => {
+    if (scope === "coordinador") setModeConfirmed(true);
+  }, [scope]);
+
   const baseRows = useMemo(() => {
     const txt = textoCuadrilla.trim().toLowerCase();
     let rows = [...cuadrillas];
@@ -251,9 +255,10 @@ export default function PredespachoClient() {
     if (predespachoMode === "coordinator" && scope === "all" && !selCoords.length) return [];
     if (predespachoMode === "squad" && !txt) return [];
     if (predespachoMode === "urgent" && scope === "all" && !selCoords.length && !txt) return [];
+    if (scope === "coordinador") rows = rows.filter((c) => !!savedInfo[c.id]?.updatedAt);
     rows.sort((a, b) => String(a.coordinadorNombre || "").localeCompare(String(b.coordinadorNombre || ""), "es", { sensitivity: "base" }));
     return rows;
-  }, [cuadrillas, scope, selCoords, textoCuadrilla, predespachoMode]);
+  }, [cuadrillas, scope, selCoords, textoCuadrilla, predespachoMode, savedInfo]);
 
   const filteredCoords = useMemo(() => {
     const q = coordQuery.trim().toLowerCase();
@@ -1208,38 +1213,46 @@ export default function PredespachoClient() {
                   </div>
                 </div>
               )}
-              <div className="lg:col-span-1">
-                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Estado</label>
-                <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value as EstadoFiltro)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
-                  <option value="todas">Todas</option>
-                  <option value="guardadas">Guardadas</option>
-                  <option value="pendientes">Pendientes</option>
-                  <option value="lote">Por lote</option>
-                </select>
-              </div>
-              <div className="lg:col-span-1">
-                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Modelo</label>
-                <select value={modeloFiltro} onChange={(e) => setModeloFiltro(e.target.value as ModeloFiltro)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
-                  <option value="all">Todos</option>
-                  <option value="huawei">Huawei</option>
-                  <option value="zte">ZTE</option>
-                </select>
-              </div>
-              <div className="lg:col-span-1">
-                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Despacho</label>
-                <select value={grupoDespacho} onChange={(e) => setGrupoDespacho(e.target.value as GrupoDespachoFiltro)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
-                  <option value="all">Todos</option>
-                  <option value="huawei">Huawei</option>
-                  <option value="zte">ZTE</option>
-                </select>
-              </div>
-              <div className="lg:col-span-1">
-                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Lote</label>
-                <select value={selectedBatch} onChange={(e) => setSelectedBatch(e.target.value)} disabled={estadoFiltro !== "lote"} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 disabled:opacity-50">
-                  <option value="">Seleccionar</option>
-                  {batchIds.map((b) => <option key={b} value={b}>{b.slice(0, 16).replace("T", " ")}</option>)}
-                </select>
-              </div>
+              {scope !== "coordinador" && (
+                <div className="lg:col-span-1">
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Estado</label>
+                  <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value as EstadoFiltro)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+                    <option value="todas">Todas</option>
+                    <option value="guardadas">Guardadas</option>
+                    <option value="pendientes">Pendientes</option>
+                    <option value="lote">Por lote</option>
+                  </select>
+                </div>
+              )}
+              {scope !== "coordinador" && (
+                <div className="lg:col-span-1">
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Modelo</label>
+                  <select value={modeloFiltro} onChange={(e) => setModeloFiltro(e.target.value as ModeloFiltro)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+                    <option value="all">Todos</option>
+                    <option value="huawei">Huawei</option>
+                    <option value="zte">ZTE</option>
+                  </select>
+                </div>
+              )}
+              {scope !== "coordinador" && (
+                <div className="lg:col-span-1">
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Despacho</label>
+                  <select value={grupoDespacho} onChange={(e) => setGrupoDespacho(e.target.value as GrupoDespachoFiltro)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+                    <option value="all">Todos</option>
+                    <option value="huawei">Huawei</option>
+                    <option value="zte">ZTE</option>
+                  </select>
+                </div>
+              )}
+              {scope !== "coordinador" && (
+                <div className="lg:col-span-1">
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Lote</label>
+                  <select value={selectedBatch} onChange={(e) => setSelectedBatch(e.target.value)} disabled={estadoFiltro !== "lote"} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 disabled:opacity-50">
+                    <option value="">Seleccionar</option>
+                    {batchIds.map((b) => <option key={b} value={b}>{b.slice(0, 16).replace("T", " ")}</option>)}
+                  </select>
+                </div>
+              )}
               <div className="flex items-end lg:col-span-1">
                 <button
                   type="button"
@@ -1255,22 +1268,26 @@ export default function PredespachoClient() {
               <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                 Periodo: {periodLabel || "-"}
               </span>
-              <label className="flex cursor-pointer items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
-                <input type="checkbox" checked={verOmitidas} onChange={(e) => setVerOmitidas(e.target.checked)} className="h-3 w-3" />
-                Ver omitidas
-              </label>
+              {scope !== "coordinador" && (
+                <label className="flex cursor-pointer items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
+                  <input type="checkbox" checked={verOmitidas} onChange={(e) => setVerOmitidas(e.target.checked)} className="h-3 w-3" />
+                  Ver omitidas
+                </label>
+              )}
               <label className="flex cursor-pointer items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
                 <input type="checkbox" checked={sortByCrit} onChange={(e) => setSortByCrit(e.target.checked)} className="h-3 w-3" />
                 Ordenar por criticidad
               </label>
-              <button
-                type="button"
-                onClick={() => setModeConfirmed(false)}
-                className="rounded-full border border-slate-300 px-2.5 py-1 text-[11px] text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
-              >
-                ← Cambiar modo
-              </button>
-              {aiRecommendation.status !== "idle" && (
+              {scope !== "coordinador" && (
+                <button
+                  type="button"
+                  onClick={() => setModeConfirmed(false)}
+                  className="rounded-full border border-slate-300 px-2.5 py-1 text-[11px] text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  ← Cambiar modo
+                </button>
+              )}
+              {scope !== "coordinador" && aiRecommendation.status !== "idle" && (
                 <span className="rounded-full bg-violet-100 px-2.5 py-1 text-[11px] text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
                   IA: {aiRecommendation.status}{aiRecommendation.data?.meta?.model ? ` · ${aiRecommendation.data.meta.model}` : ""}
                 </span>
@@ -1279,6 +1296,7 @@ export default function PredespachoClient() {
           </section>
 
           {/* ── PANEL DE RECURSOS (colapsable) ── */}
+          {scope !== "coordinador" && (
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
             <button
               type="button"
@@ -1402,6 +1420,7 @@ export default function PredespachoClient() {
               </div>
             )}
           </section>
+          )}
 
           {/* ── CONTROL DE DISPONIBILIDAD ── */}
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">

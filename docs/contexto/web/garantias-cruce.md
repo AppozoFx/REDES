@@ -9,6 +9,8 @@ Estado: **Revisar**. Esta unidad fue detectada en la revision incremental diaria
 Fuentes leidas:
 
 - `C:\Proyectos\REDES\apps\web\src\app\api\ordenes\garantias\cruce\route.ts`
+- `C:\Proyectos\REDES\apps\web\src\app\api\ordenes\garantias\cruce\import\route.ts`
+- `C:\Proyectos\REDES\apps\web\src\app\api\ordenes\garantias\cruce\preview\route.ts`
 - `C:\Proyectos\REDES\apps\web\src\app\(protected)\home\ordenes\garantias\cruce\GarantiasCruceClient.tsx`
 - `C:\Proyectos\REDES\apps\web\src\core\garantias\cruceProveedor.ts`
 - `C:\Proyectos\REDES\firebase\functions\src\garantiasCruceSync.ts`
@@ -16,8 +18,6 @@ Fuentes leidas:
 
 Fuentes detectadas pero no documentadas en profundidad:
 
-- `apps\web\src\app\api\ordenes\garantias\cruce\import\route.ts`
-- `apps\web\src\app\api\ordenes\garantias\cruce\preview\route.ts`
 - `scripts\bigquery_garantias_cruce_setup.sql`
 - `scripts\bigquery_garantias_dashboard.sql`
 - `scripts\bigquery_update_vw_instalacion_garantia.sql`
@@ -34,6 +34,8 @@ El flujo cruza garantias reportadas por WIN/proveedor contra ordenes internas RE
 | --- | --- | --- |
 | Pantalla cliente | `apps\web\src\app\(protected)\home\ordenes\garantias\cruce\GarantiasCruceClient.tsx` | Consume `/api/ordenes/garantias/cruce`, permite cambiar mes, filtrar vistas, ver KPIs/graficos/tablas y exportar Excel. |
 | API de cruce | `apps\web\src\app\api\ordenes\garantias\cruce\route.ts` | Autentica sesion web, valida permisos, carga proveedor/ordenes, calcula matching y devuelve detalle/KPIs. |
+| Preview proveedor | `apps\web\src\app\api\ordenes\garantias\cruce\preview\route.ts` | Parsea XLSX sin persistir, devuelve resumen, omisiones, meses y muestras por periodo. |
+| Import proveedor | `apps\web\src\app\api\ordenes\garantias\cruce\import\route.ts` | Lista periodos importados y guarda imports confirmados reemplazando rows por `instYm`. |
 | Parser/persistencia proveedor | `apps\web\src\core\garantias\cruceProveedor.ts` | Lee Excel, normaliza fechas/textos, filtra partner M&D, persiste imports por periodo en Firestore. |
 | Sync BigQuery | `firebase\functions\src\garantiasCruceSync.ts` | Al escribir `garantias_cruce_periods/{instYm}`, elimina e inserta filas del periodo en BigQuery. |
 | Export functions | `firebase\functions\src\index.ts` | Exporta `garantiasCruceSync` junto con el resto de funciones. |
@@ -87,6 +89,8 @@ Campos KPI relevantes observados el 2026-06-15:
 
 ## Parser De Proveedor
 
+Detalle propio: `docs\contexto\web\garantias-import-preview.md`.
+
 `cruceProveedor.ts` define:
 
 - `parseProviderWorkbook`: resuelve hoja `Garantia`, convierte filas Excel a `ProviderGarantia`, omite filas sin fechas/codigo/cliente o fuera de partner/ventana.
@@ -116,7 +120,7 @@ Riesgos:
 
 - La estrategia delete+insert por periodo evita duplicados, pero si la insercion parcial falla despues del delete puede dejar el periodo incompleto en BigQuery.
 - `PROJECT`, `DATASET` y `TABLE` estan hardcodeados en la funcion.
-- Los SQL/backfills fueron leidos superficialmente el 2026-06-15. Comparten el mismo destino `redes-5bb81.ordenes_export.garantias_proveedor_rows`, eliminan por periodo antes de insertar y requieren credenciales/entorno operativo; falta documentarlos como unidad propia antes de automatizar ejecuciones.
+- Los SQL/backfills fueron documentados en `docs\contexto\scripts\maintenance-scripts.md` el 2026-06-15. Comparten el mismo destino `redes-5bb81.ordenes_export.garantias_proveedor_rows`, eliminan por periodo antes de insertar y requieren credenciales/entorno operativo.
 
 Scripts detectados:
 
@@ -149,12 +153,14 @@ sequenceDiagram
 ## Pendientes
 
 - Documentar rutas `import` y `preview`.
-- Documentar SQL y backfills BigQuery antes de cualquier automatizacion de datos.
+- Validar riesgos operativos de SQL/backfills BigQuery antes de cualquier automatizacion de datos.
 - Revisar reglas Firestore/seguridad sobre `garantias_cruce_imports` y `garantias_cruce_periods`.
 - Validar con Arturo si `GERENCIA` y `SUPERVISOR` deben tener acceso por rol directo sin permiso explicito.
+- Validar si `preview` debe exigir permiso de edicion por exponer nombres/codigos de clientes.
+- Revisar posible carrera: `saveProviderImport` toca el doc padre antes de insertar rows, mientras `garantiasCruceSync` se dispara por ese doc padre.
 - Revisar tolerancia ante fallas parciales en sync BigQuery.
 - Validar con negocio que tasa REDES debe usar clientes unicos GAR finalizados/cancelados, mientras los listados conservan ordenes.
 
 ## Siguiente Unidad Recomendada
 
-`Firebase Functions + BigQuery scripts de garantias`, porque esta unidad ya toca triggers, dataset externo y backfills operativos.
+`Firebase rules, colecciones e indexes`, porque las colecciones de garantias ya estan mapeadas y falta cerrar la frontera de seguridad general.

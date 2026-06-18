@@ -1,6 +1,6 @@
 ﻿{
     "project":  "REDES",
-    "scan_date":  "2026-06-15",
+    "scan_date":  "2026-06-18",
     "phase":  "3-incremental-maintenance",
     "coverage":  "partial-changed-units",
     "root":  "C:\\Proyectos\\REDES",
@@ -24,7 +24,12 @@
                       "status":  "review",
                       "priority":  "high",
                       "last_documented":  "2026-06-15",
-                      "notes":  "Revision incremental 2026-06-15: actualizado contrato KPI/matching. GAR REDES incluye Finalizada/Cancelada, tasa usa clientes unicos, denominador usa tipos explicitos de instalacion. Faltan import/preview, SQL/backfills, reglas Firestore y validacion BigQuery."
+                      "notes":  "Revision 2026-06-15: contrato KPI/matching, Firebase/BigQuery e import/preview documentados. Faltan decisiones de permisos, carrera import/sync, reglas Firestore y validacion BigQuery.",
+                      "related_documentation":  [
+                                                    "docs/contexto/web/garantias-import-preview.md",
+                                                    "docs/contexto/firebase/functions.md",
+                                                    "docs/contexto/scripts/maintenance-scripts.md"
+                                                ]
                   },
                   {
                       "title":  "Auth/RBAC mobile",
@@ -53,42 +58,123 @@
                   {
                       "title":  "Web App Router",
                       "type":  "route-group",
-                      "source_path":  "apps/web/src/app",
+                      "source_path":  "apps/web/src/app/(protected)",
                       "documentation_path":  "docs/contexto/web/routes.md",
-                      "status":  "pending",
-                      "priority":  "high"
+                      "status":  "review",
+                      "priority":  "high",
+                      "last_documented":  "2026-06-15",
+                      "notes":  "Rutas protegidas documentadas: 110 page.tsx, admin/home layouts, guards, home nav y paginas sin guard propio. Falta validar actions/API por dominio."
                   },
                   {
                       "title":  "Domain services",
                       "type":  "service-group",
                       "source_path":  "apps/web/src/domain",
                       "documentation_path":  "docs/contexto/web/domain-services.md",
-                      "status":  "pending",
-                      "priority":  "high"
+                      "status":  "review",
+                      "priority":  "high",
+                      "last_documented":  "2026-06-15",
+                      "notes":  "Mapa de 19 dominios documentado. Falta deep dive de modulos criticos: mantenimientoLiquidaciones, transferencias/instalaciones, cuadrillas y ordenes."
+                  },
+                  {
+                      "title":  "Mantenimiento liquidaciones",
+                      "type":  "domain-api-inventory-flow",
+                      "source_path":  "apps/web/src/domain/mantenimientoLiquidaciones",
+                      "documentation_path":  "docs/contexto/web/mantenimiento-liquidaciones.md",
+                      "status":  "review",
+                      "priority":  "high",
+                      "last_documented":  "2026-06-16",
+                      "related_source_paths":  [
+                                                   "apps/web/src/app/api/mantenimiento/liquidaciones",
+                                                   "apps/web/src/app/api/mantenimiento/causas-raiz",
+                                                   "apps/web/src/app/(protected)/home/mantenimiento/liquidaciones",
+                                                   "apps/web/src/app/api/integrations/telegram/mantenimiento/create-ticket/route.ts",
+                                                   "apps/web/src/app/api/mantenimiento/cuadrillas/stock-materiales/route.ts"
+                                               ],
+                      "notes":  "Deep dive de tickets de mantenimiento, consumo/devolucion de stock, movimientos de inventario, causas raiz, export XLSX e ingreso desde Telegram. Revisar permisos granulares, borrado fisico, ticketVisita concurrente, correccion con cambio de cuadrilla y limite 500 de export."
                   },
                   {
                       "title":  "Firebase rules and functions",
                       "type":  "firebase",
                       "source_path":  "firebase",
                       "documentation_path":  "docs/contexto/firebase/auth-firestore-rules.md",
-                      "status":  "pending",
-                      "priority":  "high"
+                      "status":  "review",
+                      "priority":  "high",
+                      "last_documented":  "2026-06-16",
+                      "notes":  "Rules/indexes, garantiasCruceSync, Telegram, tramos, usersCreate y bootstrapAdmin documentados. Quedan decisiones de seguridad y operacion.",
+                      "related_documentation":  [
+                                                    "docs/contexto/firebase/functions.md",
+                                                    "docs/contexto/firebase/functions-restantes.md"
+                                                ]
                   },
                   {
                       "title":  "Cloud Run acta-engine",
                       "type":  "cloudrun-service",
                       "source_path":  "cloudrun/acta-engine",
                       "documentation_path":  "docs/contexto/cloudrun/acta-engine.md",
-                      "status":  "pending",
-                      "priority":  "medium"
+                      "status":  "review",
+                      "priority":  "medium",
+                      "last_documented":  "2026-06-15",
+                      "notes":  "Servicio Flask/PyMuPDF/pyzbar documentado. Requiere validar ENGINE_TOKEN, modo default active al existir URL, limites de request, timeout y smoke test."
                   },
                   {
                       "title":  "Scripts operativos",
                       "type":  "script-family",
                       "source_path":  "scripts",
                       "documentation_path":  "docs/contexto/scripts/maintenance-scripts.md",
-                      "status":  "pending",
-                      "priority":  "medium"
+                      "status":  "review",
+                      "priority":  "medium",
+                      "notes":  "SQL/backfills de garantias documentados 2026-06-15. Falta agrupar resto de scripts operativos."
+                  },
+                  {
+                      "title":  "UI compartida, notificaciones y presencia",
+                      "type":  "ui-shared-realtime-presence",
+                      "source_path":  "apps/web/src/ui",
+                      "documentation_path":  "docs/contexto/web/ui-notificaciones-presencia.md",
+                      "status":  "review",
+                      "priority":  "low",
+                      "last_documented":  "2026-06-15",
+                      "related_source_paths":  [
+                                                   "apps/web/src/domain/notificaciones",
+                                                   "apps/web/src/domain/alertas-app",
+                                                   "apps/web/src/app/api/auth/presencia",
+                                                   "apps/web/src/app/api/mobile/presencia",
+                                                   "apps/web/src/app/api/mobile/alertas-app",
+                                                   "apps/web/src/app/api/alertas-app/[id]/responder"
+                                               ],
+                      "notes":  "Topbars, campanas, toasts, presencia web/mobile, tracking mobile y alertas app documentados. Revisar rules de alertas_app, logs de debug, mojibake y offline por timeout."
+                  },
+                  {
+                      "title":  "Integracion Winbo",
+                      "type":  "external-import-sync",
+                      "source_path":  "apps/web/src/lib/winbo",
+                      "documentation_path":  "docs/contexto/web/winbo-integracion.md",
+                      "status":  "review",
+                      "priority":  "medium",
+                      "last_documented":  "2026-06-15",
+                      "related_source_paths":  [
+                                                   "apps/web/src/app/api/ordenes/import/winbo",
+                                                   "apps/web/src/app/(protected)/home/ordenes/import/ImportClient.tsx",
+                                                   "apps/web/src/domain/ordenes/repo.ts",
+                                                   "firebase/functions/src/winboScheduler.ts"
+                                               ],
+                      "notes":  "Cliente HTTP WinBo, export XLSX, parser/mapper, sync manual/cron, lock, audit run, scheduler Firebase y upsert de ordenes documentados. Revisar secrets/envs, lock/reentradas, rango maximo, retries, downloadUrl y tipoOrden."
+                  },
+                  {
+                      "title":  "Tipos compartidos y contratos usuario/permisos",
+                      "type":  "types-auth-rbac-contracts",
+                      "source_path":  "apps/web/src/types",
+                      "documentation_path":  "docs/contexto/web/types-auth-permisos.md",
+                      "status":  "review",
+                      "priority":  "low",
+                      "last_documented":  "2026-06-15",
+                      "related_source_paths":  [
+                                                   "apps/web/src/core/auth",
+                                                   "apps/web/src/core/rbac",
+                                                   "apps/web/src/domain/usuarios",
+                                                   "apps/web/src/domain/roles",
+                                                   "apps/web/src/domain/permissions"
+                                               ],
+                      "notes":  "UserAccess, UsuarioPerfil, Permission, AccessContext, ServerSession, guards, bootstrap mobile, schemas Zod y navegacion RBAC documentados. Revisar fuente canonica, duplicaciones permisos/permissions, cache e invalidacion."
                   }
               ],
     "deep_dive_api_mobile":  {
@@ -183,7 +269,479 @@
                                                              "La unidad queda en review porque las inconsistencias restantes requieren decision humana."
                                                          ]
                                    },
-    "next_recommended_unit":  "Firebase Functions + BigQuery scripts de garantias",
+    "deep_dive_firebase_bigquery_garantias":  {
+                                                  "status":  "review",
+                                                  "source_paths":  [
+                                                                       "firebase/functions/src/garantiasCruceSync.ts",
+                                                                       "firebase/functions/src/index.ts",
+                                                                       "firebase/functions/package.json",
+                                                                       "firebase/firebase.json",
+                                                                       "firebase/firestore.rules",
+                                                                       "scripts/backfill_garantias_cruce_bq.ts",
+                                                                       "firebase/functions/backfill_garantias_cruce_bq.ts",
+                                                                       "scripts/backfill_instalaciones_abril_bq.ts",
+                                                                       "firebase/functions/backfill_instalaciones_abril_bq.ts",
+                                                                       "scripts/bigquery_garantias_cruce_setup.sql",
+                                                                       "scripts/bigquery_garantias_dashboard.sql",
+                                                                       "scripts/bigquery_update_vw_instalacion_garantia.sql"
+                                                                   ],
+                                                  "documentation_paths":  [
+                                                                              "docs/contexto/firebase/functions.md",
+                                                                              "docs/contexto/scripts/maintenance-scripts.md"
+                                                                          ],
+                                                  "last_documented":  "2026-06-15",
+                                                  "findings":  [
+                                                                   "garantiasCruceSync y backfill_garantias_cruce_bq usan delete+insert por periodo.",
+                                                                   "Los dos backfills de garantias son identicos.",
+                                                                   "Los backfills de instalaciones abril difieren en location BigQuery y filtro de estado.",
+                                                                   "bigquery_garantias_dashboard.sql conserva denominador antiguo frente a bigquery_update_vw_instalacion_garantia.sql.",
+                                                                   "vw_pbi_cruce_garantias no modela PROVEEDOR_REDES_PENDIENTE."
+                                                               ],
+                                                  "closure_notes":  [
+                                                                        "No se ejecutaron scripts, queries, deploys, emuladores ni cambios de datos.",
+                                                                        "La unidad queda en review por decisiones operativas pendientes antes de automatizar."
+                                                                    ]
+                                              },
+    "deep_dive_garantias_import_preview":  {
+                                               "status":  "review",
+                                               "source_paths":  [
+                                                                    "apps/web/src/app/api/ordenes/garantias/cruce/import/route.ts",
+                                                                    "apps/web/src/app/api/ordenes/garantias/cruce/preview/route.ts",
+                                                                    "apps/web/src/core/garantias/cruceProveedor.ts",
+                                                                    "apps/web/src/app/api/ordenes/garantias/cruce/route.ts",
+                                                                    "firebase/functions/src/garantiasCruceSync.ts"
+                                                                ],
+                                               "documentation_paths":  [
+                                                                           "docs/contexto/web/garantias-import-preview.md",
+                                                                           "docs/contexto/web/garantias-cruce.md"
+                                                                       ],
+                                               "last_documented":  "2026-06-15",
+                                               "findings":  [
+                                                                "Preview parsea XLSX y devuelve resumen/muestras sin persistir.",
+                                                                "Import crea garantias_cruce_imports y reemplaza rows por instYm.",
+                                                                "Preview permite acceso con permiso de vista y expone muestras con datos de cliente.",
+                                                                "GERENCIA y SUPERVISOR pueden importar por rol directo.",
+                                                                "saveProviderImport actualiza el doc padre antes de insertar rows, lo que podria disparar garantiasCruceSync antes de terminar batches.",
+                                                                "El parser cae a segunda/primera hoja si no encuentra hoja Garantia."
+                                                            ],
+                                               "closure_notes":  [
+                                                                     "No se ejecuto import ni preview contra archivos reales.",
+                                                                     "No se abrio BBDD_M\u0026D_01-06-2026.xlsx.",
+                                                                     "No se modifico codigo fuente ni datos."
+                                                                 ]
+                                           },
+    "deep_dive_firebase_rules_indexes":  {
+                                             "status":  "review",
+                                             "source_paths":  [
+                                                                  "firebase/firebase.json",
+                                                                  "firebase/firestore.rules",
+                                                                  "firebase/firestore.indexes.json",
+                                                                  "apps/web/src/lib/firebase/client.ts",
+                                                                  "apps/web/src/lib/firebaseClient.ts",
+                                                                  "apps/web/src/lib/useAccess.ts",
+                                                                  "apps/web/src/domain/notificaciones/repo.ts",
+                                                                  "apps/web/src/domain/alertas-app/repo.ts",
+                                                                  "apps/web/src/app/(protected)/home/transferencias/mantenimiento/stock-cuadrillas/ui/StockCuadrillasMantClient.tsx"
+                                                              ],
+                                             "documentation_paths":  [
+                                                                         "docs/contexto/firebase/auth-firestore-rules.md",
+                                                                         "docs/contexto/firebase/functions.md"
+                                                                     ],
+                                             "last_documented":  "2026-06-15",
+                                             "findings":  [
+                                                              "Rules explicitas cubren usuarios, usuarios_access, modulos, roles, auditoria, notificaciones y notificaciones_reads.",
+                                                              "Default deny bloquea el resto de colecciones, incluidas garantias_cruce_*.",
+                                                              "Notificaciones y useAccess encajan con reglas actuales.",
+                                                              "alertas-app/repo.ts escucha alertas_app desde cliente sin regla explicita.",
+                                                              "StockCuadrillasMantClient escucha cuadrillas/{id}/stock desde cliente sin regla explicita.",
+                                                              "firestore.indexes.json solo versiona el indice compuesto de notificaciones."
+                                                          ],
+                                             "closure_notes":  [
+                                                                   "No se ejecutaron deploys, emuladores ni queries contra datos reales.",
+                                                                   "No se modificaron reglas, indexes ni configuracion Firebase."
+                                                               ]
+                                         },
+    "deep_dive_web_protected_routes":  {
+                                           "status":  "review",
+                                           "source_paths":  [
+                                                                "apps/web/src/app/(protected)",
+                                                                "apps/web/src/core/auth/guards.ts",
+                                                                "apps/web/src/core/rbac/homeRoute.ts",
+                                                                "apps/web/src/core/rbac/buildHomeNav.ts",
+                                                                "apps/web/src/core/rbac/menu.ts"
+                                                            ],
+                                           "documentation_path":  "docs/contexto/web/routes.md",
+                                           "last_documented":  "2026-06-15",
+                                           "pages_count":  110,
+                                           "admin_pages_count":  20,
+                                           "home_pages_count":  90,
+                                           "findings":  [
+                                                            "admin/layout.tsx protege todo /admin con requireAdmin.",
+                                                            "home/layout.tsx protege /home con requireAuth; permisos finos quedan en pagina, actions/API o navegacion.",
+                                                            "home/page.tsx redirige por comunicados obligatorios y default role.",
+                                                            "Se detectaron 13 page.tsx sin guard propio; 4 son aliases de garantias y 9 requieren revision.",
+                                                            "buildHomeNav combina roles, areas y permisos, pero no sustituye guards reales.",
+                                                            "requirePermission redirige a /admin aun cuando falla desde rutas /home."
+                                                        ],
+                                           "pending_pages_without_own_guard":  [
+                                                                                   "home/cuadrillas/gestion/page.tsx",
+                                                                                   "home/tecnicos/gestion/page.tsx",
+                                                                                   "home/instalaciones/actas/page.tsx",
+                                                                                   "home/instalaciones/asignacion-gestores/page.tsx",
+                                                                                   "home/instalaciones/asistencia/page.tsx",
+                                                                                   "home/instalaciones/asistencia/resumen/page.tsx",
+                                                                                   "home/instalaciones/asistencia-programada/page.tsx",
+                                                                                   "home/instalaciones/detalle/page.tsx",
+                                                                                   "home/instalaciones/materiales/page.tsx"
+                                                                               ],
+                                           "closure_notes":  [
+                                                                 "No se ejecuto la app.",
+                                                                 "No se modifico codigo fuente.",
+                                                                 "Notion actualizado en hub REDES Contexto Tecnico."
+                                                             ],
+                                           "notion_sync":  "hub_updated_37e35bc7-7253-8166-be5c-ec09e4f30877"
+                                       },
+    "deep_dive_domain_services":  {
+                                      "status":  "review",
+                                      "source_path":  "apps/web/src/domain",
+                                      "documentation_path":  "docs/contexto/web/domain-services.md",
+                                      "last_documented":  "2026-06-15",
+                                      "domains_count":  19,
+                                      "files_count":  42,
+                                      "domains":  [
+                                                      "alertas-app",
+                                                      "comunicados",
+                                                      "cuadrillas",
+                                                      "equipos",
+                                                      "integrations/telegram/mantenimiento",
+                                                      "mantenimientoCausasRaiz",
+                                                      "mantenimientoLiquidaciones",
+                                                      "materiales",
+                                                      "modulos",
+                                                      "notificaciones",
+                                                      "ordenes",
+                                                      "permissions",
+                                                      "roles",
+                                                      "supervisores",
+                                                      "temporalPublic",
+                                                      "transferencias/instalaciones",
+                                                      "usuarios",
+                                                      "ventas",
+                                                      "zonas"
+                                                  ],
+                                      "findings":  [
+                                                       "domain mezcla repos Admin SDK, services, esquemas Zod, helpers puros y algunos listeners cliente.",
+                                                       "alertas-app/repo.ts usa Firebase Web SDK directo y conecta con pendiente de rules.",
+                                                       "notificaciones/repo.ts usa Firebase Web SDK directo y encaja con rules actuales.",
+                                                       "mantenimientoLiquidaciones y transferencias/instalaciones concentran alto impacto de inventario.",
+                                                       "ordenes/repo.ts tiene cache local de metadata de cuadrilla.",
+                                                       "equipos/service.ts solo exporta vacio y parece placeholder."
+                                                   ],
+                                      "critical_followups":  [
+                                                                 "mantenimientoLiquidaciones",
+                                                                 "transferencias/instalaciones",
+                                                                 "cuadrillas",
+                                                                 "ordenes"
+                                                             ],
+                                      "closure_notes":  [
+                                                            "No se ejecuto la app, tests, emuladores ni queries contra datos reales.",
+                                                            "No se modifico codigo fuente.",
+                                                            "Notion actualizado en hub REDES Contexto Tecnico."
+                                                        ],
+                                      "notion_sync":  "hub_updated_37e35bc7-7253-8166-be5c-ec09e4f30877"
+                                  },
+    "deep_dive_cloudrun_acta_engine":  {
+                                           "status":  "review",
+                                           "source_path":  "cloudrun/acta-engine",
+                                           "documentation_path":  "docs/contexto/cloudrun/acta-engine.md",
+                                           "last_documented":  "2026-06-15",
+                                           "service_files_read":  [
+                                                                      "cloudrun/acta-engine/README.md",
+                                                                      "cloudrun/acta-engine/main.py",
+                                                                      "cloudrun/acta-engine/Dockerfile",
+                                                                      "cloudrun/acta-engine/requirements.txt"
+                                                                  ],
+                                           "consumer_files_read":  [
+                                                                       "apps/web/src/app/api/instalaciones/actas-dia/renombrar/route.ts",
+                                                                       "apps/web/src/app/api/actas/validate/route.ts"
+                                                                   ],
+                                           "findings":  [
+                                                            "acta-engine expone GET /health y POST /extract.",
+                                                            "POST /extract exige bearer solo si ENGINE_TOKEN tiene valor.",
+                                                            "El motor renderiza la primera pagina del PDF, prueba ROIs superiores/derechas y luego pagina completa con pyzbar.",
+                                                            "La ruta web usa modos off, shadow y active; si ACTA_ENGINE_URL existe y ACTA_ENGINE_MODE queda off/vacio, se activa active implicitamente.",
+                                                            "El motor externo corre despues de regex/streams/ZXING local y antes de IA.",
+                                                            "El reanalisis riguroso fuerza engine active aunque el modo global este apagado."
+                                                        ],
+                                           "review_items":  [
+                                                                "Confirmar ENGINE_TOKEN no vacio en produccion y matching con ACTA_ENGINE_BEARER.",
+                                                                "Decidir si ACTA_ENGINE_URL debe activar active implicitamente.",
+                                                                "Agregar limite propio de request/paginas en Flask.",
+                                                                "Revisar gunicorn --timeout 0.",
+                                                                "Crear smoke test con PDF sintetico/no sensible.",
+                                                                "Eliminar o ignorar __pycache__ si no es intencional."
+                                                            ],
+                                           "closure_notes":  [
+                                                                 "No se ejecutaron deploys, Cloud Run, emuladores, pruebas contra Storage ni llamadas reales al servicio.",
+                                                                 "No se modifico codigo fuente.",
+                                                                 "Notion actualizado en hub REDES Contexto Tecnico."
+                                                             ],
+                                           "notion_sync":  "hub_updated_37e35bc7-7253-8166-be5c-ec09e4f30877"
+                                       },
+    "deep_dive_ui_notificaciones_presencia":  {
+                                                  "status":  "review",
+                                                  "source_path":  "apps/web/src/ui",
+                                                  "documentation_path":  "docs/contexto/web/ui-notificaciones-presencia.md",
+                                                  "last_documented":  "2026-06-15",
+                                                  "ui_files_count":  25,
+                                                  "files_read":  [
+                                                                     "apps/web/src/ui/common/NotificationsRealtime.tsx",
+                                                                     "apps/web/src/ui/common/NotificationsBell.tsx",
+                                                                     "apps/web/src/ui/common/AlertasAppBell.tsx",
+                                                                     "apps/web/src/ui/common/UserPresenceHeartbeat.tsx",
+                                                                     "apps/web/src/ui/common/TabSessionGuard.tsx",
+                                                                     "apps/web/src/ui/common/UserProvider.tsx",
+                                                                     "apps/web/src/ui/common/Toaster.tsx",
+                                                                     "apps/web/src/ui/home/Topbar.tsx",
+                                                                     "apps/web/src/ui/admin/Topbar.tsx",
+                                                                     "apps/web/src/ui/home/OrdenesImportTicker.tsx",
+                                                                     "apps/web/src/app/(protected)/home/layout.tsx",
+                                                                     "apps/web/src/app/(protected)/admin/layout.tsx",
+                                                                     "apps/web/src/domain/notificaciones/repo.ts",
+                                                                     "apps/web/src/domain/notificaciones/service.ts",
+                                                                     "apps/web/src/domain/alertas-app/repo.ts",
+                                                                     "apps/web/src/app/api/auth/presencia/route.ts",
+                                                                     "apps/web/src/app/api/mobile/presencia/route.ts",
+                                                                     "apps/web/src/app/api/mobile/alertas-app/route.ts",
+                                                                     "apps/web/src/app/api/alertas-app/[id]/responder/route.ts",
+                                                                     "apps/web/src/app/api/mobile/tracking/route.ts"
+                                                                 ],
+                                                  "findings":  [
+                                                                   "home/layout.tsx y admin/layout.tsx montan UserProvider, TabSessionGuard, UserPresenceHeartbeat y NotificationsRealtime.",
+                                                                   "NotificationsRealtime y NotificationsBell comparten listenGlobalNotifications contra notificaciones/notificaciones_reads.",
+                                                                   "addGlobalNotification tiene muchos productores en server actions y API routes.",
+                                                                   "AlertasAppBell escucha alertas_app del dia y responde por API server con roles GESTOR/JEFATURA/GERENCIA/admin.",
+                                                                   "Presencia web y mobile escriben usuarios_presencia via Admin SDK; tracking mobile escribe ubicacion en supervisores/cuadrillas.",
+                                                                   "OrdenesImportTicker muestra ultima importacion de ordenes y comunicados tipo banner."
+                                                               ],
+                                                  "review_items":  [
+                                                                       "Definir rules Firestore para alertas_app si se mantiene listener cliente.",
+                                                                       "Decidir filtro por rolesDestino en AlertasAppBell/listener.",
+                                                                       "Retirar o condicionar logs de debug en notificaciones.",
+                                                                       "Revisar mojibake/textos corruptos en alertas/ticker.",
+                                                                       "Evaluar invalidacion de UserProvider ante cambios de perfil/roles.",
+                                                                       "Documentar offline por timeout para usuarios_presencia.",
+                                                                       "Medir costo de N lecturas notificaciones_reads por snapshot."
+                                                                   ],
+                                                  "closure_notes":  [
+                                                                        "No se ejecuto la app, emuladores, listeners reales, pruebas de Firebase Auth cliente ni escrituras contra Firestore.",
+                                                                        "No se modifico codigo fuente.",
+                                                                        "Notion actualizado en hub REDES Contexto Tecnico."
+                                                                    ],
+                                                  "notion_sync":  "hub_updated_37e35bc7-7253-8166-be5c-ec09e4f30877"
+                                              },
+    "deep_dive_winbo_integracion":  {
+                                        "status":  "review",
+                                        "source_path":  "apps/web/src/lib/winbo",
+                                        "documentation_path":  "docs/contexto/web/winbo-integracion.md",
+                                        "last_documented":  "2026-06-15",
+                                        "files_read":  [
+                                                           "apps/web/src/lib/winbo/client.ts",
+                                                           "apps/web/src/lib/winbo/exportParser.ts",
+                                                           "apps/web/src/lib/winbo/mappers.ts",
+                                                           "apps/web/src/lib/winbo/sync.ts",
+                                                           "apps/web/src/lib/winbo/mappers.test.ts",
+                                                           "apps/web/src/lib/winbo/exportParser.test.ts",
+                                                           "apps/web/src/lib/winbo/runTests.mjs",
+                                                           "apps/web/src/app/api/ordenes/import/winbo/route.ts",
+                                                           "apps/web/src/app/api/ordenes/import/winbo/cron/route.ts",
+                                                           "apps/web/src/app/(protected)/home/ordenes/import/ImportClient.tsx",
+                                                           "apps/web/src/domain/ordenes/repo.ts",
+                                                           "firebase/functions/src/winboScheduler.ts",
+                                                           "firebase/functions/src/index.ts"
+                                                       ],
+                                        "findings":  [
+                                                         "client.ts hace login WinBo, verifica terminos, solicita export y descarga XLSX con cookies y reintentos.",
+                                                         "exportParser.ts detecta hoja/encabezados y normaliza filas canonicas con __rowNumber.",
+                                                         "mappers.ts convierte filas WinBo a OrdenImportInput y marca filas sin ordenId como invalidas.",
+                                                         "sync.ts crea ordenes_import_runs, toma lock system_locks/winbo_ordenes_sync, ejecuta upsertOrden con concurrencia hasta 12 y notifica cambios.",
+                                                         "POST /api/ordenes/import/winbo exige sesion habilitada y admin u ORDENES_IMPORT.",
+                                                         "POST /api/ordenes/import/winbo/cron exige WINBO_CRON_TOKEN y ventana 07:30-22:00 America/Lima.",
+                                                         "firebase winboOrdenesAutoSync corre every 5 minutes y llama el endpoint cron web.",
+                                                         "upsertOrden deriva cuadrilla, fechas Lima, tipoSeguiClien y opcionales desde idenServi."
+                                                     ],
+                                        "review_items":  [
+                                                             "Ejecutar tests locales del parser/mapper en validacion controlada.",
+                                                             "Revisar mojibake en client.ts, sync.ts y ordenes/repo.ts.",
+                                                             "Confirmar secrets/envs WinBo/cron en produccion y ausencia en logs.",
+                                                             "Definir limite maximo de rango para import manual.",
+                                                             "Revisar si el lock debe bloquear reentradas del mismo owner.",
+                                                             "Evaluar TTL 20 minutos y WINBO_EXPORT_MAX_RETRIES default 3.",
+                                                             "Confirmar si downloadUrl debe guardarse/devolverse completo.",
+                                                             "Validar derivacion de tipoOrden desde tipo."
+                                                         ],
+                                        "closure_notes":  [
+                                                              "No se ejecutaron llamadas reales a WinBo, cron, Cloud Scheduler, Firebase deploys, emuladores ni escrituras contra Firestore.",
+                                                              "No se modifico codigo fuente.",
+                                                              "Notion actualizado en hub REDES Contexto Tecnico."
+                                                          ],
+                                        "notion_sync":  "hub_updated_37e35bc7-7253-8166-be5c-ec09e4f30877"
+                                    },
+    "deep_dive_types_auth_permisos":  {
+                                          "status":  "review",
+                                          "source_path":  "apps/web/src/types",
+                                          "documentation_path":  "docs/contexto/web/types-auth-permisos.md",
+                                          "last_documented":  "2026-06-15",
+                                          "files_read":  [
+                                                             "apps/web/src/types/auth.ts",
+                                                             "apps/web/src/types/permissions.ts",
+                                                             "apps/web/src/types/usuarios.ts",
+                                                             "apps/web/src/core/auth/accessContext.ts",
+                                                             "apps/web/src/core/auth/accessContext.cached.ts",
+                                                             "apps/web/src/core/auth/session.ts",
+                                                             "apps/web/src/core/auth/guards.ts",
+                                                             "apps/web/src/core/auth/apiGuards.ts",
+                                                             "apps/web/src/core/auth/mobile.ts",
+                                                             "apps/web/src/core/auth/mobileBootstrap.ts",
+                                                             "apps/web/src/core/rbac/homeRoute.ts",
+                                                             "apps/web/src/core/rbac/buildHomeNav.ts",
+                                                             "apps/web/src/core/rbac/buildAdminNav.ts",
+                                                             "apps/web/src/core/rbac/menu.ts",
+                                                             "apps/web/src/lib/rbac.ts",
+                                                             "apps/web/src/domain/usuarios/schema.ts",
+                                                             "apps/web/src/domain/roles/repo.ts",
+                                                             "apps/web/src/domain/roles/schema.ts",
+                                                             "apps/web/src/domain/permissions/permission.schema.ts",
+                                                             "apps/web/src/domain/permissions/permissions.repo.ts"
+                                                         ],
+                                          "findings":  [
+                                                           "src/types es liviano; los contratos fuertes viven en domain schemas/repos y core/auth.",
+                                                           "AccessContext calcula roles, areas, directPermissions, rolePermissions, effectivePermissions y estadoAcceso desde usuarios_access + roles.",
+                                                           "ServerSession.access.permissions representa permisos directos; ServerSession.permissions representa permisos efectivos.",
+                                                           "getServerSession tambien valida presencia/inactividad de usuarios_presencia.",
+                                                           "mobileBootstrap devuelve permisos efectivos a Android y reutiliza getDefaultRoleForRoles de web.",
+                                                           "buildHomeNav mezcla roles, areas y permisos efectivos para navegacion; buildAdminNav depende de modulos activos y overrides.",
+                                                           "types/permissions.ts y RoleCreateSchema tienen campos potencialmente heredados o duplicados."
+                                                       ],
+                                          "review_items":  [
+                                                               "Definir fuente canonica formal para Permission, RoleDoc, UsuarioPerfil, AccessContext y ServerSession.",
+                                                               "Revisar types/permissions.ts y su campo permissions.",
+                                                               "Resolver duplicacion permisos vs permissions en RoleCreateSchema.",
+                                                               "Documentar diferencia session.access.permissions vs session.permissions en tipos/comentarios.",
+                                                               "Conectar invalidateUserAccessContext en acciones que cambian usuarios_access o roles/permisos.",
+                                                               "Validar migracion de estadoAcceso ACTIVO historico a HABILITADO.",
+                                                               "Separar prioridad de rol mobile de prioridad web o documentar decision.",
+                                                               "Revisar mojibake en schemas/menus/repos.",
+                                                               "Revisar consumidores de lib/rbac.ts."
+                                                           ],
+                                          "closure_notes":  [
+                                                                "No se ejecuto la app, tests, emuladores ni escrituras contra Firestore.",
+                                                                "No se modifico codigo fuente.",
+                                                                "Notion actualizado en hub REDES Contexto Tecnico."
+                                                            ],
+                                          "notion_sync":  "hub_updated_37e35bc7-7253-8166-be5c-ec09e4f30877"
+                                      },
+    "deep_dive_firebase_functions_restantes":  {
+                                                   "status":  "review",
+                                                   "source_path":  "firebase/functions/src",
+                                                   "documentation_path":  "docs/contexto/firebase/functions-restantes.md",
+                                                   "last_documented":  "2026-06-16",
+                                                   "files_read":  [
+                                                                      "firebase/functions/src/index.ts",
+                                                                      "firebase/functions/package.json",
+                                                                      "firebase/functions/tsconfig.json",
+                                                                      "firebase/functions/src/bootstrapAdmin.ts",
+                                                                      "firebase/functions/src/usersCreate.ts",
+                                                                      "firebase/functions/src/schemas/usersCreate.schema.ts",
+                                                                      "firebase/functions/src/lib/admin.ts",
+                                                                      "firebase/functions/src/lib/security.ts",
+                                                                      "firebase/functions/src/lib/audit.ts",
+                                                                      "firebase/functions/src/utils/authz.ts",
+                                                                      "firebase/functions/src/tramoAlertas.ts",
+                                                                      "apps/web/src/app/api/cron/tramo-alertas/route.ts",
+                                                                      "firebase/functions/src/telegram/webhook.ts",
+                                                                      "firebase/functions/src/telegram/parser.ts",
+                                                                      "firebase/functions/src/telegram/aiParser.ts",
+                                                                      "firebase/functions/src/telegram/telegramApi.ts"
+                                                                  ],
+                                                   "findings":  [
+                                                                    "bootstrapAdmin solo corre con ENABLE_ADMIN_BOOTSTRAP=true o emulador y bloquea si ya existe ADMIN habilitado.",
+                                                                    "usersCreate crea Auth user, usuarios, usuarios_access y auditoria bajo validacion ADMIN.",
+                                                                    "tramoAlertas delega a POST /api/cron/tramo-alertas con WEB_APP_BASE_URL y CRON_TOKEN.",
+                                                                    "telegramWebhook valida secret token, chats permitidos, dedupe de updates y procesa plantillas por reglas con fallback OpenAI opcional.",
+                                                                    "telegram_preliquidaciones se guarda por pedido_ymd y telegram_found_guards por chat_pedido_ymd.",
+                                                                    "telegramPreliqRetryWorker corre cada 30 minutos; telegramPendientesReminder corre 10/12/14/16/18/20 Lima; cleanup corre domingo 03:00."
+                                                                ],
+                                                   "review_items":  [
+                                                                        "Validar si TELEGRAM_ALLOWED_USER_IDS debe bloquear tambien plantillas normales.",
+                                                                        "Revisar colisiones de telegram_preliquidacion_retries por pedido entre chats o dias.",
+                                                                        "Confirmar ventana real de duplicados frente a cleanup de found guards a las 2 horas.",
+                                                                        "Escapar Markdown en mensajes Telegram con datos de usuario/orden.",
+                                                                        "Extraer modulos del webhook Telegram antes de cambios funcionales grandes.",
+                                                                        "Validar costo, latencia y tratamiento de datos del fallback OpenAI.",
+                                                                        "Revisar indices Firestore necesarios para Telegram y tramo alertas.",
+                                                                        "Unificar o justificar helpers auth duplicados entre lib/security.ts y utils/authz.ts.",
+                                                                        "Comparar UsersCreateSchema contra domain/usuarios/schema.ts.",
+                                                                        "Confirmar que ENABLE_ADMIN_BOOTSTRAP no quede activo en produccion.",
+                                                                        "Validar WEB_APP_BASE_URL y CRON_TOKEN entre Functions y web.",
+                                                                        "Evaluar enviar tramo esperado al endpoint web para no depender solo de hora Lima actual."
+                                                                    ],
+                                                   "closure_notes":  [
+                                                                         "No se ejecutaron deploys, emuladores, cron jobs, llamadas Telegram/OpenAI ni escrituras contra Firestore.",
+                                                                         "No se modifico codigo fuente.",
+                                                                         "Notion actualizado en hub REDES Contexto Tecnico."
+                                                                     ],
+                                                   "notion_sync":  "hub_updated_37e35bc7-7253-8166-be5c-ec09e4f30877"
+                                               },
+    "deep_dive_mantenimiento_liquidaciones":  {
+                                                  "status":  "review",
+                                                  "source_path":  "C:\\Proyectos\\REDES\\apps\\web\\src\\domain\\mantenimientoLiquidaciones",
+                                                  "documentation_path":  "C:\\Proyectos\\REDES\\docs\\contexto\\web\\mantenimiento-liquidaciones.md",
+                                                  "last_documented":  "2026-06-16",
+                                                  "files_read":  [
+                                                                     "apps/web/src/domain/mantenimientoLiquidaciones/schemas.ts",
+                                                                     "apps/web/src/domain/mantenimientoLiquidaciones/repo.ts",
+                                                                     "apps/web/src/domain/mantenimientoCausasRaiz/repo.ts",
+                                                                     "apps/web/src/app/api/mantenimiento/liquidaciones/list/route.ts",
+                                                                     "apps/web/src/app/api/mantenimiento/liquidaciones/detail/route.ts",
+                                                                     "apps/web/src/app/api/mantenimiento/liquidaciones/create/route.ts",
+                                                                     "apps/web/src/app/api/mantenimiento/liquidaciones/update/route.ts",
+                                                                     "apps/web/src/app/api/mantenimiento/liquidaciones/liquidar/route.ts",
+                                                                     "apps/web/src/app/api/mantenimiento/liquidaciones/corregir/route.ts",
+                                                                     "apps/web/src/app/api/mantenimiento/liquidaciones/delete/route.ts",
+                                                                     "apps/web/src/app/api/mantenimiento/liquidaciones/ticket-preview/route.ts",
+                                                                     "apps/web/src/app/api/mantenimiento/liquidaciones/export/route.ts",
+                                                                     "apps/web/src/app/api/mantenimiento/cuadrillas/stock-materiales/route.ts",
+                                                                     "apps/web/src/app/api/mantenimiento/cuadrillas/stock-materiales-history/route.ts",
+                                                                     "apps/web/src/app/api/integrations/telegram/mantenimiento/create-ticket/route.ts",
+                                                                     "apps/web/src/app/(protected)/home/mantenimiento/liquidaciones/page.tsx",
+                                                                     "apps/web/src/app/(protected)/home/mantenimiento/liquidaciones/new/page.tsx",
+                                                                     "apps/web/src/app/(protected)/home/mantenimiento/liquidaciones/[id]/page.tsx"
+                                                                 ],
+                                                  "findings":  [
+                                                                   "Las APIs de liquidaciones usan requireAreaScope MANTENIMIENTO sin permiso granular por operacion.",
+                                                                   "Liquidar descuenta stock de cuadrillas/{id}/stock y crea movimiento LIQUIDACION_MANTENIMIENTO.",
+                                                                   "Corregir liquidacion calcula delta de materiales y puede crear CORRECCION_LIQUIDACION_MANTENIMIENTO.",
+                                                                   "Eliminar una liquidacion LIQUIDADO devuelve stock y borra fisicamente el documento.",
+                                                                   "El export XLSX usa listMantenimientoLiquidaciones, que limita a 500 docs.",
+                                                                   "Telegram create-ticket crea liquidaciones con origen TELEGRAM desde ingresos READY_FOR_CREATE."
+                                                               ],
+                                                  "review_items":  [
+                                                                       "Definir permisos granulares para crear, liquidar, corregir, borrar y exportar.",
+                                                                       "Cambiar borrado fisico por anulacion/inactivacion si aplica la regla operativa del proyecto.",
+                                                                       "Revisar concurrencia de ticketVisita fuera de transaccion.",
+                                                                       "Validar correccion cuando cambia cuadrillaId y stock original.",
+                                                                       "Confirmar si export debe filtrar por mes en query y superar limite 500.",
+                                                                       "Revisar indices Firestore para liquidaciones y movimientos de inventario.",
+                                                                       "Mapear errores esperados de dominio a 400/403/409.",
+                                                                       "Alinear TICKET_DUPLICADO de Telegram con visitas multiples."
+                                                                   ],
+                                                  "closure_notes":  [
+                                                                        "No se ejecuto la app, tests, emuladores, exports reales, deploys ni escrituras contra Firestore.",
+                                                                        "No se modifico codigo fuente."
+                                                                    ]
+                                              },
+    "next_recommended_unit":  "Dominio critico: transferencias/instalaciones",
     "incremental_refresh_2026_06_14":  {
                                            "status":  "review",
                                            "changed_files":  [
@@ -227,16 +785,171 @@
                                                              ],
                                            "documentation_updates":  [
                                                                          "docs/contexto/web/garantias-cruce.md",
+                                                                         "docs/contexto/web/garantias-import-preview.md",
+                                                                         "docs/contexto/web/routes.md",
+                                                                         "docs/contexto/web/domain-services.md",
+                                                                         "docs/contexto/cloudrun/acta-engine.md",
+                                                                         "docs/contexto/web/ui-notificaciones-presencia.md",
+                                                                         "docs/contexto/web/winbo-integracion.md",
+                                                                         "docs/contexto/web/types-auth-permisos.md",
+                                                                         "docs/contexto/firebase/functions.md",
+                                                                         "docs/contexto/firebase/auth-firestore-rules.md",
+                                                                         "docs/contexto/scripts/maintenance-scripts.md",
                                                                          "docs/contexto/INDEX.md",
                                                                          "docs/contexto/PENDIENTES.md",
                                                                          "docs/contexto/CHANGELOG-CONTEXTO.md"
                                                                      ],
                                            "new_pending":  [
                                                                "validar KPI redesGarTotal con negocio",
-                                                               "documentar SQL/backfills BigQuery garantias",
-                                                               "comparar variantes de backfill",
-                                                               "mantener BBDD_M&D_01-06-2026.xlsx como sensible/no abierto"
+                                                               "mitigar delete+insert parcial en sync/backfill BigQuery",
+                                                               "unificar backfills duplicados",
+                                                               "alinear SQL dashboard con denominador actualizado",
+                                                               "evaluar estado PROVEEDOR_REDES_PENDIENTE en vista SQL",
+                                                               "validar permiso de preview e import por rol directo",
+                                                               "revisar carrera entre saveProviderImport y garantiasCruceSync",
+                                                               "decidir reglas o API para alertas_app realtime",
+                                                               "decidir reglas o API para cuadrillas/{id}/stock realtime",
+                                                               "revisar indices compuestos no versionados",
+                                                               "revisar paginas home sin guard propio no-alias",
+                                                               "alinear buildHomeNav con guards reales",
+                                                               "validar actions/API de paginas con guard laxo",
+                                                               "profundizar domain services criticos antes de cambios",
+                                                               "revisar equipos/service.ts placeholder",
+                                                               "decidir ubicacion de listeners cliente dentro/fuera de domain",
+                                                               "crear matriz coleccion-dominio-rules-indexes",
+                                                               "validar token y modo de activacion de Cloud Run acta-engine",
+                                                               "definir limites y timeouts de acta-engine",
+                                                               "crear smoke test controlado para acta-engine",
+                                                               "decidir exclusion de cloudrun/acta-engine/__pycache__",
+                                                               "definir rules Firestore para alertas_app listener cliente",
+                                                               "retirar logs de debug de notificaciones",
+                                                               "revisar mojibake en UI de alertas y ticker",
+                                                               "documentar offline por timeout para usuarios_presencia",
+                                                               "medir costo de notificaciones_reads por snapshot",
+                                                               "validar secrets/envs WinBo y cron en produccion",
+                                                               "revisar lock/reentradas de WinBo sync",
+                                                               "definir rango maximo para import manual WinBo",
+                                                               "evaluar retries/TTL de export WinBo",
+                                                               "validar derivacion de tipoOrden en upsert WinBo",
+                                                               "definir fuente canonica para tipos auth/permisos",
+                                                               "resolver duplicacion permisos vs permissions en roles",
+                                                               "documentar session.access.permissions vs session.permissions",
+                                                               "conectar invalidacion de access context en cambios RBAC",
+                                                               "separar o documentar prioridad de rol mobile vs web",
+                                                               "mantener BBDD_M\u0026D_01-06-2026.xlsx como sensible/no abierto"
                                                            ],
                                            "notion_sync":  "hub_updated_37e35bc7-7253-8166-be5c-ec09e4f30877"
-                                       }
+                                       },
+    "incremental_refresh_2026_06_16":  {
+                                           "status":  "review",
+                                           "changed_files":  [
+                                                                 "firebase/functions/src/index.ts",
+                                                                 "firebase/functions/src/bootstrapAdmin.ts",
+                                                                 "firebase/functions/src/usersCreate.ts",
+                                                                 "firebase/functions/src/schemas/usersCreate.schema.ts",
+                                                                 "firebase/functions/src/lib/security.ts",
+                                                                 "firebase/functions/src/utils/authz.ts",
+                                                                 "firebase/functions/src/tramoAlertas.ts",
+                                                                 "apps/web/src/app/api/cron/tramo-alertas/route.ts",
+                                                                 "firebase/functions/src/telegram/webhook.ts",
+                                                                 "firebase/functions/src/telegram/parser.ts",
+                                                                 "firebase/functions/src/telegram/aiParser.ts",
+                                                                 "firebase/functions/src/telegram/telegramApi.ts"
+                                                             ],
+                                           "documentation_updates":  [
+                                                                         "docs/contexto/firebase/functions-restantes.md",
+                                                                         "docs/contexto/firebase/functions.md",
+                                                                         "docs/contexto/INDEX.md",
+                                                                         "docs/contexto/PENDIENTES.md",
+                                                                         "docs/contexto/CHANGELOG-CONTEXTO.md",
+                                                                         "docs/contexto/indexes/source-index.json"
+                                                                     ],
+                                           "new_pending":  [
+                                                               "validar TELEGRAM_ALLOWED_USER_IDS para plantillas normales",
+                                                               "revisar colisiones de retry Telegram por pedido entre chats o dias",
+                                                               "confirmar ventana de found guards de Telegram",
+                                                               "escapar Markdown en mensajes Telegram",
+                                                               "modularizar telegramWebhook antes de cambios grandes",
+                                                               "validar costo y tratamiento de datos del fallback OpenAI",
+                                                               "revisar indices Firestore para Telegram y tramo alertas",
+                                                               "unificar helpers auth de Functions",
+                                                               "comparar UsersCreateSchema contra schema web",
+                                                               "confirmar ENABLE_ADMIN_BOOTSTRAP temporal en produccion",
+                                                               "validar WEB_APP_BASE_URL y CRON_TOKEN de tramo alertas",
+                                                               "evaluar tramo esperado explicito en endpoint cron"
+                                                           ],
+                                           "notion_sync":  "hub_updated_37e35bc7-7253-8166-be5c-ec09e4f30877"
+                                       },
+    "incremental_context_2026_06_16_mantenimiento_liquidaciones":  {
+                                                                       "status":  "review",
+                                                                       "changed_files":  [
+                                                                                             "apps/web/src/domain/mantenimientoLiquidaciones/repo.ts",
+                                                                                             "apps/web/src/domain/mantenimientoLiquidaciones/schemas.ts",
+                                                                                             "apps/web/src/domain/mantenimientoCausasRaiz/repo.ts",
+                                                                                             "apps/web/src/app/api/mantenimiento/liquidaciones",
+                                                                                             "apps/web/src/app/(protected)/home/mantenimiento/liquidaciones",
+                                                                                             "apps/web/src/app/api/integrations/telegram/mantenimiento/create-ticket/route.ts"
+                                                                                         ],
+                                                                       "documentation_updates":  [
+                                                                                                     "docs/contexto/web/mantenimiento-liquidaciones.md",
+                                                                                                     "docs/contexto/INDEX.md",
+                                                                                                     "docs/contexto/PENDIENTES.md",
+                                                                                                     "docs/contexto/CHANGELOG-CONTEXTO.md",
+                                                                                                     "docs/contexto/indexes/source-index.json"
+                                                                                                 ],
+                                                                       "new_pending":  [
+                                                                                           "permisos granulares para operaciones de liquidacion",
+                                                                                           "borrado fisico vs anulacion/inactivacion",
+                                                                                           "ticketVisita concurrente",
+                                                                                           "correccion con cambio de cuadrillaId",
+                                                                                           "export XLSX limitado por ultimas 500 liquidaciones",
+                                                                                           "indices Firestore de liquidaciones y movimientos",
+                                                                                           "mapeo HTTP de errores de dominio",
+                                                                                           "TICKET_DUPLICADO Telegram vs visitas multiples"
+                                                                                       ]
+                                                                   },
+    "cross_context_2026_06_18_force_update_mobile":  {
+                                                         "status":  "review",
+                                                         "source_path":  "apps/web/src/app/api/mobile/bootstrap/route.ts",
+                                                         "related_source_paths":  [
+                                                                                      "apps/web/src/core/auth/mobileBootstrap.ts"
+                                                                                  ],
+                                                         "paired_project":  "REDES-MOBILE",
+                                                         "paired_documentation_path":  "C:/Proyectos/REDES-MOBILE/docs/contexto/android/force-update.md",
+                                                         "finding":  "No se observo refuerzo backend de version minima en bootstrap; Android depende de Firestore directo app_config/android.",
+                                                         "review_items":  [
+                                                                              "Decidir si bootstrap debe devolver o validar version minima para force update."
+                                                                          ]
+                                                     },
+    "cross_context_2026_06_18_tecnico_mobile_alertas_cierre":  {
+                                                                   "status":  "review",
+                                                                   "source_path":  "apps/web/src/app/api/mobile/alertas-app/route.ts",
+                                                                   "related_source_paths":  [
+                                                                                                "apps/web/src/app/api/mobile/inicio-jornada/route.ts",
+                                                                                                "apps/web/src/app/api/mobile/tracking/route.ts",
+                                                                                                "apps/web/src/app/api/mobile/tecnico/home/route.ts",
+                                                                                                "apps/web/src/app/api/mobile/tecnico/ordenes/route.ts",
+                                                                                                "apps/web/src/app/api/mobile/tecnico/ordenes/[id]/route.ts",
+                                                                                                "apps/web/src/app/api/mobile/tecnico/mapa/route.ts",
+                                                                                                "apps/web/src/app/api/mobile/tecnico/cuadrillas-mapa/route.ts",
+                                                                                                "apps/web/src/app/api/alertas-app/[id]/responder/route.ts",
+                                                                                                "apps/web/src/domain/alertas-app/repo.ts",
+                                                                                                "apps/web/src/domain/ordenes/notificaciones-tecnico.ts"
+                                                                                            ],
+                                                                   "paired_project":  "REDES-MOBILE",
+                                                                   "paired_documentation_path":  "C:/Proyectos/REDES-MOBILE/docs/contexto/android/tecnico-alertas-cierre-ruta.md",
+                                                                   "documentation_updates":  [
+                                                                                                 "docs/contexto/web/api-routes.md",
+                                                                                                 "docs/contexto/PENDIENTES.md",
+                                                                                                 "docs/contexto/CHANGELOG-CONTEXTO.md",
+                                                                                                 "docs/contexto/indexes/source-index.json"
+                                                                                             ],
+                                                                   "finding":  "/api/mobile/alertas-app crea o reutiliza alerta; /api/alertas-app/{id}/responder escribe RUTA_CERRADA y crea notificaciones_tecnico al aceptar.",
+                                                                   "review_items":  [
+                                                                                        "Validar Firestore rules para alertas_app y notificaciones_tecnico usados por Android.",
+                                                                                        "Decidir si rechazos deben generar notificacion al tecnico.",
+                                                                                        "Confirmar sincronizacion de estado oficial despues de aceptar cierre.",
+                                                                                        "Revisar orden entre detener tracking mobile y crear alerta remota."
+                                                                                    ]
+                                                               }
 }

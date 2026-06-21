@@ -200,12 +200,13 @@ Si ejecuta, usa:
 Configuracion:
 
 - region `us-central1`;
-- schedule `every 20 minutes`;
+- schedule `every 20 minutes` (limite WinBo: 3 importaciones por hora);
 - timezone `America/Lima`;
+- `timeoutSeconds: 300` (el cron tarda ~142s; el timeout de Cloud Scheduler se ajusta a este valor);
 - secret `WINBO_CRON_TOKEN`;
 - param `WEB_APP_BASE_URL`.
 
-La function tambien valida ventana 07:30-22:00 antes de llamar al endpoint web. Luego hace `POST {WEB_APP_BASE_URL}/api/ordenes/import/winbo/cron` con header `x-winbo-cron-token`.
+La function valida ventana 07:30-22:00 antes de llamar al endpoint web. Luego hace `POST {WEB_APP_BASE_URL}/api/ordenes/import/winbo/cron` con header `x-winbo-cron-token` y timeout interno de 240s.
 
 ## Upsert De Ordenes
 

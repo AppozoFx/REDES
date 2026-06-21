@@ -25,11 +25,14 @@ function isWithinWindowLima(scheduleDate: Date) {
   return totalMinutes >= 7 * 60 + 30 && totalMinutes <= 22 * 60;
 }
 
+const CRON_FETCH_TIMEOUT_MS = 240_000;
+
 export const winboOrdenesAutoSync = onSchedule(
   {
     region: "us-central1",
     schedule: "every 20 minutes",
     timeZone: "America/Lima",
+    timeoutSeconds: 300,
     secrets: [WINBO_CRON_TOKEN],
   },
   async (event) => {
@@ -47,12 +50,22 @@ export const winboOrdenesAutoSync = onSchedule(
     }
 
     const url = `${baseUrl}/api/ordenes/import/winbo/cron`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "x-winbo-cron-token": token,
-      },
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), CRON_FETCH_TIMEOUT_MS);
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: { "x-winbo-cron-token": token },
+        signal: controller.signal,
+      });
+    } catch (error: any) {
+      clearTimeout(timer);
+      const msg = error?.name === "AbortError" ? "WINBO_CRON_FETCH_TIMEOUT" : String(error?.message || error);
+      logger.error("winboOrdenesAutoSync fetch error", { error: msg });
+      throw new Error(msg);
+    }
+    clearTimeout(timer);
 
     const text = await response.text();
     if (!response.ok) {

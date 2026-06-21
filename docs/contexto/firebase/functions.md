@@ -13,7 +13,7 @@ Fuentes leidas:
 - `firebase\functions\src\index.ts`
 - `firebase\functions\src\garantiasCruceSync.ts`
 - `firebase\firestore.rules`
-- `firebase\firestore.indexes.json`
+- `firebase\firestore.indexes.json` (2 índices: `notificaciones` y `telegram_preliquidacion_retries`)
 - `scripts\backfill_garantias_cruce_bq.ts`
 - `firebase\functions\backfill_garantias_cruce_bq.ts`
 - `scripts\backfill_instalaciones_abril_bq.ts`

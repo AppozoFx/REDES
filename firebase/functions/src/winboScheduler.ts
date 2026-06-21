@@ -28,7 +28,7 @@ function isWithinWindowLima(scheduleDate: Date) {
 export const winboOrdenesAutoSync = onSchedule(
   {
     region: "us-central1",
-    schedule: "every 5 minutes",
+    schedule: "every 20 minutes",
     timeZone: "America/Lima",
     secrets: [WINBO_CRON_TOKEN],
   },

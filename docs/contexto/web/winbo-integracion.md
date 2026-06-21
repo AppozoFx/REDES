@@ -28,7 +28,7 @@ La integracion descarga un export XLSX de ordenes desde WinBo, lo interpreta y l
 
 - ejecucion manual desde la UI de importacion de ordenes;
 - dry run para validar export/parser/mapper sin escribir ordenes;
-- ejecucion automatica cada 5 minutos en ventana operativa;
+- ejecucion automatica cada 20 minutos en ventana operativa;
 - auditoria por corrida en `ordenes_import_runs`;
 - lock global para evitar importaciones concurrentes;
 - notificaciones globales y por cuadrilla cuando hay cambios.
@@ -200,7 +200,7 @@ Si ejecuta, usa:
 Configuracion:
 
 - region `us-central1`;
-- schedule `every 5 minutes`;
+- schedule `every 20 minutes`;
 - timezone `America/Lima`;
 - secret `WINBO_CRON_TOKEN`;
 - param `WEB_APP_BASE_URL`.
@@ -235,7 +235,7 @@ No se ejecutaron en esta revision para evitar mezclar documentacion con validaci
 - Hay mojibake visible en strings de codigo relacionados con WinBo/notificaciones (`ContraseÃ±a`, `Ã“rdenes`, `SincronizaciÃ³n`, `â†’`). Puede ser solo encoding historico del archivo, pero conviene normalizar.
 - El cliente depende de endpoints WebForms/ASP.NET de WinBo y de cookies; cambios menores externos pueden romper login/export/download.
 - `WINBO_EXPORT_MAX_RETRIES` default 3 con poll incremental puede ser corto si WinBo demora generando XLSX.
-- El cron automatico importa cada 5 minutos durante 07:30-22:00; si WinBo devuelve un export grande, puede solaparse con la siguiente corrida y depender del lock.
+- El cron automatico importa cada 20 minutos durante 07:30-22:00 (limite impuesto por WinBo: 3 importaciones por hora); si WinBo devuelve un export grande, puede solaparse con la siguiente corrida y depender del lock.
 - El lock tiene TTL 20 minutos; si un proceso queda vivo mas tiempo o una descarga tarda demasiado, otra corrida podria entrar cuando venza.
 - El mismo owner/mode puede reentrar aunque exista lock vigente. Para cron esto reduce bloqueos propios, pero puede permitir doble ejecucion si hay dos invocaciones auto simultaneas.
 - La concurrencia de upsert es hasta 12; si hay muchos cambios, se generan multiples lecturas/escrituras/notificaciones.

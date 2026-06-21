@@ -82,7 +82,7 @@ const estadoColor = (e: string) => {
 const estadoSelectClass = (e: string) =>
   `${estadoColor(e)} rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm transition`;
 
-export default function AsistenciaClient() {
+export default function AsistenciaClient({ initialModoAdmin }: { initialModoAdmin: boolean }) {
   const [fecha, setFecha] = useState(dayjs().format("YYYY-MM-DD"));
   const [rows, setRows] = useState<AsistenciaRow[]>([]);
   const [gestores, setGestores] = useState<Option[]>([]);
@@ -93,7 +93,7 @@ export default function AsistenciaClient() {
   const [cargando, setCargando] = useState(false);
   const [saving, setSaving] = useState(false);
   const [closing, setClosing] = useState(false);
-  const [modoAdmin, setModoAdmin] = useState(false);
+  const [modoAdmin, setModoAdmin] = useState(initialModoAdmin);
   const [filtroEstadoGestor, setFiltroEstadoGestor] = useState<string>("");
   const [assignedAll, setAssignedAll] = useState<string[]>([]);
   const [tecnicos, setTecnicos] = useState<Option[]>([]);
@@ -175,9 +175,10 @@ export default function AsistenciaClient() {
   }, []);
 
   useEffect(() => {
-    cargarDrafts();
+    if (initialModoAdmin) cargarDrafts();
     cargar();
-    cargarGestoresConCuadrillasDia();
+    if (initialModoAdmin) cargarGestoresConCuadrillasDia();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha]);
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 # Rutas Web Protegidas - REDES
 
-Actualizado: 2026-06-15.
+Actualizado: 2026-06-20.
 
 Estado: **Revisar**. Deep dive focalizado en `apps\web\src\app\(protected)` como mapa de acceso por dominio. No se modifico codigo fuente ni se ejecuto la app.
 
@@ -125,11 +125,12 @@ Paginas que parecen depender solo del `home/layout.tsx`, navegacion o APIs inter
 - `home\tecnicos\gestion\page.tsx`
 - `home\instalaciones\actas\page.tsx`
 - `home\instalaciones\asignacion-gestores\page.tsx`
-- `home\instalaciones\asistencia\page.tsx`
 - `home\instalaciones\asistencia\resumen\page.tsx`
 - `home\instalaciones\asistencia-programada\page.tsx`
 - `home\instalaciones\detalle\page.tsx`
 - `home\instalaciones\materiales\page.tsx`
+
+`home\instalaciones\asistencia\page.tsx` tiene `requireAuth()` y calcula `modoAdmin` en servidor (ver patron a continuacion).
 
 Riesgo: un usuario autenticado y habilitado podria entrar por URL directa a la pagina. Si el cliente/API interno bloquea las acciones, el riesgo queda en exposicion de UI o errores; si no, puede haber acceso funcional no deseado.
 
@@ -150,9 +151,41 @@ Riesgo: un usuario autenticado y habilitado podria entrar por URL directa a la p
 - `buildHomeNav` contiene bastante logica de autorizacion visual; puede divergir del guard real de paginas.
 - Algunos roles privilegiados (`RRHH`, `SUPERVISOR`, `SEGURIDAD`) tienen filtrado especial de menu, pero eso no sustituye page guards.
 
+## Patron Server-Side Role Passing
+
+Algunas paginas necesitan saber el rol del usuario para decidir que APIs llamar en el cliente. En lugar de dejar que el cliente haga llamadas de prueba que generan 403, la pagina server-side calcula el flag y lo pasa como prop:
+
+```tsx
+// page.tsx (server component)
+export default async function SomePage() {
+  const session = await requireAuth();
+  const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
+  const modoAdmin = session.isAdmin || roles.includes("GERENCIA") || roles.includes("JEFATURA");
+  return <SomeClient initialModoAdmin={modoAdmin} />;
+}
+
+// SomeClient.tsx (client component)
+export default function SomeClient({ initialModoAdmin }: { initialModoAdmin: boolean }) {
+  const [modoAdmin, setModoAdmin] = useState(initialModoAdmin);
+  useEffect(() => {
+    if (initialModoAdmin) fetchAdminData(); // solo llama APIs de admin si corresponde
+    fetchCommonData();
+  }, [deps]);
+}
+```
+
+Beneficio: elimina llamadas API que devuelven 403 innecesarios para usuarios sin rol admin (reduce ruido en Cloud Logging).
+
+Implementado en: `home/instalaciones/asistencia/page.tsx` + `ui/AsistenciaClient.tsx`.
+
+## Archivos Publicos
+
+- `apps/web/public/robots.txt` — existe. Deniega `/api/` y `/admin/`, permite todo lo demas.
+- Favicon: configurado en `src/app/layout.tsx` via `metadata.icons.icon = "/img/logo.png"`.
+
 ## Pendientes
 
-- Revisar las 9 paginas sin guard propio no-alias y decidir guard minimo esperado.
+- Revisar las 8 paginas sin guard propio no-alias y decidir guard minimo esperado.
 - Definir si las paginas de gestion/asistencia deben exigir area `INSTALACIONES`, rol `GESTOR` o permisos explicitos.
 - Alinear fallback de `requirePermission` para rutas `/home` si `/admin` no es buen destino para usuarios no admin.
 - Generar matriz final ruta -> guard -> permiso/rol -> API consumidor cuando se profundice dominio por dominio.

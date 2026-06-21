@@ -17,6 +17,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "REDES",
   description: "Plataforma operativa REDES",
+  icons: {
+    icon: "/img/logo.png",
+  },
 };
 
 export default function RootLayout({

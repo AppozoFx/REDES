@@ -1,6 +1,16 @@
+import { requireAuth } from "@/core/auth/guards";
 import AsistenciaClient from "./ui/AsistenciaClient";
 
-export default function AsistenciaPage() {
+export default async function AsistenciaPage() {
+  const session = await requireAuth();
+  const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
+  const modoAdmin =
+    session.isAdmin ||
+    roles.includes("GERENCIA") ||
+    roles.includes("JEFATURA") ||
+    roles.includes("ALMACEN") ||
+    roles.includes("RRHH");
+
   return (
     <div className="p-4 space-y-3">
       <div>
@@ -9,7 +19,7 @@ export default function AsistenciaPage() {
           Registro diario por gestores y cierre por Gerencia, Almacen o RRHH.
         </p>
       </div>
-      <AsistenciaClient />
+      <AsistenciaClient initialModoAdmin={modoAdmin} />
     </div>
   );
 }

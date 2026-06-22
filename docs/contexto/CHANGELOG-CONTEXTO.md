@@ -1,5 +1,13 @@
 # Changelog de Contexto - REDES
 
+## 2026-06-21 - Revision incremental diaria: Firestore rules para force update y alertas
+
+- Revisados `git status` y `git diff --name-only` de REDES y REDES-MOBILE.
+- REDES muestra cambio funcional en `firebase/firestore.rules`: nueva lectura publica `get` para `app_config/{docId}` y lectura autenticada `get/list` para `alertas_app/{id}`, con escrituras cliente denegadas.
+- `docs/contexto/firebase/auth-firestore-rules.md` ya reflejaba la regla nueva; se actualizaron `INDEX.md`, `PENDIENTES.md` e `indexes/source-index.json` para cerrar los pendientes de regla faltante para `app_config` y lectura de `alertas_app`.
+- Quedan pendientes: validar deploy/emulador de reglas, revisar alcance de lectura autenticada general en `alertas_app`, definir reglas para `notificaciones_tecnico` y decidir `cuadrillas/{id}/stock`.
+- No se modifico codigo fuente, configs, Firebase rules, package files, lockfiles, SQL, scripts, credenciales ni binarios.
+
 ## 2026-06-18 - Feature: coordinador cuadrillas con equipos y detalle de orden
 
 - **Backend `cuadrillas/route.ts`**: agregados `cantMesh`, `cantFono`, `cantBox` a cada item de `ordenes.items` leyendo `cantMESHwin`/`cantFONOwin`/`cantBOXwin` de la coleccion `ordenes`.

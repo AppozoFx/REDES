@@ -1,6 +1,6 @@
 ﻿{
     "project":  "REDES",
-    "scan_date":  "2026-06-18",
+    "scan_date":  "2026-06-21",
     "phase":  "3-incremental-maintenance",
     "coverage":  "partial-changed-units",
     "root":  "C:\\Proyectos\\REDES",
@@ -99,8 +99,8 @@
                       "documentation_path":  "docs/contexto/firebase/auth-firestore-rules.md",
                       "status":  "review",
                       "priority":  "high",
-                      "last_documented":  "2026-06-16",
-                      "notes":  "Rules/indexes, garantiasCruceSync, Telegram, tramos, usersCreate y bootstrapAdmin documentados. Quedan decisiones de seguridad y operacion.",
+                      "last_documented":  "2026-06-21",
+                      "notes":  "Rules/indexes, garantiasCruceSync, Telegram, tramos, usersCreate y bootstrapAdmin documentados. Revision 2026-06-21: app_config permite get publico y alertas_app permite get/list autenticado en fuente; falta validar deploy, notificaciones_tecnico, cuadrillas/{id}/stock e indices.",
                       "related_documentation":  [
                                                     "docs/contexto/firebase/functions.md",
                                                     "docs/contexto/firebase/functions-restantes.md"
@@ -141,7 +141,7 @@
                                                    "apps/web/src/app/api/mobile/alertas-app",
                                                    "apps/web/src/app/api/alertas-app/[id]/responder"
                                                ],
-                      "notes":  "Topbars, campanas, toasts, presencia web/mobile, tracking mobile y alertas app documentados. Revisar rules de alertas_app, logs de debug, mojibake y offline por timeout."
+                      "notes":  "Topbars, campanas, toasts, presencia web/mobile, tracking mobile y alertas app documentados. Revision 2026-06-21: alertas_app ya tiene lectura autenticada en fuente; revisar alcance, notificaciones_tecnico, logs de debug, mojibake y offline por timeout."
                   },
                   {
                       "title":  "Integracion Winbo",
@@ -951,5 +951,30 @@
                                                                                         "Confirmar sincronizacion de estado oficial despues de aceptar cierre.",
                                                                                         "Revisar orden entre detener tracking mobile y crear alerta remota."
                                                                                     ]
-                                                               }
+                                                               },
+    "incremental_refresh_2026_06_21_firestore_rules":  {
+                                                           "status":  "review",
+                                                           "changed_files":  [
+                                                                                 "firebase/firestore.rules",
+                                                                                 "docs/contexto/firebase/auth-firestore-rules.md"
+                                                                             ],
+                                                           "documentation_updates":  [
+                                                                                         "docs/contexto/INDEX.md",
+                                                                                         "docs/contexto/PENDIENTES.md",
+                                                                                         "docs/contexto/CHANGELOG-CONTEXTO.md",
+                                                                                         "docs/contexto/indexes/source-index.json"
+                                                                                     ],
+                                                           "findings":  [
+                                                                            "app_config/{docId} permite get publico para force update antes de login",
+                                                                            "alertas_app/{id} permite get/list autenticado y mantiene escrituras cliente denegadas",
+                                                                            "no se verifico deploy/emulador de reglas"
+                                                                        ],
+                                                           "review_items":  [
+                                                                                "validar deploy de reglas",
+                                                                                "revisar alcance de lectura autenticada general en alertas_app",
+                                                                                "definir rules para notificaciones_tecnico",
+                                                                                "decidir regla o API para cuadrillas/{id}/stock"
+                                                                            ],
+                                                           "next_recommended_unit":  "Dominio critico: transferencias/instalaciones"
+                                                       }
 }

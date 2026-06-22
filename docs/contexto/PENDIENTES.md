@@ -1,6 +1,6 @@
 # Pendientes de Contexto - REDES
 
-Actualizado: 2026-06-18.
+Actualizado: 2026-06-21.
 
 Siguiente unidad recomendada: **Dominio critico: transferencias/instalaciones**.
 
@@ -12,14 +12,14 @@ Siguiente unidad recomendada: **Dominio critico: transferencias/instalaciones**.
 | Alta | Revisar | Arquitectura web | `C:\Proyectos\REDES\apps\web` | App Next.js central con rutas protegidas, admin, home y API routes | Rutas protegidas documentadas; falta profundizar API routes no mobile y acciones por dominio |
 | Alta | Revisar | Auth/RBAC mobile | `C:\Proyectos\REDES\apps\web\src\core\auth`, `apps\web\src\core\rbac`, rutas `/api/mobile/bootstrap` y `/api/mobile/me` | Define bootstrap mobile, contexto de acceso, roles efectivos y permisos consumidos por Android | Validar defaultRole mobile, 401/403, cache de access context y uso real de permisos |
 | Alta | Revisar | Cruce de garantias | `apps\web\src\app\api\ordenes\garantias\cruce`, `apps\web\src\core\garantias\cruceProveedor.ts`, `firebase\functions\src\garantiasCruceSync.ts` | Nuevo flujo de comparacion WIN/REDES con Firestore, Power BI y sync BigQuery | Validar permisos por rol, preview con datos sensibles, carrera import/sync, reglas Firestore y tolerancia a fallas parciales en BigQuery |
-| Alta | Revisar | Firebase | `C:\Proyectos\REDES\firebase` | Firestore rules, indexes y functions son frontera de seguridad e integracion | Rules/indexes, `garantiasCruceSync`, Telegram, tramos, `usersCreate` y `bootstrapAdmin` documentados; quedan decisiones de seguridad/operacion |
+| Alta | Revisar | Firebase | `C:\Proyectos\REDES\firebase` | Firestore rules, indexes y functions son frontera de seguridad e integracion | Rules/indexes, `garantiasCruceSync`, Telegram, tramos, `usersCreate` y `bootstrapAdmin` documentados; `app_config` y lectura de `alertas_app` ya tienen regla explicita en fuente; quedan decisiones de seguridad/operacion |
 | Alta | Revisar | Dominio web | `C:\Proyectos\REDES\apps\web\src\domain` | Contiene repositorios/esquemas por areas de negocio | Mapa general documentado; falta deep dive por dominio critico |
 | Alta | Revisar | Mantenimiento liquidaciones | `apps\web\src\domain\mantenimientoLiquidaciones`, `apps\web\src\app\api\mantenimiento\liquidaciones`, `/home/mantenimiento/liquidaciones` | Flujo critico de tickets de mantenimiento, consumo/devolucion de stock y export XLSX | Validar permisos granulares, borrado fisico, concurrencia de visitas, correccion con cambio de cuadrilla, limite 500 en export e indices |
 | Media | Revisar | Integracion Winbo | `C:\Proyectos\REDES\apps\web\src\lib\winbo` | Integracion externa con tests y sync visibles | Validar secrets/envs, lock/reentradas, rango maximo, retries y derivacion de `tipoOrden` |
 | Media | Revisar | Cloud Run | `C:\Proyectos\REDES\cloudrun\acta-engine` | Servicio externo para extraccion de actas usado por flujos de actas | Validar token en produccion, modo de activacion, timeout, limites de request y smoke test |
 | Media | Revisar | Scripts operativos | `C:\Proyectos\REDES\scripts` | Migraciones, backfills y SQL BigQuery con impacto en datos | SQL/backfills de garantias documentados; falta agrupar resto de scripts |
 | Media | Pendiente | Rutas web protegidas | `C:\Proyectos\REDES\apps\web\src\app\(protected)` | Muchas pantallas por rol/area | Documentar rutas por modulo sin bajar aun a componentes menores |
-| Baja | Revisar | UI compartida | `C:\Proyectos\REDES\apps\web\src\ui` | Componentes de layout, presencia, notificaciones y navegacion | Validar rules de `alertas_app`, limpiar logs/mojibake y definir offline por timeout |
+| Baja | Revisar | UI compartida | `C:\Proyectos\REDES\apps\web\src\ui` | Componentes de layout, presencia, notificaciones y navegacion | Validar alcance/despliegue de regla `alertas_app`, limpiar logs/mojibake y definir offline por timeout |
 | Baja | Revisar | Tipos compartidos | `C:\Proyectos\REDES\apps\web\src\types` | Tipos de auth, permisos y usuarios | Definir fuente canonica, resolver duplicaciones y conectar invalidacion de access context |
 
 ## Nuevos Pendientes Detectados En Fase 0
@@ -93,11 +93,16 @@ Siguiente unidad recomendada: **Dominio critico: transferencias/instalaciones**.
 - El import puede reemplazar varios periodos si el workbook trae varios meses; evaluar advertencia o seleccion explicita.
 - El parser cae a segunda/primera hoja si no encuentra `Garantia`; validar si conviene exigir hoja exacta.
 
+## Revision Incremental 2026-06-21 - Firebase Rules
+
+- `firestore.rules` ahora declara `app_config/{docId}` con `allow get: if true`; esto cubre el force update Android antes de login.
+- `firestore.rules` ahora declara `alertas_app/{id}` con `allow get, list: if signedIn()` y escrituras cliente denegadas; el listener web autenticado ya no queda bloqueado por default deny en fuente.
+- No se verifico deploy de reglas ni emulador; validar que reglas publicadas coincidan con el archivo fuente.
+
 ## Pendientes Detectados En Deep Dive Firebase Rules/Indexes
 
-- `alertas-app/repo.ts` escucha `alertas_app` desde cliente, pero `firestore.rules` no permite esa coleccion.
 - `StockCuadrillasMantClient.tsx` escucha `cuadrillas/{id}/stock` desde cliente, pero `firestore.rules` no permite `cuadrillas` ni subcoleccion `stock`.
-- Decidir si esos realtime directos deben tener regla explicita o migrarse a API/polling.
+- Decidir si el realtime directo de `cuadrillas/{id}/stock` debe tener regla explicita o migrarse a API/polling.
 - `notificaciones_reads` autoriza por prefijo del document id; evaluar validar tambien `uid`/`notifId` en payload.
 - Solo hay un indice compuesto versionado, para `notificaciones`; revisar indices compuestos de queries server/API criticas.
 - Mantener politica default deny para colecciones operativas nuevas y documentar excepciones cliente.
@@ -131,7 +136,7 @@ Siguiente unidad recomendada: **Dominio critico: transferencias/instalaciones**.
 
 ## Pendientes Detectados En Deep Dive UI Compartida, Notificaciones Y Presencia
 
-- Definir y probar reglas Firestore para `alertas_app` si el listener cliente debe mantenerse.
+- Validar en entorno desplegado que la regla nueva de `alertas_app` cubre el listener cliente esperado sin abrir escritura directa.
 - Definir y probar reglas Firestore para `notificaciones_tecnico` si Android debe leer items por cuadrilla y marcar `leido=true` directo.
 - Decidir si `AlertasAppBell` debe filtrar por `rolesDestino` o si basta con montar solo para roles permitidos.
 - Retirar o condicionar logs de debug en notificaciones antes de produccion.
@@ -144,7 +149,7 @@ Siguiente unidad recomendada: **Dominio critico: transferencias/instalaciones**.
 ## Pendientes Detectados En Cruce Tecnico Mobile Alertas/Cierre 2026-06-18
 
 - Confirmar si la API web `POST /api/alertas-app/{id}/responder` debe crear notificacion tambien para rechazos de `CERRAR_RUTA` o `REQUIERE_ATENCION`.
-- Validar rules para que Android lea solo `alertas_app`/`notificaciones_tecnico` de su cuadrilla y solo pueda marcar sus notificaciones como leidas.
+- Validar si Android debe leer `alertas_app` directamente por cuadrilla; la regla actual habilita lectura autenticada general. Definir ademas reglas para que `notificaciones_tecnico` solo pueda leerse/marcarse por la cuadrilla correspondiente.
 - Decidir si aceptar cierre en web debe disparar algun mecanismo adicional para sincronizar estado mobile o basta con listener de `alertas_app`.
 - Revisar si el modelo de cierre aprobable debe impedir que Android detenga tracking antes de que la alerta exista.
 
@@ -188,7 +193,7 @@ Siguiente unidad recomendada: **Dominio critico: transferencias/instalaciones**.
 - Normalizar errores de rol de helpers mobile para devolver 403 cuando aplique, no 500 generico.
 - Confirmar si `/api/mobile/me` sigue vigente o debe documentarse como legado/fallback.
 - Evaluar invalidacion explicita de `accessContext.cached` cuando cambien roles/permisos mobile.
-- Revisar si backend debe devolver o validar metadata de version minima en bootstrap para reforzar force update; deep dive Android 2026-06-18 confirma que hoy depende solo de Firestore cliente `app_config/android`.
+- Revisar si backend debe devolver o validar metadata de version minima en bootstrap para reforzar force update; deep dive Android 2026-06-18 confirma que hoy depende solo de Firestore cliente `app_config/android`, cuya lectura ya esta permitida en fuente.
 - Alinear permisos efectivos con UI mobile si se espera control fino por permisos.
 
 ## No Revisado En Profundidad

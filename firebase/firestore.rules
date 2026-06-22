@@ -118,6 +118,26 @@ service cloud.firestore {
     }
 
     /* =========================
+       APP_CONFIG (configuración pública de versión mínima)
+       ========================= */
+    match /app_config/{docId} {
+      // Lectura pública sin auth — el check de force update ocurre antes del login
+      allow get: if true;
+      // Sin list ni escritura cliente
+      allow list, write: if false;
+    }
+
+    /* =========================
+       ALERTAS_APP (cierres de ruta desde móvil)
+       ========================= */
+    match /alertas_app/{id} {
+      // Web lee alertas en tiempo real para coordinadores/supervisores
+      allow get, list: if signedIn();
+      // Escritura solo desde servidor via Admin SDK (app móvil -> API -> Admin SDK)
+      allow create, update, delete: if false;
+    }
+
+    /* =========================
        DEFAULT: denegar todo lo demás
        ========================= */
     match /{document=**} {

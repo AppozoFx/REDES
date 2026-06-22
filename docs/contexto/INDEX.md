@@ -1,6 +1,6 @@
 # Indice de Contexto - REDES
 
-Actualizado: 2026-06-18.
+Actualizado: 2026-06-21.
 
 Estado actual: unidad **Dominio critico: mantenimientoLiquidaciones** documentada. Se mantienen pendientes por permisos granulares, borrado fisico, concurrencia de visitas, correccion con cambio de cuadrilla, limite de export e indices.
 
@@ -16,7 +16,7 @@ Estado actual: unidad **Dominio critico: mantenimientoLiquidaciones** documentad
 | Domain services | Revisar | `apps\web\src\domain` | `web/domain-services.md` | Alta | Mapa de 19 dominios documentado; profundizar modulos criticos antes de cambios |
 | Mantenimiento liquidaciones | Revisar | `apps\web\src\domain\mantenimientoLiquidaciones`, `apps\web\src\app\api\mantenimiento\liquidaciones`, pantallas `/home/mantenimiento/liquidaciones` | `web/mantenimiento-liquidaciones.md` | Alta | Deep dive documentado; revisar permisos granulares, borrado fisico, visitas concurrentes, correccion de stock y export limitado |
 | Auth/RBAC mobile | Revisar | `apps\web\src\core\auth`, `apps\web\src\core\rbac`, rutas `/api/mobile/bootstrap` y `/api/mobile/me` | `web/auth-rbac-mobile.md` | Alta | Deep dive completado; revisar defaultRole mobile, permisos no usados por Android y 401/403 |
-| Firebase rules/indexes | Revisar | `firebase\firestore.rules`, `firebase\firestore.indexes.json` | `firebase/auth-firestore-rules.md` | Alta | Rules/indexes documentados; revisar listeners directos en `alertas_app` y `cuadrillas/{id}/stock` |
+| Firebase rules/indexes | Revisar | `firebase\firestore.rules`, `firebase\firestore.indexes.json` | `firebase/auth-firestore-rules.md` | Alta | Rules/indexes documentados; `app_config` y lectura de `alertas_app` ya tienen regla explicita en fuente; queda revisar `cuadrillas/{id}/stock`, `notificaciones_tecnico` e indices |
 | Firebase Functions | Revisar | `firebase\functions\src` | `firebase/functions.md` + `firebase/functions-restantes.md` | Alta | `garantiasCruceSync`, Telegram, tramos, `usersCreate` y `bootstrapAdmin` documentados; revisar decisiones pendientes |
 | Cloud Run acta-engine | Revisar | `cloudrun\acta-engine` | `cloudrun/acta-engine.md` | Media | Servicio Flask/PyMuPDF/pyzbar documentado; validar token, modo default active, limites y timeout |
 | Scripts operativos | Revisar | `scripts` | `scripts/maintenance-scripts.md` | Media | SQL/backfills de garantias documentados; requiere decisiones antes de ejecutar |

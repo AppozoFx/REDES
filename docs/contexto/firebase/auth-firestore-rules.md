@@ -1,6 +1,6 @@
 # Firebase Rules, Colecciones e Indexes - REDES
 
-Actualizado: 2026-06-15.
+Actualizado: 2026-06-20.
 
 Estado: **Revisar**. Deep dive focalizado en `firebase\firestore.rules`, `firebase\firestore.indexes.json`, configuracion Firebase y usos cliente/servidor observados. No se ejecuto deploy, emulador ni query contra datos reales.
 
@@ -52,6 +52,8 @@ Reglas explicitas:
 | `auditoria/{docId}` | Solo admin | Denegado | Denegado |
 | `notificaciones/{id}` | Cualquier autenticado | Denegado | Denegado |
 | `notificaciones_reads/{rid}` | Solo read propio por prefijo `{uid}_` | Create/update propio por prefijo `{uid}_` | Denegado |
+| `app_config/{docId}` | Público sin auth (solo `get`) | Denegado | Denegado |
+| `alertas_app/{id}` | Cualquier autenticado | Denegado | Denegado |
 | Cualquier otra ruta | Denegado | Denegado | Denegado |
 
 Implicacion: la mayor parte del backend web usa Admin SDK y no depende de estas reglas. Las reglas protegen principalmente accesos directos desde Firebase Web SDK en cliente.
@@ -65,8 +67,11 @@ Usos que si encajan con reglas actuales:
 
 Usos cliente directo que parecen bloqueados por reglas actuales:
 
-- `alertas-app/repo.ts` escucha `alertas_app` por `ymd` o por `estado`; no existe regla para `alertas_app`.
 - `StockCuadrillasMantClient.tsx` escucha `cuadrillas/{selectedId}/stock`; no existe regla para `cuadrillas` ni subcoleccion `stock`.
+
+Usos cliente directo corregidos:
+
+- `alertas-app/repo.ts` escucha `alertas_app` por `ymd` o por `estado`. Regla agregada 2026-06-20: `allow get, list: if signedIn()`.
 
 Riesgo: estas suscripciones pueden caer con `permission-denied` en cliente si se ejecutan contra Firestore real con las reglas actuales. En varios casos hay fallback a APIs propias, pero el realtime directo podria no funcionar.
 
@@ -81,6 +86,8 @@ Colecciones con contrato explicito:
 - `auditoria`
 - `notificaciones`
 - `notificaciones_reads`
+- `alertas_app` (lectura cliente habilitada 2026-06-20)
+- `app_config` (lectura pública sin auth habilitada 2026-06-21 — necesaria para force update Android antes de login)
 
 ## Colecciones Sensibles Usadas Por Servidor/Admin SDK
 
@@ -98,7 +105,6 @@ Ejemplos observados:
 - `ventas`
 - `actas`
 - `actas_guias`
-- `alertas_app`
 - `usuarios_presencia`
 - `asignacion_supervisores_*`
 - `asignacion_gestores_*`
@@ -168,7 +174,6 @@ Queries a revisar por posible indice no versionado:
 
 ## Pendientes
 
-- Decidir si `alertas_app` debe tener lectura cliente directa o migrarse completamente a API/realtime propio.
 - Decidir si `cuadrillas/{id}/stock` necesita regla cliente para realtime o si debe reemplazarse por polling/API.
 - Validar si `notificaciones_reads` debe reforzarse con validacion de campos (`uid`, `notifId`) ademas del prefijo del doc id.
 - Versionar indices necesarios para queries server/API criticas o documentar que se gestionan manualmente desde Firebase Console.

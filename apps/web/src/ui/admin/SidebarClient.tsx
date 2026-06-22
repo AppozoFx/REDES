@@ -10,8 +10,8 @@ import type { AdminNavItem } from "@/core/rbac/menu";
 type GroupKey = "GENERAL" | "ADMIN" | "AREAS";
 
 const GROUP_ORDER: GroupKey[] = ["GENERAL", "ADMIN", "AREAS"];
-const SIDEBAR_SPRING = { type: "spring", stiffness: 260, damping: 28, mass: 0.8 } as const;
-const FADE_SLIDE = { duration: 0.22, ease: [0.22, 1, 0.36, 1] as const };
+const SIDEBAR_SPRING = { type: "tween", ease: "easeOut", duration: 0.2 } as const;
+const FADE_SLIDE = { duration: 0.18, ease: [0.22, 1, 0.36, 1] as const };
 
 function getGroup(it: AdminNavItem): GroupKey {
   if (it.href === "/admin") return "GENERAL";
@@ -25,28 +25,10 @@ function groupLabel(group: GroupKey) {
   return "Áreas";
 }
 
-function GroupIcon({ group }: { group: GroupKey }) {
-  if (group === "GENERAL") {
-    return (
-      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}>
-        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-        <polyline points="9 22 9 12 15 12 15 22" />
-      </svg>
-    );
-  }
-  if (group === "ADMIN") {
-    return (
-      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}>
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      </svg>
-    );
-  }
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}>
-      <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
-      <rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" />
-    </svg>
-  );
+function groupBadge(group: GroupKey) {
+  if (group === "GENERAL") return "GN";
+  if (group === "ADMIN") return "AD";
+  return "AR";
 }
 
 function isPathActive(pathname: string, href: string) {
@@ -64,6 +46,7 @@ export default function AdminSidebarClient({
   const [collapsed, setCollapsed] = useState(true);
   const [openGroup, setOpenGroup] = useState<GroupKey>("GENERAL");
   const [navigatingHref, setNavigatingHref] = useState<string | null>(null);
+
   const activeLabel = useMemo(() => {
     const exact = items.find((it) => pathname === it.href);
     if (exact) return exact.label;
@@ -83,6 +66,13 @@ export default function AdminSidebarClient({
     return out;
   }, [items]);
 
+  // Auto-seleccionar el grupo activo cuando cambia la ruta (no cuando cambia items)
+  useEffect(() => {
+    const active = items.find((it) => isPathActive(pathname, it.href));
+    if (active) setOpenGroup(getGroup(active));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
   useEffect(() => {
     setNavigatingHref(null);
   }, [pathname]);
@@ -100,7 +90,9 @@ export default function AdminSidebarClient({
       initial={false}
       animate={{ width: collapsed ? "5rem" : "16rem" }}
       transition={SIDEBAR_SPRING}
-      className="h-dvh shrink-0 overflow-x-hidden border-r border-[rgba(15,23,42,.08)] bg-gradient-to-b from-white to-slate-50/70 shadow-[0_6px_20px_rgba(15,23,42,.05)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-950 dark:shadow-none"
+      onMouseEnter={() => setCollapsed(false)}
+      onMouseLeave={() => setCollapsed(true)}
+      className="relative z-10 h-dvh shrink-0 overflow-x-hidden border-r border-[rgba(15,23,42,.08)] bg-gradient-to-b from-white to-slate-50/70 shadow-[2px_0_20px_rgba(15,23,42,.07)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-950 dark:shadow-none"
       style={
         {
           "--brand": "#30518c",
@@ -113,8 +105,11 @@ export default function AdminSidebarClient({
     >
       <div className="flex h-full min-w-0 flex-col overflow-x-hidden p-2">
 
-        {/* ── Logo / Collapse toggle ── */}
-        <div className="mb-3 flex items-center justify-between">
+        {/* ── Logo / título ── */}
+        <div className="mb-3 flex h-10 items-center gap-2 px-1">
+          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-[0_4px_14px_rgba(48,81,140,.18)] ring-1 ring-[var(--line)] dark:bg-slate-800 dark:shadow-none">
+            <Image src="/img/logo.png" alt="Logo REDES" width={26} height={26} className="h-6 w-6 object-contain" />
+          </span>
           <AnimatePresence initial={false}>
             {!collapsed && (
               <motion.div
@@ -122,34 +117,14 @@ export default function AdminSidebarClient({
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -10 }}
                 transition={FADE_SLIDE}
-                className="flex items-center gap-2"
               >
-                <span className="inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl bg-white shadow-[0_6px_18px_rgba(48,81,140,.2)] ring-1 ring-[var(--line)] dark:bg-slate-800 dark:shadow-none">
-                  <Image src="/img/logo.png" alt="Logo REDES" width={26} height={26} className="h-6 w-6 object-contain" />
-                </span>
-                <span className="text-sm font-semibold text-[var(--brand-ink)]">Admin</span>
+                <div className="text-sm font-semibold text-[var(--brand-ink)]">Admin</div>
               </motion.div>
             )}
           </AnimatePresence>
-
-          <button
-            type="button"
-            onClick={() => setCollapsed((v) => !v)}
-            className="rounded-xl border border-[var(--line)] p-1.5 text-[var(--muted-ink)] transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45 dark:hover:bg-slate-800"
-            aria-label={collapsed ? "Expandir sidebar" : "Colapsar sidebar"}
-          >
-            <svg
-              viewBox="0 0 20 20"
-              className={`h-4 w-4 transition-transform duration-300 ${collapsed ? "rotate-180" : ""}`}
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path d="M12.78 4.22a.75.75 0 010 1.06L8.06 10l4.72 4.72a.75.75 0 11-1.06 1.06l-5.25-5.25a.75.75 0 010-1.06l5.25-5.25a.75.75 0 011.06 0z" />
-            </svg>
-          </button>
         </div>
 
-        {/* ── Ruta activa (expandido) ── */}
+        {/* ── Sección activa expandido ── */}
         <AnimatePresence initial={false}>
           {!collapsed && (
             <motion.div
@@ -159,12 +134,13 @@ export default function AdminSidebarClient({
               transition={FADE_SLIDE}
               className="mb-2 rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-[11px] text-slate-500 dark:bg-slate-800 dark:text-slate-400"
             >
-              Sección: <span className="font-semibold text-[var(--brand-ink)] dark:text-slate-200">{activeLabel}</span>
+              Sección:{" "}
+              <span className="font-semibold text-[var(--brand-ink)] dark:text-slate-200">{activeLabel}</span>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* ── Ruta activa (colapsado, tooltip) ── */}
+        {/* ── Sección activa colapsado ── */}
         {collapsed && (
           <div className="group relative mb-2">
             <div className="flex h-10 w-full items-center justify-center rounded-xl border border-[var(--line)] bg-white text-[11px] font-bold text-[var(--brand-ink)] dark:bg-slate-800 dark:text-slate-200">
@@ -176,7 +152,7 @@ export default function AdminSidebarClient({
           </div>
         )}
 
-        {/* ── Navegación ── */}
+        {/* ── Grupos acordeón ── */}
         <nav className="space-y-1.5 overflow-x-hidden overflow-y-auto">
           {GROUP_ORDER.map((group) => {
             const list = grouped.get(group) || [];
@@ -190,11 +166,6 @@ export default function AdminSidebarClient({
                   <button
                     type="button"
                     onClick={() => {
-                      if (collapsed) {
-                        setCollapsed(false);
-                        setOpenGroup(group);
-                        return;
-                      }
                       setOpenGroup((p) => (p === group ? "GENERAL" : group));
                     }}
                     className={`flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45 ${
@@ -203,10 +174,12 @@ export default function AdminSidebarClient({
                         : "text-[var(--muted-ink)] hover:bg-white/70 hover:text-[#30518c] dark:hover:bg-slate-800/60"
                     }`}
                   >
-                    <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--line)] dark:border-slate-700 ${
-                      activeInside ? "bg-[#30518c] text-white shadow-[0_4px_12px_rgba(48,81,140,.3)]" : "bg-white text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                    <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-sm font-semibold transition ${
+                      activeInside
+                        ? "border-[#9db8ea] bg-[#30518c] text-white shadow-[0_4px_12px_rgba(48,81,140,.3)] dark:border-[#30518c]/60"
+                        : "border-[var(--line)] bg-white text-[var(--brand-ink)] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
                     }`}>
-                      <GroupIcon group={group} />
+                      {groupBadge(group)}
                     </span>
 
                     <AnimatePresence initial={false}>
@@ -226,7 +199,7 @@ export default function AdminSidebarClient({
                     <AnimatePresence initial={false}>
                       {!collapsed && (
                         <motion.span
-                          initial={{ opacity: 0, rotate: 0 }}
+                          initial={{ opacity: 0 }}
                           animate={{ opacity: 1, rotate: isOpen ? 180 : 0 }}
                           exit={{ opacity: 0 }}
                           transition={{ duration: 0.2 }}
@@ -254,7 +227,6 @@ export default function AdminSidebarClient({
                       animate={{ height: "auto", opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.22, ease: "easeInOut" }}
-                      layout
                       className="overflow-hidden"
                     >
                       <div className="ml-4 mt-1 border-l-2 border-[var(--line)] pl-2 dark:border-slate-700">
@@ -293,7 +265,7 @@ export default function AdminSidebarClient({
           })}
         </nav>
 
-        {/* ── Áreas (footer) ── */}
+        {/* ── Áreas con acceso (footer) ── */}
         <AnimatePresence initial={false}>
           {!collapsed && (
             <motion.div
@@ -304,13 +276,20 @@ export default function AdminSidebarClient({
               className="mt-auto pt-3"
             >
               <div className="rounded-xl border border-[var(--line)] bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800">
-                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Áreas con acceso</p>
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  Áreas con acceso
+                </p>
                 <div className="flex flex-wrap gap-1">
-                  {areas.length ? areas.map((a) => (
-                    <span key={a} className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-                      {a}
-                    </span>
-                  )) : (
+                  {areas.length ? (
+                    areas.map((a) => (
+                      <span
+                        key={a}
+                        className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                      >
+                        {a}
+                      </span>
+                    ))
+                  ) : (
                     <span className="text-[11px] text-slate-400 dark:text-slate-500">(ninguna)</span>
                   )}
                 </div>

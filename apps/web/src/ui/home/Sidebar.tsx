@@ -34,8 +34,8 @@ const GROUP_ORDER: GroupKey[] = [
   "ALMACEN",
 ];
 
-const SIDEBAR_SPRING = { type: "spring", stiffness: 260, damping: 28, mass: 0.8 } as const;
-const FADE_SLIDE = { duration: 0.22, ease: [0.22, 1, 0.36, 1] as const };
+const SIDEBAR_SPRING = { type: "tween", ease: "easeOut", duration: 0.2 } as const;
+const FADE_SLIDE = { duration: 0.18, ease: [0.22, 1, 0.36, 1] as const };
 
 function shortName(full: string, fallback: string) {
   const parts = String(full || "")
@@ -141,7 +141,7 @@ function isPathActive(pathname: string, href: string) {
 
 export default function HomeSidebar({ session }: { session: ServerSession }) {
   const pathname = usePathname();
-  const itemsRaw = buildHomeNav(session);
+  const itemsRaw = useMemo(() => buildHomeNav(session), [session]);
   const [openGroup, setOpenGroup] = useState<GroupKey>("INSTALACIONES");
   const [collapsed, setCollapsed] = useState(true);
   const [navigatingHref, setNavigatingHref] = useState<string | null>(null);
@@ -167,6 +167,7 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
   }, [items]);
 
   const identity = shortName(String(user?.nombre || ""), session.uid) || session.uid;
+
   const activeLabel = useMemo(() => {
     const exact = items.find((it) => pathname === it.href);
     if (exact) return exact.label;
@@ -176,14 +177,21 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
     return byPrefix?.label || "Inicio";
   }, [items, pathname]);
 
+  // Auto-seleccionar el grupo activo cuando cambia la ruta (no cuando cambia items)
+  useEffect(() => {
+    const nonFixed = itemsRaw.filter(
+      (it) => it.href !== "/home" && it.href !== "/home/comunicados"
+    );
+    const active = nonFixed.find((it) => isPathActive(pathname, it.href));
+    if (active) setOpenGroup(getGroup(active.href));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
   useEffect(() => {
     setNavigatingHref(null);
   }, [pathname]);
 
-  const handleNavClick = (
-    e: MouseEvent<HTMLAnchorElement>,
-    href: string
-  ) => {
+  const handleNavClick = (e: MouseEvent<HTMLAnchorElement>, href: string) => {
     if (href === pathname) return;
     if (e.defaultPrevented) return;
     if (e.button !== 0) return;
@@ -196,7 +204,9 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
       initial={false}
       animate={{ width: collapsed ? "5rem" : "16rem" }}
       transition={SIDEBAR_SPRING}
-      className="h-dvh shrink-0 overflow-x-hidden border-r border-[rgba(15,23,42,.08)] bg-gradient-to-b from-white to-slate-50/70 shadow-[0_6px_20px_rgba(15,23,42,.05)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-950 dark:shadow-none"
+      onMouseEnter={() => setCollapsed(false)}
+      onMouseLeave={() => setCollapsed(true)}
+      className="relative z-10 h-dvh shrink-0 overflow-x-hidden border-r border-[rgba(15,23,42,.08)] bg-gradient-to-b from-white to-slate-50/70 shadow-[2px_0_20px_rgba(15,23,42,.07)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-950 dark:shadow-none"
       style={
         {
           "--brand": "#30518c",
@@ -208,7 +218,12 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
       }
     >
       <div className="flex h-full min-w-0 flex-col overflow-x-hidden p-2">
-        <div className="mb-3 flex items-center justify-between">
+
+        {/* ── Logo / identidad ── */}
+        <div className="mb-3 flex h-10 items-center gap-2 px-1">
+          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-[0_4px_14px_rgba(48,81,140,.18)] ring-1 ring-[var(--line)] dark:bg-slate-800 dark:shadow-none">
+            <Image src="/img/logo.png" alt="Logo REDES" width={26} height={26} className="h-6 w-6 object-contain" />
+          </span>
           <AnimatePresence initial={false}>
             {!collapsed && (
               <motion.div
@@ -216,33 +231,16 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -10 }}
                 transition={FADE_SLIDE}
-                className="flex items-center gap-2"
+                className="min-w-0"
               >
-                <span className="inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl bg-white shadow-[0_6px_18px_rgba(48,81,140,.2)] ring-1 ring-[var(--line)] dark:bg-slate-800 dark:shadow-none">
-                  <Image src="/img/logo.png" alt="Logo REDES" width={26} height={26} className="h-6 w-6 object-contain" />
-                </span>
-                <div>
-                  <div className="text-sm font-semibold text-[var(--brand-ink)]">Home</div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400">{identity}</div>
-                </div>
+                <div className="text-sm font-semibold text-[var(--brand-ink)]">Home</div>
+                <div className="truncate text-[11px] text-slate-500 dark:text-slate-400">{identity}</div>
               </motion.div>
             )}
           </AnimatePresence>
-
-          <button
-            type="button"
-            onClick={() => setCollapsed((v) => !v)}
-            className="rounded-xl border border-[var(--line)] px-2 py-1 text-xs text-[var(--muted-ink)] transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45 dark:hover:bg-slate-800"
-            aria-label={collapsed ? "Expandir sidebar" : "Colapsar sidebar"}
-          >
-            <span className={`inline-block transition-transform duration-300 ${collapsed ? "rotate-180" : ""}`}>
-              <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
-                <path d="M12.78 4.22a.75.75 0 010 1.06L8.06 10l4.72 4.72a.75.75 0 11-1.06 1.06l-5.25-5.25a.75.75 0 010-1.06l5.25-5.25a.75.75 0 011.06 0z" />
-              </svg>
-            </span>
-          </button>
         </div>
 
+        {/* ── Ruta activa expandido ── */}
         <AnimatePresence initial={false}>
           {!collapsed && (
             <motion.div
@@ -252,22 +250,25 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
               transition={FADE_SLIDE}
               className="mb-2 rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-[11px] text-slate-500 dark:bg-slate-800 dark:text-slate-400"
             >
-              Ruta actual: <span className="font-semibold text-[var(--brand-ink)]">{activeLabel}</span>
+              Ruta actual:{" "}
+              <span className="font-semibold text-[var(--brand-ink)]">{activeLabel}</span>
             </motion.div>
           )}
         </AnimatePresence>
 
+        {/* ── Ruta activa colapsado ── */}
         {collapsed && (
           <div className="group relative mb-2">
             <div className="flex h-10 w-full items-center justify-center rounded-xl border border-[var(--line)] bg-white text-[11px] font-semibold text-[var(--brand-ink)] dark:bg-slate-800 dark:text-slate-200">
-              EN
+              {activeLabel.slice(0, 2).toUpperCase()}
             </div>
             <div className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-30 -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-900 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition group-hover:opacity-100">
-              Ruta actual: {activeLabel}
+              {activeLabel}
             </div>
           </div>
         )}
 
+        {/* ── Items fijos: Inicio, Comunicados ── */}
         <nav className="mb-2 space-y-1">
           {fixedTop.map((it) => {
             const active = pathname === it.href;
@@ -285,7 +286,7 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
                   {active && (
                     <span className="absolute -left-[9px] h-7 w-2 rounded-full bg-[#30518c] shadow-[0_0_14px_rgba(48,81,140,.65)]" />
                   )}
-                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--line)] bg-white text-sm font-semibold dark:bg-slate-800">
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--line)] bg-white text-sm font-semibold dark:bg-slate-800">
                     {it.label.slice(0, 2).toUpperCase()}
                   </span>
                   <AnimatePresence initial={false}>
@@ -319,7 +320,8 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
           })}
         </nav>
 
-        <nav className="space-y-2 overflow-x-hidden overflow-y-auto">
+        {/* ── Grupos acordeón ── */}
+        <nav className="space-y-1 overflow-x-hidden overflow-y-auto">
           {GROUP_ORDER.map((group) => {
             const list = grouped.get(group) || [];
             if (!list.length) return null;
@@ -332,11 +334,6 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
                   <button
                     type="button"
                     onClick={() => {
-                      if (collapsed) {
-                        setCollapsed(false);
-                        setOpenGroup(group);
-                        return;
-                      }
                       setOpenGroup((p) => (p === group ? "INSTALACIONES" : group));
                     }}
                     className={`flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45 ${
@@ -345,7 +342,11 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
                         : "text-[var(--muted-ink)] hover:bg-white/70 hover:text-[#30518c]"
                     }`}
                   >
-                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--line)] bg-white text-sm font-semibold dark:bg-slate-800">
+                    <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border text-sm font-semibold transition ${
+                      activeInside
+                        ? "border-[#9db8ea] bg-[#30518c] text-white shadow-[0_4px_12px_rgba(48,81,140,.3)]"
+                        : "border-[var(--line)] bg-white text-[var(--brand-ink)] dark:bg-slate-800"
+                    }`}>
                       {groupBadge(group)}
                     </span>
 
@@ -366,13 +367,15 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
                     <AnimatePresence initial={false}>
                       {!collapsed && (
                         <motion.span
-                          initial={{ opacity: 0, rotate: 0 }}
+                          initial={{ opacity: 0 }}
                           animate={{ opacity: 1, rotate: isOpen ? 180 : 0 }}
                           exit={{ opacity: 0 }}
                           transition={{ duration: 0.2 }}
-                          className="text-xs text-[var(--muted-ink)]"
+                          className="shrink-0 text-[var(--muted-ink)]"
                         >
-                          v
+                          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                            <polyline points="6 9 12 15 18 9" />
+                          </svg>
                         </motion.span>
                       )}
                     </AnimatePresence>
@@ -392,10 +395,9 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
                       animate={{ height: "auto", opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.22, ease: "easeInOut" }}
-                      layout
                       className="overflow-hidden"
                     >
-                      <div className="ml-4 border-l border-[var(--line)] pl-2">
+                      <div className="ml-4 mt-0.5 border-l-2 border-[var(--line)] pl-2">
                         {list.map((it) => {
                           const active = pathname === it.href;
                           return (
@@ -403,19 +405,19 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
                               key={it.key}
                               href={it.href}
                               onClick={(e) => handleNavClick(e, it.href)}
-                              className={`relative mt-1 flex items-center rounded-xl px-2 py-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45 ${
+                              className={`relative mt-0.5 flex items-center rounded-lg px-2.5 py-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45 ${
                                 active
-                                  ? "bg-[#dbe7ff] font-bold text-[#1f3154] ring-1 ring-[#9db8ea] shadow-[inset_0_0_0_1px_rgba(48,81,140,.08)]"
+                                  ? "bg-[#dbe7ff] font-semibold text-[#1f3154] shadow-[inset_0_0_0_1px_rgba(48,81,140,.12)]"
                                   : "text-[var(--muted-ink)] hover:bg-white/80 hover:text-[#30518c]"
                               }`}
                             >
                               {active && (
-                                <span className="absolute -left-[9px] h-7 w-2 rounded-full bg-[#30518c] shadow-[0_0_14px_rgba(48,81,140,.65)]" />
+                                <span className="absolute -left-[9px] h-6 w-1.5 rounded-full bg-[#30518c] shadow-[0_0_10px_rgba(48,81,140,.6)]" />
                               )}
                               <span className="truncate">{it.label}</span>
                               {navigatingHref === it.href && (
                                 <span
-                                  className="ml-auto inline-flex h-4 w-4 animate-spin rounded-full border-2 border-[#30518c]/35 border-t-[#30518c]"
+                                  className="ml-auto inline-flex h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#30518c]/35 border-t-[#30518c]"
                                   aria-hidden="true"
                                 />
                               )}
@@ -431,6 +433,7 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
           })}
         </nav>
 
+        {/* ── Áreas de acceso (footer) ── */}
         <AnimatePresence initial={false}>
           {!collapsed && (
             <motion.div
@@ -438,9 +441,12 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.98 }}
               transition={FADE_SLIDE}
-              className="mt-3 rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-[11px] text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+              className="mt-auto pt-3"
             >
-              Areas: {(session.access.areas || []).join(", ")}
+              <div className="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-[11px] text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Áreas</p>
+                {(session.access.areas || []).join(", ") || "(ninguna)"}
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

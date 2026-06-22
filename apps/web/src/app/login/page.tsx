@@ -101,11 +101,11 @@ export default function LoginPage() {
 
 
   return (
-    <div className="relative min-h-dvh overflow-hidden bg-gradient-to-br from-[#0b142d] via-[#1a2c58] to-[#2f2850] p-6 text-gray-900">
+    <div className="relative h-dvh overflow-hidden bg-gradient-to-br from-[#0b142d] via-[#1a2c58] to-[#2f2850] text-gray-900">
 
       <ParticlesBackground />
 
-      <div className="pointer-events-none relative z-10 flex min-h-dvh items-center justify-center py-6">
+      <div className="pointer-events-none relative z-10 flex h-full items-center justify-center p-6">
         <motion.div
           initial={{ opacity: 0, y: 24, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -251,8 +251,8 @@ export default function LoginPage() {
                 </div>
 
                 <header className="space-y-3.5 text-center">
-                  <div className="mx-auto flex h-[78px] w-[78px] items-center justify-center rounded-full border border-[#30518c]/55 bg-[#0b1120] shadow-[0_0_0_5px_rgba(48,81,140,0.1),0_0_24px_rgba(48,81,140,0.38)]">
-                    <img src="/img/logo.png" alt="Logo REDES M&D" className="h-[52px] w-[52px] object-contain" />
+                  <div className="mx-auto flex h-[78px] w-[78px] items-center justify-center rounded-full border border-white/20 bg-white shadow-[0_0_0_5px_rgba(48,81,140,0.15),0_0_28px_rgba(48,81,140,0.45)]">
+                    <img src="/img/logo.png" alt="Logo REDES M&D" className="h-[50px] w-[50px] object-contain" />
                   </div>
                   <h1 className="text-[23px] font-semibold tracking-[-0.02em] text-white">
                     Bienvenido a <span className="text-[#90aee4]">REDES M&amp;D</span>

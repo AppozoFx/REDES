@@ -1,5 +1,17 @@
 # Changelog de Contexto - REDES
 
+## 2026-06-22 - Feature: toast feedback en /admin/usuarios/[uid] + mejora visual
+
+- **Problema**: los formularios de edición de usuario (`/admin/usuarios/{uid}`) no daban feedback al guardar — `SubmitActionButton` solo mostraba un ciclo visual idle→spinner→✓ pero nunca lanzaba toast.
+- **Causa raíz**: las acciones eran inline `"use server"` dentro de `<form action={...}>` y no devolvían su resultado al cliente.
+- **Solución**: patrón `useActionState` + bound server actions.
+  - `actions.ts`: agregados 4 wrappers con firma `(uid, _prev, formData)` para compatibilidad con `useActionState`: `updateUsuarioPerfilForm`, `updateUsuarioAccessForm`, `disableUsuarioForm`, `enableUsuarioForm`. Llaman a las acciones originales sin cambiar su contrato.
+  - Nuevo `[uid]/FormWrapper.tsx` (client component): recibe una `action` bound, llama `useActionState(action, null)`, dispara `toast.success(successMsg)` o `toast.error(msg)` en `useEffect([state])`.
+  - `[uid]/page.tsx` actualizado: crea los 4 bound actions con `.bind(null, uid)`, reemplaza todos los `<form>` con `<FormWrapper>`, los campos del formulario quedan como children (patrón server-component-as-children).
+- **Visual**: botón "Guardar acceso" unificado al estilo primario REDES (`bg-[#30518c]`) para consistencia con "Guardar perfil".
+- **Toasts producidos**: éxito verde para perfil/acceso/habilitar, error rojo con mensaje del servidor si la acción falla (permisos, ADMIN, usuario no encontrado, etc.).
+- No se modificaron Firestore rules, API routes, Cloud Functions, package files, lockfiles, credenciales ni binarios.
+
 ## 2026-06-21 - Revision incremental diaria: Firestore rules para force update y alertas
 
 - Revisados `git status` y `git diff --name-only` de REDES y REDES-MOBILE.

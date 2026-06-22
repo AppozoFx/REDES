@@ -24,6 +24,7 @@
     "jspdf": "^2.5.2",
     "leaflet": "^1.9.4",
     "leaflet.markercluster": "^1.5.3",
+    "lucide-react": "^1.21.0",
     "next": "15.0.5",
     "openai": "^6.32.0",
     "qrcode": "^1.5.4",

@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "ordenes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "estado", "order": "ASCENDING" },
+        { "fieldPath": "fechaFinVisiYmd", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "notificaciones",
       "queryScope": "COLLECTION",
       "fields": [

@@ -487,6 +487,20 @@ export async function enableUsuario(uid: string) {
   return { ok: true as const };
 }
 
+// Wrappers para useActionState — firma (uid, _prev, formData) necesaria para .bind(null, uid)
+export async function updateUsuarioPerfilForm(uid: string, _prev: unknown, formData: FormData) {
+  return updateUsuarioPerfil(uid, formData);
+}
+export async function updateUsuarioAccessForm(uid: string, _prev: unknown, formData: FormData) {
+  return updateUsuarioAccess(uid, formData);
+}
+export async function disableUsuarioForm(uid: string, _prev: unknown, formData: FormData) {
+  return disableUsuario(uid, formData);
+}
+export async function enableUsuarioForm(uid: string, _prev: unknown, _formData: FormData) {
+  return enableUsuario(uid);
+}
+
 export async function updateUsuarioPerfil(uid: string, formData: FormData) {
   let session: any;
   try {

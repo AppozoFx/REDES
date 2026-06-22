@@ -3,12 +3,13 @@ import Link from "next/link";
 import { requirePermission } from "@/core/auth/guards";
 import { adminDb } from "@/lib/firebase/admin";
 import {
-  disableUsuario,
-  enableUsuario,
-  updateUsuarioAccess,
-  updateUsuarioPerfil,
+  updateUsuarioPerfilForm,
+  updateUsuarioAccessForm,
+  disableUsuarioForm,
+  enableUsuarioForm,
 } from "../actions";
 import { PendingFieldset, SubmitActionButton } from "./FormUi";
+import { FormWrapper } from "./FormWrapper";
 
 function tsToYmd(v: any): string {
   if (!v) return "";
@@ -77,6 +78,11 @@ export default async function UsuarioDetailPage({
   const accesoHabilitado = String(access.estadoAcceso || "HABILITADO") === "HABILITADO";
   const initials = displayName.split(/\s+/).filter(Boolean).map((p: string) => p[0]).slice(0, 2).join("").toUpperCase() || uid.slice(0, 2).toUpperCase();
 
+  const perfilAction = updateUsuarioPerfilForm.bind(null, uid);
+  const accessAction = updateUsuarioAccessForm.bind(null, uid);
+  const disableAction = disableUsuarioForm.bind(null, uid);
+  const enableAction = enableUsuarioForm.bind(null, uid);
+
   return (
     <div className="space-y-5 text-slate-900 dark:text-slate-100">
 
@@ -130,11 +136,10 @@ export default async function UsuarioDetailPage({
       </div>
 
       {/* ── Perfil ── */}
-      <form
-        action={async (formData) => {
-          "use server";
-          await updateUsuarioPerfil(uid, formData);
-        }}
+      <FormWrapper
+        action={perfilAction}
+        successMsg="Perfil actualizado correctamente"
+        failMsg="Error al guardar el perfil"
         className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900"
       >
         <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4 dark:border-slate-700">
@@ -242,14 +247,13 @@ export default async function UsuarioDetailPage({
             />
           </div>
         </PendingFieldset>
-      </form>
+      </FormWrapper>
 
       {/* ── Acceso y permisos ── */}
-      <form
-        action={async (formData) => {
-          "use server";
-          await updateUsuarioAccess(uid, formData);
-        }}
+      <FormWrapper
+        action={accessAction}
+        successMsg="Acceso actualizado correctamente"
+        failMsg="Error al guardar el acceso"
         className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900"
       >
         <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4 dark:border-slate-700">
@@ -310,19 +314,18 @@ export default async function UsuarioDetailPage({
               idleText="Guardar acceso"
               pendingText="Guardando…"
               doneText="Acceso guardado"
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              className="inline-flex items-center gap-2 rounded-xl bg-[#30518c] px-5 py-2 text-sm font-medium text-white shadow-[0_4px_12px_rgba(48,81,140,.3)] transition hover:bg-[#2b4880] active:scale-[.98]"
             />
           </div>
         </PendingFieldset>
-      </form>
+      </FormWrapper>
 
       {/* ── Deshabilitar / Habilitar ── */}
       {accesoHabilitado ? (
-        <form
-          action={async (formData) => {
-            "use server";
-            await disableUsuario(uid, formData);
-          }}
+        <FormWrapper
+          action={disableAction}
+          successMsg="Usuario deshabilitado"
+          failMsg="No se pudo deshabilitar el usuario"
           className="overflow-hidden rounded-2xl border border-rose-200 bg-white shadow-sm dark:border-rose-800/60 dark:bg-slate-900"
         >
           <div className="flex items-center gap-2 border-b border-rose-100 bg-rose-50/60 px-5 py-4 dark:border-rose-800/40 dark:bg-rose-900/10">
@@ -358,13 +361,12 @@ export default async function UsuarioDetailPage({
               </div>
             </div>
           </PendingFieldset>
-        </form>
+        </FormWrapper>
       ) : (
-        <form
-          action={async () => {
-            "use server";
-            await enableUsuario(uid);
-          }}
+        <FormWrapper
+          action={enableAction}
+          successMsg="Usuario habilitado correctamente"
+          failMsg="No se pudo habilitar el usuario"
           className="overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-sm dark:border-amber-700/60 dark:bg-slate-900"
         >
           <div className="flex items-center gap-2 border-b border-amber-100 bg-amber-50/60 px-5 py-4 dark:border-amber-700/40 dark:bg-amber-900/10">
@@ -386,7 +388,7 @@ export default async function UsuarioDetailPage({
               />
             </div>
           </PendingFieldset>
-        </form>
+        </FormWrapper>
       )}
     </div>
   );

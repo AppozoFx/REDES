@@ -1,6 +1,8 @@
 ﻿"use client";
 
 import * as React from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Bell } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import { getFirebaseAuth } from "@/lib/firebase/client";
 import {
@@ -100,7 +102,7 @@ export function NotificationsBell({ uid }: { uid: string }) {
 
   return (
     <div ref={rootRef} className="relative">
-      <button
+      <motion.button
         type="button"
         onClick={() =>
           setOpen((prev) => {
@@ -108,35 +110,54 @@ export function NotificationsBell({ uid }: { uid: string }) {
             if (opening && authUid) {
               const unreadIds = items.filter((n) => !n.read).map((n) => n.id);
               if (unreadIds.length && !markingRef.current) {
-                // Optimistic local update
                 setItems((prevItems) =>
                   prevItems.map((n) => (unreadIds.includes(n.id) ? { ...n, read: true } : n))
                 );
                 markingRef.current = true;
                 markAllNotificationsRead(authUid, unreadIds)
                   .catch(() => {
-                    // revert optimistic in case of error
                     setItems((prevItems) =>
                       prevItems.map((n) => (unreadIds.includes(n.id) ? { ...n, read: false } : n))
                     );
                   })
-                  .finally(() => {
-                    markingRef.current = false;
-                  });
+                  .finally(() => { markingRef.current = false; });
               }
             }
             return opening;
           })
         }
-        className="relative rounded-md px-3 py-2 hover:bg-white/10"
+        animate={{
+          gap: open ? "0.4rem" : 0,
+          paddingLeft: open ? "0.875rem" : "0.5rem",
+          paddingRight: open ? "0.875rem" : "0.5rem",
+        }}
+        transition={{ type: "spring", bounce: 0, duration: 0.4 }}
+        className={`relative flex items-center rounded-xl py-2 text-sm font-medium transition-colors duration-200 ${
+          open
+            ? "bg-[#e7efff] text-[#30518c] dark:bg-[#1f3154]/40 dark:text-[#90aee4]"
+            : "text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700/50"
+        }`}
       >
-        Notificaciones
+        <Bell size={16} strokeWidth={2} />
+        <AnimatePresence initial={false}>
+          {open && (
+            <motion.span
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: "auto", opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ type: "spring", bounce: 0, duration: 0.35 }}
+              className="overflow-hidden whitespace-nowrap"
+            >
+              Notificaciones
+            </motion.span>
+          )}
+        </AnimatePresence>
         {unread > 0 && (
-          <span className="absolute -right-1 -top-1 rounded-full bg-red-600 px-2 text-xs text-white">
-            {unread}
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white shadow">
+            {unread > 9 ? "9+" : unread}
           </span>
         )}
-      </button>
+      </motion.button>
 
       {open && (
         <div className="absolute right-0 mt-2 w-96 max-w-[90vw] rounded-lg border border-gray-200 bg-white p-2 shadow-lg z-50 dark:border-white/10 dark:bg-black">

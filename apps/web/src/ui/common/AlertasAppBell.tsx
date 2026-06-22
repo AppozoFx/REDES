@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { BellDot } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import { getFirebaseAuth } from "@/lib/firebase/client";
 import { listenAlertasAppHoy, type AlertaAppDoc } from "@/domain/alertas-app/repo";
@@ -142,23 +144,46 @@ export function AlertasAppBell({ uid, userRoles }: { uid: string; userRoles: str
 
   return (
     <div ref={rootRef} className="relative">
-      <button
+      <motion.button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`relative rounded-md px-3 py-2 text-sm transition-colors hover:bg-white/10 ${
-          countPendiente > 0 ? "ring-2 ring-amber-400/60 ring-offset-1 ring-offset-transparent" : ""
-        }`}
         title="Alertas de la app"
+        animate={{
+          gap: open ? "0.4rem" : 0,
+          paddingLeft: open ? "0.875rem" : "0.5rem",
+          paddingRight: open ? "0.875rem" : "0.5rem",
+        }}
+        transition={{ type: "spring", bounce: 0, duration: 0.4 }}
+        className={`relative flex items-center rounded-xl py-2 text-sm font-medium transition-colors duration-200 ${
+          open
+            ? countPendiente > 0
+              ? "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+              : "bg-[#e7efff] text-[#30518c] dark:bg-[#1f3154]/40 dark:text-[#90aee4]"
+            : countPendiente > 0
+              ? "text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/10"
+              : "text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700/50"
+        }`}
       >
-        <span className={`font-medium ${countPendiente > 0 ? "text-amber-300" : ""}`}>
-          Alertas APP
-        </span>
+        <BellDot size={16} strokeWidth={2} />
+        <AnimatePresence initial={false}>
+          {open && (
+            <motion.span
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: "auto", opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ type: "spring", bounce: 0, duration: 0.35 }}
+              className="overflow-hidden whitespace-nowrap"
+            >
+              Alertas APP
+            </motion.span>
+          )}
+        </AnimatePresence>
         {countPendiente > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white shadow animate-bounce">
-            {countPendiente}
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-bold text-white shadow animate-pulse">
+            {countPendiente > 9 ? "9+" : countPendiente}
           </span>
         )}
-      </button>
+      </motion.button>
 
       {open && (
         <div className="absolute right-0 mt-2 w-[420px] max-w-[95vw] rounded-xl border border-slate-200 bg-white shadow-xl z-50 overflow-hidden dark:border-slate-700 dark:bg-slate-900">

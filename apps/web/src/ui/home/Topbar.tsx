@@ -60,13 +60,19 @@ export default function HomeTopbar({ session }: { session: ServerSession }) {
       <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200/80 bg-white px-3 py-2 shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <div className="text-sm font-medium text-slate-600 dark:text-slate-300">Panel Home</div>
 
-        <div className="flex items-center gap-3">
-          {(session.isAdmin || session.access.roles.some((r) =>
-            ["GESTOR", "JEFATURA", "GERENCIA"].includes(r.toUpperCase())
-          )) && (
-            <AlertasAppBell uid={session.uid} userRoles={session.access.roles} />
-          )}
-          <NotificationsBell uid={session.uid} />
+        <div className="flex items-center gap-2">
+          {/* Pills de acciones — mismo estilo ExpandableTabs */}
+          <div className="flex items-center gap-0.5 rounded-xl border border-slate-200/80 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800/60">
+            {(session.isAdmin || session.access.roles.some((r) =>
+              ["GESTOR", "JEFATURA", "GERENCIA"].includes(r.toUpperCase())
+            )) && (
+              <>
+                <AlertasAppBell uid={session.uid} userRoles={session.access.roles} />
+                <div className="mx-0.5 h-5 w-px bg-slate-200 dark:bg-slate-700" aria-hidden="true" />
+              </>
+            )}
+            <NotificationsBell uid={session.uid} />
+          </div>
 
           <div ref={menuRef} className="relative z-[160]">
             <button

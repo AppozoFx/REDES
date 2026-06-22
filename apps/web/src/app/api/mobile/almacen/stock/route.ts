@@ -22,7 +22,6 @@ export async function GET(req: Request) {
     const roles = (mobile.access.roles || []).map((r) => String(r || "").trim().toUpperCase());
     const areas = (mobile.access.areas || []).map((a) => String(a || "").trim().toUpperCase());
     const allowed =
-      mobile.access.isAdmin ||
       roles.includes("ALMACEN") ||
       roles.includes("ADMIN") ||
       areas.includes("ALMACEN") ||

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getMobileAuthContext } from "@/core/auth/mobile";
 import { adminDb } from "@/lib/firebase/admin";
-import type { QueryDocumentSnapshot } from "firebase-admin/firestore";
+import type { QueryDocumentSnapshot, DocumentSnapshot } from "firebase-admin/firestore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -103,7 +103,13 @@ export async function GET(req: Request) {
     // Cross-reference con instalaciones para estado liquidado/correccion actualizado
     const codigos = Array.from(new Set(baseItems.map((r: any) => r.codigoCliente).filter(Boolean)));
     const instRefs = codigos.map((c) => db.collection("instalaciones").doc(c as string));
-    const instSnaps = codigos.length ? await db.getAll(...instRefs) : [];
+    // Procesar en lotes de 300 para evitar fallos silenciosos con spreads de muchos refs
+    const INST_BATCH = 300;
+    const instSnaps: DocumentSnapshot[] = [];
+    for (let i = 0; i < instRefs.length; i += INST_BATCH) {
+      const snaps = await db.getAll(...instRefs.slice(i, i + INST_BATCH));
+      instSnaps.push(...snaps);
+    }
     const instMap = new Map(
       instSnaps.filter((s) => s.exists).map((s) => [s.id, (s.data() as any) || {}])
     );

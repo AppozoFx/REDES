@@ -32,11 +32,7 @@ export async function GET(req: Request) {
     if (!mobile) return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
 
     const roles = (mobile.access.roles || []).map((r) => String(r || "").trim().toUpperCase());
-    const areas = (mobile.access.areas || []).map((a) => String(a || "").trim().toUpperCase());
-    const allowed =
-      roles.includes("ALMACEN") ||
-      roles.includes("ADMIN") ||
-      areas.includes("ALMACEN");
+    const allowed = roles.includes("COORDINADOR") || roles.includes("ADMIN");
     if (!allowed) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const { searchParams } = new URL(req.url);
@@ -104,7 +100,7 @@ export async function GET(req: Request) {
       })
       .filter(Boolean) as any[];
 
-    // Cross-reference con instalaciones para actualizar estado liquidado/correccion
+    // Cross-reference con instalaciones para estado liquidado/correccion actualizado
     const codigos = Array.from(new Set(baseItems.map((r: any) => r.codigoCliente).filter(Boolean)));
     const instRefs = codigos.map((c) => db.collection("instalaciones").doc(c as string));
     const instSnaps = codigos.length ? await db.getAll(...instRefs) : [];

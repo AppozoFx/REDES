@@ -106,6 +106,9 @@ export async function GET(req: Request) {
         ""
       ).trim();
 
+      const snFono = byTipo("FONO")[0]?.sn || String(d?.snFONO || "").trim();
+      const liqServ = d?.liquidacion?.servicios || {};
+
       return {
         id: doc.id,
         codigoCliente: String(d?.codigoCliente || orden?.codiSeguiClien || "").trim(),
@@ -113,13 +116,24 @@ export async function GET(req: Request) {
         cuadrillaNombre: String(d?.cuadrillaNombre || orden?.cuadrillaNombre || "").trim(),
         fechaYmd,
         tipoOrden: String(orden?.tipoOrden || d?.tipoOrden || "").trim(),
+        plan: String(d?.plan || orden?.idenServi || "").trim(),
+        tipoCuadrilla: String(d?.tipoCuadrilla || "").trim(),
+        coordinadorNombre: String(d?.coordinadorNombre || d?.coordinador || "").trim(),
         acta,
         snOnt,
         snMesh,
         snBox,
+        snFono,
         precon,
         bobinaMetros: Number(mat?.bobinaMetros || 0),
         estadoMateriales,
+        planGamer: !!(liqServ?.planGamer || d?.planGamer),
+        kitWifiPro: !!(liqServ?.kitWifiPro || d?.kitWifiPro),
+        servicioCableadoMesh: !!(liqServ?.servicioCableadoMesh || d?.servicioCableadoMesh),
+        cat5e: Number(liqServ?.cat5e ?? d?.cat5e ?? 0),
+        cat6: Number(liqServ?.cat6 ?? d?.cat6 ?? 0),
+        puntosUTP: Number(liqServ?.puntosUTP ?? d?.puntosUTP ?? 0),
+        observacion: String(d?.liquidacion?.observacion || d?.observacion || "").trim(),
       };
     });
 

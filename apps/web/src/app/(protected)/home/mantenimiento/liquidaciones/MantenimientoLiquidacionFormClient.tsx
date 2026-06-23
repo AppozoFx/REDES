@@ -60,6 +60,7 @@ const LIMA_DISTRITOS = [
   "ANCON",
   "ATE",
   "BARRANCO",
+  "BELAVISTA",
   "BRENA",
   "CALLAO",
   "CARABAYLLO",
@@ -71,6 +72,7 @@ const LIMA_DISTRITOS = [
   "INDEPENDENCIA",
   "JESUS MARIA",
   "LA MOLINA",
+  "LA PERLA",
   "LA VICTORIA",
   "LIMA",
   "LINCE",
@@ -102,7 +104,6 @@ const LIMA_DISTRITOS = [
   "VENTANILLA",
   "VILLA EL SALVADOR",
   "VILLA MARIA DEL TRIUNFO",
-  "LA PERLA",
 ];
 
 const emptyState: FormState = {

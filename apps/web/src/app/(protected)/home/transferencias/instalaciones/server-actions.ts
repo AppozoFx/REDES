@@ -4,8 +4,14 @@ import { requireServerPermission } from "@/core/auth/require";
 import {
   DespachoInstalacionesInputSchema,
   DevolucionInstalacionesInputSchema,
+  DespachoPersonalInputSchema,
+  DevolucionPersonalInputSchema,
+  TransferenciaInternaInputSchema,
   type DespachoInstalacionesInput,
   type DevolucionInstalacionesInput,
+  type DespachoPersonalInput,
+  type DevolucionPersonalInput,
+  type TransferenciaInternaInput,
   type TransferOk,
 } from "@/domain/transferencias/instalaciones/schemas";
 import { generateTransferId, normalizeBobinaCode, KIT_BASE_POR_ONT } from "@/domain/transferencias/instalaciones/service";
@@ -95,17 +101,25 @@ async function getMaterial(materialId: string): Promise<any | null> {
   return snap.exists ? snap.data() : null;
 }
 
+type StockEntityType = "ALMACEN" | "CUADRILLA" | "PERSONAL";
+
+function resolveStockRef(db: FirebaseFirestore.Firestore, entity: { type: StockEntityType; id: string }, materialId: string) {
+  if (entity.type === "ALMACEN") return db.collection("almacen_stock").doc(materialId);
+  if (entity.type === "CUADRILLA") return db.collection("cuadrillas").doc(entity.id).collection("stock").doc(materialId);
+  return db.collection("personal_stock").doc(entity.id).collection("stock").doc(materialId);
+}
+
 async function updateStockTx(
   tx: FirebaseFirestore.Transaction,
-  opts: { from: { type: "ALMACEN" | "CUADRILLA"; id: string }; to: { type: "ALMACEN" | "CUADRILLA"; id: string }; materialId: string; unidadTipo: "UND" | "METROS"; und?: number; metros?: number }
+  opts: { from: { type: StockEntityType; id: string }; to: { type: StockEntityType; id: string }; materialId: string; unidadTipo: "UND" | "METROS"; und?: number; metros?: number }
 ) {
   const db = adminDb();
   const { from, to, materialId, unidadTipo } = opts;
   const und = Math.floor(opts.und || 0);
   const cm = unidadTipo === "METROS" ? metersToCm(opts.metros || 0) : 0;
 
-  const fromRef = from.type === "ALMACEN" ? db.collection("almacen_stock").doc(materialId) : db.collection("cuadrillas").doc(from.id).collection("stock").doc(materialId);
-  const toRef = to.type === "ALMACEN" ? db.collection("almacen_stock").doc(materialId) : db.collection("cuadrillas").doc(to.id).collection("stock").doc(materialId);
+  const fromRef = resolveStockRef(db, from, materialId);
+  const toRef = resolveStockRef(db, to, materialId);
 
   const fromSnap = await tx.get(fromRef);
   const toSnap = await tx.get(toRef);
@@ -125,20 +139,16 @@ async function updateStockTx(
 
 function updateEquiposStockTx(
   tx: FirebaseFirestore.Transaction,
-  opts: { cuadrillaId: string; tipo: string; delta: number }
+  opts: { cuadrillaId?: string; entityType?: "CUADRILLA" | "PERSONAL"; entityId?: string; tipo: string; delta: number }
 ) {
   const db = adminDb();
   const tipo = String(opts.tipo || "UNKNOWN").toUpperCase();
-  const ref = db.collection("cuadrillas").doc(opts.cuadrillaId).collection("equipos_stock").doc(tipo);
-  tx.set(
-    ref,
-    {
-      tipo,
-      cantidad: FieldValue.increment(opts.delta),
-      updatedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
+  const entityType = opts.entityType || "CUADRILLA";
+  const entityId = opts.entityId || opts.cuadrillaId || "";
+  const ref = entityType === "PERSONAL"
+    ? db.collection("personal_stock").doc(entityId).collection("equipos_stock").doc(tipo)
+    : db.collection("cuadrillas").doc(entityId).collection("equipos_stock").doc(tipo);
+  tx.set(ref, { tipo, cantidad: FieldValue.increment(opts.delta), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 }
 
 export async function despacharInstalacionesAction(arg1: any, arg2?: any): Promise<TransferOk | { ok: false; error: { formErrors: string[] } }> {
@@ -819,4 +829,467 @@ export async function devolverInstalacionesAction(arg1: any, arg2?: any): Promis
   }
 }
 
+// ── Despacho Almacén → Coordinador/Supervisor ─────────────────────────────────
 
+export async function despacharPersonalAction(arg1: any): Promise<TransferOk | { ok: false; error: { formErrors: string[] } }> {
+  const session = await requireServerPermission("EQUIPOS_DESPACHO");
+  await requireServerPermission("MATERIALES_TRANSFER_SERVICIO");
+  try {
+    const input = DespachoPersonalInputSchema.parse(arg1) as DespachoPersonalInput;
+    const db = adminDb();
+    const transferId = input.transferId || generateTransferId();
+
+    const existing = await db.collection("movimientos_inventario").doc(transferId).get();
+    if (existing.exists) {
+      const guiaPrev = (existing.data() as any)?.guia || "";
+      return { ok: true, transferId, guia: guiaPrev, resumen: { equipos: { ok: 0, fail: 0 }, materiales: { ok: 0, fail: 0 }, warnings: [] }, itemsEquipos: [], itemsMateriales: [] };
+    }
+
+    const guia = input.guia || (await nextGuia("DESPP"));
+    const d = toDatePartsLima(new Date());
+
+    const userSnap = await db.collection("usuarios").doc(input.destinatarioUid).get();
+    if (!userSnap.exists) throw new Error("DESTINATARIO_NOT_FOUND");
+    const userData = userSnap.data() as any;
+    const destinatarioNombre = shortName(`${String(userData?.nombres || "").trim()} ${String(userData?.apellidos || "").trim()}`.trim() || input.destinatarioUid);
+
+    const sns = uniqueStrings(input.equipos || []);
+    if (sns.length) {
+      const refs = sns.map((sn) => db.collection("equipos").doc(sn));
+      const snaps = await db.getAll(...refs);
+      const snErrors: string[] = [];
+      for (const snap of snaps) {
+        if (!snap.exists) { snErrors.push(`SN ${snap.id} no existe`); continue; }
+        const e = snap.data() as any;
+        if (e.ubicacionTipo === "PERSONAL" || (e.ubicacion || "") !== "ALMACEN") {
+          snErrors.push(`SN ${snap.id} no esta en almacen (${e.ubicacion || ""})`);
+        }
+      }
+      if (snErrors.length) return { ok: false, error: { formErrors: snErrors.slice(0, 5) } };
+    }
+
+    const matMap = new Map<string, { und: number; metros: number }>();
+    for (const m of input.materiales || []) {
+      const prev = matMap.get(m.materialId) || { und: 0, metros: 0 };
+      matMap.set(m.materialId, { und: prev.und + Math.floor(m.und || 0), metros: prev.metros + (m.metros || 0) });
+    }
+
+    const matIds = Array.from(matMap.keys());
+    if (matIds.length) {
+      const matRefs = matIds.map((id) => db.collection("materiales").doc(id));
+      const matSnaps = await db.getAll(...matRefs);
+      const matById = new Map(matSnaps.map((s) => [s.id, s] as const));
+      const matErrors: string[] = [];
+      for (const id of matIds) {
+        const snap = matById.get(id);
+        if (!snap || !snap.exists) { matErrors.push(`MATERIAL_NOT_FOUND ${id}`); continue; }
+        const mat = snap.data() as any;
+        const almSnap = await db.collection("almacen_stock").doc(id).get();
+        if (!almSnap.exists) { matErrors.push(`STOCK_NOT_FOUND ${id}`); continue; }
+        const a = almSnap.data() as any;
+        if (mat.unidadTipo === "UND") {
+          if ((a.stockUnd || 0) - (matMap.get(id)?.und || 0) < 0) matErrors.push(`STOCK_INSUFICIENTE_ALMACEN ${id}`);
+        } else {
+          if ((a.stockCm || 0) - metersToCm(matMap.get(id)?.metros || 0) < 0) matErrors.push(`STOCK_INSUFICIENTE_ALMACEN ${id}`);
+        }
+      }
+      if (matErrors.length) return { ok: false, error: { formErrors: matErrors.slice(0, 5) } };
+    }
+
+    const itemsEquipos: { sn: string; status: "OK" | "ERROR"; reason?: string }[] = [];
+    const movedTypes: Record<string, number> = {};
+    for (let i = 0; i < sns.length; i += 20) {
+      const part = sns.slice(i, i + 20);
+      await db.runTransaction(async (tx) => {
+        const refs = part.map((sn) => ({
+          sn,
+          ref: db.collection("equipos").doc(sn),
+          markRef: db.collection("transfer_marks").doc(`equipo:${transferId}:${sn}`),
+        }));
+        const markSnaps = await Promise.all(refs.map((r) => tx.get(r.markRef)));
+        const eqSnaps = await Promise.all(refs.map((r) => tx.get(r.ref)));
+        for (let idx = 0; idx < refs.length; idx++) {
+          const { sn, ref, markRef } = refs[idx];
+          if (markSnaps[idx].exists) { itemsEquipos.push({ sn, status: "OK" }); continue; }
+          const snap = eqSnaps[idx];
+          if (!snap.exists) { itemsEquipos.push({ sn, status: "ERROR", reason: "EQUIPO_NOT_FOUND" }); continue; }
+          const e = snap.data() as any;
+          if (e.ubicacionTipo === "PERSONAL" || (e.ubicacion || "") !== "ALMACEN") {
+            itemsEquipos.push({ sn, status: "ERROR", reason: "EQUIPO_NOT_IN_ALMACEN" }); continue;
+          }
+          const tipo = String(e.equipo || "UNKNOWN").toUpperCase();
+          tx.update(ref, {
+            ubicacion: destinatarioNombre,
+            ubicacionTipo: "PERSONAL",
+            ubicacionUid: input.destinatarioUid,
+            entityRol: input.destinatarioRol,
+            estado: "CAMPO",
+            f_despachoAt: d.at,
+            f_despachoYmd: d.ymd,
+            f_despachoHm: d.hm,
+            guia_despacho: guia,
+            audit: { ...(e.audit || {}), updatedAt: FieldValue.serverTimestamp() },
+          });
+          movedTypes[tipo] = (movedTypes[tipo] || 0) + 1;
+          updateEquiposStockTx(tx, { entityType: "PERSONAL", entityId: input.destinatarioUid, tipo, delta: 1 });
+          const seriesRef = db.collection("personal_stock").doc(input.destinatarioUid).collection("equipos_series").doc(sn);
+          tx.set(seriesRef, {
+            SN: sn, equipo: tipo, descripcion: String(e.descripcion || ""),
+            ubicacion: destinatarioNombre, ubicacionUid: input.destinatarioUid,
+            estado: "CAMPO", guia_despacho: guia,
+            f_despachoAt: d.at, f_despachoYmd: d.ymd, f_despachoHm: d.hm,
+            updatedAt: FieldValue.serverTimestamp(),
+          }, { merge: true });
+          tx.set(markRef, { transferId, type: "EQUIPO", id: sn, appliedAt: FieldValue.serverTimestamp() });
+          itemsEquipos.push({ sn, status: "OK" });
+        }
+      });
+    }
+
+    const itemsMateriales: { materialId: string; status: "OK" | "ERROR"; reason?: string }[] = [];
+    for (const [materialId, qty] of matMap.entries()) {
+      try {
+        const mat = await getMaterial(materialId);
+        if (!mat) throw new Error("MATERIAL_NOT_FOUND");
+        await db.runTransaction(async (tx) => {
+          const markRef = db.collection("transfer_marks").doc(`material:${transferId}:${materialId}`);
+          const markSnap = await tx.get(markRef);
+          if (!markSnap.exists) {
+            await updateStockTx(tx, { from: { type: "ALMACEN", id: "ALMACEN" }, to: { type: "PERSONAL", id: input.destinatarioUid }, materialId, unidadTipo: mat.unidadTipo, und: mat.unidadTipo === "UND" ? qty.und : undefined, metros: mat.unidadTipo === "METROS" ? qty.metros : undefined });
+            tx.set(markRef, { transferId, type: "MATERIAL", id: materialId, appliedAt: FieldValue.serverTimestamp() });
+          }
+        });
+        itemsMateriales.push({ materialId, status: "OK" });
+      } catch (e: any) {
+        itemsMateriales.push({ materialId, status: "ERROR", reason: String(e?.message || "ERROR") });
+      }
+    }
+
+    await db.collection("movimientos_inventario").doc(transferId).set({
+      area: "INSTALACIONES", tipo: "DESPACHO_PERSONAL", guia,
+      origen: { type: "ALMACEN", id: "ALMACEN" },
+      destino: { type: "PERSONAL", id: input.destinatarioUid, rol: input.destinatarioRol, nombre: destinatarioNombre },
+      itemsEquipos, itemsMateriales, observacion: input.observacion || "",
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    try {
+      if (Object.keys(movedTypes).length) {
+        const almKpiRef = db.collection("kpi_instalaciones").doc("almacen");
+        const persKpiRef = db.collection("kpi_instalaciones").doc(`personal_${input.destinatarioUid}`);
+        const dec: any = {}, inc: any = {};
+        for (const [t, n] of Object.entries(movedTypes)) {
+          dec[`equipos_en_almacen_by_tipo.${t}`] = FieldValue.increment(-Number(n));
+          inc[`equipos_en_personal_by_tipo.${t}`] = FieldValue.increment(Number(n));
+        }
+        await almKpiRef.set({ ...dec, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+        await persKpiRef.set({ ...inc, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      }
+    } catch {}
+
+    try {
+      const ymd = d.ymd || new Date().toISOString().slice(0, 10);
+      await db.collection("kpi_daily_instalaciones").doc(ymd).set({ equipos_despachos_personal_count: FieldValue.increment(itemsEquipos.filter(x => x.status === "OK").length), materiales_despachos_personal_count: FieldValue.increment(itemsMateriales.filter(x => x.status === "OK").length), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    } catch {}
+
+    try {
+      const usuario = await getUsuarioDisplayName(session.uid);
+      await addGlobalNotification({ title: "Despacho Personal", message: `${usuario} despacho a ${destinatarioNombre} (${input.destinatarioRol}). Equipos: ${itemsEquipos.filter(x => x.status === "OK").length}`, type: "success", scope: "ALL", createdBy: session.uid, entityType: "DESPACHO_PERSONAL", entityId: guia, action: "CREATE", estado: "ACTIVO" });
+    } catch {}
+
+    const resumen = { equipos: { ok: itemsEquipos.filter(x => x.status === "OK").length, fail: itemsEquipos.filter(x => x.status === "ERROR").length }, materiales: { ok: itemsMateriales.filter(x => x.status === "OK").length, fail: itemsMateriales.filter(x => x.status === "ERROR").length }, warnings: [] as string[] };
+    return { ok: true, transferId, guia, resumen, itemsEquipos, itemsMateriales };
+  } catch (e: any) {
+    const code = String(e?.message ?? "ERROR");
+    if (e?.issues) return { ok: false, error: { formErrors: (e.issues as any[]).map((i) => String(i?.message ?? "INVALID")).slice(0, 5) } };
+    return { ok: false, error: { formErrors: [code] } };
+  }
+}
+
+// ── Devolución Coordinador/Supervisor → Almacén ───────────────────────────────
+
+export async function devolverPersonalAction(arg1: any): Promise<TransferOk | { ok: false; error: { formErrors: string[] } }> {
+  const session = await requireServerPermission("EQUIPOS_DEVOLUCION");
+  await requireServerPermission("MATERIALES_DEVOLUCION");
+  try {
+    const input = DevolucionPersonalInputSchema.parse(arg1) as DevolucionPersonalInput;
+    const db = adminDb();
+    const transferId = input.transferId || generateTransferId();
+    const guia = input.guia || (await nextGuia("DEVP"));
+    const d = toDatePartsLima(new Date());
+
+    const userSnap = await db.collection("usuarios").doc(input.origenUid).get();
+    if (!userSnap.exists) throw new Error("ORIGEN_NOT_FOUND");
+    const userData = userSnap.data() as any;
+    const origenNombre = shortName(`${String(userData?.nombres || "").trim()} ${String(userData?.apellidos || "").trim()}`.trim() || input.origenUid);
+
+    const seen = new Set<string>();
+    const equiposToProcess = (input.equipos || []).filter((e) => {
+      const sn = String(e?.sn || "").trim().toUpperCase();
+      if (!sn || seen.has(sn)) return false;
+      seen.add(sn);
+      return true;
+    }).map((e) => ({ sn: String(e.sn).trim().toUpperCase(), mode: e.mode === "AVERIA" ? "AVERIA" as const : "NORMAL" as const }));
+
+    const itemsEquipos: { sn: string; status: "OK" | "ERROR"; reason?: string }[] = [];
+    const movedTypes: Record<string, number> = {};
+    const avariasSns: string[] = [];
+
+    for (let i = 0; i < equiposToProcess.length; i += 20) {
+      const part = equiposToProcess.slice(i, i + 20);
+      await db.runTransaction(async (tx) => {
+        const refs = part.map((e) => ({
+          sn: e.sn, mode: e.mode,
+          ref: db.collection("equipos").doc(e.sn),
+          markRef: db.collection("transfer_marks").doc(`equipo:${transferId}:${e.sn}`),
+        }));
+        const markSnaps = await Promise.all(refs.map((r) => tx.get(r.markRef)));
+        const eqSnaps = await Promise.all(refs.map((r) => tx.get(r.ref)));
+        for (let idx = 0; idx < refs.length; idx++) {
+          const { sn, mode, ref, markRef } = refs[idx];
+          if (markSnaps[idx].exists) { itemsEquipos.push({ sn, status: "OK" }); continue; }
+          const snap = eqSnaps[idx];
+          if (!snap.exists) { itemsEquipos.push({ sn, status: "ERROR", reason: "EQUIPO_NOT_FOUND" }); continue; }
+          const e = snap.data() as any;
+          if (e.ubicacionTipo !== "PERSONAL" || e.ubicacionUid !== input.origenUid) {
+            itemsEquipos.push({ sn, status: "ERROR", reason: `EQUIPO_NO_PERTENECE_A_${origenNombre}` }); continue;
+          }
+          const tipo = String(e.equipo || "UNKNOWN").toUpperCase();
+          tx.update(ref, {
+            ubicacion: mode === "AVERIA" ? "AVERIA" : "ALMACEN",
+            estado: "ALMACEN",
+            ubicacionTipo: FieldValue.delete(),
+            ubicacionUid: FieldValue.delete(),
+            entityRol: FieldValue.delete(),
+            ...(mode === "AVERIA" ? { observacion: "AVERIA" } : {}),
+            f_devolucionAt: d.at, f_devolucionYmd: d.ymd, f_devolucionHm: d.hm,
+            guia_devolucion: guia,
+            audit: { ...(e.audit || {}), updatedAt: FieldValue.serverTimestamp() },
+          });
+          movedTypes[tipo] = (movedTypes[tipo] || 0) + 1;
+          if (mode === "AVERIA") avariasSns.push(sn);
+          updateEquiposStockTx(tx, { entityType: "PERSONAL", entityId: input.origenUid, tipo, delta: -1 });
+          tx.delete(db.collection("personal_stock").doc(input.origenUid).collection("equipos_series").doc(sn));
+          tx.set(markRef, { transferId, type: "EQUIPO", id: sn, appliedAt: FieldValue.serverTimestamp() });
+          itemsEquipos.push({ sn, status: "OK" });
+        }
+      });
+    }
+
+    const matMap = new Map<string, { und: number; metros: number }>();
+    for (const m of input.materiales || []) {
+      const prev = matMap.get(m.materialId) || { und: 0, metros: 0 };
+      matMap.set(m.materialId, { und: prev.und + Math.floor(m.und || 0), metros: prev.metros + (m.metros || 0) });
+    }
+    const itemsMateriales: { materialId: string; status: "OK" | "ERROR"; reason?: string }[] = [];
+    for (const [materialId, qty] of matMap.entries()) {
+      try {
+        const mat = await getMaterial(materialId);
+        if (!mat) throw new Error("MATERIAL_NOT_FOUND");
+        await db.runTransaction(async (tx) => {
+          const markRef = db.collection("transfer_marks").doc(`material:${transferId}:${materialId}`);
+          const markSnap = await tx.get(markRef);
+          if (!markSnap.exists) {
+            await updateStockTx(tx, { from: { type: "PERSONAL", id: input.origenUid }, to: { type: "ALMACEN", id: "ALMACEN" }, materialId, unidadTipo: mat.unidadTipo, und: mat.unidadTipo === "UND" ? qty.und : undefined, metros: mat.unidadTipo === "METROS" ? qty.metros : undefined });
+            tx.set(markRef, { transferId, type: "MATERIAL", id: materialId, appliedAt: FieldValue.serverTimestamp() });
+          }
+        });
+        itemsMateriales.push({ materialId, status: "OK" });
+      } catch (e: any) {
+        itemsMateriales.push({ materialId, status: "ERROR", reason: String(e?.message || "ERROR") });
+      }
+    }
+
+    let finalObservacion = input.observacion || "";
+    if (avariasSns.length) finalObservacion = `${finalObservacion ? finalObservacion + " | " : ""}AVERIA: ${avariasSns.join(", ")}`;
+
+    await db.collection("movimientos_inventario").doc(transferId).set({
+      area: "INSTALACIONES", tipo: "DEVOLUCION_PERSONAL", guia,
+      origen: { type: "PERSONAL", id: input.origenUid, rol: input.origenRol, nombre: origenNombre },
+      destino: { type: "ALMACEN", id: "ALMACEN" },
+      itemsEquipos, itemsMateriales, observacion: finalObservacion,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    try {
+      if (Object.keys(movedTypes).length) {
+        const almKpiRef = db.collection("kpi_instalaciones").doc("almacen");
+        const persKpiRef = db.collection("kpi_instalaciones").doc(`personal_${input.origenUid}`);
+        const inc: any = {}, dec: any = {};
+        for (const [t, n] of Object.entries(movedTypes)) {
+          inc[`equipos_en_almacen_by_tipo.${t}`] = FieldValue.increment(Number(n));
+          dec[`equipos_en_personal_by_tipo.${t}`] = FieldValue.increment(-Number(n));
+        }
+        await almKpiRef.set({ ...inc, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+        await persKpiRef.set({ ...dec, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      }
+    } catch {}
+
+    try {
+      const usuario = await getUsuarioDisplayName(session.uid);
+      await addGlobalNotification({ title: "Devolucion Personal", message: `${usuario} registro devolucion de ${origenNombre}. Equipos: ${itemsEquipos.filter(x => x.status === "OK").length}`, type: "success", scope: "ALL", createdBy: session.uid, entityType: "DEVOLUCION_PERSONAL", entityId: guia, action: "CREATE", estado: "ACTIVO" });
+    } catch {}
+
+    const resumen = { equipos: { ok: itemsEquipos.filter(x => x.status === "OK").length, fail: itemsEquipos.filter(x => x.status === "ERROR").length }, materiales: { ok: itemsMateriales.filter(x => x.status === "OK").length, fail: itemsMateriales.filter(x => x.status === "ERROR").length }, warnings: [] as string[] };
+    return { ok: true, transferId, guia, resumen, itemsEquipos, itemsMateriales };
+  } catch (e: any) {
+    const code = String(e?.message ?? "ERROR");
+    if (e?.issues) return { ok: false, error: { formErrors: (e.issues as any[]).map((i) => String(i?.message ?? "INVALID")).slice(0, 5) } };
+    return { ok: false, error: { formErrors: [code] } };
+  }
+}
+
+// ── Transferencia interna entre entidades (personal ↔ cuadrilla ↔ personal) ──
+
+export async function transferirEntreEntidadesAction(arg1: any): Promise<TransferOk | { ok: false; error: { formErrors: string[] } }> {
+  const session = await requireServerPermission("MATERIALES_TRANSFER_SERVICIO");
+  try {
+    const input = TransferenciaInternaInputSchema.parse(arg1) as TransferenciaInternaInput;
+
+    // EQUIPOS_DESPACHO solo se exige si la transferencia incluye equipos
+    if ((input.equipos || []).length > 0 && !session.isAdmin && !session.permissions.includes("EQUIPOS_DESPACHO")) {
+      throw new Error("FORBIDDEN: se requiere permiso EQUIPOS_DESPACHO para transferir equipos");
+    }
+    const db = adminDb();
+    const transferId = input.transferId || generateTransferId();
+
+    const existing = await db.collection("movimientos_inventario").doc(transferId).get();
+    if (existing.exists) {
+      const guiaPrev = (existing.data() as any)?.guia || "";
+      return { ok: true, transferId, guia: guiaPrev, resumen: { equipos: { ok: 0, fail: 0 }, materiales: { ok: 0, fail: 0 }, warnings: [] }, itemsEquipos: [], itemsMateriales: [] };
+    }
+
+    const guia = input.guia || (await nextGuia("TRSF"));
+    const d = toDatePartsLima(new Date());
+
+    if (input.destino.tipo === "CUADRILLA") {
+      const cSnap = await db.collection("cuadrillas").doc(input.destino.id).get();
+      if (!cSnap.exists) throw new Error("CUADRILLA_DESTINO_NOT_FOUND");
+      if ((cSnap.data() as any)?.area !== "INSTALACIONES") throw new Error("CUADRILLA_DESTINO_INVALID_AREA");
+    }
+
+    const sns = uniqueStrings(input.equipos || []);
+    if (sns.length) {
+      const refs = sns.map((sn) => db.collection("equipos").doc(sn));
+      const snaps = await db.getAll(...refs);
+      const snErrors: string[] = [];
+      for (const snap of snaps) {
+        if (!snap.exists) { snErrors.push(`SN ${snap.id} no existe`); continue; }
+        const e = snap.data() as any;
+        if (input.origen.tipo === "PERSONAL") {
+          if (e.ubicacionTipo !== "PERSONAL" || e.ubicacionUid !== input.origen.id) {
+            snErrors.push(`SN ${snap.id} no pertenece a ${input.origen.nombre}`);
+          }
+        } else {
+          if (e.ubicacionTipo === "PERSONAL" || e.estado !== "CAMPO") {
+            snErrors.push(`SN ${snap.id} no esta en cuadrilla origen`);
+          }
+        }
+      }
+      if (snErrors.length) return { ok: false, error: { formErrors: snErrors.slice(0, 5) } };
+    }
+
+    const itemsEquipos: { sn: string; status: "OK" | "ERROR"; reason?: string }[] = [];
+    const movedTypes: Record<string, number> = {};
+    for (let i = 0; i < sns.length; i += 20) {
+      const part = sns.slice(i, i + 20);
+      await db.runTransaction(async (tx) => {
+        const refs = part.map((sn) => ({
+          sn,
+          ref: db.collection("equipos").doc(sn),
+          markRef: db.collection("transfer_marks").doc(`equipo:${transferId}:${sn}`),
+        }));
+        const markSnaps = await Promise.all(refs.map((r) => tx.get(r.markRef)));
+        const eqSnaps = await Promise.all(refs.map((r) => tx.get(r.ref)));
+        for (let idx = 0; idx < refs.length; idx++) {
+          const { sn, ref, markRef } = refs[idx];
+          if (markSnaps[idx].exists) { itemsEquipos.push({ sn, status: "OK" }); continue; }
+          const snap = eqSnaps[idx];
+          if (!snap.exists) { itemsEquipos.push({ sn, status: "ERROR", reason: "EQUIPO_NOT_FOUND" }); continue; }
+          const e = snap.data() as any;
+          const tipo = String(e.equipo || "UNKNOWN").toUpperCase();
+
+          const equipoUpdate: any = { f_despachoAt: d.at, f_despachoYmd: d.ymd, f_despachoHm: d.hm, guia_despacho: guia, estado: "CAMPO", audit: { ...(e.audit || {}), updatedAt: FieldValue.serverTimestamp() } };
+          if (input.destino.tipo === "PERSONAL") {
+            equipoUpdate.ubicacion = input.destino.nombre;
+            equipoUpdate.ubicacionTipo = "PERSONAL";
+            equipoUpdate.ubicacionUid = input.destino.id;
+            equipoUpdate.entityRol = "PERSONAL";
+          } else {
+            const cNorm = normalizeUbicacion(input.destino.nombre);
+            equipoUpdate.ubicacion = cNorm.isCuadrilla ? cNorm.ubicacion : input.destino.nombre;
+            equipoUpdate.ubicacionTipo = FieldValue.delete();
+            equipoUpdate.ubicacionUid = FieldValue.delete();
+            equipoUpdate.entityRol = FieldValue.delete();
+          }
+          tx.update(ref, equipoUpdate);
+          movedTypes[tipo] = (movedTypes[tipo] || 0) + 1;
+
+          if (input.origen.tipo === "PERSONAL") {
+            updateEquiposStockTx(tx, { entityType: "PERSONAL", entityId: input.origen.id, tipo, delta: -1 });
+            tx.delete(db.collection("personal_stock").doc(input.origen.id).collection("equipos_series").doc(sn));
+          } else {
+            updateEquiposStockTx(tx, { entityType: "CUADRILLA", entityId: input.origen.id, tipo, delta: -1 });
+            tx.delete(db.collection("cuadrillas").doc(input.origen.id).collection("equipos_series").doc(sn));
+          }
+
+          if (input.destino.tipo === "PERSONAL") {
+            updateEquiposStockTx(tx, { entityType: "PERSONAL", entityId: input.destino.id, tipo, delta: 1 });
+            tx.set(db.collection("personal_stock").doc(input.destino.id).collection("equipos_series").doc(sn), { SN: sn, equipo: tipo, descripcion: String(e.descripcion || ""), ubicacion: input.destino.nombre, ubicacionUid: input.destino.id, estado: "CAMPO", guia_despacho: guia, f_despachoAt: d.at, f_despachoYmd: d.ymd, f_despachoHm: d.hm, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+          } else {
+            updateEquiposStockTx(tx, { entityType: "CUADRILLA", entityId: input.destino.id, tipo, delta: 1 });
+            tx.set(db.collection("cuadrillas").doc(input.destino.id).collection("equipos_series").doc(sn), { SN: sn, equipo: tipo, descripcion: String(e.descripcion || ""), ubicacion: equipoUpdate.ubicacion, estado: "CAMPO", guia_despacho: guia, f_despachoAt: d.at, f_despachoYmd: d.ymd, f_despachoHm: d.hm, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+          }
+
+          tx.set(markRef, { transferId, type: "EQUIPO", id: sn, appliedAt: FieldValue.serverTimestamp() });
+          itemsEquipos.push({ sn, status: "OK" });
+        }
+      });
+    }
+
+    const matMap = new Map<string, { und: number; metros: number }>();
+    for (const m of input.materiales || []) {
+      const prev = matMap.get(m.materialId) || { und: 0, metros: 0 };
+      matMap.set(m.materialId, { und: prev.und + Math.floor(m.und || 0), metros: prev.metros + (m.metros || 0) });
+    }
+    const itemsMateriales: { materialId: string; status: "OK" | "ERROR"; reason?: string }[] = [];
+    for (const [materialId, qty] of matMap.entries()) {
+      try {
+        const mat = await getMaterial(materialId);
+        if (!mat) throw new Error("MATERIAL_NOT_FOUND");
+        const fromEntity: { type: StockEntityType; id: string } = input.origen.tipo === "PERSONAL" ? { type: "PERSONAL", id: input.origen.id } : { type: "CUADRILLA", id: input.origen.id };
+        const toEntity: { type: StockEntityType; id: string } = input.destino.tipo === "PERSONAL" ? { type: "PERSONAL", id: input.destino.id } : { type: "CUADRILLA", id: input.destino.id };
+        await db.runTransaction(async (tx) => {
+          const markRef = db.collection("transfer_marks").doc(`material:${transferId}:${materialId}`);
+          const markSnap = await tx.get(markRef);
+          if (!markSnap.exists) {
+            await updateStockTx(tx, { from: fromEntity, to: toEntity, materialId, unidadTipo: mat.unidadTipo, und: mat.unidadTipo === "UND" ? qty.und : undefined, metros: mat.unidadTipo === "METROS" ? qty.metros : undefined });
+            tx.set(markRef, { transferId, type: "MATERIAL", id: materialId, appliedAt: FieldValue.serverTimestamp() });
+          }
+        });
+        itemsMateriales.push({ materialId, status: "OK" });
+      } catch (e: any) {
+        itemsMateriales.push({ materialId, status: "ERROR", reason: String(e?.message || "ERROR") });
+      }
+    }
+
+    await db.collection("movimientos_inventario").doc(transferId).set({
+      area: "INSTALACIONES", tipo: "TRANSFERENCIA_INTERNA", guia,
+      origen: input.origen, destino: input.destino,
+      itemsEquipos, itemsMateriales, observacion: input.observacion || "",
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    try {
+      const usuario = await getUsuarioDisplayName(session.uid);
+      await addGlobalNotification({ title: "Transferencia Interna", message: `${usuario} transfirió de "${input.origen.nombre}" a "${input.destino.nombre}". Equipos: ${itemsEquipos.filter(x => x.status === "OK").length}`, type: "success", scope: "ALL", createdBy: session.uid, entityType: "TRANSFERENCIA_INTERNA", entityId: guia, action: "CREATE", estado: "ACTIVO" });
+    } catch {}
+
+    const resumen = { equipos: { ok: itemsEquipos.filter(x => x.status === "OK").length, fail: itemsEquipos.filter(x => x.status === "ERROR").length }, materiales: { ok: itemsMateriales.filter(x => x.status === "OK").length, fail: itemsMateriales.filter(x => x.status === "ERROR").length }, warnings: [] as string[] };
+    return { ok: true, transferId, guia, resumen, itemsEquipos, itemsMateriales };
+  } catch (e: any) {
+    const code = String(e?.message ?? "ERROR");
+    if (e?.issues) return { ok: false, error: { formErrors: (e.issues as any[]).map((i) => String(i?.message ?? "INVALID")).slice(0, 5) } };
+    return { ok: false, error: { formErrors: [code] } };
+  }
+}

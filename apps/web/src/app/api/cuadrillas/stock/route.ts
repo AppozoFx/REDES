@@ -36,10 +36,13 @@ export async function GET(req: Request) {
     const cuadSnap = await cuadRef.get();
     if (!cuadSnap.exists) return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
 
-    const [stockSnap, eqSnap, bobSnap] = await Promise.all([
+    const withSeries = searchParams.get("series") === "1";
+
+    const [stockSnap, eqSnap, bobSnap, seriesSnap] = await Promise.all([
       cuadRef.collection("stock").get(),
       cuadRef.collection("equipos_stock").get(),
       cuadRef.collection("bobinas").where("estado", "==", "ACTIVA").limit(200).get(),
+      withSeries ? cuadRef.collection("equipos_series").limit(500).get() : Promise.resolve(null),
     ]);
 
     const materialIds = stockSnap.docs.map((d) => d.id);
@@ -86,7 +89,11 @@ export async function GET(req: Request) {
       return { id: doc.id, nombre: doc.id, metros, cantidad: 1, fecha };
     });
 
-    return NextResponse.json({ ok: true, stock: { materiales, equipos, bobinas } });
+    const series = seriesSnap
+      ? seriesSnap.docs.map((d) => ({ SN: d.id, ...d.data() }))
+      : undefined;
+
+    return NextResponse.json({ ok: true, stock: { materiales, equipos, bobinas }, ...(series !== undefined ? { series } : {}) });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }

@@ -142,7 +142,10 @@ export async function GET() {
         if (numero) allowed.add(numero);
       }
 
+      const coordUid = viewerScope === "coordinador" ? String(session.uid || "") : "";
       equipos = equipos.filter((e) => {
+        // Equipos en stock personal del propio coordinador
+        if (coordUid && asStr(e?.ubicacionTipo) === "PERSONAL" && asStr(e?.ubicacionUid) === coordUid) return true;
         const ubic = asStr(e?.ubicacion).toUpperCase();
         if (!ubic) return false;
         return allowed.has(ubic);

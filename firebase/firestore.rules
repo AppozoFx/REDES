@@ -138,6 +138,16 @@ service cloud.firestore {
     }
 
     /* =========================
+       PERSONAL_STOCK (stock de coordinadores y supervisores)
+       ========================= */
+    match /personal_stock/{uid}/{document=**} {
+      // Solo admin SDK del servidor escribe (server actions)
+      allow create, update, delete: if false;
+      // Lectura: el propio usuario o admin
+      allow get, list: if signedIn() && (request.auth.uid == uid || isAdmin());
+    }
+
+    /* =========================
        DEFAULT: denegar todo lo demás
        ========================= */
     match /{document=**} {

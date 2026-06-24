@@ -87,3 +87,49 @@ export const TransferFailSchema = z.object({
   error: z.object({ formErrors: z.array(z.string()) }),
 });
 export type TransferFail = z.infer<typeof TransferFailSchema>;
+
+// ── Stock personal (coordinadores y supervisores) ─────────────────────────────
+
+export const DespachoPersonalInputSchema = z.object({
+  transferId: z.string().min(1).optional(),
+  destinatarioUid: z.string().min(1),
+  destinatarioRol: z.enum(["COORDINADOR", "SUPERVISOR"]),
+  guia: z.string().min(1).optional(),
+  equipos: z.array(z.string().min(1)).default([]),
+  materiales: z.array(MaterialLineaInputSchema).default([]),
+  observacion: z.string().optional(),
+});
+export type DespachoPersonalInput = z.infer<typeof DespachoPersonalInputSchema>;
+
+export const EquipoPersonalDevolucionInputSchema = z.object({
+  sn: z.string().min(1),
+  mode: z.enum(["NORMAL", "AVERIA"]).default("NORMAL"),
+});
+
+export const DevolucionPersonalInputSchema = z.object({
+  transferId: z.string().min(1).optional(),
+  origenUid: z.string().min(1),
+  origenRol: z.enum(["COORDINADOR", "SUPERVISOR"]),
+  guia: z.string().min(1).optional(),
+  equipos: z.array(EquipoPersonalDevolucionInputSchema).default([]),
+  materiales: z.array(MaterialLineaInputSchema).default([]),
+  observacion: z.string().optional(),
+});
+export type DevolucionPersonalInput = z.infer<typeof DevolucionPersonalInputSchema>;
+
+export const EntidadTransferenciaSchema = z.object({
+  tipo: z.enum(["CUADRILLA", "PERSONAL"]),
+  id: z.string().min(1),
+  nombre: z.string().min(1),
+});
+
+export const TransferenciaInternaInputSchema = z.object({
+  transferId: z.string().min(1).optional(),
+  origen: EntidadTransferenciaSchema,
+  destino: EntidadTransferenciaSchema,
+  guia: z.string().min(1).optional(),
+  equipos: z.array(z.string().min(1)).default([]),
+  materiales: z.array(MaterialLineaInputSchema).default([]),
+  observacion: z.string().optional(),
+});
+export type TransferenciaInternaInput = z.infer<typeof TransferenciaInternaInputSchema>;

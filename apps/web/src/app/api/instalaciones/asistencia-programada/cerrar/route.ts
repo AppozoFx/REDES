@@ -23,7 +23,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "ACCESS_DISABLED" }, { status: 403 });
     }
     const roles = (session.access.roles || []).map((r) => String(r || "").toUpperCase());
-    const canAdmin = session.isAdmin || roles.includes("GERENCIA");
+    const canAdmin = session.isAdmin || roles.includes("GERENCIA") || roles.includes("JEFATURA");
     if (!canAdmin) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const body = await req.json();

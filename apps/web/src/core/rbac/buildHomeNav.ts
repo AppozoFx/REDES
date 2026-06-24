@@ -282,6 +282,15 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     items.push({ key: "TR_INST_DEV", label: "Devoluciones (Inst)", href: "/home/transferencias/instalaciones/devoluciones" });
     items.push({ key: "TR_INST_REP", label: "Reposicion (Inst)", href: "/home/transferencias/instalaciones/reposicion" });
     items.push({ key: "TR_INST_TEC_MAT", label: "Materiales Tecnicos (Inst)", href: "/home/transferencias/instalaciones/tecnicos-materiales" });
+    if (hasPerm(session, "EQUIPOS_DESPACHO") || hasPerm(session, "MATERIALES_TRANSFER_SERVICIO")) {
+      items.push({ key: "TR_INST_DESP_PERS", label: "Despacho Personal (Inst)", href: "/home/transferencias/instalaciones/despacho-personal" });
+    }
+    if (hasPerm(session, "EQUIPOS_DEVOLUCION") || hasPerm(session, "MATERIALES_DEVOLUCION")) {
+      items.push({ key: "TR_INST_DEV_PERS", label: "Devoluciones Personal (Inst)", href: "/home/transferencias/instalaciones/devoluciones-personal" });
+    }
+    if (hasPerm(session, "MATERIALES_TRANSFER_SERVICIO")) {
+      items.push({ key: "TR_INST_TRSF_INT", label: "Transferencias Internas (Inst)", href: "/home/transferencias/instalaciones/transferencias-internas" });
+    }
   }
   if (
     hasArea(session, "MANTENIMIENTO") &&
@@ -310,6 +319,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
   }
   if (!isJefatura && (hasPerm(session, "EQUIPOS_VIEW") || hasPerm(session, "EQUIPOS_EDIT"))) {
     items.push({ key: "TR_INST_EQ", label: "Equipos (Inst)", href: "/home/transferencias/instalaciones/equipos" });
+    items.push({ key: "TR_INST_STOCK_PERS", label: "Stock Personal (Inst)", href: "/home/transferencias/instalaciones/stock-personal" });
   }
   if (
     isJefatura ||

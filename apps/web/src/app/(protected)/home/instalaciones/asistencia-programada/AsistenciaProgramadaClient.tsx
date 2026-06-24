@@ -28,6 +28,20 @@ const ESTADO_META = {
   vacaciones: { label: "Vacaciones", short: "V" },
 } as const;
 
+// DOW: 0=Dom 1=Lun 2=Mar 3=Mie 4=Jue 5=Vie 6=Sab
+const COBERTURA_REGLAS: Record<number, {
+  minAsistenciaPct: number;
+  byCategoria?: { RESIDENCIAL?: number; MOTO?: number; OTRO?: "descanso" };
+}> = {
+  0: { minAsistenciaPct: 0, byCategoria: { RESIDENCIAL: 60, MOTO: 40, OTRO: "descanso" } },
+  1: { minAsistenciaPct: 70 },
+  2: { minAsistenciaPct: 85 },
+  3: { minAsistenciaPct: 85 },
+  4: { minAsistenciaPct: 85 },
+  5: { minAsistenciaPct: 85 },
+  6: { minAsistenciaPct: 97 },
+};
+
 type Row = {
   id: string;
   nombre: string;
@@ -69,6 +83,187 @@ type ApiResponse = {
   canConfirm?: boolean;
   canAdmin?: boolean;
 };
+
+type CoberturaEstado = "ok" | "warn" | "bad" | "none";
+type CoberturaInfo = {
+  estado: CoberturaEstado;
+  pct: number;
+  minPct: number;
+  // Domingo diferenciado
+  residencial?: { pct: number; minPct: number; estado: CoberturaEstado };
+  moto?: { pct: number; minPct: number; estado: CoberturaEstado };
+};
+
+function categoriaCuadrilla(row: Row): "RESIDENCIAL" | "MOTO" | "OTRO" {
+  const cat = String(row.categoria || "").toUpperCase();
+  const veh = String(row.vehiculo || "").toUpperCase();
+  const nom = String(row.nombre || "").toUpperCase();
+  if (cat === "RESIDENCIAL" || nom.includes("RESIDENCIAL")) return "RESIDENCIAL";
+  if (cat === "CONDOMINIO" || veh === "MOTO" || nom.includes("MOTO")) return "MOTO";
+  return "OTRO";
+}
+
+function coberturaDelDia(
+  ymd: string,
+  rows: Row[],
+  items: Record<string, Record<string, string>>
+): CoberturaInfo {
+  if (rows.length === 0) return { estado: "none", pct: 0, minPct: 0 };
+  const dow = dayjs(ymd, "YYYY-MM-DD").day();
+  const regla = COBERTURA_REGLAS[dow];
+  if (!regla) return { estado: "none", pct: 0, minPct: 0 };
+
+  const asistencia = (r: Row) =>
+    String(items?.[r.id]?.[ymd] || "asistencia").toLowerCase() === "asistencia";
+
+  if (regla.byCategoria && dow === 0) {
+    const residencial = rows.filter((r) => categoriaCuadrilla(r) === "RESIDENCIAL");
+    const moto = rows.filter((r) => categoriaCuadrilla(r) === "MOTO");
+    const total = rows.length;
+    const totalAsistencia = rows.filter(asistencia).length;
+    const pctTotal = total > 0 ? Math.round((totalAsistencia / total) * 100) : 0;
+
+    const resPct = residencial.length > 0
+      ? Math.round((residencial.filter(asistencia).length / residencial.length) * 100)
+      : 100;
+    const motoPct = moto.length > 0
+      ? Math.round((moto.filter(asistencia).length / moto.length) * 100)
+      : 100;
+
+    const resMin = regla.byCategoria.RESIDENCIAL ?? 0;
+    const motoMin = regla.byCategoria.MOTO ?? 0;
+
+    const resEstado: CoberturaEstado = residencial.length === 0 ? "none" : resPct >= resMin ? "ok" : resPct >= resMin - 10 ? "warn" : "bad";
+    const motoEstado: CoberturaEstado = moto.length === 0 ? "none" : motoPct >= motoMin ? "ok" : motoPct >= motoMin - 10 ? "warn" : "bad";
+    const globalEstado: CoberturaEstado =
+      resEstado === "bad" || motoEstado === "bad" ? "bad" :
+      resEstado === "warn" || motoEstado === "warn" ? "warn" : "ok";
+
+    return {
+      estado: globalEstado,
+      pct: pctTotal,
+      minPct: 0,
+      residencial: { pct: resPct, minPct: resMin, estado: resEstado },
+      moto: { pct: motoPct, minPct: motoMin, estado: motoEstado },
+    };
+  }
+
+  const count = rows.filter(asistencia).length;
+  const pct = Math.round((count / rows.length) * 100);
+  const minPct = regla.minAsistenciaPct;
+  const estado: CoberturaEstado = pct >= minPct ? "ok" : pct >= minPct - 10 ? "warn" : "bad";
+  return { estado, pct, minPct };
+}
+
+function shuffleArray<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function extractNumCuadrilla(row: Row): number | null {
+  if (row.numeroCuadrilla && row.numeroCuadrilla > 0) return row.numeroCuadrilla;
+  const match = String(row.nombre || "").match(/K\s*(\d+)/i);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+function autoGenerar(
+  rows: Row[],
+  weekDays: string[],
+): Record<string, Record<string, string>> {
+  const result: Record<string, Record<string, string>> = {};
+  rows.forEach((r) => {
+    result[r.id] = {};
+    weekDays.forEach((d) => { result[r.id][d] = "asistencia"; });
+  });
+
+  const descansosPorRow: Record<string, number> = {};
+  rows.forEach((r) => { descansosPorRow[r.id] = 0; });
+
+  const cupoDescanso: Record<string, number> = {};
+  const usadoDescanso: Record<string, number> = {};
+  weekDays.forEach((d) => { usadoDescanso[d] = 0; });
+
+  weekDays.forEach((d) => {
+    const dow = dayjs(d, "YYYY-MM-DD").day();
+    const regla = COBERTURA_REGLAS[dow];
+    if (!regla) { cupoDescanso[d] = 0; return; }
+    if (dow === 0) {
+      const nRes = rows.filter((r) => categoriaCuadrilla(r) === "RESIDENCIAL").length;
+      const nMoto = rows.filter((r) => categoriaCuadrilla(r) === "MOTO").length;
+      const nOtro = rows.filter((r) => categoriaCuadrilla(r) === "OTRO").length;
+      cupoDescanso[d] = Math.floor(nRes * 0.40) + Math.floor(nMoto * 0.60) + nOtro;
+    } else {
+      cupoDescanso[d] = Math.floor(rows.length * ((100 - regla.minAsistenciaPct) / 100));
+    }
+  });
+
+  const asignar = (r: Row, d: string) => {
+    result[r.id][d] = "descanso";
+    descansosPorRow[r.id]++;
+    usadoDescanso[d]++;
+  };
+
+  const diasSemana = weekDays.filter((d) => dayjs(d, "YYYY-MM-DD").day() !== 0);
+  const lunes = diasSemana.find((d) => dayjs(d, "YYYY-MM-DD").day() === 1);
+  const otrosDiasSemana = shuffleArray(diasSemana.filter((d) => d !== lunes));
+  const diasOrdenados = lunes ? [lunes, ...otrosDiasSemana] : otrosDiasSemana;
+
+  // Días ordenados de más a menos permisivo (para fallback cuando cupo está lleno)
+  const diasPorPermisividad = [...weekDays].sort((a, b) => {
+    const maxA = 100 - (COBERTURA_REGLAS[dayjs(a, "YYYY-MM-DD").day()]?.minAsistenciaPct ?? 100);
+    const maxB = 100 - (COBERTURA_REGLAS[dayjs(b, "YYYY-MM-DD").day()]?.minAsistenciaPct ?? 100);
+    return maxB - maxA;
+  });
+
+  // PASO 1A — Domingo con reglas por categoría
+  const domingo = weekDays.find((d) => dayjs(d, "YYYY-MM-DD").day() === 0);
+  if (domingo) {
+    rows.filter((r) => categoriaCuadrilla(r) === "OTRO").forEach((r) => asignar(r, domingo));
+    const residenciales = shuffleArray(rows.filter((r) => categoriaCuadrilla(r) === "RESIDENCIAL"));
+    residenciales.slice(0, Math.floor(residenciales.length * 0.40)).forEach((r) => asignar(r, domingo));
+    const motos = shuffleArray(rows.filter((r) => categoriaCuadrilla(r) === "MOTO"));
+    motos.slice(0, Math.floor(motos.length * 0.60)).forEach((r) => asignar(r, domingo));
+  }
+
+  // PASO 1B — Primer descanso para cuadrillas que aún no tienen ninguno
+  // Solo se consideran cuadrillas con 0 descansos, garantizando equidad antes del 2do descanso
+  diasOrdenados.forEach((d) => {
+    const cupoDisp = cupoDescanso[d] - usadoDescanso[d];
+    if (cupoDisp <= 0) return;
+    const sinDescanso = shuffleArray(rows.filter((r) => descansosPorRow[r.id] === 0));
+    sinDescanso.slice(0, cupoDisp).forEach((r) => asignar(r, d));
+  });
+
+  // PASO 1C — Forzar 1er descanso a las que aún no tienen (cupo agotado en todos los días)
+  rows.filter((r) => descansosPorRow[r.id] === 0).forEach((r) => {
+    for (const d of diasPorPermisividad) {
+      if (cupoDescanso[d] - usadoDescanso[d] > 0) {
+        asignar(r, d);
+        return;
+      }
+    }
+    if (diasPorPermisividad[0]) asignar(r, diasPorPermisividad[0]);
+  });
+
+  // PASO 2 — Distribuir 2do descanso equitativamente
+  // En este punto todas las cuadrillas tienen exactamente 1 descanso.
+  // Se shufflea la lista completa para que el 2do descanso no favorezca
+  // siempre a las mismas cuadrillas.
+  shuffleArray(rows).forEach((r) => {
+    if (descansosPorRow[r.id] >= 2) return;
+    // Elegir aleatoriamente entre días disponibles con cupo y sin descanso previo
+    const candidatos = shuffleArray(
+      diasOrdenados.filter((d) => result[r.id][d] !== "descanso" && cupoDescanso[d] - usadoDescanso[d] > 0)
+    );
+    if (candidatos.length > 0) asignar(r, candidatos[0]);
+  });
+
+  return result;
+}
 
 const cls = (...x: (string | false | null | undefined)[]) => x.filter(Boolean).join(" ");
 
@@ -130,6 +325,28 @@ function Progress({ value = 0 }: { value?: number }) {
   );
 }
 
+function CoberturaBar({ pct, minPct, estado }: { pct: number; minPct: number; estado: CoberturaEstado }) {
+  const colorBar =
+    estado === "ok" ? "bg-emerald-500" :
+    estado === "warn" ? "bg-amber-400" :
+    estado === "bad" ? "bg-rose-500" :
+    "bg-slate-400";
+  const colorText =
+    estado === "ok" ? "text-emerald-700 dark:text-emerald-300" :
+    estado === "warn" ? "text-amber-700 dark:text-amber-300" :
+    estado === "bad" ? "text-rose-700 dark:text-rose-300" :
+    "text-slate-500";
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+        <div className={cls("h-1.5 rounded-full transition-all", colorBar)} style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+      </div>
+      <span className={cls("text-[11px] font-semibold tabular-nums", colorText)}>{pct}%</span>
+      {minPct > 0 && <span className="text-[10px] text-slate-400 dark:text-slate-500">/{minPct}%</span>}
+    </div>
+  );
+}
+
 function MetricCard({
   label,
   value,
@@ -174,6 +391,13 @@ function EmptyState({ title, description }: { title: string; description: string
   );
 }
 
+function CoberturaIcon({ estado }: { estado: CoberturaEstado }) {
+  if (estado === "ok") return <span className="text-emerald-500">✓</span>;
+  if (estado === "warn") return <span className="text-amber-500">!</span>;
+  if (estado === "bad") return <span className="text-rose-500">✕</span>;
+  return null;
+}
+
 export default function AsistenciaProgramadaClient() {
   const [startYmd, setStartYmd] = useState("");
   const [endYmd, setEndYmd] = useState(dayjs().add(8, "day").format("YYYY-MM-DD"));
@@ -194,6 +418,9 @@ export default function AsistenciaProgramadaClient() {
   const [coordinadoresEstado, setCoordinadoresEstado] = useState<CoordinadorEstado[]>([]);
   const [contador, setContador] = useState("");
   const [openCellMenu, setOpenCellMenu] = useState<string | null>(null);
+  const [plantillaBuffer, setPlantillaBuffer] = useState<ArrayBuffer | null>(null);
+  const [plantillaNombre, setPlantillaNombre] = useState<string>("");
+  const plantillaInputRef = useRef<HTMLInputElement | null>(null);
   const headerScrollRef = useRef<HTMLDivElement | null>(null);
   const bodyScrollRef = useRef<HTMLDivElement | null>(null);
   const tableAreaRef = useRef<HTMLDivElement | null>(null);
@@ -383,6 +610,25 @@ export default function AsistenciaProgramadaClient() {
     }
   };
 
+  const handleAutoGenerar = () => {
+    if (rows.length === 0) return;
+    toast("Generar programacion automatica?", {
+      description: "Se sobreescribira la grilla actual con una distribucion aleatoria que respeta los porcentajes requeridos.",
+      action: {
+        label: "Generar",
+        onClick: () => {
+          const generated = autoGenerar(rows, weekDays);
+          setItems(generated);
+          toast.success("Programacion generada. Revisa y guarda cuando este lista.");
+        },
+      },
+      cancel: {
+        label: "Cancelar",
+        onClick: () => {},
+      },
+    });
+  };
+
   const cerrarSemana = async (nextEstado: "ABIERTO" | "CERRADO") => {
     try {
       const res = await fetch("/api/instalaciones/asistencia-programada/cerrar", {
@@ -478,6 +724,24 @@ export default function AsistenciaProgramadaClient() {
   }, [rows]);
   const coordinadorActual = coordinadoresUnicos.find((c) => c.uid === coordinadorUid) || null;
 
+  // Cobertura por día (sobre todas las rows, no solo visibles)
+  const coberturaByDay = useMemo(() => {
+    const map: Record<string, CoberturaInfo> = {};
+    weekDays.forEach((d) => {
+      map[d] = coberturaDelDia(d, rows, items);
+    });
+    return map;
+  }, [weekDays, rows, items]);
+
+  const coberturaResumen = useMemo(() => {
+    const dias = weekDays.map((d) => {
+      const dow = dayjs(d, "YYYY-MM-DD").day();
+      const dayNames: Record<number, string> = { 0: "Domingo", 1: "Lunes", 2: "Martes", 3: "Miercoles", 4: "Jueves", 5: "Viernes", 6: "Sabado" };
+      return { ymd: d, dow, label: dayNames[dow] || d, info: coberturaByDay[d] };
+    });
+    return dias;
+  }, [weekDays, coberturaByDay]);
+
   const estadoColor = (v: string) => {
     switch (String(v || "").toLowerCase()) {
       case "asistencia":
@@ -497,33 +761,80 @@ export default function AsistenciaProgramadaClient() {
     }
   };
 
-  const exportarExcel = () => {
-    const estadoCode = (v: string) => {
-      const s = String(v || "").toLowerCase();
-      if (s === "asistencia") return "A";
-      if (s === "falta") return "F";
-      if (s === "descanso") return "D";
-      if (s === "descanso medico") return "DM";
-      if (s === "vacaciones") return "V";
-      if (s === "suspendida") return "S";
-      return s ? s.toUpperCase() : "";
+  const handlePlantillaUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const buf = ev.target?.result;
+      if (buf instanceof ArrayBuffer) {
+        setPlantillaBuffer(buf);
+        setPlantillaNombre(file.name);
+        toast.success(`Plantilla cargada: ${file.name}`);
+      }
     };
-    const rowsToExport = visibleRows;
-    const sheet = rowsToExport.map((r) => {
-      const base: Record<string, string> = {
-        Cuadrilla: r.nombre,
-        Coordinador: r.coordinadorNombre || "-",
-      };
-      weekDays.forEach((d) => {
-        const key = dayjs(d).format("DD/MM/YYYY");
-        base[key] = estadoCode(String(items?.[r.id]?.[d] || "asistencia"));
-      });
-      return base;
-    });
+    reader.readAsArrayBuffer(file);
+    // Reset input para poder volver a subir el mismo archivo si es necesario
+    e.target.value = "";
+  };
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheet), "Asistencia");
-    XLSX.writeFile(wb, `asistencia_programada_${startYmd}_a_${endYmd}.xlsx`);
+  // DOW → índice de columna en la plantilla (0-based): D=LU=3, E=MA=4, F=MI=5, G=JU=6, H=VI=7, I=SA=8, J=DO=9
+  const DOW_TO_COL: Record<number, number> = { 0: 9, 1: 3, 2: 4, 3: 5, 4: 6, 5: 7, 6: 8 };
+
+  const exportarExcel = async () => {
+    try {
+      // 1. Requiere plantilla subida por el usuario
+      if (!plantillaBuffer) throw new Error("Sube una plantilla .xlsx antes de exportar.");
+      const buffer = plantillaBuffer;
+      const wb = XLSX.read(buffer, { type: "array", cellStyles: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const range = XLSX.utils.decode_range(ws["!ref"] || "A1:K1");
+
+      // 2. Construir índice: clave WIN ("K 2 MOTOWIN" / "K 1 M&D") → fila
+      const lookup = new Map<string, number>();
+      for (let r = range.s.r; r <= range.e.r; r++) {
+        const cellB = ws[XLSX.utils.encode_cell({ r, c: 1 })];
+        if (!cellB) continue;
+        const nombre = String(cellB.v || "");
+        // Extraer prefijo: "K N MOTOWIN" o "K N M&D"
+        const moto = nombre.match(/^(K\s+\d+\s+MOTOWIN)/i);
+        const residencial = nombre.match(/^(K\s+\d+\s+M&D)/i);
+        if (moto) lookup.set(moto[1].toUpperCase().replace(/\s+/g, " "), r);
+        else if (residencial) lookup.set(residencial[1].toUpperCase().replace(/\s+/g, " "), r);
+      }
+
+      // 3. Actualizar celdas D-J (LU-DO) para cada cuadrilla visible
+      let noEncontradas: string[] = [];
+      rows.forEach((r) => {
+        const num = extractNumCuadrilla(r);
+        if (!num) return;
+        const cat = categoriaCuadrilla(r);
+        const clave = cat === "MOTO" ? `K ${num} MOTOWIN` : `K ${num} M&D`;
+        const rowIdx = lookup.get(clave.toUpperCase());
+        if (rowIdx === undefined) {
+          noEncontradas.push(r.nombre);
+          return;
+        }
+        weekDays.forEach((d) => {
+          const dow = dayjs(d, "YYYY-MM-DD").day();
+          const col = DOW_TO_COL[dow];
+          if (col === undefined) return;
+          const addr = XLSX.utils.encode_cell({ r: rowIdx, c: col });
+          const val = String(items?.[r.id]?.[d] || "asistencia").toLowerCase();
+          const excelVal = val === "descanso" ? "N" : "S";
+          if (!ws[addr]) ws[addr] = { t: "s", v: excelVal };
+          else { ws[addr].v = excelVal; ws[addr].t = "s"; delete ws[addr].w; }
+        });
+      });
+
+      // 4. Descargar
+      XLSX.writeFile(wb, `asistencia_programada_${startYmd}_a_${endYmd}.xlsx`);
+      if (noEncontradas.length > 0) {
+        toast.warning(`${noEncontradas.length} cuadrilla(s) no encontradas en la plantilla: ${noEncontradas.slice(0, 3).join(", ")}${noEncontradas.length > 3 ? "…" : ""}`);
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo exportar la plantilla");
+    }
   };
 
   useEffect(() => {
@@ -619,7 +930,7 @@ export default function AsistenciaProgramadaClient() {
 
   const handleStartChange = (next: string) => {
     if (!next || next === startYmd) return;
-    const day = dayjs(next).day(); // 0=Sunday, 4=Thursday
+    const day = dayjs(next).day();
     if (day !== 4) {
       toast("Cambiar inicio de semana?", {
         description: "El inicio recomendado es jueves. Confirma si deseas cambiarlo.",
@@ -637,6 +948,13 @@ export default function AsistenciaProgramadaClient() {
       return;
     }
     setStartYmd(next);
+  };
+
+  const coberturaColorBg = (estado: CoberturaEstado) => {
+    if (estado === "ok") return "bg-emerald-500/20 border-emerald-400/30 text-emerald-100";
+    if (estado === "warn") return "bg-amber-500/20 border-amber-400/30 text-amber-100";
+    if (estado === "bad") return "bg-rose-500/25 border-rose-400/40 text-rose-100";
+    return "bg-slate-700/30 border-slate-600/30 text-slate-300";
   };
 
   return (
@@ -774,6 +1092,56 @@ export default function AsistenciaProgramadaClient() {
           </div>
         )}
 
+        {/* Panel de cobertura semanal */}
+        {rows.length > 0 && weekDays.length > 0 && (
+          <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Cobertura semanal</div>
+                  <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">% asistencia actual vs. minimo requerido por dia</div>
+                </div>
+                <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+                  <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />Cumple</span>
+                  <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-amber-400" />Cerca del limite</span>
+                  <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-rose-500" />Bajo el minimo</span>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 divide-x divide-y divide-slate-100 dark:divide-slate-800 sm:grid-cols-4 lg:grid-cols-7">
+              {coberturaResumen.map(({ ymd, label, info }) => {
+                const domingo = dayjs(ymd, "YYYY-MM-DD").day() === 0;
+                const holiday = feriados.includes(ymd);
+                return (
+                  <div key={ymd} className={cls("p-3", holiday ? "bg-sky-50/60 dark:bg-sky-950/20" : domingo ? "bg-amber-50/60 dark:bg-amber-950/20" : "")}>
+                    <div className="mb-2 flex items-center justify-between gap-1">
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{label}</span>
+                      <CoberturaIcon estado={info.estado} />
+                    </div>
+                    {domingo && info.residencial !== undefined ? (
+                      <div className="space-y-1.5">
+                        <div>
+                          <div className="mb-0.5 text-[10px] text-slate-500 dark:text-slate-400">Residencial</div>
+                          <CoberturaBar pct={info.residencial.pct} minPct={info.residencial.minPct} estado={info.residencial.estado} />
+                        </div>
+                        {info.moto !== undefined && (
+                          <div>
+                            <div className="mb-0.5 text-[10px] text-slate-500 dark:text-slate-400">Moto</div>
+                            <CoberturaBar pct={info.moto.pct} minPct={info.moto.minPct} estado={info.moto.estado} />
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <CoberturaBar pct={info.pct} minPct={info.minPct} estado={info.estado} />
+                    )}
+                    {holiday && <div className="mt-1 text-[10px] text-sky-600 dark:text-sky-400">Feriado</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <div className="border-b border-slate-200 px-4 py-4 dark:border-slate-700">
             <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Tipificaciones de asistencia</div>
@@ -833,9 +1201,16 @@ export default function AsistenciaProgramadaClient() {
 
           <div className="rounded-[24px] border border-slate-200 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-950">
             <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Acciones de semana</div>
-            <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">Replica acciones rapidas con el mismo tratamiento visual del resumen.</div>
+            <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">Replica acciones rapidas o genera la semana automaticamente.</div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <button className="rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:text-slate-200" onClick={copiarSemanaAnterior}>Copiar semana anterior</button>
+              <button
+                className="rounded border border-[#30518c] bg-[#30518c]/10 px-3 py-1.5 text-sm font-medium text-[#30518c] transition hover:bg-[#30518c]/20 disabled:opacity-50 dark:border-sky-700 dark:bg-sky-900/20 dark:text-sky-300 dark:hover:bg-sky-900/40"
+                disabled={isLocked || rows.length === 0}
+                onClick={handleAutoGenerar}
+              >
+                Generar automatico
+              </button>
               <div className="flex items-center gap-2">
                 <select
                   value={feriadoDay}
@@ -869,9 +1244,42 @@ export default function AsistenciaProgramadaClient() {
               >
                 Domingo descanso
               </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Input oculto para subir plantilla */}
+                <input
+                  ref={plantillaInputRef}
+                  type="file"
+                  accept=".xlsx"
+                  className="hidden"
+                  onChange={handlePlantillaUpload}
+                />
+                <button
+                  type="button"
+                  onClick={() => plantillaInputRef.current?.click()}
+                  className="rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:text-slate-200"
+                >
+                  Subir plantilla
+                </button>
+                {plantillaNombre ? (
+                  <div className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
+                    <span className="max-w-[140px] truncate">{plantillaNombre}</span>
+                    <button
+                      type="button"
+                      onClick={() => { setPlantillaBuffer(null); setPlantillaNombre(""); }}
+                      className="text-emerald-500 hover:text-emerald-700 dark:text-emerald-400"
+                      title="Quitar plantilla"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-[11px] text-amber-600 dark:text-amber-400">Requerida para exportar</span>
+                )}
+              </div>
               <button
-                className="px-3 py-1.5 rounded bg-[#30518c] text-white text-sm shadow hover:bg-[#203a66]"
+                className="px-3 py-1.5 rounded bg-[#30518c] text-white text-sm shadow hover:bg-[#203a66] disabled:opacity-60"
                 onClick={exportarExcel}
+                disabled={rows.length === 0}
               >
                 Descargar Excel
               </button>
@@ -1040,6 +1448,7 @@ export default function AsistenciaProgramadaClient() {
                 {weekDays.map((d) => {
                   const sunday = isSunday(d);
                   const holiday = feriados.includes(d);
+                  const cob = coberturaByDay[d];
                   return (
                     <div
                       key={`sticky_${d}`}
@@ -1054,6 +1463,13 @@ export default function AsistenciaProgramadaClient() {
                           {sunday && <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] text-amber-100">Domingo</span>}
                           {holiday && <span className="rounded-full bg-sky-400/20 px-2 py-0.5 text-[10px] text-sky-100">Feriado</span>}
                         </div>
+                        {cob && cob.estado !== "none" && rows.length > 0 && (
+                          <div className={cls("mt-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold", coberturaColorBg(cob.estado))}>
+                            {sunday && cob.residencial !== undefined
+                              ? `R:${cob.residencial.pct}% M:${cob.moto?.pct ?? "-"}%`
+                              : `${cob.pct}%`}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

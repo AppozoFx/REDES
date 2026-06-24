@@ -31,9 +31,21 @@ export async function GET(req: Request) {
     }
 
     const data = snap.data() as any;
+    const equipo = String(data?.equipo || "").trim().toUpperCase();
+
+    if (data?.ubicacionTipo === "PERSONAL") {
+      return NextResponse.json({
+        ok: true,
+        status: "PERSONAL",
+        ubicacion: String(data.ubicacion || ""),
+        ubicacionUid: String(data.ubicacionUid || ""),
+        entityRol: String(data.entityRol || ""),
+        equipo,
+      });
+    }
+
     const ubicacionRaw = String(data?.ubicacion || "ALMACEN");
     const norm = normalizeUbicacion(ubicacionRaw);
-    const equipo = String(data?.equipo || "").trim().toUpperCase();
 
     if (norm.ubicacion === "ALMACEN") {
       return NextResponse.json({ ok: true, status: "ALMACEN", equipo });

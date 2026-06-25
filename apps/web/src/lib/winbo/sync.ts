@@ -53,7 +53,7 @@ export type WinboSyncResult = {
 };
 
 const LOCK_DOC_PATH = "system_locks/winbo_ordenes_sync";
-const LOCK_TTL_MS = 20 * 60 * 1000;
+const LOCK_TTL_MS = 23 * 60 * 1000;
 
 function lockOwnerKey(actor: WinboSyncActor, mode: SyncMode) {
   return `${mode}:${actor.kind}:${actor.uid}`;

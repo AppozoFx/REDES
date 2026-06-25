@@ -30,7 +30,7 @@ const CRON_FETCH_TIMEOUT_MS = 240_000;
 export const winboOrdenesAutoSync = onSchedule(
   {
     region: "us-central1",
-    schedule: "every 20 minutes",
+    schedule: "every 25 minutes",
     timeZone: "America/Lima",
     timeoutSeconds: 300,
     secrets: [WINBO_CRON_TOKEN],

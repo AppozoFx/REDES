@@ -580,7 +580,7 @@ export function LiquidacionRowClient({
     return (
       <div className={`rounded-xl border px-3 py-2.5 text-xs ${lookupTone(info)}`}>
         {lines.map((line) => <div key={line}>{line}</div>)}
-        {info.reason === "IN_OTHER_CUADRILLA" ? (
+        {(info.reason === "IN_OTHER_CUADRILLA" || info.reason === "IN_PERSONAL") ? (
           <div className="mt-2">
             <button
               type="button"
@@ -651,8 +651,8 @@ export function LiquidacionRowClient({
   async function openMoveFlow(rawSn: string) {
     const key = norm(rawSn);
     const info = lookupBySn[key];
-    if (!info || info.reason !== "IN_OTHER_CUADRILLA") return;
-    if (String(info.equipo || "").toUpperCase() !== "ONT") {
+    if (!info || (info.reason !== "IN_OTHER_CUADRILLA" && info.reason !== "IN_PERSONAL")) return;
+    if (info.reason === "IN_PERSONAL" || String(info.equipo || "").toUpperCase() !== "ONT") {
       await executeMove(key);
       return;
     }

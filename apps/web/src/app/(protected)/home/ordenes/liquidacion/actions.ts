@@ -9,7 +9,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import { normalizeUbicacion, toDatePartsLima } from "@/domain/equipos/repo";
 import { metersToCm } from "@/domain/materiales/repo";
 import { addGlobalNotification } from "@/domain/notificaciones/service";
-import { getCuadrillaPreconStock, moveEquipoBetweenCuadrillas } from "@/domain/transferencias/instalaciones/moveEquipo";
+import { getCuadrillaPreconStock, moveEquipoBetweenCuadrillas, moveEquipoFromPersonalToCuadrilla } from "@/domain/transferencias/instalaciones/moveEquipo";
 
 const PERM = "ORDENES_LIQUIDAR";
 
@@ -250,6 +250,31 @@ export async function liquidarOrdenAction(_: any, formData: FormData): Promise<L
       eqSnaps.forEach((snap) => eqMap.set(snap.id, snap));
       srSnaps.forEach((snap) => srMap.set(snap.id, snap));
 
+      const coordinadorUid = String(c?.coordinadorUid || "").trim();
+      const gestorUid = String(c?.gestorUid || "").trim();
+      const personalUids = new Set([coordinadorUid, gestorUid].filter(Boolean));
+      const personalLookups: Array<{ sn: string; uid: string; ref: FirebaseFirestore.DocumentReference }> = [];
+      for (const snItem of sns) {
+        if (!srMap.get(snItem)?.exists) {
+          const eqSnap = eqMap.get(snItem);
+          if (eqSnap?.exists) {
+            const eq = eqSnap.data() as any;
+            const ubTipo = String(eq?.ubicacionTipo || "").trim().toUpperCase();
+            const ubUid = String(eq?.ubicacionUid || "").trim();
+            if (ubTipo === "PERSONAL" && personalUids.has(ubUid)) {
+              personalLookups.push({
+                sn: snItem,
+                uid: ubUid,
+                ref: db.collection("personal_stock").doc(ubUid).collection("equipos_series").doc(snItem),
+              });
+            }
+          }
+        }
+      }
+      const personalSrSnaps = personalLookups.length ? await tx.getAll(...personalLookups.map((p) => p.ref)) : [];
+      const personalMap = new Map<string, { uid: string; snap: FirebaseFirestore.DocumentSnapshot }>();
+      personalLookups.forEach((p, i) => personalMap.set(p.sn, { uid: p.uid, snap: personalSrSnaps[i] }));
+
       const materialIds = Array.from(matAgg.keys());
       const matRefs = materialIds.map((mid) => db.collection("materiales").doc(mid));
       const stockRefs = materialIds.map((mid) =>
@@ -278,17 +303,19 @@ export async function liquidarOrdenAction(_: any, formData: FormData): Promise<L
         const eqSnap = eqMap.get(sn);
         const srSnap = srMap.get(sn);
         if (!eqSnap?.exists) throw new Error(`EQUIPO_NOT_FOUND ${sn}`);
-        if (!srSnap?.exists) throw new Error(`SN_NO_EN_CUADRILLA ${sn}`);
 
         const eq = eqSnap.data() as any;
-        if (String(eq?.ubicacion || "") !== expectedUb) throw new Error(`SN_UBICACION_INVALIDA ${sn}`);
+        const personalInfo = personalMap.get(sn);
+        const isFromPersonal = !srSnap?.exists && !!personalInfo?.snap.exists;
+
+        if (!isFromPersonal && !srSnap?.exists) throw new Error(`SN_NO_EN_CUADRILLA ${sn}`);
+        if (!isFromPersonal && String(eq?.ubicacion || "") !== expectedUb) throw new Error(`SN_UBICACION_INVALIDA ${sn}`);
 
         const tipo = String(eq?.equipo || "UNKNOWN").toUpperCase();
-        const stockTipoRef = db.collection("cuadrillas").doc(cuadrillaId).collection("equipos_stock").doc(tipo);
         const proid = String(eq?.proId || eq?.proid || "");
         const descripcion = String(eq?.descripcion || "");
 
-        tx.update(equipoRef, {
+        const eqUpdate: any = {
           estado: "INSTALADO",
           ubicacion: "INSTALADOS",
           cliente,
@@ -296,22 +323,31 @@ export async function liquidarOrdenAction(_: any, formData: FormData): Promise<L
           f_instaladoAt: fechaInstalacion.at,
           f_instaladoYmd: fechaInstalacion.ymd,
           f_instaladoHm: fechaInstalacion.hm,
-          audit: {
-            ...(eq?.audit || {}),
-            updatedAt: FieldValue.serverTimestamp(),
-            updatedBy: session.uid,
-          },
-        });
-        tx.delete(seriesRef);
-        tx.set(
-          stockTipoRef,
-          {
-            tipo,
-            cantidad: FieldValue.increment(-1),
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
+          audit: { ...(eq?.audit || {}), updatedAt: FieldValue.serverTimestamp(), updatedBy: session.uid },
+        };
+        if (isFromPersonal) {
+          eqUpdate.ubicacionTipo = FieldValue.delete();
+          eqUpdate.ubicacionUid = FieldValue.delete();
+          eqUpdate.entityRol = FieldValue.delete();
+        }
+        tx.update(equipoRef, eqUpdate);
+
+        if (isFromPersonal) {
+          const fromUid = personalInfo!.uid;
+          tx.delete(db.collection("personal_stock").doc(fromUid).collection("equipos_series").doc(sn));
+          tx.set(
+            db.collection("personal_stock").doc(fromUid).collection("equipos_stock").doc(tipo),
+            { tipo, cantidad: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() },
+            { merge: true }
+          );
+        } else {
+          tx.delete(seriesRef);
+          tx.set(
+            db.collection("cuadrillas").doc(cuadrillaId).collection("equipos_stock").doc(tipo),
+            { tipo, cantidad: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() },
+            { merge: true }
+          );
+        }
 
         movedTypes.set(tipo, (movedTypes.get(tipo) || 0) + 1);
         equiposInstalados.push({ sn, tipo, proid, descripcion });
@@ -630,10 +666,18 @@ export async function moverSnALaCuadrillaDeOrdenAction(input: {
   const cuadrilla = cuadrillaSnap.data() as any;
   const equipo = equipoSnap.data() as any;
   const toUbicacion = normalizeUbicacion(String(cuadrilla?.nombre || toCuadrillaId)).ubicacion;
-  const currentUb = normalizeUbicacion(String(equipo?.ubicacion || ""));
-  if (currentUb.ubicacion === "INSTALADOS" || String(equipo?.estado || "").toUpperCase() === "INSTALADO") {
-    throw new Error("SN_YA_INSTALADO");
+
+  if (String(equipo?.estado || "").toUpperCase() === "INSTALADO") throw new Error("SN_YA_INSTALADO");
+
+  const ubicacionTipo = String(equipo?.ubicacionTipo || "").trim().toUpperCase();
+  if (ubicacionTipo === "PERSONAL") {
+    const fromUid = String(equipo?.ubicacionUid || "").trim();
+    if (!fromUid) throw new Error("SN_SIN_UID_PERSONAL");
+    return moveEquipoFromPersonalToCuadrilla({ sn, fromUid, toCuadrillaId, toUbicacion, actorUid: session.uid });
   }
+
+  const currentUb = normalizeUbicacion(String(equipo?.ubicacion || ""));
+  if (currentUb.ubicacion === "INSTALADOS") throw new Error("SN_YA_INSTALADO");
   if (!currentUb.isCuadrilla) throw new Error("SN_NO_ESTA_EN_CUADRILLA");
 
   const fromCuadSnap = await db

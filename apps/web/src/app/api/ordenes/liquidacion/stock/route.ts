@@ -28,16 +28,29 @@ export async function GET(req: Request) {
     const cuadrillaId = String(searchParams.get("cuadrillaId") || "").trim();
     if (!cuadrillaId) return NextResponse.json({ ok: true, stock: emptyStock() });
 
-    const snap = await adminDb()
-      .collection("cuadrillas")
-      .doc(cuadrillaId)
-      .collection("equipos_series")
-      .limit(1500)
-      .get();
+    const db = adminDb();
+
+    const cuadSnap = await db.collection("cuadrillas").doc(cuadrillaId).get();
+    const cuadData = cuadSnap.exists ? (cuadSnap.data() as any) : null;
+    const personalUids = Array.from(
+      new Set(
+        [cuadData?.coordinadorUid, cuadData?.gestorUid]
+          .filter((u): u is string => typeof u === "string" && !!u.trim())
+          .map((u) => u.trim())
+      )
+    );
+
+    const [cuadSeriesSnap, ...personalSeriesSnaps] = await Promise.all([
+      db.collection("cuadrillas").doc(cuadrillaId).collection("equipos_series").limit(1500).get(),
+      ...personalUids.map((uid) =>
+        db.collection("personal_stock").doc(uid).collection("equipos_series").limit(500).get()
+      ),
+    ]);
 
     const out = emptyStock();
     const onts: string[] = [];
-    for (const d of snap.docs) {
+
+    for (const d of cuadSeriesSnap.docs) {
       const x = d.data() as any;
       const sn = String(x?.SN || d.id || "").trim();
       const tipo = String(x?.equipo || "").toUpperCase();
@@ -48,13 +61,26 @@ export async function GET(req: Request) {
       else if (tipo === "FONO") out.FONO.push(sn);
     }
 
+    for (const snap of personalSeriesSnaps) {
+      for (const d of snap.docs) {
+        const x = d.data() as any;
+        const sn = String(x?.SN || d.id || "").trim();
+        const tipo = String(x?.equipo || "").toUpperCase();
+        if (!sn) continue;
+        if (tipo === "ONT") onts.push(sn);
+        else if (tipo === "MESH") out.MESH.push(sn);
+        else if (tipo === "BOX") out.BOX.push(sn);
+        else if (tipo === "FONO") out.FONO.push(sn);
+      }
+    }
+
     const uniqOnts = Array.from(new Set(onts));
     if (uniqOnts.length) {
       const chunkSize = 10;
       const ontRows: Array<{ sn: string; proid: string }> = [];
       for (let i = 0; i < uniqOnts.length; i += chunkSize) {
         const part = uniqOnts.slice(i, i + chunkSize);
-        const q = await adminDb().collection("equipos").where("SN", "in", part).get();
+        const q = await db.collection("equipos").where("SN", "in", part).get();
         const bySn = new Map<string, string>();
         for (const docSnap of q.docs) {
           const data = docSnap.data() as any;

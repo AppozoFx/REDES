@@ -215,3 +215,100 @@ export async function moveEquipoBetweenCuadrillas(input: {
 
   return { ok: true, sn, ubicacion: nextUb, estado: nextEstado };
 }
+
+export async function moveEquipoFromPersonalToCuadrilla(input: {
+  sn: string;
+  fromUid: string;
+  toCuadrillaId: string;
+  toUbicacion: string;
+  actorUid: string;
+}) {
+  const db = adminDb();
+  const sn = String(input.sn || "").trim().toUpperCase();
+  const fromUid = String(input.fromUid || "").trim();
+  const toCuadrillaId = String(input.toCuadrillaId || "").trim();
+  const toUbicacion = String(input.toUbicacion || "").trim();
+  if (!sn || !fromUid || !toCuadrillaId) throw new Error("PARAMS_REQUIRED");
+
+  let tipoEq = "UNKNOWN";
+  let nextUb = toUbicacion;
+
+  await db.runTransaction(async (tx) => {
+    const eqRef = db.collection("equipos").doc(sn);
+    const personalSeriesRef = db
+      .collection("personal_stock")
+      .doc(fromUid)
+      .collection("equipos_series")
+      .doc(sn);
+
+    const [eqSnap, personalSeriesSnap] = await Promise.all([
+      tx.get(eqRef),
+      tx.get(personalSeriesRef),
+    ]);
+
+    if (!eqSnap.exists) throw new Error("EQUIPO_NOT_FOUND");
+    const e = eqSnap.data() as any;
+
+    const ubicacionTipo = String(e?.ubicacionTipo || "").trim().toUpperCase();
+    const ubicacionUid = String(e?.ubicacionUid || "").trim();
+    if (ubicacionTipo !== "PERSONAL" || ubicacionUid !== fromUid) {
+      throw new Error("SN_NO_PERTENECE_A_PERSONAL");
+    }
+
+    tipoEq = String(e.equipo || "UNKNOWN").toUpperCase();
+    const descripcion = String(e.descripcion || "");
+    const nextNorm = normalizeUbicacion(toUbicacion);
+    nextUb = nextNorm.ubicacion || toUbicacion;
+
+    tx.update(eqRef, {
+      ubicacion: nextUb,
+      estado: "CAMPO",
+      ubicacionTipo: FieldValue.delete(),
+      ubicacionUid: FieldValue.delete(),
+      entityRol: FieldValue.delete(),
+      audit: { ...(e.audit || {}), updatedAt: FieldValue.serverTimestamp(), updatedBy: input.actorUid },
+    });
+
+    const personalStockRef = db
+      .collection("personal_stock")
+      .doc(fromUid)
+      .collection("equipos_stock")
+      .doc(tipoEq);
+    tx.set(personalStockRef, { tipo: tipoEq, cantidad: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    if (personalSeriesSnap.exists) tx.delete(personalSeriesRef);
+
+    const cuadStockRef = db.collection("cuadrillas").doc(toCuadrillaId).collection("equipos_stock").doc(tipoEq);
+    const cuadSeriesRef = db.collection("cuadrillas").doc(toCuadrillaId).collection("equipos_series").doc(sn);
+    tx.set(cuadStockRef, { tipo: tipoEq, cantidad: FieldValue.increment(1), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    tx.set(cuadSeriesRef, {
+      SN: sn,
+      equipo: tipoEq,
+      descripcion,
+      ubicacion: nextUb,
+      estado: "CAMPO",
+      guia_despacho: String(e?.guia_despacho || ""),
+      f_despachoAt: e?.f_despachoAt || null,
+      f_despachoYmd: e?.f_despachoYmd || null,
+      f_despachoHm: e?.f_despachoHm || null,
+      tecnicos: [],
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+  });
+
+  try {
+    const usuario = await getUsuarioDisplayName(input.actorUid);
+    await addGlobalNotification({
+      title: "Movimiento de Equipo",
+      message: `${usuario} movió ${tipoEq} (SN: ${sn}) de personal a cuadrilla "${nextUb}"`,
+      type: "info",
+      scope: "ALL",
+      createdBy: input.actorUid,
+      entityType: "EQUIPO_MOVE",
+      entityId: sn,
+      action: "UPDATE",
+      estado: "ACTIVO",
+    });
+  } catch {}
+
+  return { ok: true, sn, ubicacion: nextUb, estado: "CAMPO" };
+}

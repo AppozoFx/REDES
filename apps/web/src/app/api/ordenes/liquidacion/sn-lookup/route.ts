@@ -9,6 +9,7 @@ type LookupReason =
   | "NOT_FOUND"
   | "IN_TARGET_CUADRILLA"
   | "IN_OTHER_CUADRILLA"
+  | "IN_PERSONAL"
   | "IN_ALMACEN"
   | "IN_GARANTIA"
   | "IN_AVERIA"
@@ -36,6 +37,11 @@ function buildActionHint(reason: LookupReason, targetCuadrillaNombre: string): s
     return targetCuadrillaNombre
       ? `Mover equipo a ${targetCuadrillaNombre} antes de liquidar.`
       : "Mover equipo a la cuadrilla objetivo antes de liquidar.";
+  }
+  if (reason === "IN_PERSONAL") {
+    return targetCuadrillaNombre
+      ? `Equipo con coordinador/supervisor. Usar 'Mover a ${targetCuadrillaNombre}' para trasladarlo.`
+      : "Equipo con coordinador/supervisor. Usar 'Mover a esta cuadrilla' para trasladarlo.";
   }
   if (reason === "ALREADY_INSTALLED") return "No permitir liquidar este SN porque ya figura instalado.";
   if (reason === "NOT_FOUND") return "Verificar el serial ingresado.";
@@ -92,6 +98,7 @@ export async function GET(req: Request) {
     const proid = String(equipo?.proId || equipo?.proid || "").trim();
     const ubicacionRaw = String(equipo?.ubicacion || "");
     const estadoRaw = String(equipo?.estado || "");
+    const ubicacionTipo = String(equipo?.ubicacionTipo || "").trim().toUpperCase();
     const currentNorm = normalizeUbicacion(ubicacionRaw);
 
     let targetCuadrillaNombre = "";
@@ -118,9 +125,15 @@ export async function GET(req: Request) {
     }
 
     let reason: LookupReason;
-    if (inTargetCuadrillaStock) reason = "IN_TARGET_CUADRILLA";
-    else if (currentNorm.ubicacion === "INSTALADOS" || estadoRaw.toUpperCase() === "INSTALADO") reason = "ALREADY_INSTALLED";
-    else reason = resolveReason(currentNorm.ubicacion, currentNorm.isCuadrilla);
+    if (inTargetCuadrillaStock) {
+      reason = "IN_TARGET_CUADRILLA";
+    } else if (ubicacionTipo === "PERSONAL") {
+      reason = "IN_PERSONAL";
+    } else if (currentNorm.ubicacion === "INSTALADOS" || estadoRaw.toUpperCase() === "INSTALADO") {
+      reason = "ALREADY_INSTALLED";
+    } else {
+      reason = resolveReason(currentNorm.ubicacion, currentNorm.isCuadrilla);
+    }
 
     return NextResponse.json({
       ok: true,
@@ -131,7 +144,7 @@ export async function GET(req: Request) {
       inTargetCuadrillaStock,
       targetCuadrillaId,
       targetCuadrillaNombre,
-      ubicacion: currentNorm.ubicacion || ubicacionRaw,
+      ubicacion: ubicacionTipo === "PERSONAL" ? ubicacionRaw : (currentNorm.ubicacion || ubicacionRaw),
       estado: currentNorm.estado || estadoRaw,
       isCuadrilla: currentNorm.isCuadrilla,
       currentCuadrillaId,

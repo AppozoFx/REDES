@@ -2635,6 +2635,7 @@ export const telegramPendientesReminder = onSchedule(
     timeZone: "America/Lima",
     timeoutSeconds: 540,
     memory: "512MiB",
+    retryCount: 0,
     secrets: [TELEGRAM_BOT_TOKEN],
   },
   async (event) => {

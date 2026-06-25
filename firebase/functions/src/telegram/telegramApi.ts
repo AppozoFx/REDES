@@ -1,5 +1,9 @@
 import * as logger from "firebase-functions/logger";
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 type SendTelegramMessageInput = {
   token: string;
   chatId: string;
@@ -33,6 +37,7 @@ export async function sendTelegramMessage(input: SendTelegramMessageInput): Prom
       return false;
     }
 
+    await sleep(350);
     return true;
   } catch (error) {
     logger.error("telegram sendMessage exception", {

@@ -2633,6 +2633,8 @@ export const telegramPendientesReminder = onSchedule(
     region: "us-central1",
     schedule: "0 10,12,14,16,18,20 * * *",
     timeZone: "America/Lima",
+    timeoutSeconds: 540,
+    memory: "512MiB",
     secrets: [TELEGRAM_BOT_TOKEN],
   },
   async (event) => {
@@ -2653,26 +2655,34 @@ export const telegramPendientesReminder = onSchedule(
     if (!baseText) return;
 
     for (const chatId of chats) {
-      await sendTelegramMessage({ token, chatId, text: baseText });
+      try {
+        await sendTelegramMessage({ token, chatId, text: baseText });
 
-      const pendingRows = await getPendientesByRange(chatId, startYmd, todayYmd);
-      const cuadrillaCount = new Set(
-        pendingRows.map((r) => r.cuadrillaNombre || r.cuadrillaId || "SIN_CUADRILLA")
-      ).size;
-      await sendTelegramMessage({
-        token,
-        chatId,
-        text: [
-          `📊 *Pendientes de Plantilla del Mes*`,
-          `Del ${formatYmdDdMm(startYmd)} al ${formatYmdDdMm(todayYmd)}`,
-          `📦 Órdenes pendientes: ${pendingRows.length}`,
-          `👥 Cuadrillas con pendientes: ${cuadrillaCount}`,
-          pendingRows.length === 0 ? "✅ ¡Todo al día!" : "",
-        ].filter(Boolean).join("\n"),
-      });
+        const pendingRows = await getPendientesByRange(chatId, startYmd, todayYmd);
+        const cuadrillaCount = new Set(
+          pendingRows.map((r) => r.cuadrillaNombre || r.cuadrillaId || "SIN_CUADRILLA")
+        ).size;
+        await sendTelegramMessage({
+          token,
+          chatId,
+          text: [
+            `📊 *Pendientes de Plantilla del Mes*`,
+            `Del ${formatYmdDdMm(startYmd)} al ${formatYmdDdMm(todayYmd)}`,
+            `📦 Órdenes pendientes: ${pendingRows.length}`,
+            `👥 Cuadrillas con pendientes: ${cuadrillaCount}`,
+            pendingRows.length === 0 ? "✅ ¡Todo al día!" : "",
+          ].filter(Boolean).join("\n"),
+        });
 
-      if (pendingRows.length > 0) {
-        await sendPendientesDetalladoPorCuadrillaRange(chatId, token, startYmd, todayYmd, pendingRows);
+        if (pendingRows.length > 0) {
+          await sendPendientesDetalladoPorCuadrillaRange(chatId, token, startYmd, todayYmd, pendingRows);
+        }
+      } catch (error) {
+        logger.error("telegramPendientesReminder error", {
+          error: String((error as Error)?.message || error),
+          chatId,
+          todayYmd,
+        });
       }
     }
   }

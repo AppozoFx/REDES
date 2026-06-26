@@ -1,6 +1,12 @@
 import { requireAuth } from "@/core/auth/guards";
 import { redirect } from "next/navigation";
 import VentasClient from "./ui/VentasClient";
+import AlmacenTabNav from "@/ui/common/AlmacenTabNav";
+
+const VENTAS_TABS = [
+  { label: "Ventas", href: "/home/ventas" },
+  { label: "Despacho (Inst)", href: "/home/ventas/instalaciones/despacho" },
+];
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +27,7 @@ export default async function Page() {
         <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Ventas</h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Consulta, seguimiento y control de pagos de ventas registradas.</p>
       </section>
+      <AlmacenTabNav tabs={VENTAS_TABS} />
       <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:p-4 dark:border-slate-700 dark:bg-slate-900">
         <VentasClient canEdit={canEdit} canPagar={canPagar} canAnular={canAnular} canViewAll={canViewAll} />
       </section>

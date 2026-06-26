@@ -1,5 +1,11 @@
 import { requirePermission } from "@/core/auth/guards";
 import DespachoVentasClient from "../../ui/DespachoVentasClient";
+import AlmacenTabNav from "@/ui/common/AlmacenTabNav";
+
+const VENTAS_TABS = [
+  { label: "Ventas", href: "/home/ventas" },
+  { label: "Despacho (Inst)", href: "/home/ventas/instalaciones/despacho" },
+];
 
 export const dynamic = "force-dynamic";
 
@@ -10,9 +16,10 @@ export default async function Page() {
   return (
     <div className="space-y-4">
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Ventas - Despacho (INSTALACIONES)</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Registro de ventas y despacho para cuadrillas del area de instalaciones.</p>
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Ventas: Despacho</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Registro de ventas y despacho para cuadrillas de instalaciones.</p>
       </section>
+      <AlmacenTabNav tabs={VENTAS_TABS} />
       <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:p-4 dark:border-slate-700 dark:bg-slate-900">
         <DespachoVentasClient area="INSTALACIONES" canEditPrecio={canEditPrecio} canEditCoordinador={canEditCoordinador} />
       </section>

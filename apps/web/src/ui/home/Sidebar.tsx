@@ -106,8 +106,12 @@ function getGroup(href: string): GroupKey {
     href === "/home/transferencias/instalaciones/devoluciones" ||
     href === "/home/transferencias/instalaciones/reposicion" ||
     href === "/home/transferencias/instalaciones/tecnicos-materiales" ||
+    href === "/home/transferencias/instalaciones/despacho-personal" ||
+    href === "/home/transferencias/instalaciones/devoluciones-personal" ||
+    href === "/home/transferencias/instalaciones/transferencias-internas" ||
     href === "/home/transferencias/instalaciones/equipos" ||
     href === "/home/transferencias/instalaciones/stock-equipos" ||
+    href === "/home/transferencias/instalaciones/stock-personal" ||
     href === "/home/transferencias/instalaciones/predespacho" ||
     href === "/home/transferencias/instalaciones/auditoria" ||
     href === "/home/ventas" ||
@@ -134,6 +138,28 @@ function groupBadge(group: GroupKey) {
   if (group === "ALMACEN") return "AL";
   return "MA";
 }
+
+const ALMACEN_SUBGROUP: Record<string, string> = {
+  "/home/materiales": "CATÁLOGO",
+  "/home/equipos/import": "CATÁLOGO",
+  "/home/transferencias/instalaciones/predespacho": "MOVIMIENTOS",
+  "/home/transferencias/instalaciones/despacho": "MOVIMIENTOS",
+  "/home/transferencias/instalaciones/devoluciones": "MOVIMIENTOS",
+  "/home/transferencias/instalaciones/reposicion": "MOVIMIENTOS",
+  "/home/transferencias/instalaciones/despacho-personal": "PERSONAL",
+  "/home/transferencias/instalaciones/devoluciones-personal": "PERSONAL",
+  "/home/transferencias/instalaciones/transferencias-internas": "PERSONAL",
+  "/home/transferencias/instalaciones/tecnicos-materiales": "PERSONAL",
+  "/home/transferencias/instalaciones/stock-equipos": "INVENTARIO",
+  "/home/transferencias/instalaciones/stock-personal": "INVENTARIO",
+  "/home/transferencias/instalaciones/equipos": "INVENTARIO",
+  "/home/transferencias/instalaciones/auditoria": "INVENTARIO",
+  "/home/instalaciones/actas": "DOCUMENTOS",
+  "/home/ventas": "DOCUMENTOS",
+  "/home/ventas/instalaciones/despacho": "DOCUMENTOS",
+};
+
+const ALMACEN_SUBGROUP_ORDER = ["CATÁLOGO", "MOVIMIENTOS", "PERSONAL", "INVENTARIO", "DOCUMENTOS"];
 
 function isPathActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -398,32 +424,72 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
                       className="overflow-hidden"
                     >
                       <div className="ml-4 mt-0.5 border-l-2 border-[var(--line)] pl-2">
-                        {list.map((it) => {
-                          const active = pathname === it.href;
-                          return (
-                            <Link
-                              key={it.key}
-                              href={it.href}
-                              onClick={(e) => handleNavClick(e, it.href)}
-                              className={`relative mt-0.5 flex items-center rounded-lg px-2.5 py-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45 ${
-                                active
-                                  ? "bg-[#dbe7ff] font-semibold text-[#1f3154] shadow-[inset_0_0_0_1px_rgba(48,81,140,.12)]"
-                                  : "text-[var(--muted-ink)] hover:bg-white/80 hover:text-[#30518c]"
-                              }`}
-                            >
-                              {active && (
-                                <span className="absolute -left-[9px] h-6 w-1.5 rounded-full bg-[#30518c] shadow-[0_0_10px_rgba(48,81,140,.6)]" />
-                              )}
-                              <span className="truncate">{it.label}</span>
-                              {navigatingHref === it.href && (
-                                <span
-                                  className="ml-auto inline-flex h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#30518c]/35 border-t-[#30518c]"
-                                  aria-hidden="true"
-                                />
-                              )}
-                            </Link>
-                          );
-                        })}
+                        {group === "ALMACEN" ? (
+                          ALMACEN_SUBGROUP_ORDER.map((sg) => {
+                            const sgItems = list.filter((it) => ALMACEN_SUBGROUP[it.href] === sg);
+                            if (!sgItems.length) return null;
+                            return (
+                              <div key={sg}>
+                                <p className="mt-2 mb-0.5 px-2.5 text-[9px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                                  {sg}
+                                </p>
+                                {sgItems.map((it) => {
+                                  const active = pathname === it.href;
+                                  return (
+                                    <Link
+                                      key={it.key}
+                                      href={it.href}
+                                      onClick={(e) => handleNavClick(e, it.href)}
+                                      className={`relative mt-0.5 flex items-center rounded-lg px-2.5 py-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45 ${
+                                        active
+                                          ? "bg-[#dbe7ff] font-semibold text-[#1f3154] shadow-[inset_0_0_0_1px_rgba(48,81,140,.12)]"
+                                          : "text-[var(--muted-ink)] hover:bg-white/80 hover:text-[#30518c]"
+                                      }`}
+                                    >
+                                      {active && (
+                                        <span className="absolute -left-[9px] h-6 w-1.5 rounded-full bg-[#30518c] shadow-[0_0_10px_rgba(48,81,140,.6)]" />
+                                      )}
+                                      <span className="truncate">{it.label}</span>
+                                      {navigatingHref === it.href && (
+                                        <span
+                                          className="ml-auto inline-flex h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#30518c]/35 border-t-[#30518c]"
+                                          aria-hidden="true"
+                                        />
+                                      )}
+                                    </Link>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })
+                        ) : (
+                          list.map((it) => {
+                            const active = pathname === it.href;
+                            return (
+                              <Link
+                                key={it.key}
+                                href={it.href}
+                                onClick={(e) => handleNavClick(e, it.href)}
+                                className={`relative mt-0.5 flex items-center rounded-lg px-2.5 py-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#30518c]/45 ${
+                                  active
+                                    ? "bg-[#dbe7ff] font-semibold text-[#1f3154] shadow-[inset_0_0_0_1px_rgba(48,81,140,.12)]"
+                                    : "text-[var(--muted-ink)] hover:bg-white/80 hover:text-[#30518c]"
+                                }`}
+                              >
+                                {active && (
+                                  <span className="absolute -left-[9px] h-6 w-1.5 rounded-full bg-[#30518c] shadow-[0_0_10px_rgba(48,81,140,.6)]" />
+                                )}
+                                <span className="truncate">{it.label}</span>
+                                {navigatingHref === it.href && (
+                                  <span
+                                    className="ml-auto inline-flex h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#30518c]/35 border-t-[#30518c]"
+                                    aria-hidden="true"
+                                  />
+                                )}
+                              </Link>
+                            );
+                          })
+                        )}
                       </div>
                     </motion.div>
                   )}

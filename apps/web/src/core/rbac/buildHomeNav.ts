@@ -262,11 +262,11 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
   }
 
   if (!isJefatura && hasPerm(session, "EQUIPOS_IMPORT")) {
-    items.push({ key: "EQUIPOS_IMPORT", label: "Equipos: Importar", href: "/home/equipos/import" });
+    items.push({ key: "EQUIPOS_IMPORT", label: "Importar Equipos", href: "/home/equipos/import" });
   }
 
   if (hasPerm(session, "MATERIALES_CREATE") || hasPerm(session, "MATERIALES_VIEW")) {
-    items.push({ key: "MATERIALES", label: "Materiales", href: "/home/materiales" });
+    items.push({ key: "MATERIALES", label: "Catálogo de Materiales", href: "/home/materiales" });
   }
 
   if (
@@ -278,18 +278,18 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
       hasPerm(session, "MATERIALES_DEVOLUCION")
     )
   ) {
-    items.push({ key: "TR_INST_DESP", label: "Despacho (Inst)", href: "/home/transferencias/instalaciones/despacho" });
-    items.push({ key: "TR_INST_DEV", label: "Devoluciones (Inst)", href: "/home/transferencias/instalaciones/devoluciones" });
-    items.push({ key: "TR_INST_REP", label: "Reposicion (Inst)", href: "/home/transferencias/instalaciones/reposicion" });
-    items.push({ key: "TR_INST_TEC_MAT", label: "Materiales Tecnicos (Inst)", href: "/home/transferencias/instalaciones/tecnicos-materiales" });
+    items.push({ key: "TR_INST_DESP", label: "Despacho a Cuadrilla", href: "/home/transferencias/instalaciones/despacho" });
+    items.push({ key: "TR_INST_DEV", label: "Devoluciones de Cuadrilla", href: "/home/transferencias/instalaciones/devoluciones" });
+    items.push({ key: "TR_INST_REP", label: "Reposición", href: "/home/transferencias/instalaciones/reposicion" });
+    items.push({ key: "TR_INST_TEC_MAT", label: "Materiales a Técnico", href: "/home/transferencias/instalaciones/tecnicos-materiales" });
     if (hasPerm(session, "EQUIPOS_DESPACHO") || hasPerm(session, "MATERIALES_TRANSFER_SERVICIO")) {
-      items.push({ key: "TR_INST_DESP_PERS", label: "Despacho Personal (Inst)", href: "/home/transferencias/instalaciones/despacho-personal" });
+      items.push({ key: "TR_INST_DESP_PERS", label: "Despacho a Personal", href: "/home/transferencias/instalaciones/despacho-personal" });
     }
     if (hasPerm(session, "EQUIPOS_DEVOLUCION") || hasPerm(session, "MATERIALES_DEVOLUCION")) {
-      items.push({ key: "TR_INST_DEV_PERS", label: "Devoluciones Personal (Inst)", href: "/home/transferencias/instalaciones/devoluciones-personal" });
+      items.push({ key: "TR_INST_DEV_PERS", label: "Devoluciones de Personal", href: "/home/transferencias/instalaciones/devoluciones-personal" });
     }
     if (hasPerm(session, "MATERIALES_TRANSFER_SERVICIO")) {
-      items.push({ key: "TR_INST_TRSF_INT", label: "Transferencias Internas (Inst)", href: "/home/transferencias/instalaciones/transferencias-internas" });
+      items.push({ key: "TR_INST_TRSF_INT", label: "Transferir entre Entidades", href: "/home/transferencias/instalaciones/transferencias-internas" });
     }
   }
   if (
@@ -318,8 +318,8 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     });
   }
   if (!isJefatura && (hasPerm(session, "EQUIPOS_VIEW") || hasPerm(session, "EQUIPOS_EDIT"))) {
-    items.push({ key: "TR_INST_EQ", label: "Equipos (Inst)", href: "/home/transferencias/instalaciones/equipos" });
-    items.push({ key: "TR_INST_STOCK_PERS", label: "Stock Personal (Inst)", href: "/home/transferencias/instalaciones/stock-personal" });
+    items.push({ key: "TR_INST_EQ", label: "Equipos", href: "/home/transferencias/instalaciones/equipos" });
+    items.push({ key: "TR_INST_STOCK_PERS", label: "Stock Personal", href: "/home/transferencias/instalaciones/stock-personal" });
   }
   if (
     isJefatura ||
@@ -327,16 +327,16 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     hasPerm(session, "EQUIPOS_VIEW") ||
     hasPerm(session, "EQUIPOS_EDIT")
   ) {
-    items.push({ key: "TR_INST_STOCK_EQ", label: "Stock Equipos (Inst)", href: "/home/transferencias/instalaciones/stock-equipos" });
-    items.push({ key: "TR_INST_PREDESP", label: "Predespacho (Inst)", href: "/home/transferencias/instalaciones/predespacho" });
-    items.push({ key: "TR_INST_AUD", label: "Auditoria (Inst)", href: "/home/transferencias/instalaciones/auditoria" });
+    items.push({ key: "TR_INST_STOCK_EQ", label: "Stock de Equipos", href: "/home/transferencias/instalaciones/stock-equipos" });
+    items.push({ key: "TR_INST_PREDESP", label: "Predespacho", href: "/home/transferencias/instalaciones/predespacho" });
+    items.push({ key: "TR_INST_AUD", label: "Auditoría", href: "/home/transferencias/instalaciones/auditoria" });
   }
 
   if (hasPerm(session, "VENTAS_VER") || hasPerm(session, "VENTAS_VER_ALL")) {
     items.push({ key: "VENTAS", label: "Ventas", href: "/home/ventas" });
   }
   if (hasPerm(session, "VENTAS_DESPACHO_INST")) {
-    items.push({ key: "VENTAS_INST", label: "Ventas: Despacho (Inst)", href: "/home/ventas/instalaciones/despacho" });
+    items.push({ key: "VENTAS_INST", label: "Ventas: Despacho", href: "/home/ventas/instalaciones/despacho" });
   }
   if (hasPerm(session, "VENTAS_DESPACHO_MANT")) {
     items.push({ key: "VENTAS_MANT", label: "Ventas: Despacho (Mantenimiento)", href: "/home/ventas/mantenimiento/despacho" });

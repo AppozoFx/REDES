@@ -51,6 +51,15 @@ function nextThursdayYmd(baseYmd: string) {
   return next.toISOString().slice(0, 10);
 }
 
+// Retorna el jueves que ancla la semana Vie-Jue que contiene baseYmd
+function currentWeekThursdayYmd(baseYmd: string) {
+  const base = new Date(`${baseYmd}T00:00:00`);
+  const day = base.getDay(); // 0=Dom 1=Lun … 4=Jue … 6=Sab
+  const diff = (day - 4 + 7) % 7; // días desde el último jueves
+  const current = new Date(base.getTime() - diff * 24 * 60 * 60 * 1000);
+  return current.toISOString().slice(0, 10);
+}
+
 async function resolveActiveStartYmd(db: FirebaseFirestore.Firestore, requestedStartYmd?: string) {
   if (requestedStartYmd) return requestedStartYmd;
 
@@ -86,7 +95,7 @@ async function resolveActiveStartYmd(db: FirebaseFirestore.Firestore, requestedS
     return String(data?.startYmd || nextSnap.docs[0].id || "").trim();
   }
 
-  return nextThursdayYmd(todayYmd);
+  return currentWeekThursdayYmd(todayYmd);
 }
 
 function buildWeekDays(startYmd: string) {
@@ -137,14 +146,13 @@ export async function GET(req: Request) {
     const openUntil = String(data?.openUntil || "").trim();
     const coordinadoresMeta = (data?.coordinadores || {}) as Record<string, any>;
 
-    let q = db
+    // Coordinadores ven TODAS las cuadrillas de instalaciones (para poder
+    // comparar descansos y solicitar cambios entre coordinadores)
+    const cuadrillasSnap = await db
       .collection("cuadrillas")
       .where("area", "==", "INSTALACIONES")
-      .where("estado", "==", "HABILITADO");
-    if (!canAdmin && canCoord) {
-      q = q.where("coordinadorUid", "==", session.uid);
-    }
-    const cuadrillasSnap = await q.get();
+      .where("estado", "==", "HABILITADO")
+      .get();
     const cuadrillasRaw = cuadrillasSnap.docs.map((d) => {
       const data = d.data() as any;
       return {
@@ -256,6 +264,7 @@ export async function GET(req: Request) {
         estado === "ABIERTO" &&
         (!openUntil || new Date().getTime() <= new Date(openUntil).getTime()),
       canAdmin,
+      myCoordinatorUid: canCoord && !canAdmin ? session.uid : undefined,
     });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message ?? String(e) }, { status: 500 });
@@ -300,10 +309,25 @@ export async function POST(req: Request) {
     const weekDays = buildWeekDays(startYmd);
     const itemsNext: Record<string, Record<string, string>> = { ...(current?.items || {}) };
 
-    // merge updates
-    Object.entries(items || {}).forEach(([cid, row]) => {
-      itemsNext[cid] = { ...(itemsNext[cid] || {}), ...(row || {}) };
-    });
+    if (canCoord && !canAdmin) {
+      // Coordinadores solo pueden modificar sus propias cuadrillas
+      const ownSnap = await db
+        .collection("cuadrillas")
+        .where("area", "==", "INSTALACIONES")
+        .where("estado", "==", "HABILITADO")
+        .where("coordinadorUid", "==", session.uid)
+        .get();
+      const ownIds = new Set(ownSnap.docs.map((d) => d.id));
+      Object.entries(items || {}).forEach(([cid, row]) => {
+        if (ownIds.has(cid)) {
+          itemsNext[cid] = { ...(itemsNext[cid] || {}), ...(row || {}) };
+        }
+      });
+    } else {
+      Object.entries(items || {}).forEach(([cid, row]) => {
+        itemsNext[cid] = { ...(itemsNext[cid] || {}), ...(row || {}) };
+      });
+    }
 
     // validate max descanso per cuadrilla
     const maxDescanso = 2;

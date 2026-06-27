@@ -68,6 +68,26 @@ type CoordinadorEstado = {
   reopenedByNombre?: string;
 };
 
+type Solicitud = {
+  id: string;
+  startYmd: string;
+  dia: string;
+  cuadrillaId: string;
+  cuadrillaNombre: string;
+  estadoActual: string;
+  estadoSolicitado: string;
+  solicitanteUid: string;
+  solicitanteNombre: string;
+  propietarioUid: string;
+  propietarioNombre: string;
+  estado: "PENDIENTE" | "APROBADA" | "RECHAZADA" | "CANCELADA";
+  mensaje?: string;
+  resolvedAt?: string;
+  resolvedByNombre?: string;
+  resolutionComment?: string;
+  createdAt: string;
+};
+
 type ApiResponse = {
   ok: boolean;
   startYmd: string;
@@ -79,6 +99,7 @@ type ApiResponse = {
   cuadrillas: Row[];
   coordinadoresEstado?: CoordinadorEstado[];
   myCoordinatorStatus?: "SIN_INICIAR" | "BORRADOR" | "CONFIRMADO";
+  myCoordinatorUid?: string;
   canEdit: boolean;
   canConfirm?: boolean;
   canAdmin?: boolean;
@@ -283,10 +304,11 @@ function toWeekDays(startYmd: string) {
   return Array.from({ length: 7 }).map((_, i) => start.add(i + 1, "day").format("YYYY-MM-DD"));
 }
 
-function nextThursdayYmd() {
+function currentWeekThursdayYmd() {
   const today = dayjs();
-  const th = today.day(4);
-  return (th.isBefore(today, "day") ? th.add(7, "day") : th).format("YYYY-MM-DD");
+  const dow = today.day(); // 0=Dom … 4=Jue … 6=Sab
+  const daysSince = (dow - 4 + 7) % 7;
+  return today.subtract(daysSince, "day").format("YYYY-MM-DD");
 }
 
 function cuadrillaGroupOrder(row: Row) {
@@ -415,7 +437,14 @@ export default function AsistenciaProgramadaClient() {
   const [canAdmin, setCanAdmin] = useState(false);
   const [canConfirm, setCanConfirm] = useState(false);
   const [myCoordinatorStatus, setMyCoordinatorStatus] = useState<"SIN_INICIAR" | "BORRADOR" | "CONFIRMADO">("SIN_INICIAR");
+  const [myCoordinatorUid, setMyCoordinatorUid] = useState("");
   const [coordinadoresEstado, setCoordinadoresEstado] = useState<CoordinadorEstado[]>([]);
+  const [solicitudes, setSolicitudes] = useState<Solicitud[]>([]);
+  const [solicitudModal, setSolicitudModal] = useState<{ row: Row } | null>(null);
+  const [modalDia, setModalDia] = useState("");
+  const [modalEstado, setModalEstado] = useState("asistencia");
+  const [modalMensaje, setModalMensaje] = useState("");
+  const [modalEnviando, setModalEnviando] = useState(false);
   const [contador, setContador] = useState("");
   const [openCellMenu, setOpenCellMenu] = useState<string | null>(null);
   const [plantillaBuffer, setPlantillaBuffer] = useState<ArrayBuffer | null>(null);
@@ -435,7 +464,7 @@ export default function AsistenciaProgramadaClient() {
       const res = await fetch(`/api/instalaciones/asistencia-programada${query}`, { cache: "no-store" });
       const data: ApiResponse = await res.json();
       if (!res.ok || !data?.ok) throw new Error((data as any)?.error || "ERROR");
-      const resolvedStartYmd = String(data.startYmd || requestedStartYmd || nextThursdayYmd()).trim();
+      const resolvedStartYmd = String(data.startYmd || requestedStartYmd || currentWeekThursdayYmd()).trim();
       setStartYmd((prev) => (prev === resolvedStartYmd ? prev : resolvedStartYmd));
       setEndYmd(data.endYmd || dayjs(resolvedStartYmd).add(7, "day").format("YYYY-MM-DD"));
       setEstado(data.estado || "ABIERTO");
@@ -461,12 +490,24 @@ export default function AsistenciaProgramadaClient() {
       setCanAdmin(!!data.canAdmin);
       setCanConfirm(!!data.canConfirm);
       setMyCoordinatorStatus(data.myCoordinatorStatus || "SIN_INICIAR");
+      setMyCoordinatorUid(String(data.myCoordinatorUid || ""));
       setCoordinadoresEstado(Array.isArray(data.coordinadoresEstado) ? data.coordinadoresEstado : []);
     } catch (e: any) {
       toast.error(e?.message || "No se pudo cargar la programacion");
     } finally {
       setCargando(false);
     }
+  };
+
+  const cargarSolicitudes = async () => {
+    if (!startYmd) return;
+    try {
+      const res = await fetch(
+        `/api/instalaciones/asistencia-programada/solicitudes?startYmd=${encodeURIComponent(startYmd)}`,
+      );
+      const data = await res.json();
+      if (data.ok) setSolicitudes(data.solicitudes || []);
+    } catch {}
   };
 
   useEffect(() => {
@@ -477,6 +518,11 @@ export default function AsistenciaProgramadaClient() {
     const end = dayjs(startYmd).add(7, "day").format("YYYY-MM-DD");
     setEndYmd(end);
     cargar(startYmd);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startYmd]);
+
+  useEffect(() => {
+    if (startYmd) cargarSolicitudes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startYmd]);
 
@@ -531,9 +577,12 @@ export default function AsistenciaProgramadaClient() {
 
   const validar = () => {
     const maxDesc = 2;
-    for (const r of rows) {
+    const rowsAValidar = (!canAdmin && myCoordinatorUid)
+      ? rows.filter((r) => r.coordinadorUid === myCoordinatorUid)
+      : rows;
+    for (const r of rowsAValidar) {
       const c = descansoCount(r.id);
-      if (c > maxDesc) return { ok: false, msg: `La cuadrilla ${r.nombre} tiene ${c} descansos. Maximo ${maxDesc}.` };
+      if (c > maxDesc) return { ok: false, msg: `La cuadrilla ${r.nombre} tiene ${c} descansos. Máximo ${maxDesc}.` };
     }
     return { ok: true, msg: "OK" };
   };
@@ -741,6 +790,110 @@ export default function AsistenciaProgramadaClient() {
     });
     return dias;
   }, [weekDays, coberturaByDay]);
+
+  const pendingByCell = useMemo(() => {
+    const map = new Map<string, Solicitud>();
+    solicitudes
+      .filter((s) => s.estado === "PENDIENTE")
+      .forEach((s) => map.set(`${s.cuadrillaId}_${s.dia}`, s));
+    return map;
+  }, [solicitudes]);
+
+  const solicitudesRecibidas = useMemo(
+    () =>
+      canAdmin
+        ? solicitudes.filter((s) => s.estado === "PENDIENTE")
+        : solicitudes.filter((s) => s.propietarioUid === myCoordinatorUid && s.estado === "PENDIENTE"),
+    [solicitudes, myCoordinatorUid, canAdmin],
+  );
+
+  const solicitudesEnviadas = useMemo(
+    () => (canAdmin ? [] : solicitudes.filter((s) => s.solicitanteUid === myCoordinatorUid)),
+    [solicitudes, myCoordinatorUid, canAdmin],
+  );
+
+  // Categorías de las cuadrillas propias del coordinador logueado
+  const myCategories = useMemo(() => {
+    if (!myCoordinatorUid) return new Set<string>();
+    return new Set(
+      rows
+        .filter((r) => r.coordinadorUid === myCoordinatorUid)
+        .map((r) => categoriaCuadrilla(r)),
+    );
+  }, [rows, myCoordinatorUid]);
+
+  const abrirModalSolicitud = (row: Row) => {
+    const defaultDia = weekDays[0] || "";
+    setSolicitudModal({ row });
+    setModalDia(defaultDia);
+    const estadoActual = defaultDia
+      ? String(items?.[row.id]?.[defaultDia] || "asistencia")
+      : "asistencia";
+    setModalEstado(estadoActual === "asistencia" ? "descanso" : "asistencia");
+    setModalMensaje("");
+  };
+
+  const enviarSolicitud = async () => {
+    if (!solicitudModal || !modalDia) return;
+    setModalEnviando(true);
+    try {
+      const res = await fetch("/api/instalaciones/asistencia-programada/solicitudes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startYmd,
+          dia: modalDia,
+          cuadrillaId: solicitudModal.row.id,
+          estadoSolicitado: modalEstado,
+          mensaje: modalMensaje,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.reason || data.error || "ERROR");
+      toast.success("Solicitud enviada al coordinador responsable");
+      setSolicitudModal(null);
+      await cargarSolicitudes();
+    } catch (e: any) {
+      const msg = e?.message || "";
+      if (msg === "COBERTURA_INSUFICIENTE") toast.error("El cambio viola el % mínimo de cobertura para ese día");
+      else if (msg === "YA_EXISTE_PENDIENTE") toast.error("Ya hay una solicitud pendiente para ese día");
+      else if (msg === "SEMANA_CERRADA") toast.error("La semana está cerrada");
+      else if (msg === "ES_CUADRILLA_PROPIA") toast.error("No puedes solicitar cambio en tus propias cuadrillas");
+      else if (msg === "MISMO_ESTADO") toast.error("El estado solicitado es igual al actual");
+      else toast.error(msg || "No se pudo enviar la solicitud");
+    } finally {
+      setModalEnviando(false);
+    }
+  };
+
+  const responderSolicitud = async (id: string, accion: "ACEPTAR" | "RECHAZAR") => {
+    try {
+      const res = await fetch(
+        `/api/instalaciones/asistencia-programada/solicitudes/${id}/responder`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accion }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.reason || data.error || "ERROR");
+      toast.success(
+        accion === "ACEPTAR" ? "Solicitud aprobada — cambio aplicado" : "Solicitud rechazada",
+      );
+      await Promise.all([cargar(startYmd), cargarSolicitudes()]);
+    } catch (e: any) {
+      const msg = e?.message || "";
+      if (msg.startsWith("Cobertura"))
+        toast.error(msg);
+      else if (msg === "COBERTURA_INSUFICIENTE")
+        toast.error("No se puede aprobar: viola el % mínimo de cobertura para ese día");
+      else if (msg === "SEMANA_CERRADA")
+        toast.error("La semana está cerrada y no se pueden aplicar cambios");
+      else
+        toast.error(msg || "No se pudo procesar la solicitud");
+    }
+  };
 
   const estadoColor = (v: string) => {
     switch (String(v || "").toLowerCase()) {
@@ -958,154 +1111,542 @@ export default function AsistenciaProgramadaClient() {
   };
 
   return (
-    <div className="space-y-6 p-4 text-slate-900 dark:text-slate-100">
-      <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-[linear-gradient(135deg,#13315c_0%,#254b87_55%,#dbe7fb_55%,#f8fbff_100%)] shadow-sm dark:border-slate-700 dark:bg-[linear-gradient(135deg,#020617_0%,#0f172a_52%,#1e293b_52%,#334155_100%)]">
-        <div className="flex flex-col gap-3 px-5 py-6 lg:flex-row lg:items-center lg:justify-between lg:px-7">
-          <div className="text-white">
-            <div className="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em]">Programacion semanal</div>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight">Programacion semanal de asistencia</h1>
-            <p className="mt-3 max-w-2xl text-sm text-blue-50/90">
-              Semana de 7 dias. Domingo descanso. Maximo 2 descansos por cuadrilla.
+    <div className="flex min-h-screen flex-col gap-5 p-4 text-slate-900 dark:text-slate-100 md:p-6">
+
+      {/* ── HEADER ─────────────────────────────────────────────────────── */}
+      <header className="overflow-hidden rounded-2xl border border-[#0d1f3f] bg-[linear-gradient(135deg,#0d1f3f_0%,#13315c_40%,#254b87_100%)] shadow-md dark:border-slate-700 dark:bg-[linear-gradient(135deg,#020617_0%,#0f172a_50%,#1e293b_100%)]">
+        <div className="flex flex-col gap-4 px-6 py-7 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-white">
+              <span className={cls("h-1.5 w-1.5 rounded-full", estado === "CERRADO" ? "bg-rose-400" : "bg-emerald-400")} />
+              Programación semanal · {estado === "CERRADO" ? "Semana cerrada" : "Edición abierta"}
+            </div>
+            <h1 className="mt-3 text-2xl font-bold tracking-tight text-white lg:text-3xl">Asistencia programada</h1>
+            <p className="mt-2 text-sm font-medium text-white/80">
+              {weekDays.length > 0
+                ? `Semana del ${dayjs(weekDays[0]).format("DD [de] MMMM")} al ${dayjs(weekDays[weekDays.length - 1]).format("DD [de] MMMM, YYYY")}`
+                : "Selecciona una semana para comenzar"}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2 text-white">
-            <span className={cls("rounded-full border px-3 py-1 text-xs font-semibold", estado === "CERRADO" ? "border-rose-200/40 bg-rose-500/15 text-rose-100" : "border-emerald-200/40 bg-emerald-500/15 text-emerald-100")}>
-              {estado}
-            </span>
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-blue-50/90">Inicio</label>
-              <input
-                type="date"
-                value={startYmd}
-                onChange={(e) => handleStartChange(e.target.value)}
-                className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-white outline-none backdrop-blur placeholder:text-blue-100/70"
-              />
-            </div>
-            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs text-blue-50/90">Fin: {dayjs(endYmd).format("DD/MM/YYYY")}</span>
-          </div>
-        </div>
-      </section>
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Badge de rol */}
+            {!canAdmin && (
+              <span className={cls(
+                "rounded-full border px-3 py-1 text-xs font-semibold",
+                myCoordinatorStatus === "CONFIRMADO" ? "border-emerald-300/40 bg-emerald-500/20 text-emerald-100" :
+                myCoordinatorStatus === "BORRADOR"   ? "border-amber-300/40 bg-amber-500/20 text-amber-100" :
+                                                       "border-white/20 bg-white/10 text-white/80"
+              )}>
+                {statusLabel(myCoordinatorStatus)}
+              </span>
+            )}
+            {canAdmin && (
+              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold text-white">
+                Vista Gerencia / Admin
+              </span>
+            )}
 
-      <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900 lg:p-5">
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.6fr,1fr]">
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="px-4 py-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Estado operativo</div>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className={cls("rounded-full border px-3 py-1 text-sm font-medium", statusTone(myCoordinatorStatus))}>
-                    {canAdmin ? "Vista gerencia" : statusLabel(myCoordinatorStatus)}
-                  </span>
-                  {!canAdmin && (
-                    <span className="text-sm text-slate-500 dark:text-slate-400">
-                      {myCoordinatorStatus === "CONFIRMADO"
-                        ? "Tu programacion ya fue entregada y queda bloqueada hasta reapertura."
-                        : myCoordinatorStatus === "BORRADOR"
-                          ? "Tienes avances guardados. Cuando termines, confirma la semana."
-                          : "Aun no confirmas esta semana."}
-                    </span>
-                  )}
-                  {canAdmin && (
-                    <span className="text-sm text-slate-500 dark:text-slate-400">
-                      Supervisa avance, reabre coordinadores y realiza el cierre oficial.
-                    </span>
+            {/* Navegación de semana */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 rounded-xl border border-white/15 bg-white/10 p-1">
+                <button
+                  type="button"
+                  disabled={cargando || !startYmd}
+                  onClick={() => setStartYmd(dayjs(startYmd).subtract(7, "day").format("YYYY-MM-DD"))}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-lg font-bold leading-none text-white/80 transition hover:bg-white/15 disabled:opacity-40"
+                  title="Semana anterior"
+                >
+                  ‹
+                </button>
+                <div className="min-w-[118px] px-1 text-center">
+                  <div className="text-xs font-semibold text-white">
+                    {weekDays.length > 0
+                      ? `${dayjs(weekDays[0]).format("DD/MM")} – ${dayjs(weekDays[weekDays.length - 1]).format("DD/MM")}`
+                      : "–"}
+                  </div>
+                  {startYmd === currentWeekThursdayYmd() && (
+                    <div className="text-[10px] font-medium text-emerald-300">semana actual</div>
                   )}
                 </div>
+                <button
+                  type="button"
+                  disabled={cargando || !startYmd}
+                  onClick={() => setStartYmd(dayjs(startYmd).add(7, "day").format("YYYY-MM-DD"))}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-lg font-bold leading-none text-white/80 transition hover:bg-white/15 disabled:opacity-40"
+                  title="Semana siguiente"
+                >
+                  ›
+                </button>
               </div>
-              {canAdmin && (
-                <div className="m-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950">
-                  <div className="text-xs text-slate-500 dark:text-slate-400">Ultima confirmacion</div>
-                  <div className="font-medium text-slate-800 dark:text-slate-100">
-                    {ultimaConfirmacion ? ultimaConfirmacion.coordinadorNombre : "Sin confirmaciones"}
-                  </div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                    {ultimaConfirmacion ? asLocalDateTime(ultimaConfirmacion.confirmedAt) : "-"}
-                  </div>
-                </div>
+              {startYmd !== currentWeekThursdayYmd() && startYmd && (
+                <button
+                  type="button"
+                  disabled={cargando}
+                  onClick={() => setStartYmd(currentWeekThursdayYmd())}
+                  className="rounded-lg border border-white/20 bg-white/10 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-white/20 disabled:opacity-40"
+                  title="Volver a la semana actual"
+                >
+                  Semana actual
+                </button>
               )}
             </div>
+
+            {/* Date input (solo admin para precisión) */}
+            {canAdmin && (
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-semibold text-white/80">Ir a</label>
+                <input
+                  type="date"
+                  value={startYmd}
+                  onChange={(e) => handleStartChange(e.target.value)}
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 outline-none shadow-sm transition focus:border-[#254b87] focus:ring-2 focus:ring-[#254b87]/20 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-sky-500"
+                />
+              </div>
+            )}
+
+            {/* Countdown cierre */}
+            {openUntil && estado !== "CERRADO" && (
+              <div className="rounded-xl border border-amber-300/30 bg-amber-500/15 px-3 py-1.5 text-center">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-200">Cierre coord.</div>
+                <div className="font-mono text-base font-bold text-amber-100">{contador || "--:--:--"}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* ── FLUJO COORDINADOR (no-admin) ───────────────────────────────── */}
+      {!canAdmin && (
+        <section className={cls(
+          "overflow-hidden rounded-2xl border shadow-sm",
+          myCoordinatorStatus === "CONFIRMADO" ? "border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30" :
+          myCoordinatorStatus === "BORRADOR"   ? "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30" :
+                                                 "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+        )}>
+          <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-4">
+              <div className={cls(
+                "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-xl font-bold",
+                myCoordinatorStatus === "CONFIRMADO" ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/60 dark:text-emerald-300" :
+                myCoordinatorStatus === "BORRADOR"   ? "bg-amber-100 text-amber-600 dark:bg-amber-900/60 dark:text-amber-300" :
+                                                       "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500"
+              )}>
+                {myCoordinatorStatus === "CONFIRMADO" ? "✓" : myCoordinatorStatus === "BORRADOR" ? "✎" : "○"}
+              </div>
+              <div>
+                <div className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                  {myCoordinatorStatus === "CONFIRMADO" ? "Programación confirmada" :
+                   myCoordinatorStatus === "BORRADOR"   ? "Borrador guardado" :
+                                                          "Pendiente de programar"}
+                </div>
+                <div className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
+                  {myCoordinatorStatus === "CONFIRMADO"
+                    ? "Tu programación fue entregada. Quedará bloqueada hasta que Gerencia la reabra."
+                    : myCoordinatorStatus === "BORRADOR"
+                      ? "Tienes avances guardados. Confirma cuando la semana esté completa."
+                      : "Carga la asistencia de tus cuadrillas y confirma antes del cierre."}
+                </div>
+                {estado === "CERRADO" && myCoordinatorStatus !== "CONFIRMADO" && (
+                  <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300">
+                    ⚠ Semana cerrada. Comunícate con Gerencia para realizar cambios.
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2 sm:flex-col sm:items-stretch">
+              <button
+                onClick={guardar}
+                disabled={saving || isLocked}
+                className="rounded-xl bg-[#254b87] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1c3a68] disabled:opacity-50"
+              >
+                {saving ? "Guardando..." : "Guardar cambios"}
+              </button>
+              <button
+                onClick={confirmarEntrega}
+                disabled={!canConfirm || saving || isLocked}
+                className="rounded-xl border border-emerald-300 bg-emerald-50 px-5 py-2.5 text-sm font-semibold text-emerald-700 shadow-sm transition hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70"
+              >
+                Confirmar semana
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── SOLICITUDES DE CAMBIO ─────────────────────────────────────── */}
+      {(solicitudesRecibidas.length > 0 || solicitudesEnviadas.length > 0) && (
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+            <div>
+              <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                {canAdmin ? "Solicitudes de cambio — pendientes de coordinadores" : "Solicitudes de cambio"}
+              </div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                {solicitudesRecibidas.length > 0
+                  ? `${solicitudesRecibidas.length} solicitud${solicitudesRecibidas.length !== 1 ? "es" : ""} pendiente${solicitudesRecibidas.length !== 1 ? "s" : ""} de revisión`
+                  : "Sin solicitudes pendientes de revisión"}
+              </div>
+            </div>
+            {solicitudesRecibidas.length > 0 && (
+              <span className="rounded-full bg-amber-500 px-2.5 py-0.5 text-[11px] font-bold text-white">
+                {solicitudesRecibidas.length}
+              </span>
+            )}
           </div>
 
-          {!canAdmin && (
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-              <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-4">
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Entrega del coordinador</div>
-                  <div className="mt-2 text-sm font-medium text-slate-800 dark:text-slate-100">
-                    Guarda avances durante la carga y confirma solo cuando la semana quede lista.
-                  </div>
-                  <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                    Mantiene el mismo flujo visual que la revision de Gerencia, pero solo con tus acciones.
-                  </div>
-                </div>
-                <span className={cls("rounded-full border px-3 py-1 text-xs font-medium", statusTone(myCoordinatorStatus))}>
-                  {statusLabel(myCoordinatorStatus)}
-                </span>
+          {/* Pendientes — para aprobar o rechazar */}
+          {solicitudesRecibidas.length > 0 && (
+            <div className="p-4 space-y-2">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1">
+                Para revisar
               </div>
-              <div className="grid gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-950/70 sm:grid-cols-[1fr_auto] sm:items-center">
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
-                    <div className="uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Estado</div>
-                    <div className="mt-1 font-semibold text-slate-800 dark:text-slate-100">{statusLabel(myCoordinatorStatus)}</div>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
-                    <div className="uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Semana</div>
-                    <div className="mt-1 font-semibold text-slate-800 dark:text-slate-100">
-                      {dayjs(weekDays[0]).format("DD/MM")} - {dayjs(weekDays[weekDays.length - 1]).format("DD/MM")}
+              {solicitudesRecibidas.map((s) => (
+                <div
+                  key={s.id}
+                  className="rounded-xl border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-800 dark:bg-amber-950/20"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                        {s.cuadrillaNombre}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {formatLabel(s.dia)} · De{" "}
+                        <span className="font-medium">{s.solicitanteNombre}</span>
+                        {canAdmin && (
+                          <> → <span className="font-medium">{s.propietarioNombre}</span></>
+                        )}
+                      </div>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <span
+                          className={cls(
+                            "inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold",
+                            estadoColor(s.estadoActual),
+                          )}
+                        >
+                          {ESTADO_META[s.estadoActual as keyof typeof ESTADO_META]?.label || s.estadoActual}
+                        </span>
+                        <span className="text-[11px] text-slate-400">→</span>
+                        <span
+                          className={cls(
+                            "inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold",
+                            estadoColor(s.estadoSolicitado),
+                          )}
+                        >
+                          {ESTADO_META[s.estadoSolicitado as keyof typeof ESTADO_META]?.label || s.estadoSolicitado}
+                        </span>
+                      </div>
+                      {s.mensaje && (
+                        <div className="mt-1 text-[11px] italic text-slate-500 dark:text-slate-400">
+                          "{s.mensaje}"
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => responderSolicitud(s.id, "ACEPTAR")}
+                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+                      >
+                        Aceptar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => responderSolicitud(s.id, "RECHAZAR")}
+                        className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300 dark:hover:bg-rose-950/50"
+                      >
+                        Rechazar
+                      </button>
                     </div>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2 sm:justify-end">
-                  <button
-                    onClick={guardar}
-                    disabled={saving || isLocked}
-                    className="rounded-xl bg-[#254b87] px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-[#1c3a68] disabled:opacity-60"
-                  >
-                    {saving ? "Guardando..." : "Guardar cambios"}
-                  </button>
-                  <button
-                    onClick={confirmarEntrega}
-                    disabled={!canConfirm || saving}
-                    className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                  >
-                    Confirmar semana
-                  </button>
-                </div>
-              </div>
+              ))}
             </div>
           )}
-        </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
-          <MetricCard label="Cuadrillas visibles" value={String(totalVisible)} help="Aplicando filtros actuales" progress={rows.length ? Number(((totalVisible / rows.length) * 100).toFixed(1)) : 0} />
-          <MetricCard label="Con descanso" value={String(conDescanso)} help={`${sinDescansoCount} sin descanso programado`} tone="warn" />
-          <MetricCard label="Sin asistencia" value={String(sinAsistencia.length)} help="Cuadrillas sin al menos una asistencia" tone={sinAsistencia.length > 0 ? "bad" : "default"} />
-          <MetricCard label="Feriados" value={String(feriados.length)} help="Marcados para esta semana" tone="good" />
-        </div>
+          {/* Enviadas — mis solicitudes */}
+          {solicitudesEnviadas.length > 0 && (
+            <div
+              className={cls(
+                "p-4 space-y-2",
+                solicitudesRecibidas.length > 0
+                  ? "border-t border-slate-100 dark:border-slate-800"
+                  : "",
+              )}
+            >
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1">
+                Mis solicitudes enviadas
+              </div>
+              {solicitudesEnviadas.map((s) => (
+                <div
+                  key={s.id}
+                  className={cls(
+                    "rounded-xl border p-3",
+                    s.estado === "PENDIENTE"
+                      ? "border-amber-200 bg-amber-50/30 dark:border-amber-800 dark:bg-amber-950/10"
+                      : s.estado === "APROBADA"
+                        ? "border-emerald-200 bg-emerald-50/30 dark:border-emerald-800 dark:bg-emerald-950/10"
+                        : "border-slate-200 bg-slate-50/30 dark:border-slate-700 dark:bg-slate-950/10",
+                  )}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                        {s.cuadrillaNombre}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {formatLabel(s.dia)} · Para{" "}
+                        <span className="font-medium">{s.propietarioNombre}</span>
+                      </div>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <span
+                          className={cls(
+                            "inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold",
+                            estadoColor(s.estadoActual),
+                          )}
+                        >
+                          {ESTADO_META[s.estadoActual as keyof typeof ESTADO_META]?.label || s.estadoActual}
+                        </span>
+                        <span className="text-[11px] text-slate-400">→</span>
+                        <span
+                          className={cls(
+                            "inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold",
+                            estadoColor(s.estadoSolicitado),
+                          )}
+                        >
+                          {ESTADO_META[s.estadoSolicitado as keyof typeof ESTADO_META]?.label || s.estadoSolicitado}
+                        </span>
+                      </div>
+                    </div>
+                    <span
+                      className={cls(
+                        "shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
+                        s.estado === "PENDIENTE"
+                          ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300"
+                          : s.estado === "APROBADA"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300"
+                            : "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400",
+                      )}
+                    >
+                      {s.estado === "PENDIENTE"
+                        ? "Pendiente"
+                        : s.estado === "APROBADA"
+                          ? "Aprobada"
+                          : s.estado === "RECHAZADA"
+                            ? "Rechazada"
+                            : "Cancelada"}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
-        {canAdmin && (
-          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
-            <MetricCard label="Coordinadores" value={String(coordinadoresEstado.length)} help="Visibles en esta semana" />
-            <MetricCard label="Confirmados" value={String(coordinadoresConfirmados)} help="Listos para revision" tone="good" progress={coordinadoresEstado.length ? Number(((coordinadoresConfirmados / coordinadoresEstado.length) * 100).toFixed(1)) : 0} />
-            <MetricCard label="En progreso" value={String(coordinadoresBorrador)} help="Con avances guardados" tone="warn" />
-            <MetricCard label="Sin iniciar" value={String(coordinadoresPendientes)} help="Pendientes de accion" tone={coordinadoresPendientes > 0 ? "bad" : "default"} />
+      {/* ── PANEL ADMIN / GERENCIA ─────────────────────────────────────── */}
+      {canAdmin && (
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+            <div>
+              <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Control de semana</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">Supervisa avance, configura el cierre de coordinadores y bloquea la edición.</div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Cierre coord.</label>
+                <input
+                  type="time"
+                  value={openUntil ? dayjs(openUntil).format("HH:mm") : ""}
+                  onChange={(e) => setOpenUntilTime(e.target.value)}
+                  className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                />
+              </div>
+              <button
+                onClick={guardar}
+                disabled={saving || isLocked}
+                className="rounded-xl bg-[#254b87] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1c3a68] disabled:opacity-50"
+              >
+                {saving ? "Guardando..." : "Guardar cambios"}
+              </button>
+              <button
+                onClick={() => (estado === "CERRADO" ? confirmarAbrir() : confirmarCerrar())}
+                className={cls(
+                  "rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-sm transition",
+                  estado === "CERRADO" ? "bg-slate-600 hover:bg-slate-700" : "bg-rose-600 hover:bg-rose-700"
+                )}
+              >
+                {estado === "CERRADO" ? "Abrir semana" : "Cerrar semana"}
+              </button>
+            </div>
           </div>
-        )}
+          {coordinadoresEstado.length > 0 && (
+            <div className="px-5 py-4">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                  Progreso de coordinadores — {coordinadoresConfirmados} de {coordinadoresEstado.length} confirmados
+                </div>
+                <div className="text-xs text-slate-400 dark:text-slate-500">
+                  {ultimaConfirmacion
+                    ? `Último: ${ultimaConfirmacion.coordinadorNombre} · ${asLocalDateTime(ultimaConfirmacion.confirmedAt)}`
+                    : "Sin confirmaciones aún"}
+                </div>
+              </div>
+              <Progress value={coordinadoresEstado.length ? (coordinadoresConfirmados / coordinadoresEstado.length) * 100 : 0} />
+            </div>
+          )}
+        </section>
+      )}
 
-        {/* Panel de cobertura semanal */}
+      {/* ── MÉTRICAS ───────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <MetricCard
+          label="Cuadrillas"
+          value={String(totalVisible)}
+          help={rows.length !== totalVisible ? `de ${rows.length} totales` : "programadas esta semana"}
+          progress={rows.length ? Number(((totalVisible / rows.length) * 100).toFixed(1)) : 0}
+        />
+        <MetricCard
+          label="Con descanso"
+          value={String(conDescanso)}
+          help={`${sinDescansoCount} sin descanso programado`}
+          tone={sinDescansoCount > 0 ? "warn" : "default"}
+        />
+        <MetricCard
+          label="Sin asistencia"
+          value={String(sinAsistencia.length)}
+          help="Ningún día con asistencia"
+          tone={sinAsistencia.length > 0 ? "bad" : "default"}
+        />
+        <MetricCard
+          label="Feriados"
+          value={String(feriados.length)}
+          help="Marcados esta semana"
+          tone="good"
+        />
+      </div>
+
+      {canAdmin && coordinadoresEstado.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <MetricCard label="Coordinadores" value={String(coordinadoresEstado.length)} help="Asignados esta semana" />
+          <MetricCard
+            label="Confirmados"
+            value={String(coordinadoresConfirmados)}
+            help="Listos para revisión"
+            tone="good"
+            progress={coordinadoresEstado.length ? Number(((coordinadoresConfirmados / coordinadoresEstado.length) * 100).toFixed(1)) : 0}
+          />
+          <MetricCard label="En progreso" value={String(coordinadoresBorrador)} help="Con avances guardados" tone="warn" />
+          <MetricCard
+            label="Sin iniciar"
+            value={String(coordinadoresPendientes)}
+            help="Pendientes de acción"
+            tone={coordinadoresPendientes > 0 ? "bad" : "default"}
+          />
+        </div>
+      )}
+
+      {/* ── SEGUIMIENTO POR COORDINADOR (admin) ────────────────────────── */}
+      {canAdmin && (
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+            <div>
+              <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Seguimiento por coordinador</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">Haz clic en una tarjeta para filtrar la grilla. Puedes reabrir el acceso individualmente.</div>
+            </div>
+            {coordinadorUid && (
+              <button
+                type="button"
+                onClick={() => setCoordinadorUid("")}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                Ver todos
+              </button>
+            )}
+          </div>
+          <div className="p-4">
+            {coordinadoresEstado.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                No hay coordinadores para esta semana.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                {coordinadoresEstado.map((coord) => (
+                  <div
+                    key={coord.coordinadorUid}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setCoordinadorUid((prev) => (prev === coord.coordinadorUid ? "" : coord.coordinadorUid))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setCoordinadorUid((prev) => (prev === coord.coordinadorUid ? "" : coord.coordinadorUid));
+                      }
+                    }}
+                    className={cls(
+                      "cursor-pointer rounded-xl border p-3 text-left transition",
+                      coordinadorUid === coord.coordinadorUid
+                        ? "border-[#254b87] bg-blue-50 ring-1 ring-[#254b87]/20 dark:border-sky-500 dark:bg-sky-950/30"
+                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-slate-900"
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{coord.coordinadorNombre}</div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">{coord.cuadrillas} cuadrillas</div>
+                      </div>
+                      <span className={cls("shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold", statusTone(coord.status))}>
+                        {statusLabel(coord.status)}
+                      </span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-x-2 text-[10px] text-slate-500 dark:text-slate-400">
+                      <div className="truncate">
+                        <span className="font-medium text-slate-600 dark:text-slate-300">Guardado </span>
+                        {asLocalDateTime(coord.updatedAt)}
+                      </div>
+                      <div className="truncate">
+                        <span className="font-medium text-slate-600 dark:text-slate-300">Confirmado </span>
+                        {asLocalDateTime(coord.confirmedAt)}
+                      </div>
+                    </div>
+                    <div className="mt-2.5 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); reabrirCoordinador(coord.coordinadorUid); }}
+                        disabled={estado === "CERRADO"}
+                        className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                      >
+                        Reabrir acceso
+                      </button>
+                      {coord.reopenedByNombre && (
+                        <span className="truncate text-[10px] text-slate-400 dark:text-slate-500">
+                          por {coord.reopenedByNombre}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* ── COBERTURA + LEYENDA + HERRAMIENTAS ────────────────────────── */}
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+
+        {/* Cobertura semanal */}
         {rows.length > 0 && weekDays.length > 0 && (
-          <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-            <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-700">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Cobertura semanal</div>
-                  <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">% asistencia actual vs. minimo requerido por dia</div>
-                </div>
-                <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                  <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />Cumple</span>
-                  <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-amber-400" />Cerca del limite</span>
-                  <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-rose-500" />Bajo el minimo</span>
-                </div>
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-3 dark:border-slate-800">
+              <div>
+                <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Cobertura semanal</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">% de asistencia actual vs. mínimo requerido por día</div>
+              </div>
+              <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+                <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />Cumple</span>
+                <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-amber-400" />Cerca del límite</span>
+                <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-rose-500" />Bajo el mínimo</span>
               </div>
             </div>
             <div className="grid grid-cols-2 divide-x divide-y divide-slate-100 dark:divide-slate-800 sm:grid-cols-4 lg:grid-cols-7">
@@ -1139,491 +1680,536 @@ export default function AsistenciaProgramadaClient() {
                 );
               })}
             </div>
-          </div>
+          </>
         )}
 
-        <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-          <div className="border-b border-slate-200 px-4 py-4 dark:border-slate-700">
-            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Tipificaciones de asistencia</div>
-            <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">Referencia visual semanal para distinguir rapidamente cada estado.</div>
-          </div>
-          <div className="bg-slate-50 px-4 py-4 dark:bg-slate-950/70">
-            <div className="flex flex-wrap gap-2">
-              {ESTADOS.map((estadoTip) => (
-                <span key={estadoTip} className={cls("inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold", estadoColor(estadoTip))}>
-                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white/80 px-1 text-[10px] shadow-sm dark:bg-slate-950/60">
-                    {ESTADO_META[estadoTip as keyof typeof ESTADO_META]?.short || estadoTip.slice(0, 2).toUpperCase()}
-                  </span>
-                  <span>{ESTADO_META[estadoTip as keyof typeof ESTADO_META]?.label || estadoTip}</span>
+        {/* Leyenda de estados */}
+        <div className={cls("px-5 py-3.5", rows.length > 0 ? "border-t border-slate-100 dark:border-slate-800" : "")}>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="mr-1 text-xs font-semibold text-slate-500 dark:text-slate-400">Estados:</span>
+            {(["asistencia", "descanso"] as const).map((estadoTip) => (
+              <span key={estadoTip} className={cls("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold", estadoColor(estadoTip))}>
+                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-white/60 px-0.5 text-[10px] dark:bg-black/20">
+                  {ESTADO_META[estadoTip].short}
                 </span>
-              ))}
-            </div>
+                {ESTADO_META[estadoTip].label}
+              </span>
+            ))}
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
-          <div className="rounded-[24px] border border-slate-200 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-950">
-            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Filtros</div>
-            <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">Ajusta la vista por coordinador o deja solo cuadrillas con descanso.</div>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <label className="text-xs text-slate-600 dark:text-slate-300">Coordinador</label>
-              {canAdmin ? (
-                <select
-                  value={coordinadorUid}
-                  onChange={(e) => setCoordinadorUid(e.target.value)}
-                  className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                >
-                  <option value="">Todos</option>
-                  {coordinadoresUnicos.map((c) => (
-                    <option key={c.uid} value={c.uid}>{c.nombre}</option>
-                  ))}
-                </select>
-              ) : (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-                  {coordinadoresUnicos[0]?.nombre || "-"}
-                </div>
-              )}
-              {canAdmin && coordinadorActual && (
-                <button
-                  type="button"
-                  onClick={() => setCoordinadorUid("")}
-                  className="rounded border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                >
-                  Ver todos
-                </button>
-              )}
-              <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-                <input type="checkbox" checked={soloDescanso} onChange={(e) => setSoloDescanso(e.target.checked)} />
-                Solo con descanso
-              </label>
-            </div>
+        {/* Toolbar: filtros + acciones + exportar */}
+        <div className="flex flex-wrap items-start gap-4 border-t border-slate-100 bg-slate-50/80 px-5 py-4 dark:border-slate-800 dark:bg-slate-950/50">
+
+          {/* Filtros */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Filtrar</span>
+            <select
+              value={coordinadorUid}
+              onChange={(e) => setCoordinadorUid(e.target.value)}
+              className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            >
+              <option value="">Todos los coordinadores</option>
+              {coordinadoresUnicos.map((c) => (
+                <option key={c.uid} value={c.uid}>
+                  {c.nombre}{!canAdmin && myCoordinatorUid && c.uid === myCoordinatorUid ? " (mis cuadrillas)" : ""}
+                </option>
+              ))}
+            </select>
+            {coordinadorUid && (
+              <button
+                type="button"
+                onClick={() => setCoordinadorUid("")}
+                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+              >
+                Ver todas
+              </button>
+            )}
+            <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">
+              <input type="checkbox" checked={soloDescanso} onChange={(e) => setSoloDescanso(e.target.checked)} className="h-3 w-3 rounded" />
+              Solo con descanso
+            </label>
           </div>
 
-          <div className="rounded-[24px] border border-slate-200 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-950">
-            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Acciones de semana</div>
-            <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">Replica acciones rapidas o genera la semana automaticamente.</div>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <button className="rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:text-slate-200" onClick={copiarSemanaAnterior}>Copiar semana anterior</button>
-              <button
-                className="rounded border border-[#30518c] bg-[#30518c]/10 px-3 py-1.5 text-sm font-medium text-[#30518c] transition hover:bg-[#30518c]/20 disabled:opacity-50 dark:border-sky-700 dark:bg-sky-900/20 dark:text-sky-300 dark:hover:bg-sky-900/40"
-                disabled={isLocked || rows.length === 0}
-                onClick={handleAutoGenerar}
-              >
-                Generar automatico
-              </button>
-              <div className="flex items-center gap-2">
-                <select
-                  value={feriadoDay}
-                  onChange={(e) => setFeriadoDay(e.target.value)}
-                  className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                >
-                  <option value="">Feriado (elige dia)</option>
-                  {weekDays.map((d) => (
-                    <option key={d} value={d}>{formatLabel(d)}</option>
-                  ))}
-                </select>
-                <button
-                  className="rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:text-slate-200"
-                  onClick={() => {
-                    if (!feriadoDay) return;
-                    setAllRowsForDay(feriadoDay, "descanso");
-                    setFeriados((prev) => (prev.includes(feriadoDay) ? prev : [...prev, feriadoDay]));
-                  }}
-                  disabled={isLocked || !feriadoDay}
-                >
-                  Marcar feriado
-                </button>
-              </div>
-              <button
-                className="rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:text-slate-200"
-                onClick={() => {
-                  const sundays = weekDays.filter((d) => dayjs(d).day() === 0);
-                  sundays.forEach((d) => setAllRowsForDay(d, "descanso"));
-                }}
-                disabled={isLocked}
-              >
-                Domingo descanso
-              </button>
+          {canAdmin && (
+            <>
+              <div className="h-6 w-px self-center bg-slate-200 dark:bg-slate-700 max-sm:hidden" />
+
+              {/* Acciones rápidas — solo admin/gerencia */}
               <div className="flex flex-wrap items-center gap-2">
-                {/* Input oculto para subir plantilla */}
-                <input
-                  ref={plantillaInputRef}
-                  type="file"
-                  accept=".xlsx"
-                  className="hidden"
-                  onChange={handlePlantillaUpload}
-                />
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Acciones</span>
+                <button
+                  onClick={copiarSemanaAnterior}
+                  disabled={isLocked}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Copiar semana anterior
+                </button>
+                <button
+                  disabled={isLocked || rows.length === 0}
+                  onClick={handleAutoGenerar}
+                  className="rounded-lg border border-[#30518c] bg-[#30518c]/10 px-3 py-1.5 text-xs font-semibold text-[#30518c] transition hover:bg-[#30518c]/20 disabled:opacity-50 dark:border-sky-700 dark:bg-sky-900/20 dark:text-sky-300"
+                >
+                  Generar automático
+                </button>
+                <button
+                  onClick={() => weekDays.filter((d) => dayjs(d).day() === 0).forEach((d) => setAllRowsForDay(d, "descanso"))}
+                  disabled={isLocked}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  Domingo descanso
+                </button>
+                <div className="flex items-center gap-1.5">
+                  <select
+                    value={feriadoDay}
+                    onChange={(e) => setFeriadoDay(e.target.value)}
+                    className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  >
+                    <option value="">Marcar feriado…</option>
+                    {weekDays.map((d) => <option key={d} value={d}>{formatLabel(d)}</option>)}
+                  </select>
+                  <button
+                    disabled={isLocked || !feriadoDay}
+                    onClick={() => {
+                      if (!feriadoDay) return;
+                      setAllRowsForDay(feriadoDay, "descanso");
+                      setFeriados((prev) => (prev.includes(feriadoDay) ? prev : [...prev, feriadoDay]));
+                    }}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  >
+                    Marcar
+                  </button>
+                </div>
+              </div>
+
+              <div className="h-6 w-px self-center bg-slate-200 dark:bg-slate-700 max-sm:hidden" />
+
+              {/* Exportar — solo admin/gerencia */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Exportar</span>
+                <input ref={plantillaInputRef} type="file" accept=".xlsx" className="hidden" onChange={handlePlantillaUpload} />
                 <button
                   type="button"
                   onClick={() => plantillaInputRef.current?.click()}
-                  className="rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:text-slate-200"
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                 >
-                  Subir plantilla
+                  {plantillaNombre ? "Cambiar plantilla" : "Subir plantilla .xlsx"}
                 </button>
                 {plantillaNombre ? (
                   <div className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
-                    <span className="max-w-[140px] truncate">{plantillaNombre}</span>
-                    <button
-                      type="button"
-                      onClick={() => { setPlantillaBuffer(null); setPlantillaNombre(""); }}
-                      className="text-emerald-500 hover:text-emerald-700 dark:text-emerald-400"
-                      title="Quitar plantilla"
-                    >
-                      ✕
-                    </button>
+                    <span className="max-w-[120px] truncate">{plantillaNombre}</span>
+                    <button type="button" onClick={() => { setPlantillaBuffer(null); setPlantillaNombre(""); }} className="text-emerald-500 hover:text-emerald-700">✕</button>
                   </div>
                 ) : (
                   <span className="text-[11px] text-amber-600 dark:text-amber-400">Requerida para exportar</span>
                 )}
-              </div>
-              <button
-                className="px-3 py-1.5 rounded bg-[#30518c] text-white text-sm shadow hover:bg-[#203a66] disabled:opacity-60"
-                onClick={exportarExcel}
-                disabled={rows.length === 0}
-              >
-                Descargar Excel
-              </button>
-            </div>
-          </div>
-
-          <div className="rounded-[24px] border border-slate-200 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-950">
-            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Control</div>
-            <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">Estado de cierre, alertas de asistencia y bloqueo de edicion.</div>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              {!canAdmin && estado === "CERRADO" && (
-                <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                  Semana cerrada. Si necesitas cambios, comunicate con Gerencia.
-                </span>
-              )}
-              {sinAsistencia.length > 0 && (
-                <span className="text-xs text-rose-600">Sin asistencia semanal: {sinAsistencia.length}</span>
-              )}
-              {estado === "CERRADO" ? (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-                  <div className="text-xs font-semibold">Semana cerrada</div>
-                  <div className="text-sm">
-                    Semana del {dayjs(weekDays[0]).format("DD/MM/YYYY")} al {dayjs(weekDays[weekDays.length - 1]).format("DD/MM/YYYY")}
-                  </div>
-                </div>
-              ) : (
-                openUntil && (
-                  <div className="px-3 py-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-800">
-                    <div className="text-xs font-semibold">Cierre coordinadores</div>
-                    <div className="text-sm">{dayjs(openUntil).format("DD/MM/YYYY HH:mm")}</div>
-                    <div className="text-xl font-bold tracking-wider">{contador || "--:--:--"}</div>
-                  </div>
-                )
-              )}
-              {canAdmin && (
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-slate-600 dark:text-slate-300">Cierre coord.</label>
-                  <input
-                    type="time"
-                    value={openUntil ? dayjs(openUntil).format("HH:mm") : ""}
-                    onChange={(e) => setOpenUntilTime(e.target.value)}
-                    className="rounded border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                  />
-                </div>
-              )}
-              {canAdmin && (
-                <div className="flex flex-col items-start">
-                  <button
-                    onClick={guardar}
-                    disabled={saving || isLocked}
-                    className="rounded bg-emerald-600 px-4 py-2 text-sm text-white disabled:opacity-60"
-                  >
-                    {saving ? "Guardando..." : "Guardar cambios"}
-                  </button>
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400">Gerencia tambien puede ajustar la semana.</span>
-                </div>
-              )}
-              <div className="flex flex-col items-start">
                 <button
-                  onClick={() => (estado === "CERRADO" ? confirmarAbrir() : confirmarCerrar())}
-                  className={cls("px-4 py-2 rounded text-white text-sm", estado === "CERRADO" ? "bg-slate-600" : "bg-rose-600")}
+                  onClick={exportarExcel}
+                  disabled={rows.length === 0 || !plantillaBuffer}
+                  className="rounded-lg bg-[#254b87] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#1c3a68] disabled:opacity-50"
                 >
-                  {estado === "CERRADO" ? "Abrir edicion" : "Cerrar semana"}
+                  Descargar Excel
                 </button>
-                <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                  {estado === "CERRADO" ? "Permite editar nuevamente." : "Bloquea edicion a coordinadores."}
-                </span>
               </div>
-            </div>
-          </div>
+            </>
+          )}
         </div>
-
-        {canAdmin && (
-          <div className="mt-4 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-950">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">Seguimiento por coordinador</div>
-                <div className="text-sm text-slate-500 dark:text-slate-400">Gerencia puede ver avance, confirmacion y reabrir coordinadores puntualmente.</div>
-              </div>
-            </div>
-            <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
-              {coordinadoresEstado.map((coord) => (
-                <div
-                  key={coord.coordinadorUid}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setCoordinadorUid((prev) => (prev === coord.coordinadorUid ? "" : coord.coordinadorUid))}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setCoordinadorUid((prev) => (prev === coord.coordinadorUid ? "" : coord.coordinadorUid));
-                    }
-                  }}
-                  className={cls(
-                    "rounded-lg border px-3 py-2 text-left transition dark:border-slate-700",
-                    coordinadorUid === coord.coordinadorUid
-                      ? "border-[#254b87] bg-blue-50 shadow-sm dark:border-sky-500 dark:bg-sky-950/30"
-                      : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:bg-slate-950 dark:hover:border-slate-600 dark:hover:bg-slate-900"
-                  )}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{coord.coordinadorNombre}</div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400">{coord.cuadrillas} cuadrillas</div>
-                    </div>
-                    <span className={cls("rounded-full border px-2 py-0.5 text-[11px] font-medium", statusTone(coord.status))}>
-                      {statusLabel(coord.status)}
-                    </span>
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-slate-500 dark:text-slate-400">
-                    <div className="truncate">
-                      <span className="font-medium text-slate-700 dark:text-slate-200">Guardado:</span> {asLocalDateTime(coord.updatedAt)}
-                    </div>
-                    <div className="truncate">
-                      <span className="font-medium text-slate-700 dark:text-slate-200">Confirmado:</span> {asLocalDateTime(coord.confirmedAt)}
-                    </div>
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        reabrirCoordinador(coord.coordinadorUid);
-                      }}
-                      disabled={estado === "CERRADO"}
-                      className="rounded-md border border-slate-300 px-2.5 py-1 text-[10px] font-medium text-slate-700 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200"
-                    >
-                      Reabrir coordinador
-                    </button>
-                    {coord.reopenedByNombre && (
-                      <span className="truncate text-[10px] text-slate-500 dark:text-slate-400">
-                        Reabierto por {coord.reopenedByNombre}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {coordinadoresEstado.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                  No hay coordinadores visibles para esta semana.
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </section>
 
-      <section ref={tableAreaRef} className="relative rounded-[28px] border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        <div className="flex flex-col gap-2 border-b border-slate-200 px-5 py-4 dark:border-slate-700 lg:flex-row lg:items-center lg:justify-between">
+      {/* ── GRILLA DE ASISTENCIA ───────────────────────────────────────── */}
+      <section ref={tableAreaRef} className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex flex-col gap-1 border-b border-slate-100 px-5 py-4 dark:border-slate-800 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">Grilla semanal por cuadrilla</div>
-            <div className="text-sm text-slate-500 dark:text-slate-400">Cada fila representa una cuadrilla y permite programar la asistencia diaria con mejor lectura visual.</div>
+            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Grilla de asistencia</div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <span>{visibleRows.length} cuadrillas</span>
+              {weekDays.length > 0 && (
+                <span>· Semana {dayjs(weekDays[0]).format("DD/MM")}–{dayjs(weekDays[weekDays.length - 1]).format("DD/MM")}</span>
+              )}
+              {isLocked && (
+                <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+                  Bloqueada
+                </span>
+              )}
+            </div>
           </div>
-          <div className="text-sm text-slate-500 dark:text-slate-400">
-            Semana de {dayjs(weekDays[0]).format("DD/MM")} a {dayjs(weekDays[weekDays.length - 1]).format("DD/MM")}
-          </div>
+          {sinAsistencia.length > 0 && (
+            <div className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300">
+              ⚠ {sinAsistencia.length} cuadrilla{sinAsistencia.length !== 1 ? "s" : ""} sin asistencia ningún día
+            </div>
+          )}
         </div>
-        <div className="sticky top-[72px] z-40 mb-2">
-          <div className="relative mx-auto w-fit overflow-hidden rounded-t-2xl border border-slate-800 bg-slate-900 shadow-[0_12px_24px_rgba(15,23,42,.18)] dark:border-slate-700 dark:bg-slate-950">
-            <div className="absolute inset-0 bg-slate-900 dark:bg-slate-950" />
-            <div ref={headerScrollRef} className="relative overflow-x-hidden overflow-y-visible">
-              <div className="grid text-left text-xs font-semibold uppercase tracking-[0.18em] text-white" style={{ gridTemplateColumns: tableColumns, minWidth: `${tableMinWidthPx}px`, width: `${tableMinWidthPx}px` }}>
-                <div className="sticky left-0 z-30 border-b border-r border-slate-700 bg-slate-900 px-4 py-3 shadow-[inset_0_-1px_0_rgba(255,255,255,.04)] dark:bg-slate-950" style={{ width: `${firstColWidth}px` }}>
-                  Cuadrilla
-                </div>
-                {weekDays.map((d) => {
-                  const sunday = isSunday(d);
-                  const holiday = feriados.includes(d);
-                  const cob = coberturaByDay[d];
-                  return (
-                    <div
-                      key={`sticky_${d}`}
-                      className={cls(
-                        "border-b border-slate-700 px-2 py-3 text-center shadow-[inset_0_-1px_0_rgba(255,255,255,.04)]",
-                        holiday ? "bg-sky-950" : sunday ? "bg-amber-950" : "bg-slate-900 dark:bg-slate-950"
-                      )}
-                    >
-                      <div className="flex flex-col items-center gap-1">
-                        <span>{formatLabel(d)}</span>
-                        <div className="flex flex-wrap justify-center gap-1">
-                          {sunday && <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] text-amber-100">Domingo</span>}
-                          {holiday && <span className="rounded-full bg-sky-400/20 px-2 py-0.5 text-[10px] text-sky-100">Feriado</span>}
+
+        {/* Cabecera sticky */}
+        <div className="sticky top-[72px] z-40">
+          <div ref={headerScrollRef} className="overflow-x-hidden">
+            <div
+              className="grid bg-slate-900 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-300 dark:bg-slate-950"
+              style={{ gridTemplateColumns: tableColumns, minWidth: `${tableMinWidthPx}px`, width: `${tableMinWidthPx}px` }}
+            >
+              <div className="sticky left-0 z-30 border-b border-r border-slate-700 bg-slate-900 px-4 py-3 dark:bg-slate-950" style={{ width: `${firstColWidth}px` }}>
+                Cuadrilla
+              </div>
+              {weekDays.map((d) => {
+                const sunday = isSunday(d);
+                const holiday = feriados.includes(d);
+                const cob = coberturaByDay[d];
+                return (
+                  <div
+                    key={`h_${d}`}
+                    className={cls(
+                      "border-b border-slate-700 px-2 py-3 text-center",
+                      holiday ? "bg-sky-950/80" : sunday ? "bg-amber-950/80" : "bg-slate-900 dark:bg-slate-950"
+                    )}
+                  >
+                    <div className="flex flex-col items-center gap-0.5">
+                      <span className="text-white">{formatLabel(d)}</span>
+                      {sunday && <span className="rounded-full bg-amber-400/20 px-1.5 py-px text-[9px] text-amber-200">Dom</span>}
+                      {holiday && <span className="rounded-full bg-sky-400/20 px-1.5 py-px text-[9px] text-sky-200">Feriado</span>}
+                      {cob && cob.estado !== "none" && rows.length > 0 && (
+                        <div className={cls("rounded-full border px-1.5 py-px text-[9px] font-bold", coberturaColorBg(cob.estado))}>
+                          {sunday && cob.residencial ? `R:${cob.residencial.pct}% M:${cob.moto?.pct ?? "-"}%` : `${cob.pct}%`}
                         </div>
-                        {cob && cob.estado !== "none" && rows.length > 0 && (
-                          <div className={cls("mt-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold", coberturaColorBg(cob.estado))}>
-                            {sunday && cob.residencial !== undefined
-                              ? `R:${cob.residencial.pct}% M:${cob.moto?.pct ?? "-"}%`
-                              : `${cob.pct}%`}
-                          </div>
-                        )}
-                      </div>
+                      )}
                     </div>
-                  );
-                })}
-                <div className="border-b border-slate-700 bg-slate-900 px-4 py-3 text-left shadow-[inset_0_-1px_0_rgba(255,255,255,.04)] dark:bg-slate-950" style={{ width: `${actionsColWidth}px` }}>
-                  Acciones
-                </div>
+                  </div>
+                );
+              })}
+              <div className="border-b border-slate-700 bg-slate-900 px-4 py-3 dark:bg-slate-950" style={{ width: `${actionsColWidth}px` }}>
+                Acciones
               </div>
             </div>
           </div>
         </div>
-        <div ref={bodyScrollRef} className="relative overflow-x-auto overflow-y-visible">
+
+        {/* Body */}
+        <div ref={bodyScrollRef} className="overflow-x-auto">
           {cargando ? (
-            <div className="space-y-3 p-5"><div className="h-16 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800" /><div className="h-16 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800" /><div className="h-16 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800" /></div>
+            <div className="space-y-2 p-5">
+              {[1, 2, 3].map((i) => <div key={i} className="h-14 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />)}
+            </div>
           ) : (
-          <table className="mx-auto table-fixed border-separate border-spacing-0 text-sm" style={{ minWidth: `${tableMinWidthPx}px`, width: `${tableMinWidthPx}px` }}>
-            <colgroup>
-              <col style={{ width: `${firstColWidth}px` }} />
-              {weekDays.map((d) => (
-                <col key={`col_${d}`} style={{ width: `${computedDayWidth}px` }} />
-              ))}
-              <col style={{ width: `${actionsColWidth}px` }} />
-            </colgroup>
-            <thead className="sr-only">
-              <tr className="bg-slate-900 text-left text-xs font-semibold uppercase tracking-[0.18em] text-white dark:bg-slate-950">
-                <th className="border-r border-slate-700 bg-slate-900 px-4 py-3 dark:bg-slate-950" style={{ width: `${firstColWidth}px` }}>Cuadrilla</th>
-                {weekDays.map((d) => {
-                  const sunday = isSunday(d);
-                  const holiday = feriados.includes(d);
+            <table
+              className="mx-auto table-fixed border-separate border-spacing-0 text-sm"
+              style={{ minWidth: `${tableMinWidthPx}px`, width: `${tableMinWidthPx}px` }}
+            >
+              <colgroup>
+                <col style={{ width: `${firstColWidth}px` }} />
+                {weekDays.map((d) => <col key={`col_${d}`} style={{ width: `${computedDayWidth}px` }} />)}
+                <col style={{ width: `${actionsColWidth}px` }} />
+              </colgroup>
+              <thead className="sr-only">
+                <tr>
+                  <th>Cuadrilla</th>
+                  {weekDays.map((d) => <th key={d}>{formatLabel(d)}</th>)}
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleRows.map((r, idx) => {
+                  const dc = descansoCount(r.id);
+                  const ac = asistenciaCount(r.id);
+                  // Cuadrilla propia del coordinador logueado (o admin ve todo)
+                  const isOwnRow = canAdmin || !myCoordinatorUid || r.coordinadorUid === myCoordinatorUid;
+                  const rowLocked = isLocked || !isOwnRow;
                   return (
-                    <th
-                      key={d}
+                    <tr
+                      key={r.id}
                       className={cls(
-                        "px-2 py-3 text-center",
-                        holiday ? "bg-sky-950" : sunday ? "bg-amber-950" : "bg-slate-900 dark:bg-slate-950"
+                        "border-b border-slate-100 dark:border-slate-800",
+                        !isOwnRow
+                          ? "bg-slate-50/80 dark:bg-slate-900/30"
+                          : idx % 2 ? "bg-slate-50/60 dark:bg-slate-900/50" : "bg-white dark:bg-slate-950"
                       )}
                     >
-                      <div className="flex flex-col items-center gap-1">
-                        <span>{formatLabel(d)}</span>
-                        <div className="flex flex-wrap justify-center gap-1">
-                          {sunday && <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] text-amber-100">Domingo</span>}
-                          {holiday && <span className="rounded-full bg-sky-400/20 px-2 py-0.5 text-[10px] text-sky-100">Feriado</span>}
+                      <td
+                        className={cls(
+                          "sticky left-0 z-10 border-r border-slate-100 px-4 py-3 align-top dark:border-slate-800",
+                          !isOwnRow
+                            ? "bg-slate-50 dark:bg-slate-900/60"
+                            : idx % 2 ? "bg-slate-50 dark:bg-slate-900" : "bg-white dark:bg-slate-950"
+                        )}
+                        style={{ width: `${firstColWidth}px` }}
+                      >
+                        <div className={cls("font-semibold", isOwnRow ? "text-slate-900 dark:text-slate-100" : "text-slate-500 dark:text-slate-400")}>
+                          {r.nombre}
                         </div>
-                      </div>
-                    </th>
-                  );
-                })}
-                <th className="bg-slate-900 px-4 py-3 text-left dark:bg-slate-950" style={{ width: `${actionsColWidth}px` }}>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleRows.map((r, idx) => {
-                const dc = descansoCount(r.id);
-                const ac = asistenciaCount(r.id);
-                return (
-                  <tr key={r.id} className={cls("border-b border-slate-200 dark:border-slate-700", idx % 2 ? "bg-slate-50 dark:bg-slate-900" : "bg-white dark:bg-slate-950")}>
-                    <td
-                      className={cls(
-                        "sticky left-0 z-10 border-r border-slate-200 px-4 py-3 align-top dark:border-slate-700",
-                        idx % 2 ? "bg-slate-50 dark:bg-slate-900" : "bg-white dark:bg-slate-950"
-                      )}
-                      style={{ width: `${firstColWidth}px` }}
-                    >
-                      <div className="font-medium text-slate-900 dark:text-slate-100">{r.nombre}</div>
-                      <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{r.coordinadorNombre || "-"}</div>
-                    </td>
+                        <div className="mt-0.5 flex items-center gap-1.5">
+                          {!isOwnRow && (
+                            <span className="rounded-full bg-slate-200 px-1.5 py-px text-[9px] font-semibold text-slate-500 dark:bg-slate-700 dark:text-slate-400">
+                              Otro coord.
+                            </span>
+                          )}
+                          <span className="text-[11px] text-slate-400 dark:text-slate-500">{r.coordinadorNombre || "-"}</span>
+                        </div>
+                      </td>
                       {weekDays.map((d) => {
                         const currentValue = String(items?.[r.id]?.[d] || "asistencia");
                         const cellMenuId = `${r.id}_${d}`;
                         const isMenuOpen = openCellMenu === cellMenuId;
-
                         const sunday = isSunday(d);
                         const holiday = feriados.includes(d);
-
                         return (
                           <td
                             key={`${r.id}_${d}`}
                             className={cls(
-                              "px-2 py-2 text-center",
-                              sunday ? "bg-amber-50/60 dark:bg-amber-950/20" : "",
-                              holiday ? "bg-sky-50/60 dark:bg-sky-950/20" : ""
+                              "px-1.5 py-2",
+                              sunday ? "bg-amber-50/40 dark:bg-amber-950/10" : "",
+                              holiday ? "bg-sky-50/40 dark:bg-sky-950/10" : ""
                             )}
                           >
-                            <div className="relative" data-asistencia-cell-menu="true">
-                              <button
-                                type="button"
-                                disabled={isLocked}
-                                onClick={() => setOpenCellMenu((prev) => (prev === cellMenuId ? null : cellMenuId))}
-                                className={cls(
-                                  "mx-auto flex w-full items-center justify-between gap-2 rounded-xl border px-2 py-2 text-left text-xs font-semibold shadow-sm transition",
-                                  dc > 2 ? "border-rose-400 ring-1 ring-rose-200 dark:ring-rose-900/60" : "",
-                                  estadoColor(currentValue),
-                                  isLocked ? "cursor-not-allowed opacity-70" : "cursor-pointer"
-                                )}
-                              >
-                                <span>{ESTADO_META[currentValue as keyof typeof ESTADO_META]?.label || currentValue}</span>
-                                <span className="text-[10px] opacity-80">{isMenuOpen ? "▲" : "▼"}</span>
-                              </button>
-
-                              {isMenuOpen && !isLocked && (
-                                <div className="absolute left-0 top-full z-30 mt-1 w-full min-w-[170px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-950">
-                                  <div className="max-h-64 overflow-auto p-1">
-                                    {ESTADOS.map((e) => {
-                                      const isActive = e === currentValue;
-                                      return (
+                            {isOwnRow ? (
+                              // Celda editable — cuadrilla propia
+                              <div className="relative" data-asistencia-cell-menu="true">
+                                <button
+                                  type="button"
+                                  disabled={rowLocked}
+                                  onClick={() => setOpenCellMenu((prev) => (prev === cellMenuId ? null : cellMenuId))}
+                                  className={cls(
+                                    "mx-auto flex w-full items-center justify-between gap-1 rounded-lg border px-2 py-1.5 text-left text-[11px] font-semibold shadow-sm transition",
+                                    dc > 2 ? "ring-1 ring-rose-300 dark:ring-rose-700" : "",
+                                    estadoColor(currentValue),
+                                    rowLocked ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:opacity-90"
+                                  )}
+                                >
+                                  <span className="truncate">{ESTADO_META[currentValue as keyof typeof ESTADO_META]?.label || currentValue}</span>
+                                  {!rowLocked && <span className="shrink-0 text-[9px] opacity-50">{isMenuOpen ? "▲" : "▼"}</span>}
+                                </button>
+                                {isMenuOpen && !rowLocked && (
+                                  <div className="absolute left-0 top-full z-30 mt-1 min-w-[160px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-950">
+                                    <div className="overflow-auto p-1">
+                                      {(["asistencia", "descanso"] as const).map((e) => (
                                         <button
                                           key={e}
                                           type="button"
-                                          onClick={() => {
-                                            updateCell(r.id, d, e);
-                                            setOpenCellMenu(null);
-                                          }}
+                                          onClick={() => { updateCell(r.id, d, e); setOpenCellMenu(null); }}
                                           className={cls(
-                                            "mb-1 flex w-full items-center justify-between rounded-lg border px-2 py-2 text-left text-xs font-semibold transition last:mb-0",
+                                            "mb-0.5 flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-left text-xs font-semibold transition last:mb-0",
                                             estadoColor(e),
-                                            isActive ? "ring-2 ring-offset-1 ring-[#254b87] dark:ring-sky-400 dark:ring-offset-slate-950" : ""
+                                            e === currentValue ? "ring-2 ring-[#254b87] ring-offset-1 dark:ring-sky-400 dark:ring-offset-slate-950" : ""
                                           )}
                                         >
-                                          <span>{ESTADO_META[e as keyof typeof ESTADO_META]?.label || e}</span>
+                                          <span>{ESTADO_META[e].label}</span>
                                           <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] dark:bg-white/10">
-                                            {ESTADO_META[e as keyof typeof ESTADO_META]?.short || e.slice(0, 2).toUpperCase()}
+                                            {ESTADO_META[e].short}
                                           </span>
                                         </button>
-                                      );
-                                    })}
+                                      ))}
+                                    </div>
                                   </div>
+                                )}
+                              </div>
+                            ) : (
+                              // Celda solo lectura — cuadrilla de otro coordinador
+                              <div className="relative">
+                                <div
+                                  className={cls(
+                                    "mx-auto flex w-full items-center justify-center rounded-lg border px-2 py-1.5 text-[11px] font-semibold opacity-70",
+                                    estadoColor(currentValue)
+                                  )}
+                                >
+                                  <span className="truncate">{ESTADO_META[currentValue as keyof typeof ESTADO_META]?.short || currentValue.slice(0, 1).toUpperCase()}</span>
                                 </div>
-                              )}
-                            </div>
+                                {pendingByCell.has(cellMenuId) && (
+                                  <span
+                                    className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-amber-500 ring-1 ring-white dark:ring-slate-900"
+                                    title="Solicitud pendiente"
+                                  />
+                                )}
+                              </div>
+                            )}
                           </td>
                         );
                       })}
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <button onClick={() => setRowAll(r.id, "asistencia")} disabled={isLocked} className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">De Largo</button>
-                        <div className="text-[11px] leading-4">
-                          <div className="text-slate-500 dark:text-slate-400">Asistencias: {ac}</div>
-                          <div className={cls(dc > 2 ? "text-rose-600" : "text-slate-500 dark:text-slate-400")}>Descansos: {dc}</div>
-                        </div>
-                      </div>
+                      <td className="px-3 py-3">
+                        {isOwnRow ? (
+                          <div className="flex flex-col gap-1.5">
+                            <button
+                              onClick={() => setRowAll(r.id, "asistencia")}
+                              disabled={rowLocked}
+                              className="rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                            >
+                              De largo
+                            </button>
+                            <div className="text-[10px] text-slate-400 dark:text-slate-500">
+                              A: {ac} · <span className={dc > 2 ? "font-semibold text-rose-500" : ""}>D: {dc}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-1.5">
+                            {myCategories.has(categoriaCuadrilla(r)) ? (
+                              <button
+                                type="button"
+                                onClick={() => abrirModalSolicitud(r)}
+                                className="rounded-lg border border-[#254b87]/30 bg-[#254b87]/5 px-3 py-1.5 text-[11px] font-medium text-[#254b87] transition hover:bg-[#254b87]/10 dark:border-sky-800 dark:bg-sky-950/20 dark:text-sky-400 dark:hover:bg-sky-950/40"
+                              >
+                                Solicitar cambio
+                              </button>
+                            ) : (
+                              <div className="rounded-lg border border-slate-100 px-3 py-1.5 text-[10px] text-slate-400 dark:border-slate-800 dark:text-slate-600">
+                                {categoriaCuadrilla(r) === "RESIDENCIAL" ? "Residencial" : categoriaCuadrilla(r) === "MOTO" ? "Moto" : "Otro"}
+                              </div>
+                            )}
+                            <div className="text-[10px] text-slate-400 dark:text-slate-500">
+                              A: {ac} · D: {dc}
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {visibleRows.length === 0 && (
+                  <tr>
+                    <td colSpan={weekDays.length + 2}>
+                      <EmptyState title="No hay cuadrillas para mostrar" description="Prueba cambiando la semana o limpiando los filtros." />
                     </td>
                   </tr>
-                );
-              })}
-              {visibleRows.length === 0 && (
-                <tr>
-                  <td colSpan={weekDays.length + 2}><EmptyState title="No hay cuadrillas para mostrar" description="Prueba cambiando la semana o limpiando los filtros actuales." /></td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        )}
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
       </section>
+
+      {/* ── MODAL SOLICITAR CAMBIO ─────────────────────────────────────── */}
+      {solicitudModal && (() => {
+        const estadoActualModal = modalDia
+          ? String(items?.[solicitudModal.row.id]?.[modalDia] || "asistencia")
+          : "asistencia";
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+              {/* Cabecera */}
+              <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+                <div className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                  Solicitar cambio de asistencia
+                </div>
+                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                  La solicitud se enviará al coordinador responsable para su aprobación.
+                  El cambio se aplicará solo si respeta los % mínimos de cobertura.
+                </div>
+              </div>
+
+              {/* Cuerpo */}
+              <div className="space-y-4 px-5 py-4">
+                {/* Info cuadrilla */}
+                <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    Cuadrilla
+                  </div>
+                  <div className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    {solicitudModal.row.nombre}
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {solicitudModal.row.coordinadorNombre}
+                  </div>
+                </div>
+
+                {/* Selector de día */}
+                <div>
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    Día
+                  </label>
+                  <select
+                    value={modalDia}
+                    onChange={(e) => {
+                      setModalDia(e.target.value);
+                      const ea = String(items?.[solicitudModal.row.id]?.[e.target.value] || "asistencia");
+                      setModalEstado(ea === "asistencia" ? "descanso" : "asistencia");
+                    }}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  >
+                    <option value="">Selecciona un día…</option>
+                    {weekDays.map((d) => {
+                      const ea = String(items?.[solicitudModal.row.id]?.[d] || "asistencia");
+                      const hasPending = pendingByCell.has(`${solicitudModal.row.id}_${d}`);
+                      return (
+                        <option key={d} value={d} disabled={hasPending}>
+                          {formatLabel(d)} — {ESTADO_META[ea as keyof typeof ESTADO_META]?.label || ea}
+                          {hasPending ? " (pendiente)" : ""}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                {/* Cambio de estado */}
+                {modalDia && (
+                  <div className="flex items-end gap-3">
+                    <div className="flex-1">
+                      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                        Estado actual
+                      </div>
+                      <div
+                        className={cls(
+                          "inline-flex items-center rounded-lg border px-2.5 py-1.5 text-xs font-semibold",
+                          estadoColor(estadoActualModal),
+                        )}
+                      >
+                        {ESTADO_META[estadoActualModal as keyof typeof ESTADO_META]?.label || estadoActualModal}
+                      </div>
+                    </div>
+                    <div className="pb-1.5 text-slate-400">→</div>
+                    <div className="flex-1">
+                      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                        Cambiar a
+                      </label>
+                      <select
+                        value={modalEstado}
+                        onChange={(e) => setModalEstado(e.target.value)}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                      >
+                        {(["asistencia", "descanso"] as const)
+                          .filter((e) => e !== estadoActualModal)
+                          .map((e) => (
+                            <option key={e} value={e}>
+                              {ESTADO_META[e].label}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {/* Mensaje */}
+                <div>
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    Mensaje (opcional)
+                  </label>
+                  <textarea
+                    value={modalMensaje}
+                    onChange={(e) => setModalMensaje(e.target.value)}
+                    placeholder="Ej: Necesito ajustar el descanso por operación especial"
+                    rows={3}
+                    className="w-full resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-[#254b87] focus:ring-2 focus:ring-[#254b87]/10 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-600"
+                  />
+                </div>
+              </div>
+
+              {/* Acciones */}
+              <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setSolicitudModal(null)}
+                  disabled={modalEnviando}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={enviarSolicitud}
+                  disabled={modalEnviando || !modalDia}
+                  className="rounded-xl bg-[#254b87] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1c3a68] disabled:opacity-50"
+                >
+                  {modalEnviando ? "Enviando..." : "Enviar solicitud"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -10,22 +10,11 @@ import * as XLSX from "xlsx";
 dayjs.extend(customParseFormat);
 dayjs.locale("es");
 
-const ESTADOS = [
-  "asistencia",
-  "descanso",
-  "falta",
-  "suspendida",
-  "descanso medico",
-  "vacaciones",
-];
+const ESTADOS = ["asistencia", "descanso"];
 
 const ESTADO_META = {
   asistencia: { label: "Asistencia", short: "A" },
   descanso: { label: "Descanso", short: "D" },
-  falta: { label: "Falta", short: "F" },
-  suspendida: { label: "Suspendida", short: "S" },
-  "descanso medico": { label: "Descanso medico", short: "DM" },
-  vacaciones: { label: "Vacaciones", short: "V" },
 } as const;
 
 // DOW: 0=Dom 1=Lun 2=Mar 3=Mie 4=Jue 5=Vie 6=Sab
@@ -584,6 +573,27 @@ export default function AsistenciaProgramadaClient() {
       const c = descansoCount(r.id);
       if (c > maxDesc) return { ok: false, msg: `La cuadrilla ${r.nombre} tiene ${c} descansos. Máximo ${maxDesc}.` };
     }
+
+    // Coordinadores no pueden guardar si algún día no cumple el % mínimo de cobertura
+    if (!canAdmin && myCoordinatorUid) {
+      const dayNames: Record<number, string> = { 0: "Domingo", 1: "Lunes", 2: "Martes", 3: "Miércoles", 4: "Jueves", 5: "Viernes", 6: "Sábado" };
+      for (const d of weekDays) {
+        const cob = coberturaByDay[d];
+        if (!cob || cob.estado === "none") continue;
+        if (cob.estado !== "bad") continue;
+        const dow = dayjs(d, "YYYY-MM-DD").day();
+        const dayName = dayNames[dow] || formatLabel(d);
+        if (dow === 0) {
+          if (cob.residencial?.estado === "bad")
+            return { ok: false, msg: `${dayName}: Residencial con ${cob.residencial.pct}% de asistencia (mínimo ${cob.residencial.minPct}%). Ajusta los descansos antes de guardar.` };
+          if (cob.moto?.estado === "bad")
+            return { ok: false, msg: `${dayName}: Moto con ${cob.moto.pct}% de asistencia (mínimo ${cob.moto.minPct}%). Ajusta los descansos antes de guardar.` };
+        } else {
+          return { ok: false, msg: `${dayName} (${formatLabel(d)}): ${cob.pct}% de asistencia (mínimo requerido ${cob.minPct}%). Ajusta los descansos antes de guardar.` };
+        }
+      }
+    }
+
     return { ok: true, msg: "OK" };
   };
 
@@ -899,16 +909,8 @@ export default function AsistenciaProgramadaClient() {
     switch (String(v || "").toLowerCase()) {
       case "asistencia":
         return "bg-emerald-100 border-emerald-300 text-green-700 dark:bg-green-950 dark:border-green-500 dark:text-green-200 dark:ring-1 dark:ring-green-500/40";
-      case "falta":
-        return "bg-rose-100 border-rose-300 text-red-700 dark:bg-red-950 dark:border-red-500 dark:text-red-200 dark:ring-1 dark:ring-red-500/40";
-      case "suspendida":
-        return "bg-orange-100 border-orange-300 text-orange-800 dark:bg-orange-950 dark:border-orange-500 dark:text-orange-200 dark:ring-1 dark:ring-orange-500/40";
       case "descanso":
         return "bg-amber-100 border-amber-300 text-amber-800 dark:bg-amber-950 dark:border-amber-500 dark:text-amber-200 dark:ring-1 dark:ring-amber-500/40";
-      case "descanso medico":
-        return "bg-indigo-100 border-indigo-300 text-indigo-800 dark:bg-indigo-950 dark:border-indigo-500 dark:text-indigo-200 dark:ring-1 dark:ring-indigo-500/40";
-      case "vacaciones":
-        return "bg-sky-100 border-sky-300 text-sky-800 dark:bg-sky-950 dark:border-sky-500 dark:text-sky-200 dark:ring-1 dark:ring-sky-500/40";
       default:
         return "bg-slate-50 border-slate-200 text-slate-700 dark:bg-slate-900 dark:border-slate-500 dark:text-slate-200";
     }

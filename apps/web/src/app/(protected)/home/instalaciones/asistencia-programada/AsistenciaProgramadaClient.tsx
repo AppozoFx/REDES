@@ -936,6 +936,187 @@ export default function AsistenciaProgramadaClient() {
   // DOW → índice de columna en la plantilla (0-based): D=LU=3, E=MA=4, F=MI=5, G=JU=6, H=VI=7, I=SA=8, J=DO=9
   const DOW_TO_COL: Record<number, number> = { 0: 9, 1: 3, 2: 4, 3: 5, 4: 6, 5: 7, 6: 8 };
 
+  const exportarExcelDetalle = () => {
+    try {
+      if (rows.length === 0 || weekDays.length === 0) throw new Error("No hay datos para exportar.");
+
+      const dayShort: Record<number, string> = { 0: "Dom", 1: "Lun", 2: "Mar", 3: "Mié", 4: "Jue", 5: "Vie", 6: "Sáb" };
+      const dayFull: Record<number, string> = { 0: "Domingo", 1: "Lunes", 2: "Martes", 3: "Miércoles", 4: "Jueves", 5: "Viernes", 6: "Sábado" };
+      const semanaLabel = `${weekDays[0]} al ${weekDays[weekDays.length - 1]}`;
+
+      const wb = XLSX.utils.book_new();
+
+      // ── HOJA 1: Resumen por Día ─────────────────────────────────────────
+      // Vista ejecutiva: por cada día cuántas cuadrillas salen, % asistencia y estado de cobertura
+      const resumenData: (string | number)[][] = [
+        [`Asistencia Programada — Semana ${semanaLabel}`],
+        [],
+        ["Día", "Fecha", "Total Cuadrillas", "Salen (Asistencia)", "Descanso", "% Asistencia", "% Descanso", "Meta %", "Estado Cobertura", "% Residencial (Dom)", "% Moto (Dom)"],
+      ];
+      weekDays.forEach((d) => {
+        const dow = dayjs(d, "YYYY-MM-DD").day();
+        const cob = coberturaByDay[d];
+        const salen = rows.filter((r) =>
+          String(items?.[r.id]?.[d] || "asistencia").toLowerCase() === "asistencia"
+        ).length;
+        const descanso = rows.length - salen;
+        const pctAsistencia = rows.length > 0 ? Math.round((salen / rows.length) * 100) : 0;
+        const estadoLabel =
+          cob.estado === "ok" ? "Cumple" :
+          cob.estado === "warn" ? "Cerca del limite" :
+          cob.estado === "bad" ? "Bajo el minimo" : "-";
+        const feriado = feriados.includes(d);
+        resumenData.push([
+          `${dayFull[dow] || d}${feriado ? " (Feriado)" : ""}`,
+          d,
+          rows.length,
+          salen,
+          descanso,
+          pctAsistencia / 100,
+          (100 - pctAsistencia) / 100,
+          cob.minPct ? cob.minPct / 100 : "-",
+          estadoLabel,
+          dow === 0 && cob.residencial ? cob.residencial.pct / 100 : "",
+          dow === 0 && cob.moto ? cob.moto.pct / 100 : "",
+        ]);
+      });
+      const wsResumen = XLSX.utils.aoa_to_sheet(resumenData);
+      // Marcar columnas de porcentaje como formato %
+      const pctCols = [5, 6, 7, 9, 10];
+      for (let r = 3; r < resumenData.length; r++) {
+        pctCols.forEach((c) => {
+          const addr = XLSX.utils.encode_cell({ r, c });
+          if (wsResumen[addr] && typeof wsResumen[addr].v === "number") {
+            wsResumen[addr].t = "n";
+            wsResumen[addr].z = "0%";
+          }
+        });
+      }
+      XLSX.utils.book_append_sheet(wb, wsResumen, "Resumen por Dia");
+
+      // ── HOJA 2: Por Coordinador ─────────────────────────────────────────
+      // Cuántas cuadrillas de cada coordinador salen cada día
+      const coordData: (string | number)[][] = [
+        ["Coordinador", "Dia", "Fecha", "Sus Cuadrillas", "Salen", "Descanso", "% Asistencia"],
+      ];
+      coordinadoresUnicos.forEach(({ uid, nombre }) => {
+        const suyas = rows.filter((r) => r.coordinadorUid === uid);
+        weekDays.forEach((d) => {
+          const dow = dayjs(d, "YYYY-MM-DD").day();
+          const salen = suyas.filter((r) =>
+            String(items?.[r.id]?.[d] || "asistencia").toLowerCase() === "asistencia"
+          ).length;
+          const descanso = suyas.length - salen;
+          const pct = suyas.length > 0 ? salen / suyas.length : 0;
+          coordData.push([nombre, dayFull[dow] || d, d, suyas.length, salen, descanso, pct]);
+        });
+      });
+      const wsCoord = XLSX.utils.aoa_to_sheet(coordData);
+      for (let r = 1; r < coordData.length; r++) {
+        const addr = XLSX.utils.encode_cell({ r, c: 6 });
+        if (wsCoord[addr] && typeof wsCoord[addr].v === "number") {
+          wsCoord[addr].t = "n";
+          wsCoord[addr].z = "0%";
+        }
+      }
+      XLSX.utils.book_append_sheet(wb, wsCoord, "Por Coordinador");
+
+      // ── HOJA 3: Grilla Cuadrillas ───────────────────────────────────────
+      // Cuadrilla como filas, días como columnas (A = Asistencia, D = Descanso)
+      const grillaHeader: (string | number)[] = ["Cuadrilla", "N°", "Categoria", "Coordinador"];
+      weekDays.forEach((d) => {
+        const dow = dayjs(d, "YYYY-MM-DD").day();
+        grillaHeader.push(`${dayShort[dow] || d} ${dayjs(d, "YYYY-MM-DD").format("DD/MM")}`);
+      });
+      grillaHeader.push("Dias Asistencia", "Dias Descanso");
+      const grillaData: (string | number)[][] = [grillaHeader];
+
+      [...rows].sort((a, b) => {
+        const gDiff = cuadrillaGroupOrder(a) - cuadrillaGroupOrder(b);
+        if (gDiff !== 0) return gDiff;
+        return (a.numeroCuadrilla || 0) - (b.numeroCuadrilla || 0);
+      }).forEach((r) => {
+        const num = extractNumCuadrilla(r);
+        const cat = categoriaCuadrilla(r);
+        const fila: (string | number)[] = [
+          r.nombre,
+          num ?? "",
+          cat === "RESIDENCIAL" ? "Residencial" : cat === "MOTO" ? "Moto" : "Otro",
+          r.coordinadorNombre || "-",
+        ];
+        let totalA = 0;
+        let totalD = 0;
+        weekDays.forEach((d) => {
+          const estado = String(items?.[r.id]?.[d] || "asistencia").toLowerCase();
+          fila.push(estado === "asistencia" ? "A" : "D");
+          if (estado === "asistencia") totalA++; else totalD++;
+        });
+        fila.push(totalA, totalD);
+        grillaData.push(fila);
+      });
+
+      // Fila de totales por día al pie
+      const totalFila: (string | number)[] = ["TOTAL SALEN", "", "", ""];
+      weekDays.forEach((d) => {
+        totalFila.push(
+          rows.filter((r) => String(items?.[r.id]?.[d] || "asistencia").toLowerCase() === "asistencia").length
+        );
+      });
+      totalFila.push("", "");
+      const pctFila: (string | number)[] = ["% ASISTENCIA", "", "", ""];
+      weekDays.forEach((d) => {
+        const salen = rows.filter((r) => String(items?.[r.id]?.[d] || "asistencia").toLowerCase() === "asistencia").length;
+        pctFila.push(rows.length > 0 ? salen / rows.length : 0);
+      });
+      pctFila.push("", "");
+      grillaData.push([]);
+      grillaData.push(totalFila);
+      grillaData.push(pctFila);
+
+      const wsGrilla = XLSX.utils.aoa_to_sheet(grillaData);
+      // Formato % en la fila de porcentajes
+      const pctRowIdx = grillaData.length - 1;
+      weekDays.forEach((_, ci) => {
+        const addr = XLSX.utils.encode_cell({ r: pctRowIdx, c: 4 + ci });
+        if (wsGrilla[addr] && typeof wsGrilla[addr].v === "number") {
+          wsGrilla[addr].t = "n";
+          wsGrilla[addr].z = "0%";
+        }
+      });
+      XLSX.utils.book_append_sheet(wb, wsGrilla, "Grilla Cuadrillas");
+
+      // ── HOJA 4: Datos planos ────────────────────────────────────────────
+      // Tabla plana para que Gerencia pueda crear su propia tabla dinámica
+      const datosData: (string | number)[][] = [
+        ["Semana", "Fecha", "Dia", "Coordinador", "Cuadrilla", "N° Cuadrilla", "Categoria", "Estado", "Asiste (1/0)"],
+      ];
+      rows.forEach((r) => {
+        const num = extractNumCuadrilla(r);
+        const cat = categoriaCuadrilla(r);
+        weekDays.forEach((d) => {
+          const dow = dayjs(d, "YYYY-MM-DD").day();
+          const estado = String(items?.[r.id]?.[d] || "asistencia").toLowerCase();
+          datosData.push([
+            semanaLabel,
+            d,
+            dayFull[dow] || d,
+            r.coordinadorNombre || "-",
+            r.nombre,
+            num ?? "",
+            cat === "RESIDENCIAL" ? "Residencial" : cat === "MOTO" ? "Moto" : "Otro",
+            estado === "asistencia" ? "Asistencia" : "Descanso",
+            estado === "asistencia" ? 1 : 0,
+          ]);
+        });
+      });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(datosData), "Datos");
+
+      XLSX.writeFile(wb, `asistencia_detalle_${startYmd}_a_${endYmd}.xlsx`);
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo exportar el detalle");
+    }
+  };
+
   const exportarExcel = async () => {
     try {
       // 1. Requiere plantilla subida por el usuario
@@ -1811,6 +1992,14 @@ export default function AsistenciaProgramadaClient() {
                   className="rounded-lg bg-[#254b87] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#1c3a68] disabled:opacity-50"
                 >
                   Descargar Excel
+                </button>
+                <div className="h-4 w-px self-center bg-slate-200 dark:bg-slate-700" />
+                <button
+                  onClick={exportarExcelDetalle}
+                  disabled={rows.length === 0}
+                  className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70"
+                >
+                  Detalle semanal
                 </button>
               </div>
             </>

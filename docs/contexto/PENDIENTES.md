@@ -196,6 +196,13 @@ Siguiente unidad recomendada: **Dominio critico: transferencias/instalaciones**.
 - Revisar si backend debe devolver o validar metadata de version minima en bootstrap para reforzar force update; deep dive Android 2026-06-18 confirma que hoy depende solo de Firestore cliente `app_config/android`, cuya lectura ya esta permitida en fuente.
 - Alinear permisos efectivos con UI mobile si se espera control fino por permisos.
 
+## Pendientes Detectados En Deep Dive Cierre De Cuadrillas Winbo 2026-07-05
+
+- Confirmar si `WINBO_USERNAME` (cuenta usada por `createWinboSession()` para el cierre) es la misma cuenta manual del usuario o una cuenta de sistema separada, y si tiene el mismo alcance de sectores operativos/cuadrillas visibles.
+- Verificar manualmente en WinBo si la cuadrilla `K 37` existe; la grilla completa revisada solo llega hasta K28, por lo que puede no ser un bug de matching sino una cuadrilla inexistente.
+- Ver detalle completo de hipotesis descartadas (caracter `&`, cuadrilla inactiva) y pendientes en `web/winbo-cierre-cuadrilla.md`.
+- Falta implementar `POST /api/cuadrillas/winbo/cierres/verificar` (verificacion de aprobacion del proveedor), registrar permiso RBAC `CUADRILLAS_CIERRE_WINBO` en Firestore, agregar item en `buildHomeNav`, cierre por lotes y manejo de notificacion de rechazo.
+
 ## No Revisado En Profundidad
 
 - Implementacion interna de API routes.

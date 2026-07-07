@@ -25,7 +25,7 @@ export type WinboDownloadResult = {
 
 type JsonPrimitive = string | number | boolean | null;
 
-class CookieJar {
+export class CookieJar {
   private store = new Map<string, string>();
 
   addFromHeaders(headers: Headers) {
@@ -245,7 +245,13 @@ async function downloadExportedFile(jar: CookieJar, fileName: string, timeoutMs:
   throw new Error(lastError || "WINBO_DOWNLOAD_TIMEOUT");
 }
 
-export async function exportOrdenesXlsx(input: WinboManualRequest): Promise<WinboDownloadResult> {
+export type WinboSession = {
+  jar: CookieJar;
+  timeoutMs: number;
+  post: (path: string, body: Record<string, JsonPrimitive>) => Promise<any>;
+};
+
+export async function createWinboSession(): Promise<WinboSession> {
   const username = getRequiredEnv("WINBO_USERNAME");
   const password = getRequiredEnv("WINBO_PASSWORD");
   const timeoutMs = getTimeoutMs();
@@ -276,14 +282,22 @@ export async function exportOrdenesXlsx(input: WinboManualRequest): Promise<Winb
     throw new Error("WINBO_TERMS_FAILED");
   }
 
+  return {
+    jar,
+    timeoutMs,
+    post: (path, body) => postJson(jar, path, body, timeoutMs),
+  };
+}
+
+export async function exportOrdenesXlsx(input: WinboManualRequest): Promise<WinboDownloadResult> {
+  const { jar, timeoutMs, post } = await createWinboSession();
+
   let exportPayload: any;
   const requestedName = String(input.nombreArchivo || "").trim() || buildDefaultExportFileName(input.fechaVisiDesde);
   try {
-    exportPayload = await postJson(
-      jar,
+    exportPayload = await post(
       "/Paginas/OperadoresBO/misOrdenes.aspx/ExportarTabla",
-      buildExportPayload({ ...input, nombreArchivo: requestedName }),
-      timeoutMs
+      buildExportPayload({ ...input, nombreArchivo: requestedName })
     );
   } catch {
     throw new Error("WINBO_EXPORT_FAILED");

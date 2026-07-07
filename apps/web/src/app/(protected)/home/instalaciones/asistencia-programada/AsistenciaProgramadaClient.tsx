@@ -31,6 +31,52 @@ const COBERTURA_REGLAS: Record<number, {
   6: { minAsistenciaPct: 97 },
 };
 
+// Cuadrillas extra que un coordinador puede acumular sobre su cuota justa de
+// descanso antes de bloquear el guardado. Debe coincidir con TOLERANCIA_CUPO
+// en domain/asistenciaProgramada/cobertura.ts (fuente de verdad backend).
+const TOLERANCIA_CUPO = 1;
+
+type CuotaInfo = { misDescansos: number; maxPermitido: number; estado: "ok" | "bad" | "none" };
+
+function cupoYCuotaCoordinador(
+  ymd: string,
+  coordinadorUid: string,
+  rows: Row[],
+  items: Record<string, Record<string, string>>,
+): CuotaInfo {
+  if (!coordinadorUid) return { misDescansos: 0, maxPermitido: 0, estado: "none" };
+  const dow = dayjs(ymd, "YYYY-MM-DD").day();
+  const regla = COBERTURA_REGLAS[dow];
+  if (!regla) return { misDescansos: 0, maxPermitido: 0, estado: "none" };
+
+  const descansando = (r: Row) => String(items?.[r.id]?.[ymd] || "asistencia").toLowerCase() !== "asistencia";
+
+  const evaluarPool = (pool: Row[], minPct: number): CuotaInfo => {
+    const total = pool.length;
+    const mios = pool.filter((r) => r.coordinadorUid === coordinadorUid);
+    if (total === 0 || mios.length === 0) return { misDescansos: 0, maxPermitido: 0, estado: "none" };
+    const cupoGlobalDescanso = total - Math.ceil((total * minPct) / 100);
+    const cuotaJusta = cupoGlobalDescanso * (mios.length / total);
+    const maxPermitido = Math.ceil(cuotaJusta) + TOLERANCIA_CUPO;
+    const misDescansos = mios.filter(descansando).length;
+    return { misDescansos, maxPermitido, estado: misDescansos > maxPermitido ? "bad" : "ok" };
+  };
+
+  if (regla.byCategoria && dow === 0) {
+    const residencial = rows.filter((r) => categoriaCuadrilla(r) === "RESIDENCIAL");
+    const moto = rows.filter((r) => categoriaCuadrilla(r) === "MOTO");
+    const resResult = evaluarPool(residencial, regla.byCategoria.RESIDENCIAL ?? 0);
+    const motoResult = evaluarPool(moto, regla.byCategoria.MOTO ?? 0);
+    return {
+      misDescansos: resResult.misDescansos + motoResult.misDescansos,
+      maxPermitido: resResult.maxPermitido + motoResult.maxPermitido,
+      estado: resResult.estado === "bad" || motoResult.estado === "bad" ? "bad" : resResult.estado === "none" && motoResult.estado === "none" ? "none" : "ok",
+    };
+  }
+
+  return evaluarPool(rows, regla.minAsistenciaPct);
+}
+
 type Row = {
   id: string;
   nombre: string;
@@ -85,6 +131,7 @@ type ApiResponse = {
   items: Record<string, Record<string, string>>;
   feriados?: string[];
   openUntil?: string;
+  edicionCoordinadores?: "ABIERTA" | "PAUSADA";
   cuadrillas: Row[];
   coordinadoresEstado?: CoordinadorEstado[];
   myCoordinatorStatus?: "SIN_INICIAR" | "BORRADOR" | "CONFIRMADO";
@@ -180,9 +227,23 @@ function extractNumCuadrilla(row: Row): number | null {
   return match ? parseInt(match[1], 10) : null;
 }
 
+// Descansos acumulados de semanas previas del mismo mes calendario, usado
+// por autoGenerar() para rotar equitativamente en vez de sortear cada
+// semana de forma independiente (evita que una cuadrilla caiga varios
+// domingos seguidos por mala suerte).
+type HistorialMes = Record<string, { domingosDescansados: number; totalDescansos: number }>;
+
+// Mezcla aleatoriamente (para desempatar) y luego ordena ascendente por la
+// clave dada — prioriza a quien menos ha descansado, sin perder aleatoriedad
+// entre cuadrillas empatadas.
+function ordenarPorEquidad<T>(lista: T[], claveFn: (item: T) => number): T[] {
+  return shuffleArray(lista).sort((a, b) => claveFn(a) - claveFn(b));
+}
+
 function autoGenerar(
   rows: Row[],
   weekDays: string[],
+  historial: HistorialMes = {},
 ): Record<string, Record<string, string>> {
   const result: Record<string, Record<string, string>> = {};
   rows.forEach((r) => {
@@ -230,21 +291,34 @@ function autoGenerar(
   });
 
   // PASO 1A — Domingo con reglas por categoría
+  // Prioriza (con desempate aleatorio) a quien menos domingos ha descansado
+  // en el mes, para rotar el "domingo duro" en vez de sortearlo cada semana
+  // de forma independiente.
   const domingo = weekDays.find((d) => dayjs(d, "YYYY-MM-DD").day() === 0);
   if (domingo) {
     rows.filter((r) => categoriaCuadrilla(r) === "OTRO").forEach((r) => asignar(r, domingo));
-    const residenciales = shuffleArray(rows.filter((r) => categoriaCuadrilla(r) === "RESIDENCIAL"));
+    const residenciales = ordenarPorEquidad(
+      rows.filter((r) => categoriaCuadrilla(r) === "RESIDENCIAL"),
+      (r) => historial[r.id]?.domingosDescansados ?? 0,
+    );
     residenciales.slice(0, Math.floor(residenciales.length * 0.40)).forEach((r) => asignar(r, domingo));
-    const motos = shuffleArray(rows.filter((r) => categoriaCuadrilla(r) === "MOTO"));
+    const motos = ordenarPorEquidad(
+      rows.filter((r) => categoriaCuadrilla(r) === "MOTO"),
+      (r) => historial[r.id]?.domingosDescansados ?? 0,
+    );
     motos.slice(0, Math.floor(motos.length * 0.60)).forEach((r) => asignar(r, domingo));
   }
 
   // PASO 1B — Primer descanso para cuadrillas que aún no tienen ninguno
-  // Solo se consideran cuadrillas con 0 descansos, garantizando equidad antes del 2do descanso
+  // Solo se consideran cuadrillas con 0 descansos, garantizando equidad antes del 2do descanso.
+  // Entre las candidatas, prioriza a quien acumula menos descansos en el mes.
   diasOrdenados.forEach((d) => {
     const cupoDisp = cupoDescanso[d] - usadoDescanso[d];
     if (cupoDisp <= 0) return;
-    const sinDescanso = shuffleArray(rows.filter((r) => descansosPorRow[r.id] === 0));
+    const sinDescanso = ordenarPorEquidad(
+      rows.filter((r) => descansosPorRow[r.id] === 0),
+      (r) => historial[r.id]?.totalDescansos ?? 0,
+    );
     sinDescanso.slice(0, cupoDisp).forEach((r) => asignar(r, d));
   });
 
@@ -261,9 +335,9 @@ function autoGenerar(
 
   // PASO 2 — Distribuir 2do descanso equitativamente
   // En este punto todas las cuadrillas tienen exactamente 1 descanso.
-  // Se shufflea la lista completa para que el 2do descanso no favorezca
-  // siempre a las mismas cuadrillas.
-  shuffleArray(rows).forEach((r) => {
+  // Se procesa primero a quien acumula menos descansos totales en el mes
+  // (historial + lo ya asignado esta semana), con desempate aleatorio.
+  ordenarPorEquidad(rows, (r) => (historial[r.id]?.totalDescansos ?? 0) + descansosPorRow[r.id]).forEach((r) => {
     if (descansosPorRow[r.id] >= 2) return;
     // Elegir aleatoriamente entre días disponibles con cupo y sin descanso previo
     const candidatos = shuffleArray(
@@ -423,6 +497,7 @@ export default function AsistenciaProgramadaClient() {
   const [feriadoDay, setFeriadoDay] = useState("");
   const [feriados, setFeriados] = useState<string[]>([]);
   const [openUntil, setOpenUntil] = useState("");
+  const [edicionCoordinadores, setEdicionCoordinadores] = useState<"ABIERTA" | "PAUSADA">("ABIERTA");
   const [canAdmin, setCanAdmin] = useState(false);
   const [canConfirm, setCanConfirm] = useState(false);
   const [myCoordinatorStatus, setMyCoordinatorStatus] = useState<"SIN_INICIAR" | "BORRADOR" | "CONFIRMADO">("SIN_INICIAR");
@@ -445,6 +520,9 @@ export default function AsistenciaProgramadaClient() {
   const [tableAreaWidth, setTableAreaWidth] = useState(0);
 
   const weekDays = useMemo(() => toWeekDays(startYmd), [startYmd]);
+  // Coordinadores no pueden editar días que ya pasaron (solo Gerencia/Jefatura/Admin corrigen historial)
+  const todayYmd = dayjs().format("YYYY-MM-DD");
+  const isPastDay = (d: string) => d < todayYmd;
 
   const cargar = async (requestedStartYmd?: string) => {
     setCargando(true);
@@ -475,6 +553,7 @@ export default function AsistenciaProgramadaClient() {
       setItems(merged);
       setFeriados(Array.isArray(data.feriados) ? data.feriados : []);
       setOpenUntil(String(data.openUntil || ""));
+      setEdicionCoordinadores(data.edicionCoordinadores === "PAUSADA" ? "PAUSADA" : "ABIERTA");
       setCanEdit(!!data.canEdit);
       setCanAdmin(!!data.canAdmin);
       setCanConfirm(!!data.canConfirm);
@@ -594,6 +673,20 @@ export default function AsistenciaProgramadaClient() {
       }
     }
 
+    // Coordinadores no pueden acaparar el cupo de descanso del día por encima de su cuota justa
+    if (!canAdmin && myCoordinatorUid) {
+      const dayNames: Record<number, string> = { 0: "Domingo", 1: "Lunes", 2: "Martes", 3: "Miércoles", 4: "Jueves", 5: "Viernes", 6: "Sábado" };
+      for (const d of weekDays) {
+        const cuota = cuotaByCoordinadorDay[d];
+        if (!cuota || cuota.estado !== "bad") continue;
+        const dayName = dayNames[dayjs(d, "YYYY-MM-DD").day()] || formatLabel(d);
+        return {
+          ok: false,
+          msg: `${dayName}: tienes ${cuota.misDescansos} cuadrilla(s) en descanso (cuota equitativa: ${cuota.maxPermitido}, según tu proporción de cuadrillas). Ajusta antes de guardar.`,
+        };
+      }
+    }
+
     return { ok: true, msg: "OK" };
   };
 
@@ -669,14 +762,50 @@ export default function AsistenciaProgramadaClient() {
     }
   };
 
+  // Reconstruye cuántos descansos (y domingos de descanso) acumula cada
+  // cuadrilla en las semanas previas ya guardadas del mismo mes calendario,
+  // para que autoGenerar() rote equitativamente en vez de sortear cada
+  // semana de forma independiente.
+  const cargarHistorialMes = async (targetStartYmd: string): Promise<HistorialMes> => {
+    const historial: HistorialMes = {};
+    const mesObjetivo = dayjs(targetStartYmd).month();
+    let cursor = dayjs(targetStartYmd).subtract(7, "day");
+    for (let i = 0; i < 5 && cursor.month() === mesObjetivo; i++) {
+      const cursorYmd = cursor.format("YYYY-MM-DD");
+      try {
+        const res = await fetch(`/api/instalaciones/asistencia-programada?start=${encodeURIComponent(cursorYmd)}`, { cache: "no-store" });
+        const data: ApiResponse = await res.json();
+        if (res.ok && data?.ok) {
+          const semanaDias = toWeekDays(cursorYmd);
+          const semanaDomingo = semanaDias.find((d) => dayjs(d, "YYYY-MM-DD").day() === 0);
+          Object.entries(data.items || {}).forEach(([cid, dias]) => {
+            const entry = historial[cid] || { domingosDescansados: 0, totalDescansos: 0 };
+            semanaDias.forEach((d) => {
+              if (String(dias?.[d] || "asistencia").toLowerCase() === "descanso") {
+                entry.totalDescansos++;
+                if (d === semanaDomingo) entry.domingosDescansados++;
+              }
+            });
+            historial[cid] = entry;
+          });
+        }
+      } catch {
+        // Semana no disponible o error de red: se ignora, el rotador sigue con lo que tenga.
+      }
+      cursor = cursor.subtract(7, "day");
+    }
+    return historial;
+  };
+
   const handleAutoGenerar = () => {
     if (rows.length === 0) return;
     toast("Generar programacion automatica?", {
-      description: "Se sobreescribira la grilla actual con una distribucion aleatoria que respeta los porcentajes requeridos.",
+      description: "Se sobreescribira la grilla actual con una distribucion que respeta los porcentajes requeridos y rota equitativamente los descansos del mes.",
       action: {
         label: "Generar",
-        onClick: () => {
-          const generated = autoGenerar(rows, weekDays);
+        onClick: async () => {
+          const historial = await cargarHistorialMes(startYmd);
+          const generated = autoGenerar(rows, weekDays, historial);
           setItems(generated);
           toast.success("Programacion generada. Revisa y guarda cuando este lista.");
         },
@@ -724,6 +853,53 @@ export default function AsistenciaProgramadaClient() {
       action: {
         label: "Confirmar",
         onClick: () => cerrarSemana("ABIERTO"),
+      },
+      cancel: {
+        label: "Cancelar",
+        onClick: () => {},
+      },
+    });
+  };
+
+  // Pausa/reanuda solo la edición de coordinadores, sin cerrar la semana —
+  // para que Gerencia pueda revisar sin cerrar toda la semana (que bloquearía
+  // también otras herramientas de admin) ni esperar a que nadie edite.
+  const pausarEdicionCoordinadores = async (next: "ABIERTA" | "PAUSADA") => {
+    try {
+      const res = await fetch("/api/instalaciones/asistencia-programada/edicion-coordinadores", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startYmd, edicionCoordinadores: next }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "ERROR");
+      toast.success(next === "PAUSADA" ? "Edición de coordinadores pausada" : "Edición de coordinadores reanudada");
+      await cargar(startYmd);
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo actualizar la edición de coordinadores");
+    }
+  };
+
+  const confirmarPausarEdicion = () => {
+    toast("Pausar edición de coordinadores?", {
+      description: "La semana seguirá abierta, pero los coordinadores no podrán editar ni confirmar hasta que reanudes. Útil para revisar antes de que sigan haciendo cambios.",
+      action: {
+        label: "Pausar",
+        onClick: () => pausarEdicionCoordinadores("PAUSADA"),
+      },
+      cancel: {
+        label: "Cancelar",
+        onClick: () => {},
+      },
+    });
+  };
+
+  const confirmarReanudarEdicion = () => {
+    toast("Reanudar edición de coordinadores?", {
+      description: "Los coordinadores podrán volver a editar y confirmar su programación.",
+      action: {
+        label: "Reanudar",
+        onClick: () => pausarEdicionCoordinadores("ABIERTA"),
       },
       cancel: {
         label: "Cancelar",
@@ -800,6 +976,16 @@ export default function AsistenciaProgramadaClient() {
     });
     return dias;
   }, [weekDays, coberturaByDay]);
+
+  // Cuota equitativa de descanso del coordinador logueado, por día de la semana
+  const cuotaByCoordinadorDay = useMemo(() => {
+    const map: Record<string, CuotaInfo> = {};
+    if (!myCoordinatorUid) return map;
+    weekDays.forEach((d) => {
+      map[d] = cupoYCuotaCoordinador(d, myCoordinatorUid, rows, items);
+    });
+    return map;
+  }, [weekDays, rows, items, myCoordinatorUid]);
 
   const pendingByCell = useMemo(() => {
     const map = new Map<string, Solicitud>();
@@ -1434,6 +1620,11 @@ export default function AsistenciaProgramadaClient() {
                     ⚠ Semana cerrada. Comunícate con Gerencia para realizar cambios.
                   </div>
                 )}
+                {estado !== "CERRADO" && edicionCoordinadores === "PAUSADA" && myCoordinatorStatus !== "CONFIRMADO" && (
+                  <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+                    ⏸ Gerencia está revisando esta semana. La edición está pausada temporalmente.
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex shrink-0 flex-wrap gap-2 sm:flex-col sm:items-stretch">
@@ -1452,6 +1643,37 @@ export default function AsistenciaProgramadaClient() {
                 Confirmar semana
               </button>
             </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── EQUIDAD DE TUS CUADRILLAS (coordinador) ─────────────────────── */}
+      {!canAdmin && myCoordinatorUid && weekDays.length > 0 && (
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Equidad de tus cuadrillas</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              Cuánto de tus cuadrillas puedes poner en descanso cada día sin cargar más peso del que te corresponde frente a otros coordinadores.
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2 p-4 sm:grid-cols-4 md:grid-cols-7">
+            {weekDays.map((d) => {
+              const cuota = cuotaByCoordinadorDay[d];
+              if (!cuota || cuota.estado === "none") return null;
+              const tone =
+                cuota.estado === "bad"
+                  ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300";
+              return (
+                <div key={d} className={cls("rounded-xl border p-3 text-center", tone)}>
+                  <div className="text-[11px] font-semibold uppercase tracking-wide">{formatLabel(d)}</div>
+                  <div className="mt-1 text-lg font-bold tabular-nums">
+                    {cuota.misDescansos}/{cuota.maxPermitido}
+                  </div>
+                  <div className="text-[10px] opacity-80">cuota equitativa</div>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
@@ -1653,6 +1875,19 @@ export default function AsistenciaProgramadaClient() {
                 {saving ? "Guardando..." : "Guardar cambios"}
               </button>
               <button
+                onClick={() => (edicionCoordinadores === "PAUSADA" ? confirmarReanudarEdicion() : confirmarPausarEdicion())}
+                disabled={estado === "CERRADO"}
+                title="Pausa solo a los coordinadores para revisar, sin cerrar la semana completa"
+                className={cls(
+                  "rounded-xl px-4 py-2 text-sm font-semibold shadow-sm transition disabled:opacity-50",
+                  edicionCoordinadores === "PAUSADA"
+                    ? "bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-200 dark:hover:bg-amber-900/60"
+                    : "border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                )}
+              >
+                {edicionCoordinadores === "PAUSADA" ? "Reanudar edición coordinadores" : "Pausar edición coordinadores"}
+              </button>
+              <button
                 onClick={() => (estado === "CERRADO" ? confirmarAbrir() : confirmarCerrar())}
                 className={cls(
                   "rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-sm transition",
@@ -1792,6 +2027,23 @@ export default function AsistenciaProgramadaClient() {
                         {asLocalDateTime(coord.confirmedAt)}
                       </div>
                     </div>
+                    {(() => {
+                      const dias = weekDays
+                        .map((d) => cupoYCuotaCoordinador(d, coord.coordinadorUid, rows, items))
+                        .filter((c) => c.estado !== "none");
+                      if (dias.length === 0) return null;
+                      const diasExcedidos = dias.filter((c) => c.estado === "bad").length;
+                      return (
+                        <div className={cls(
+                          "mt-2 inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-semibold",
+                          diasExcedidos > 0
+                            ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300"
+                            : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300"
+                        )}>
+                          Equidad: {dias.length - diasExcedidos}/{dias.length} días dentro de cuota
+                        </div>
+                      );
+                    })()}
                     <div className="mt-2.5 flex items-center gap-2">
                       <button
                         type="button"
@@ -2140,6 +2392,7 @@ export default function AsistenciaProgramadaClient() {
                         const isMenuOpen = openCellMenu === cellMenuId;
                         const sunday = isSunday(d);
                         const holiday = feriados.includes(d);
+                        const cellLocked = rowLocked || (!canAdmin && isPastDay(d));
                         return (
                           <td
                             key={`${r.id}_${d}`}
@@ -2154,19 +2407,20 @@ export default function AsistenciaProgramadaClient() {
                               <div className="relative" data-asistencia-cell-menu="true">
                                 <button
                                   type="button"
-                                  disabled={rowLocked}
+                                  disabled={cellLocked}
+                                  title={!rowLocked && cellLocked ? "No se puede editar un día que ya pasó" : undefined}
                                   onClick={() => setOpenCellMenu((prev) => (prev === cellMenuId ? null : cellMenuId))}
                                   className={cls(
                                     "mx-auto flex w-full items-center justify-between gap-1 rounded-lg border px-2 py-1.5 text-left text-[11px] font-semibold shadow-sm transition",
                                     dc > 2 ? "ring-1 ring-rose-300 dark:ring-rose-700" : "",
                                     estadoColor(currentValue),
-                                    rowLocked ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:opacity-90"
+                                    cellLocked ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:opacity-90"
                                   )}
                                 >
                                   <span className="truncate">{ESTADO_META[currentValue as keyof typeof ESTADO_META]?.label || currentValue}</span>
-                                  {!rowLocked && <span className="shrink-0 text-[9px] opacity-50">{isMenuOpen ? "▲" : "▼"}</span>}
+                                  {!cellLocked && <span className="shrink-0 text-[9px] opacity-50">{isMenuOpen ? "▲" : "▼"}</span>}
                                 </button>
-                                {isMenuOpen && !rowLocked && (
+                                {isMenuOpen && !cellLocked && (
                                   <div className="absolute left-0 top-full z-30 mt-1 min-w-[160px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-950">
                                     <div className="overflow-auto p-1">
                                       {(["asistencia", "descanso"] as const).map((e) => (

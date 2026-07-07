@@ -38,7 +38,14 @@ export async function POST(req: Request) {
     const current = snap.exists ? (snap.data() as any) : {};
     const estado = String(current?.estado || "ABIERTO");
     const openUntil = String(current?.openUntil || "").trim();
+    const edicionCoordinadores = String(current?.edicionCoordinadores || "ABIERTA").toUpperCase() === "PAUSADA" ? "PAUSADA" : "ABIERTA";
     if (estado === "CERRADO") return NextResponse.json({ ok: false, error: "LOCKED" }, { status: 403 });
+    if (edicionCoordinadores === "PAUSADA") {
+      return NextResponse.json(
+        { ok: false, error: "Gerencia está revisando esta semana. No puedes confirmar mientras la edición esté pausada." },
+        { status: 403 },
+      );
+    }
     if (openUntil && new Date().getTime() > new Date(openUntil).getTime()) {
       return NextResponse.json({ ok: false, error: "WINDOW_CLOSED" }, { status: 403 });
     }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { addGlobalNotification } from "@/domain/notificaciones/service";
 import { getServerSession } from "@/core/auth/session";
+import { coberturaDelDia, cupoYCuotaCoordinador, limaTodayYmd } from "@/domain/asistenciaProgramada/cobertura";
 
 export const runtime = "nodejs";
 
@@ -21,19 +22,6 @@ function weekEnd(startYmd: string) {
   const start = new Date(`${startYmd}T00:00:00`);
   const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
   return end.toISOString().slice(0, 10);
-}
-
-function limaTodayYmd() {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Lima",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const year = parts.find((p) => p.type === "year")?.value || "0000";
-  const month = parts.find((p) => p.type === "month")?.value || "00";
-  const day = parts.find((p) => p.type === "day")?.value || "00";
-  return `${year}-${month}-${day}`;
 }
 
 function nextThursdayYmd(baseYmd: string) {
@@ -108,70 +96,6 @@ function cuadrillaGroupOrder(input: { categoria?: string; vehiculo?: string; nom
   return 2;
 }
 
-// DOW: 0=Dom 1=Lun … 6=Sáb
-const COBERTURA_REGLAS: Record<number, { minAsistenciaPct: number; byCategoria?: { RESIDENCIAL?: number; MOTO?: number } }> = {
-  0: { minAsistenciaPct: 0, byCategoria: { RESIDENCIAL: 60, MOTO: 40 } },
-  1: { minAsistenciaPct: 70 },
-  2: { minAsistenciaPct: 85 },
-  3: { minAsistenciaPct: 85 },
-  4: { minAsistenciaPct: 85 },
-  5: { minAsistenciaPct: 85 },
-  6: { minAsistenciaPct: 97 },
-};
-
-function categoriaCuadrillaBS(c: { categoria?: string; vehiculo?: string; nombre?: string }) {
-  const cat = String(c.categoria || "").toUpperCase();
-  const veh = String(c.vehiculo || "").toUpperCase();
-  const nom = String(c.nombre || "").toUpperCase();
-  if (cat === "RESIDENCIAL" || nom.includes("RESIDENCIAL")) return "RESIDENCIAL";
-  if (cat === "CONDOMINIO" || veh === "MOTO" || nom.includes("MOTO")) return "MOTO";
-  return "OTRO";
-}
-
-type CoberturaResultBE = { estado: "ok" | "warn" | "bad" | "none"; errorMsg?: string };
-
-function coberturaDelDiaBE(
-  ymd: string,
-  cuadrillas: Array<{ id: string; categoria?: string; vehiculo?: string; nombre?: string }>,
-  items: Record<string, Record<string, string>>,
-): CoberturaResultBE {
-  if (cuadrillas.length === 0) return { estado: "none" };
-  const dow = new Date(`${ymd}T00:00:00`).getDay();
-  const regla = COBERTURA_REGLAS[dow];
-  if (!regla) return { estado: "none" };
-  const dayNames = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
-  const dayName = dayNames[dow] || ymd;
-
-  const asistencia = (c: { id: string }) =>
-    String(items?.[c.id]?.[ymd] || "asistencia").toLowerCase() === "asistencia";
-
-  if (regla.byCategoria && dow === 0) {
-    const residencial = cuadrillas.filter((c) => categoriaCuadrillaBS(c) === "RESIDENCIAL");
-    const moto = cuadrillas.filter((c) => categoriaCuadrillaBS(c) === "MOTO");
-    const resMin = regla.byCategoria.RESIDENCIAL ?? 0;
-    const motoMin = regla.byCategoria.MOTO ?? 0;
-
-    if (residencial.length > 0) {
-      const resPct = Math.round((residencial.filter(asistencia).length / residencial.length) * 100);
-      if (resPct < resMin)
-        return { estado: "bad", errorMsg: `${dayName}: Residencial con ${resPct}% de asistencia (mínimo ${resMin}%). Ajusta los descansos antes de guardar.` };
-    }
-    if (moto.length > 0) {
-      const motoPct = Math.round((moto.filter(asistencia).length / moto.length) * 100);
-      if (motoPct < motoMin)
-        return { estado: "bad", errorMsg: `${dayName}: Moto con ${motoPct}% de asistencia (mínimo ${motoMin}%). Ajusta los descansos antes de guardar.` };
-    }
-    return { estado: "ok" };
-  }
-
-  const count = cuadrillas.filter(asistencia).length;
-  const pct = Math.round((count / cuadrillas.length) * 100);
-  const minPct = regla.minAsistenciaPct;
-  if (pct < minPct)
-    return { estado: "bad", errorMsg: `${dayName} (${ymd}): ${pct}% de asistencia (mínimo requerido ${minPct}%). Ajusta los descansos antes de guardar.` };
-  return { estado: "ok" };
-}
-
 function normalizeCoordinatorState(raw: any) {
   const status = String(raw?.status || "SIN_INICIAR").toUpperCase();
   if (status === "CONFIRMADO") return "CONFIRMADO";
@@ -201,6 +125,10 @@ export async function GET(req: Request) {
     const data = snap.exists ? (snap.data() as any) : {};
     const estado = String(data?.estado || "ABIERTO");
     const openUntil = String(data?.openUntil || "").trim();
+    // Pausa de edición de coordinadores, independiente de `estado`: permite a
+    // Gerencia revisar la semana (que sigue ABIERTA para admin) sin que los
+    // coordinadores sigan modificándola.
+    const edicionCoordinadores = String(data?.edicionCoordinadores || "ABIERTA").toUpperCase() === "PAUSADA" ? "PAUSADA" : "ABIERTA";
     const coordinadoresMeta = (data?.coordinadores || {}) as Record<string, any>;
 
     // Coordinadores ven TODAS las cuadrillas de instalaciones (para poder
@@ -305,6 +233,7 @@ export async function GET(req: Request) {
       items,
       feriados,
       openUntil,
+      edicionCoordinadores,
       cuadrillas,
       coordinadoresEstado,
       myCoordinatorStatus,
@@ -313,12 +242,14 @@ export async function GET(req: Request) {
         (canCoord &&
           !coordinatorLocked &&
           estado === "ABIERTO" &&
+          edicionCoordinadores !== "PAUSADA" &&
           (!openUntil || new Date().getTime() <= new Date(openUntil).getTime())),
       canConfirm:
         canCoord &&
         !canAdmin &&
         !coordinatorLocked &&
         estado === "ABIERTO" &&
+        edicionCoordinadores !== "PAUSADA" &&
         (!openUntil || new Date().getTime() <= new Date(openUntil).getTime()),
       canAdmin,
       myCoordinatorUid: canCoord && !canAdmin ? session.uid : undefined,
@@ -356,8 +287,13 @@ export async function POST(req: Request) {
     const currentCoordinadores = (current?.coordinadores || {}) as Record<string, any>;
     const myCoordinatorStatus = normalizeCoordinatorState(currentCoordinadores[session.uid] || {});
 
+    const edicionCoordinadores = String(current?.edicionCoordinadores || "ABIERTA").toUpperCase() === "PAUSADA" ? "PAUSADA" : "ABIERTA";
+
     if (!canAdmin && estado === "CERRADO") {
       return NextResponse.json({ ok: false, error: "LOCKED" }, { status: 403 });
+    }
+    if (!canAdmin && canCoord && edicionCoordinadores === "PAUSADA") {
+      return NextResponse.json({ ok: false, error: "Gerencia está revisando esta semana. La edición de coordinadores está pausada temporalmente." }, { status: 403 });
     }
     if (!canAdmin && canCoord && myCoordinatorStatus === "CONFIRMADO") {
       return NextResponse.json({ ok: false, error: "COORDINADOR_CONFIRMADO" }, { status: 403 });
@@ -375,6 +311,26 @@ export async function POST(req: Request) {
         .where("coordinadorUid", "==", session.uid)
         .get();
       const ownIds = new Set(ownSnap.docs.map((d) => d.id));
+
+      // No se puede modificar un día que ya pasó (solo Gerencia/Jefatura/Admin pueden corregir historial)
+      const todayYmd = limaTodayYmd();
+      const currentItems = (current?.items || {}) as Record<string, Record<string, string>>;
+      for (const [cid, row] of Object.entries(items || {})) {
+        if (!ownIds.has(cid)) continue;
+        for (const d of weekDays) {
+          if (d >= todayYmd) continue;
+          const incoming = row?.[d];
+          if (incoming === undefined) continue;
+          const previo = String(currentItems[cid]?.[d] || "asistencia").toLowerCase();
+          if (String(incoming).toLowerCase() !== previo) {
+            return NextResponse.json(
+              { ok: false, error: `No puedes modificar el día ${d} porque ya pasó. Solo Gerencia/Jefatura pueden corregir días pasados.` },
+              { status: 400 },
+            );
+          }
+        }
+      }
+
       Object.entries(items || {}).forEach(([cid, row]) => {
         if (ownIds.has(cid)) {
           itemsNext[cid] = { ...(itemsNext[cid] || {}), ...(row || {}) };
@@ -416,11 +372,19 @@ export async function POST(req: Request) {
         categoria: String((d.data() as any)?.categoria || (d.data() as any)?.r_c || "").trim(),
         vehiculo: String((d.data() as any)?.vehiculo || "").trim(),
         nombre: String((d.data() as any)?.nombre || d.id),
+        coordinadorUid: String((d.data() as any)?.coordinadorUid || "").trim(),
       }));
       for (const d of weekDays) {
-        const cob = coberturaDelDiaBE(d, allCuadrillas, itemsNext);
+        const cob = coberturaDelDia(d, allCuadrillas, itemsNext);
         if (cob.estado === "bad") {
           return NextResponse.json({ ok: false, error: cob.errorMsg || "COBERTURA_INSUFICIENTE" }, { status: 400 });
+        }
+      }
+      // Cuota equitativa: mis cuadrillas no pueden acaparar el cupo de descanso del día.
+      for (const d of weekDays) {
+        const cuota = cupoYCuotaCoordinador(d, session.uid, allCuadrillas, itemsNext);
+        if (!cuota.ok) {
+          return NextResponse.json({ ok: false, error: cuota.errorMsg || "CUOTA_EXCEDIDA" }, { status: 400 });
         }
       }
     }

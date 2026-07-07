@@ -44,6 +44,13 @@ function centsToMoney(cents: number) {
   return (Math.round(cents || 0) / 100).toFixed(2);
 }
 
+function centsToMoneyDisplay(cents: number) {
+  return (Math.round(cents || 0) / 100).toLocaleString("es-PE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 function moneyToCents(n: number) {
   return Math.round((n || 0) * 100);
 }
@@ -83,6 +90,7 @@ export default function VentasClient({
   const [coordFilter, setCoordFilter] = useState("");
   const [coordinadores, setCoordinadores] = useState<Array<{ uid: string; label: string }>>([]);
   const [onlyPending, setOnlyPending] = useState(true);
+  const [estadoFilter, setEstadoFilter] = useState<"ALL" | "PENDIENTE" | "PARCIAL" | "PAGADO" | "ANULADA">("ALL");
   const now = new Date();
   const [yearFilter, setYearFilter] = useState<number | "ALL">(now.getUTCFullYear());
   const [monthFilter, setMonthFilter] = useState<number | "ALL">(now.getUTCMonth() + 1);
@@ -220,11 +228,30 @@ export default function VentasClient({
     if ((canViewAll || isCoordViewer) && coordFilter) {
       list = list.filter((v: any) => String(v?.coordinadorUid || "") === coordFilter);
     }
+    if (estadoFilter !== "ALL") {
+      list = list.filter((v: any) => String(v?.estado || "").toUpperCase() === estadoFilter);
+    }
     if (onlyPending) {
-      list = list.filter((v: any) => String(v?.estado || "") !== "PAGADO");
+      list = list.filter((v: any) => {
+        const e = String(v?.estado || "").toUpperCase();
+        return e !== "PAGADO" && e !== "ANULADA";
+      });
     }
     return list;
-  }, [ventas, areaFilter, coordFilter, onlyPending, canViewAll, isCoordViewer, viewerUid]);
+  }, [ventas, areaFilter, coordFilter, estadoFilter, onlyPending, canViewAll, isCoordViewer, viewerUid]);
+
+  const resumenFiltrado = useMemo(() => {
+    let totalCents = 0;
+    let saldoPendienteCents = 0;
+    let count = 0;
+    for (const v of ventasView as any[]) {
+      if (String(v?.estado || "").toUpperCase() === "ANULADA") continue;
+      totalCents += Number(v?.totalCents || 0);
+      saldoPendienteCents += Number(v?.saldoPendienteCents || 0);
+      count += 1;
+    }
+    return { totalCents, saldoPendienteCents, count };
+  }, [ventasView]);
 
   useEffect(() => {
     if (!canViewAll && !isCoordViewer) return;
@@ -422,6 +449,18 @@ export default function VentasClient({
             </option>
           ))}
         </select>
+        <label className="text-sm ml-2">Estado</label>
+        <select
+          value={estadoFilter}
+          onChange={(e) => setEstadoFilter(e.target.value as any)}
+          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+        >
+          <option value="ALL">Todos</option>
+          <option value="PENDIENTE">Pendiente</option>
+          <option value="PARCIAL">Parcial</option>
+          <option value="PAGADO">Pagado</option>
+          <option value="ANULADA">Anulada</option>
+        </select>
         <label className="text-sm ml-2">Solo pendientes</label>
         <input
           type="checkbox"
@@ -430,6 +469,50 @@ export default function VentasClient({
         />
         {loading && <span className="text-xs text-slate-500 dark:text-slate-400">Cargando...</span>}
       </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-blue-500" aria-hidden />
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Total filtrado
+            </span>
+          </div>
+          <div className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
+            S/ {centsToMoneyDisplay(resumenFiltrado.totalCents)}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden />
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Saldo pendiente
+            </span>
+          </div>
+          <div className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
+            S/ {centsToMoneyDisplay(resumenFiltrado.saldoPendienteCents)}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-slate-400" aria-hidden />
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Ventas consideradas
+            </span>
+          </div>
+          <div className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
+            {resumenFiltrado.count}
+          </div>
+        </div>
+        {pageInfo.hasMore && (
+          <div className="sm:col-span-3 text-xs text-amber-600 dark:text-amber-400">
+            Cifras parciales: hay más registros por cargar (usa &quot;Cargar más&quot; para incluirlos).
+          </div>
+        )}
+      </div>
+      <p className="text-xs text-slate-500 dark:text-slate-400">
+        Las cifras excluyen ventas anuladas y reflejan los filtros aplicados arriba.
+      </p>
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <table className="min-w-full text-sm">

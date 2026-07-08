@@ -28,7 +28,6 @@ const ERROR_STATUS: Record<string, number> = {
   CUADRILLA_NO_ENCONTRADA_WINBO: 404,
   CUADRILLA_AMBIGUA_WINBO: 409,
   CIERRE_YA_ENVIADO_HOY: 409,
-  WINBO_FUERA_DE_HORARIO: 409,
   WINBO_LOGIN_FAILED: 502,
   WINBO_TERMS_FAILED: 502,
   WINBO_REQUEST_TIMEOUT: 504,
@@ -85,10 +84,8 @@ export async function POST(req: Request) {
       });
     }
 
-    if (!horario.valido) {
-      return NextResponse.json({ ok: false, error: "WINBO_FUERA_DE_HORARIO", horario }, { status: 409 });
-    }
-
+    // EsHorarioValido es solo informativo: WinBo permite cerrar manualmente aunque marque
+    // fuera de horario, así que no bloqueamos el cierre por este motivo (ver `horario` en la respuesta).
     const resultado = await cerrarCuadrillaWinbo(winbo, {
       cuadriId: cuadrilla.cuadriId,
       dia,

@@ -1,8 +1,8 @@
 # Cierre de cuadrillas via WinBo - REDES
 
-Actualizado: 2026-07-05.
+Actualizado: 2026-07-07.
 
-Estado: **En progreso, bloqueado por depuracion**. Automatizacion end-to-end (backend + UI) ya escrita y probada en vivo; el pipeline tecnico funciona pero WinBo devuelve `CUADRILLA_NO_ENCONTRADA_WINBO` para cuadrillas que existen y estan activas. Falta confirmar causa raiz antes de continuar con fases posteriores.
+Estado: **En progreso, bloqueado por depuracion**. Automatizacion end-to-end (backend + UI) ya escrita y probada en vivo. El bloqueo por `EsHorarioValido` ya se resolvio (se bajo de bloqueo duro a advertencia, ver seccion dedicada). Sigue pendiente `CUADRILLA_NO_ENCONTRADA_WINBO` para cuadrillas que existen y estan activas; nueva evidencia apunta a colision de sesiones concurrentes en WinBo en vez de alcance de cuenta restringido.
 
 ## Objetivo
 
@@ -12,10 +12,16 @@ Reemplazar el proceso manual repetitivo de desactivar una cuadrilla en WinBo (mo
 
 - `apps/web/src/lib/winbo/client.ts` — `createWinboSession()` (login + terminos y condiciones), helper `postJson`, `exportOrdenesXlsx()` (patron de sesion de referencia que si funciona en produccion; se comparo contra el flujo de cierre para descartar diferencias de inicializacion de sesion).
 - `apps/web/src/lib/winbo/cuadrillasCierre.ts` — `parseCuadrillaRedesId`, `winboSearchName`, `winboNameRegex`, `parseGrillaRows`, `buscarCuadrillaWinbo`, `esHorarioValido`, `evidenciaCierreBase64`, `cerrarCuadrillaWinbo`, `listarAprobacionesCierre`, `buscarAprobacionDeCuadrilla`, `diaWinboHoyLima`, `ymdLima`.
-- `apps/web/src/app/api/cuadrillas/winbo/cerrar/route.ts` — `POST` con `dryRun`, permiso `CUADRILLAS_CIERRE_WINBO`, evita reenvios el mismo dia via `winbo_cierres` (Firestore).
-- `apps/web/src/app/(protected)/home/cuadrillas/cierre-winbo/page.tsx` y `CierreWinboClient.tsx` — UI: primero valida (dry run), luego cierra con confirmacion.
+- `apps/web/src/app/api/cuadrillas/winbo/cerrar/route.ts` — `POST` con `dryRun`, permiso `CUADRILLAS_CIERRE_WINBO`, evita reenvios el mismo dia via `winbo_cierres` (Firestore). `EsHorarioValido` ya **no bloquea** el cierre (se removio el `409 WINBO_FUERA_DE_HORARIO`); el resultado sigue viajando en la respuesta como dato informativo.
+- `apps/web/src/app/(protected)/home/cuadrillas/cierre-winbo/page.tsx` y `CierreWinboClient.tsx` — UI: primero valida (dry run), luego cierra con confirmacion. "Fuera de horario" se muestra como advertencia (⚠️) no bloqueante, con nota explicativa y el mismo aviso repetido en el `window.confirm` antes de cerrar.
 
-No se ejecutaron cambios de codigo en esta sesion; solo pruebas en vivo del usuario contra la pagina y analisis de evidencia.
+## Resuelto: `EsHorarioValido` bajado de bloqueo duro a advertencia
+
+- Sintoma original: un cierre manual exitoso en el sitio de WinBo, seguido casi de inmediato por un intento desde la pagina de REDES para una cuadrilla distinta, que la app bloqueo con "⛔ Fuera de horario".
+- Se obtuvo el valor crudo real via el desplegable "Detalle tecnico (EsHorarioValido)" de la UI: la respuesta de WinBo es el string plano `"N"` (sin JSON ni base64 adicional).
+- Diagnostico: el parser de `esHorarioValido()` en `cuadrillasCierre.ts` ya interpreta correctamente `"N"` como no-valido (no hay bug de parseo); el problema no era de lectura sino de que **WinBo permite el cierre manual en su propio sitio aunque `EsHorarioValido` devuelva `"N"`** — el campo es informativo, no una restriccion dura para la accion de cierre.
+- Decision aplicada: se elimino el bloqueo duro `409 WINBO_FUERA_DE_HORARIO` en `route.ts` (el cierre se envia a WinBo sin importar el resultado de `EsHorarioValido`) y se cambio la UI para mostrarlo como advertencia no bloqueante en vez de impedimento.
+- No se toco `esHorarioValido()` en si — su parser sigue igual porque ya funcionaba correctamente para lo que reporta.
 
 ## Convencion de nombres confirmada (REDES <-> WinBo)
 
@@ -41,8 +47,10 @@ Login WinBo -> `cargarGrilla` -> parseo de filas (payload en base64 doble) -> ma
 - El usuario confirmo manualmente en el navegador de WinBo, buscando el mismo termino simple `"K 2"`, que SI existen y estan "En servicio": `K 2 M&D SGI GINO YOMAR REYES RAMIREZ` y `K 2 MOTOWIN M&D SGI JOSE MANUEL BOLIVAR MANZINI`.
 - **Hipotesis descartada**: el caracter `&` rompe el matching de WinBo. Se cambio `winboSearchName` para enviar solo `"K {n}"` (sin `&`) y el resultado no cambio — ademas la busqueda manual con el mismo termino corto si funciono, lo que confirma que el formato del termino no es el problema.
 - **Hipotesis descartada**: la cuadrilla no existe o esta inactiva. Confirmado visualmente en la grilla completa que si existe y esta activa.
-- **Hipotesis mas probable, AUN SIN CONFIRMAR**: la cuenta configurada en `WINBO_USERNAME` (usada por el bot via `createWinboSession()`) tiene un alcance de visibilidad distinto al de la cuenta manual del usuario — posiblemente restringido por "Sector Operativo" (ej. K2 residencial pertenece a `LIMA - NORTE 2`, K2 moto a `LIMA - OESTE 3`; cada cuadrilla tiene su propio sector). Si la cuenta del bot no tiene esos sectores asignados, `cargarGrilla` no le devuelve esas filas aunque el termino de busqueda sea correcto y la cuenta manual si las vea.
-- **Pregunta pendiente, no respondida por el usuario todavia**: ¿`WINBO_USERNAME` es la misma cuenta con la que el usuario entra manualmente a WinBo, o es una cuenta de sistema/API separada? Si es distinta, ¿tiene el mismo alcance de sectores/cuadrillas asignado?
+- **Hipotesis de alcance de cuenta, debilitada**: se penso que `WINBO_USERNAME` (usada por `createWinboSession()`) podria ser una cuenta de sistema/API con "Sector Operativo" mas restringido que la cuenta manual del usuario. Se confirmo que `.env`, `.env.local` y `.env.production.local` usan **el mismo** `WINBO_USERNAME` (`CLOZADA`) y el mismo `WINBO_BASE_URL` en los tres — no hay una cuenta de bot separada con menor alcance; local y produccion pegan contra la misma cuenta y el mismo servidor WinBo.
+- **Hipotesis nueva y mas fuerte (2026-07-07), AUN SIN CONFIRMAR**: colision de sesiones concurrentes en WinBo. `createWinboSession()` hace login fresco (`IniciarSesion`) en cada llamada; si WinBo solo permite una sesion activa por usuario, dos logins casi simultaneos con la misma cuenta (uno desde local, otro desde produccion) podrian invalidar silenciosamente la sesion "vieja". Como `buscarCuadrillaWinbo()` solo lanza error si `data.err` viene distinto de `"N"`, una sesion invalidada que responde con una grilla vacia (sin `err` explicito) se interpreta como "0 registros" en vez de un error de autenticacion.
+- **Evidencia que sostiene la hipotesis nueva**: se repitio la busqueda de `K2_RESIDENCIAL` casi al mismo tiempo desde local y desde produccion. Local devolvio `candidatos: []`, `registros: "0"` (`CUADRILLA_NO_ENCONTRADA_WINBO`); produccion, para la misma cuadrilla, si la encontro (`K 2 M&D SGI GINO YOMAR REYES RAMIREZ`, `CuadriId 7998`). Mismo termino de busqueda, misma cuenta, mismo servidor, resultado distinto en cuestion de minutos — consistente con una colision de sesion, no con un problema permanente de alcance o de matching.
+- **Pendiente de confirmar**: pedirle al usuario que repita la prueba de `K2_RESIDENCIAL` **solo en local**, sin tener abierta una sesion de WinBo en el navegador ni disparar llamadas a produccion al mismo tiempo. Si asi si la encuentra, confirma la colision de sesion como causa raiz.
 
 ### Caso K37_MOTO (prueba nueva, mismo sintoma)
 
@@ -53,10 +61,10 @@ Login WinBo -> `cargarGrilla` -> parseo de filas (payload en base64 doble) -> ma
 
 ## Proximos pasos al retomar
 
-1. Confirmar con el usuario si `WINBO_USERNAME` es la cuenta manual o una cuenta de sistema separada, y si tiene el mismo alcance de sectores/cuadrillas.
-2. Pedir al usuario que verifique manualmente en WinBo si la cuadrilla `K 37` existe (busqueda simple, igual que con K2).
-3. Si la cuenta del bot tiene alcance restringido -> coordinar con el usuario el uso de credenciales con acceso completo (solo cambio de variables de entorno; no requiere cambio de codigo).
-4. Si la cuenta es la misma que la manual pero igual falla -> investigar diferencias de headers/sesion entre el navegador real y `postJson` (User-Agent, Origin, Referer) o algun paso de sesion adicional entre login y `cargarGrilla` que el navegador si dispara y el bot no.
+1. Pedir al usuario que repita `K2_RESIDENCIAL` **solo en local**, sin sesion de WinBo abierta en el navegador ni llamadas a produccion en paralelo, para confirmar o descartar la colision de sesiones concurrentes.
+2. Si se confirma la colision de sesion -> evaluar si vale la pena serializar los logins (ej. lock/mutex alrededor de `createWinboSession()` a nivel de proceso) o si en la practica nunca coincide con uso manual real y no amerita cambio de codigo.
+3. Pedir al usuario que verifique manualmente en WinBo si la cuadrilla `K 37` existe (busqueda simple, igual que con K2) — sigue pendiente, sirve para descartar el caso aparte de "cuadrilla no existe" (K37 esta fuera del rango K1-K28 confirmado).
+4. Si tras descartar la colision de sesion el problema persiste -> investigar diferencias de headers/sesion entre el navegador real y `postJson` (User-Agent, Origin, Referer) o algun paso de sesion adicional entre login y `cargarGrilla` que el navegador si dispara y el bot no.
 5. Una vez resuelto el matching, retomar tareas pendientes de fases posteriores (aun no iniciadas):
    - Endpoint de verificacion de aprobacion: `POST /api/cuadrillas/winbo/cierres/verificar` (usa `listarAprobacionesCierre` / `buscarAprobacionDeCuadrilla`, ya implementados mas no consumidos por ninguna route).
    - Registrar el permiso RBAC `CUADRILLAS_CIERRE_WINBO` en Firestore (coleccion `roles`/`modulos`).

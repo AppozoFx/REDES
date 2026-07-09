@@ -101,12 +101,16 @@ export default function DespachoPersonalClient() {
   const [equipos, setEquipos] = useState<EquipoItem[]>([]);
   const [snInput, setSnInput] = useState("");
   const [validandoSn, setValidandoSn] = useState(false);
+  const [pendingScans, setPendingScans] = useState(0);
   const [matLines, setMatLines] = useState<MatLine[]>([]);
   const [observacion, setObservacion] = useState("");
   const [preview, setPreview] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [usuarioNombre, setUsuarioNombre] = useState("");
   const transferIdRef = useRef<string>("");
+  const snInputRef = useRef<HTMLInputElement | null>(null);
+  const scanQueueRef = useRef<string[]>([]);
+  const scanProcessingRef = useRef(false);
 
   useEffect(() => {
     fetch("/api/personal-stock/list").then(r => r.json()).then(d => {
@@ -127,21 +131,48 @@ export default function DespachoPersonalClient() {
 
   const listaFiltrada = lista.filter(p => p.nombre.toLowerCase().includes(busqueda.toLowerCase()) || p.rol.toLowerCase().includes(busqueda.toLowerCase()));
 
-  async function validarSN(sn: string) {
-    const snUp = sn.trim().toUpperCase();
-    if (!snUp) return;
-    if (equipos.find(e => e.sn === snUp)) { toast.error(`${snUp} ya está en la lista`); return; }
-    setValidandoSn(true);
+  async function processScanQueue() {
+    if (scanProcessingRef.current) return;
+    scanProcessingRef.current = true;
     try {
-      const r = await fetch(`/api/equipos/validate?sn=${encodeURIComponent(snUp)}`);
-      const d = await r.json();
-      if (!d.ok) { toast.error(`${snUp}: ${d.error}`); return; }
-      if (d.status !== "ALMACEN") { toast.error(`${snUp} no está en almacén (${d.status}: ${d.ubicacion || ""})`); return; }
-      setEquipos(prev => [...prev, { sn: snUp, equipo: d.equipo }]);
+      while (scanQueueRef.current.length > 0) {
+        const sn = scanQueueRef.current.shift()!;
+        setPendingScans(scanQueueRef.current.length);
+        setValidandoSn(true);
+        try {
+          const r = await fetch(`/api/equipos/validate?sn=${encodeURIComponent(sn)}`);
+          const d = await r.json();
+          if (!d.ok) { toast.error(`${sn}: ${d.error}`); continue; }
+          if (d.status !== "ALMACEN") { toast.error(`${sn} no está en almacén (${d.status}: ${d.ubicacion || ""})`); continue; }
+          let added = false;
+          setEquipos(prev => {
+            if (prev.some(e => e.sn === sn)) return prev;
+            added = true;
+            return [...prev, { sn, equipo: d.equipo }];
+          });
+          if (added) toast.success(`${sn} agregado`);
+        } catch { toast.error(`${sn}: error validando SN`); }
+      }
+    } finally {
+      scanProcessingRef.current = false;
+      setValidandoSn(false);
+      setPendingScans(0);
+      setTimeout(() => snInputRef.current?.focus(), 0);
+    }
+  }
+
+  function handleAddSN() {
+    const snUp = snInput.trim().toUpperCase();
+    if (!snUp) return;
+    if (equipos.some(e => e.sn === snUp) || scanQueueRef.current.includes(snUp)) {
+      toast.error(`${snUp} ya está en la lista`);
       setSnInput("");
-      toast.success(`${snUp} agregado`);
-    } catch { toast.error("Error validando SN"); }
-    finally { setValidandoSn(false); }
+      return;
+    }
+    scanQueueRef.current.push(snUp);
+    setPendingScans(scanQueueRef.current.length);
+    setSnInput("");
+    void processScanQueue();
   }
 
   function setMatQty(materialId: string, field: "und" | "metros", value: number) {
@@ -272,19 +303,25 @@ export default function DespachoPersonalClient() {
         <h2 className="text-base font-semibold text-slate-800 dark:text-slate-200">Paso 2 — Equipos</h2>
         <div className="flex gap-2">
           <input
+            ref={snInputRef}
             className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
             placeholder="Escanear o escribir SN..."
             value={snInput}
-            onChange={e => setSnInput(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); validarSN(snInput); } }}
-            disabled={validandoSn}
+            onChange={e => setSnInput(e.target.value.toUpperCase())}
+            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAddSN(); } }}
           />
           <button
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-            onClick={() => validarSN(snInput)}
-            disabled={validandoSn || !snInput.trim()}
-          >{validandoSn ? "..." : "Agregar"}</button>
+            onClick={handleAddSN}
+            disabled={!snInput.trim()}
+          >Agregar</button>
         </div>
+        {validandoSn && (
+          <div className="text-xs text-slate-500 dark:text-slate-400">Validando SN...</div>
+        )}
+        {pendingScans > 0 && (
+          <div className="text-xs text-slate-500 dark:text-slate-400">En cola: {pendingScans}</div>
+        )}
         {equipos.length > 0 && (
           <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
             <table className="w-full text-sm">

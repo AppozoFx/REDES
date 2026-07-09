@@ -141,7 +141,7 @@ async function findLiquidacionesByTicket(ticketNumero: string) {
       if (!seen.has(doc.id)) seen.set(doc.id, doc);
     }
   }
-  return Array.from(seen.values());
+  return Array.from(seen.values()).filter((doc) => normalizeEstadoLegacy(doc.data()?.estado) !== "ANULADO");
 }
 
 export async function getTicketVisitaPreview(ticketNumero: string, currentId?: string) {
@@ -282,6 +282,7 @@ export async function updateMantenimientoLiquidacion(id: string, input: unknown,
 export async function deleteMantenimientoLiquidacion(id: string, actorUid: string) {
   const db = adminDb();
   const ref = col().doc(id);
+  const auditRef = db.collection("auditoria").doc();
 
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
@@ -349,7 +350,30 @@ export async function deleteMantenimientoLiquidacion(id: string, actorUid: strin
       }
     }
 
-    tx.delete(ref);
+    tx.set(
+      ref,
+      {
+        estado: "ANULADO",
+        anuladoAt: FieldValue.serverTimestamp(),
+        anuladoBy: actorUid,
+        "audit.updatedAt": FieldValue.serverTimestamp(),
+        "audit.updatedBy": actorUid,
+      },
+      { merge: true }
+    );
+
+    tx.set(auditRef, {
+      action: "MANTENIMIENTO_LIQUIDACION_ANULADA",
+      actorUid,
+      meta: {
+        ticketNumero: normText(curr?.ticketNumero),
+        cuadrillaId: normText(curr?.cuadrillaId),
+        cuadrillaNombre: normText(curr?.cuadrillaNombre),
+        estadoPrevio: estado,
+      },
+      target: { collection: MANTENIMIENTO_LIQUIDACIONES_COL, id },
+      ts: FieldValue.serverTimestamp(),
+    });
 
     return { id, deletedBy: actorUid };
   });

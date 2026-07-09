@@ -125,7 +125,11 @@ export default function MantenimientoLiquidacionesListClient() {
       if (month && String(r.fechaAtencionYmd || "").slice(0, 7) !== month) return false;
       if (day && String(r.fechaAtencionYmd || "") !== day) return false;
       if (cuadrilla && String(r.cuadrillaNombre || "") !== cuadrilla) return false;
-      if (estado && String(r.estado || "") !== estado) return false;
+      if (estado) {
+        if (String(r.estado || "") !== estado) return false;
+      } else if (String(r.estado || "") === "ANULADO") {
+        return false;
+      }
       if (onlyRepeated && (repeatedCountByTicket.get(String(r.ticketNumero || "").trim()) || 0) < 2) return false;
       if (!needle) return true;
       const hay = `${r.ticketNumero} ${r.codigoCaja || ""} ${r.distrito || ""} ${r.cuadrillaNombre || ""}`.toLowerCase();

@@ -1,5 +1,7 @@
 # Mantenimiento Liquidaciones
 
+> Nota 2026-07-08: este documento es la propuesta original. La implementacion real uso `POST /api/mantenimiento/liquidaciones/delete` en vez del `/anular` propuesto aqui. Desde 2026-07-08 ese endpoint si hace soft-delete a `ANULADO` (alineado con esta propuesta), tras un incidente de perdida de datos. Detalle en `docs/contexto/web/mantenimiento-liquidaciones.md` (seccion "Incidente 2026-07") y en el ADR `Obsidian/App Redes/Arquitectura/ADR/2026-07 Perdida liquidaciones mantenimiento y soft-delete.md`.
+
 ## Objetivo
 
 Crear un modulo `mantenimiento_liquidaciones` para registrar atenciones de mantenimiento, liquidar materiales desde stock de cuadrilla y exportar la informacion al Excel que se presenta a WIN.

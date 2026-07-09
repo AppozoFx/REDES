@@ -1,6 +1,6 @@
 # Mantenimiento Liquidaciones - REDES
 
-Actualizado: 2026-06-16.
+Actualizado: 2026-07-08.
 
 Estado: **Revisar**. Deep dive del dominio critico `mantenimientoLiquidaciones`, sus rutas API, pantallas de mantenimiento, catalogo de causas raiz, consulta de stock de cuadrillas y entrada desde Telegram.
 
@@ -110,14 +110,17 @@ Riesgo: el cambio de cuadrilla en correccion usa el stock de la nueva cuadrilla 
 
 ### Eliminar
 
-`deleteMantenimientoLiquidacion`:
+`deleteMantenimientoLiquidacion` (actualizado 2026-07-08, ver incidente mas abajo):
 
-- permite borrar solo si estado `ABIERTO` o `LIQUIDADO`.
+- permite anular solo si estado `ABIERTO` o `LIQUIDADO`.
 - si estaba `LIQUIDADO`, devuelve materiales del snapshot al stock de la cuadrilla actual.
 - crea movimiento `ELIMINACION_LIQUIDACION_MANTENIMIENTO` si hubo devolucion.
-- elimina el documento con `tx.delete(ref)`.
+- **ya no borra el documento**. Hace soft-delete: `estado: "ANULADO"` + `anuladoAt` + `anuladoBy` via `tx.set(ref, ..., {merge:true})`.
+- escribe un registro en `auditoria` con `action: "MANTENIMIENTO_LIQUIDACION_ANULADA"`, `actorUid`, `meta.ticketNumero`, `meta.cuadrillaId` y `target.{collection,id}`.
 
-Riesgo: la regla general del proyecto dice no borrar documentos Firestore directamente, sino marcar inactivo/estado. Esta ruta si elimina el doc; conviene decidir si debe pasar a `ANULADO` con auditoria.
+`findLiquidacionesByTicket` excluye documentos `ANULADO` de sus resultados, para que la numeracion de `ticketVisita` y el preview de visitas previas se comporten igual que antes del cambio (como si el doc no existiera).
+
+El filtro por defecto de `MantenimientoLiquidacionesListClient.tsx` oculta `ANULADO` salvo que se seleccione ese estado explicitamente en el dropdown de filtros (la opcion ya existia en el UI, sin uso real hasta ahora).
 
 ## APIs
 
@@ -131,7 +134,7 @@ Todas bajo `apps/web/src/app/api/mantenimiento/liquidaciones` usan runtime `node
 | `/update` | POST | Area `MANTENIMIENTO` | Actualiza liquidacion no confirmada. |
 | `/liquidar` | POST | Area `MANTENIMIENTO` | Confirma liquidacion y afecta inventario. |
 | `/corregir` | POST | Area `MANTENIMIENTO` | Ajusta liquidacion ya confirmada y genera delta de inventario. |
-| `/delete` | POST | Area `MANTENIMIENTO` | Borra abierta o liquidada, devolviendo stock si aplica. |
+| `/delete` | POST | Area `MANTENIMIENTO` | Anula (soft-delete) abierta o liquidada, devolviendo stock si aplica. |
 | `/ticket-preview` | GET | Area `MANTENIMIENTO` | Previsualiza visitas previas del ticket. |
 | `/export?month=YYYY-MM` | GET | Area `MANTENIMIENTO` | Exporta XLSX con resumen, materiales, interno, totales y hojas por cuadrilla. |
 
@@ -206,10 +209,36 @@ Riesgo: el route tiene tratamiento especial para error `TICKET_DUPLICADO`, pero 
 - `usuarios`
 - `telegram_mantenimiento_ingresos`
 
+## Incidente 2026-07: perdida de liquidaciones Mayo/Junio (cuadrilla Norte Tarde)
+
+Se detecto que los documentos de `mantenimiento_liquidaciones` de mayo y junio para `MANTENIMIENTO_NORTE_TARDE` habian desaparecido de Firestore, aunque el Excel exportado (`mantenimiento_liquidaciones_2026-05.xlsx`) si los tenia.
+
+Investigacion (solo lectura, sin gcloud/Firebase Console con Data Access logs activos en ese momento):
+
+- El endpoint `/delete` de la app solo dejo **1** registro `ELIMINACION_LIQUIDACION_MANTENIMIENTO` en toda su historia, de otra cuadrilla y otro ticket (22 de junio). Ningun ticket de Norte Tarde tiene ese registro.
+- Cruce de los 33 tickets de la hoja "MANTENIMIENTO NORTE TARDE" del Excel de mayo contra `movimientos_inventario`: 29 de 33 tenian `LIQUIDACION_MANTENIMIENTO` confirmado (creado 27-28 mayo), sin ningun `ELIMINACION_...` asociado.
+- Logs de Cloud Run (`ssrredes5bb81`), IAM del proyecto y Cloud Audit Logs no mostraron actividad del endpoint de borrado para esos tickets dentro de la ventana de retencion disponible.
+- El Data Access audit log de Firestore **nunca habia estado activado** antes de este incidente, por lo que no existe rastro a nivel de Firestore de quien ejecuto el borrado.
+- Se descartaron como causa los scripts `renombrar-materiales-ids.js` (solo hace patch, no borra top-level) y `limpiar-cuadrillas.js` (solo borra subcolecciones de `cuadrillas`), asi como la extension `firestore-bigquery-export` (solo vigila la coleccion de ordenes, no `mantenimiento_liquidaciones`).
+
+Conclusion: el borrado se hizo por fuera del codigo de la app (consola de Firestore o script ad-hoc con Admin SDK), no via el endpoint `/delete`. No se pudo determinar el actor con certeza forense porque no existia Data Access audit log activo.
+
+### Medidas aplicadas (2026-07-08)
+
+- `deleteMantenimientoLiquidacion` pasa de hard-delete a soft-delete (`ANULADO` + `auditoria`, ver seccion "Eliminar" arriba).
+- Data Access audit logs activados a nivel de proyecto GCP: `auditConfigs` con `service: datastore.googleapis.com`, `logType: DATA_WRITE` (cubre Firestore; se dejo fuera `DATA_READ` para no disparar volumen/costo de logging en un app con trafico constante de lecturas).
+- `deleteProtectionState: DELETE_PROTECTION_ENABLED` en la base de datos Firestore `(default)`.
+- Nota de la documentacion oficial de Google: bulk-delete, imports y operaciones TTL **no quedan** en el Data Access audit log, solo los `Commit`/`Delete` individuales via SDK. El audit log activado no cubre un borrado masivo hecho por la herramienta de bulk-delete de Firestore.
+
+### Pendiente de este incidente
+
+- Restringir `/delete` a rol ADMIN o validar que la cuadrilla del documento coincide con la del usuario (hoy cualquier sesion con area `MANTENIMIENTO` puede anular liquidaciones de cualquier cuadrilla).
+- Rotar o restringir el acceso a la clave de servicio Admin SDK (`redes-5bb81-firebase-adminsdk-fbsvc-*.json`), que hoy vive en texto plano fuera del control de versiones.
+- Aplicar el mismo patron de soft-delete a `mantenimientoCausasRaiz/repo.ts` (`deleteMantenimientoCausaRaiz` sigue con borrado fisico).
+
 ## Pendientes
 
 - Definir permisos granulares para crear, liquidar, corregir, borrar y exportar liquidaciones; hoy basta area `MANTENIMIENTO`.
-- Cambiar borrado fisico de liquidaciones y causas raiz por anulacion/inactivacion si se mantiene la regla operativa del proyecto.
 - Revisar concurrencia de `ticketVisita` para tickets repetidos.
 - Validar correccion cuando cambia `cuadrillaId`: devolucion a cuadrilla original vs delta en cuadrilla nueva.
 - Confirmar si export XLSX debe superar el limite de 500 documentos y filtrar por mes en query.

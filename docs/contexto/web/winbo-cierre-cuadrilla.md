@@ -1,8 +1,10 @@
 # Cierre de cuadrillas via WinBo - REDES
 
-Actualizado: 2026-07-07.
+Actualizado: 2026-07-08.
 
 Estado: **En progreso, bloqueado por depuracion**. Automatizacion end-to-end (backend + UI) ya escrita y probada en vivo. El bloqueo por `EsHorarioValido` ya se resolvio (se bajo de bloqueo duro a advertencia, ver seccion dedicada). Sigue pendiente `CUADRILLA_NO_ENCONTRADA_WINBO` para cuadrillas que existen y estan activas; nueva evidencia apunta a colision de sesiones concurrentes en WinBo en vez de alcance de cuenta restringido.
+
+Confirmado en produccion (2026-07-08): el cierre manual desde la pagina funciona bien. Se retiro de la UI el aviso "Fuera de horario"/"Detalle tecnico (EsHorarioValido)" porque salia siempre y no aportaba (el `esHorarioValido()` y el comportamiento no bloqueante en `route.ts` NO se tocaron, solo se dejo de renderizar). Se agrego item de navegacion "Cierre Cuadrilla" en `buildHomeNav.ts` (seccion GESTION del sidebar) y se otorgo el permiso `CUADRILLAS_CIERRE_WINBO` al rol `GESTOR` en Firestore (`roles/GESTOR.permissions`), asi las gestoras ya pueden entrar sin ser admin.
 
 ## Objetivo
 
@@ -13,7 +15,9 @@ Reemplazar el proceso manual repetitivo de desactivar una cuadrilla en WinBo (mo
 - `apps/web/src/lib/winbo/client.ts` — `createWinboSession()` (login + terminos y condiciones), helper `postJson`, `exportOrdenesXlsx()` (patron de sesion de referencia que si funciona en produccion; se comparo contra el flujo de cierre para descartar diferencias de inicializacion de sesion).
 - `apps/web/src/lib/winbo/cuadrillasCierre.ts` — `parseCuadrillaRedesId`, `winboSearchName`, `winboNameRegex`, `parseGrillaRows`, `buscarCuadrillaWinbo`, `esHorarioValido`, `evidenciaCierreBase64`, `cerrarCuadrillaWinbo`, `listarAprobacionesCierre`, `buscarAprobacionDeCuadrilla`, `diaWinboHoyLima`, `ymdLima`.
 - `apps/web/src/app/api/cuadrillas/winbo/cerrar/route.ts` — `POST` con `dryRun`, permiso `CUADRILLAS_CIERRE_WINBO`, evita reenvios el mismo dia via `winbo_cierres` (Firestore). `EsHorarioValido` ya **no bloquea** el cierre (se removio el `409 WINBO_FUERA_DE_HORARIO`); el resultado sigue viajando en la respuesta como dato informativo.
-- `apps/web/src/app/(protected)/home/cuadrillas/cierre-winbo/page.tsx` y `CierreWinboClient.tsx` — UI: primero valida (dry run), luego cierra con confirmacion. "Fuera de horario" se muestra como advertencia (⚠️) no bloqueante, con nota explicativa y el mismo aviso repetido en el `window.confirm` antes de cerrar.
+- `apps/web/src/app/(protected)/home/cuadrillas/cierre-winbo/page.tsx` y `CierreWinboClient.tsx` — UI: primero valida (dry run), luego cierra con confirmacion. El aviso "Fuera de horario" ya no se muestra en la UI (se removio por ser siempre visible y confuso); el dato `horario` sigue viajando en la respuesta de la API pero no se renderiza.
+- `apps/web/src/core/rbac/buildHomeNav.ts` — item de navegacion "Cierre Cuadrilla" (`/home/cuadrillas/cierre-winbo`), visible cuando `hasPerm(session, "CUADRILLAS_CIERRE_WINBO")`, tanto en la rama reducida de `GESTOR` como en la rama general.
+- `apps/web/src/ui/home/Sidebar.tsx` — `getGroup()` mapea `/home/cuadrillas/cierre-winbo` a la seccion `GESTION` del sidebar.
 
 ## Resuelto: `EsHorarioValido` bajado de bloqueo duro a advertencia
 
@@ -67,8 +71,8 @@ Login WinBo -> `cargarGrilla` -> parseo de filas (payload en base64 doble) -> ma
 4. Si tras descartar la colision de sesion el problema persiste -> investigar diferencias de headers/sesion entre el navegador real y `postJson` (User-Agent, Origin, Referer) o algun paso de sesion adicional entre login y `cargarGrilla` que el navegador si dispara y el bot no.
 5. Una vez resuelto el matching, retomar tareas pendientes de fases posteriores (aun no iniciadas):
    - Endpoint de verificacion de aprobacion: `POST /api/cuadrillas/winbo/cierres/verificar` (usa `listarAprobacionesCierre` / `buscarAprobacionDeCuadrilla`, ya implementados mas no consumidos por ninguna route).
-   - Registrar el permiso RBAC `CUADRILLAS_CIERRE_WINBO` en Firestore (coleccion `roles`/`modulos`).
-   - Agregar item de navegacion en `buildHomeNav`.
+   - ~~Registrar el permiso RBAC `CUADRILLAS_CIERRE_WINBO` en Firestore (coleccion `roles`/`modulos`).~~ Hecho 2026-07-08: agregado a `roles/GESTOR.permissions`. Falta evaluar si otros roles (COORDINADOR, SUPERVISOR, etc.) tambien lo necesitan.
+   - ~~Agregar item de navegacion en `buildHomeNav`.~~ Hecho 2026-07-08.
    - Cierre por lotes/grupos de cuadrillas.
    - Manejo de notificacion cuando el proveedor rechaza la solicitud de cambio.
 

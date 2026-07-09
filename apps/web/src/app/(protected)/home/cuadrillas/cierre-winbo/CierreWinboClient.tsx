@@ -73,11 +73,8 @@ export default function CierreWinboClient() {
 
   function onCerrar() {
     if (!validacion?.nombreWinbo) return;
-    const avisoHorario = validacion.horario?.valido
-      ? ""
-      : "\n\n⚠️ WinBo marca esta hora como fuera de horario. Esto no bloquea el cierre.";
     const seguro = window.confirm(
-      `¿Cerrar la cuadrilla en WinBo?\n\n${validacion.nombreWinbo}\nDía: ${DIAS[validacion.dia ?? 0] || validacion.dia}\nMotivo: RETIRO DE CAMPO\n\nSe enviará la solicitud al proveedor para aprobación.${avisoHorario}`
+      `¿Cerrar la cuadrilla en WinBo?\n\n${validacion.nombreWinbo}\nDía: ${DIAS[validacion.dia ?? 0] || validacion.dia}\nMotivo: RETIRO DE CAMPO\n\nSe enviará la solicitud al proveedor para aprobación.`
     );
     if (seguro) void llamar(false);
   }
@@ -189,24 +186,7 @@ export default function CierreWinboClient() {
                 {DIAS[validacion.dia ?? 0] || validacion.dia} ({validacion.ymd})
               </dd>
             </div>
-            <div>
-              <dt className="text-gray-400">Horario WinBo</dt>
-              <dd>{validacion.horario?.valido ? "✅ Dentro de horario" : "⚠️ Fuera de horario (no bloquea el cierre)"}</dd>
-            </div>
           </dl>
-          <details className="mt-2 text-xs text-gray-400">
-            <summary className="cursor-pointer">Detalle técnico (EsHorarioValido)</summary>
-            <pre className="mt-1 whitespace-pre-wrap break-all rounded bg-gray-50 p-2 font-mono">
-              {validacion.horario?.raw || "(vacío)"}
-            </pre>
-          </details>
-
-          {!validacion.horario?.valido ? (
-            <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-              WinBo marca esta hora como fuera de horario, pero el cierre manual en su propio sitio funciona igual en
-              este caso — puedes continuar.
-            </p>
-          ) : null}
 
           {!cierre ? (
             <button

@@ -40,6 +40,10 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
       { key: "TECNICOS_GESTION", label: "Tecnicos Gestion", href: "/home/tecnicos/gestion" },
     ];
 
+    if (hasPerm(session, "CUADRILLAS_CIERRE_WINBO")) {
+      items.push({ key: "CUADRILLAS_CIERRE_WINBO", label: "Cierre Cuadrilla", href: "/home/cuadrillas/cierre-winbo" });
+    }
+
     if (hasPerm(session, "ORDENES_IMPORT")) {
       items.push({ key: "ORDENES_IMPORT", label: "Ordenes: Importar", href: "/home/ordenes/import" });
     }
@@ -157,6 +161,13 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
       label: "Tecnicos Gestion",
       href: "/home/tecnicos/gestion",
     });
+    if (hasPerm(session, "CUADRILLAS_CIERRE_WINBO")) {
+      items.push({
+        key: "CUADRILLAS_CIERRE_WINBO",
+        label: "Cierre Cuadrilla",
+        href: "/home/cuadrillas/cierre-winbo",
+      });
+    }
   }
 
   if (hasPerm(session, "ORDENES_GARANTIAS_VIEW") || hasPerm(session, "ORDENES_GARANTIAS_EDIT") || isGerencia || isSupervisor) {

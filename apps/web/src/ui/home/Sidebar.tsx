@@ -92,6 +92,7 @@ function getGroup(href: string): GroupKey {
     href === "/home/supervisores/asistencia" ||
     href === "/home/cuadrillas/gestion" ||
     href === "/home/tecnicos/gestion" ||
+    href === "/home/cuadrillas/cierre-winbo" ||
     href === "/home/zonas"
   ) {
     return "GESTION";

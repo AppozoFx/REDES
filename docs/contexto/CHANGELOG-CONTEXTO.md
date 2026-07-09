@@ -1,5 +1,29 @@
 # Changelog de Contexto - REDES
 
+## 2026-07-09 - Feature: colores y bordes de tabla en "Descargar correo" (migracion a ExcelJS)
+
+- **Que hace**: `exportarCorreoExcel()` ahora pinta el `.xlsx` como tabla real: encabezado gris con la columna DOMINGO en rojo (igual que el archivo de referencia de WinBo), celdas "A" (asistencia) en verde y "D" (descanso) en ambar (mismos tonos que la grilla de la app), y bordes finos en todas las celdas.
+- **Causa del cambio de libreria**: se probo escribir esos estilos con `xlsx` (SheetJS community, la que usa el resto del modulo) y los colores se pierden al reescribir el archivo — la version gratuita no soporta escritura de estilos, solo lectura. Se agrego `exceljs` (MIT) como dependencia nueva de `apps/web/package.json`, usada unicamente dentro de `exportarCorreoExcel()`; el resto de los exports de este archivo (`exportarExcel`, `exportarExcelDetalle`) siguen usando `xlsx` sin cambios.
+- **Verificacion**: round-trip real con ExcelJS (escribir y releer) confirma que fill/font/border persisten. `pnpm run typecheck` y `next build` (produccion) pasan sin errores — confirma que `exceljs` empaqueta bien para el cliente (browser field de su package.json).
+- Doc actualizada: `Obsidian/App Redes/Arquitectura/Diagramas/Home instalaciones asistencia-programada.md`.
+- No se modifico Firestore rules, Cloud Functions, credenciales ni binarios. Si se modifico `apps/web/package.json` y `pnpm-lock.yaml` (nueva dependencia `exceljs`).
+
+## 2026-07-09 - Feature: boton "Descargar correo" (Excel Descanso Semanal M&D) en asistencia-programada
+
+- **Que hace**: nuevo boton junto a "Descargar Excel" en `/home/instalaciones/asistencia-programada`. Genera un `.xlsx` propio (`exportarCorreoExcel()` en `AsistenciaProgramadaClient.tsx`), sin depender de ninguna plantilla subida, con el formato del archivo de referencia `REDES/Descanso Semanal M&D del 03.07 al 09.07.xlsx`: dos secciones (RESIDENCIAL="M&D", MOTO="MOTOWIN M&D"), una fila por cada N° de cuadrilla de 1 al maximo activo en REDES por categoria (fila en blanco/Total=0 si no hay cuadrilla activa para ese numero), columnas ITEM/FUENTE/PARTNER/CODIGO/CUADRILLAS/ZONA 1/OBSERVACION + 7 dias + Total Asistencia.
+- **Backend aditivo**: `GET /api/instalaciones/asistencia-programada` ahora agrega `zonaNombre` (resuelto desde `cuadrillas.zonaId` contra la coleccion `zonas`) y `tecnicoResponsableNombre` (resuelto desde `cuadrillas.conductorUid` o el primer `tecnicosUids`, contra `usuarios.displayName`) a cada item de `cuadrillas`. No se quito ni renombro ningun campo existente.
+- Verificado simulando la logica en Node con datos reales: el AOA generado coincide exactamente con encabezados y filas del archivo de referencia.
+- Doc actualizada: `Obsidian/App Redes/Arquitectura/Diagramas/Home instalaciones asistencia-programada.md`.
+- No se modifico Firestore rules, Cloud Functions, package files, lockfiles, credenciales ni binarios.
+
+## 2026-07-09 - Fix: export Excel de asistencia-programada rechazado por WinBo
+
+- **Problema**: el `.xlsx` generado por "Exportar Excel" en `/home/instalaciones/asistencia-programada` era rechazado al reimportarlo en WinBo, mientras que exports directos desde WinBo sí se aceptaban.
+- **Diagnostico**: comparando con la libreria `xlsx` los archivos de ejemplo `Cuadrillas2-7-2026(16-5-38)-aceptawin.xlsx` / `...-acepto win.xlsx` (aceptados) vs `...-redes.xlsx` (rechazado). Los aceptados tienen rango `A1:K73` y 1 merge; el generado por REDES tenia `A1:Y74` y 2 merges — columnas L-Y y una fila extra sin valores pero con estilo (relleno), heredadas de la plantilla `.xlsx` que el usuario sube. `exportarExcel()` solo escribia S/N en columnas D-J y nunca tocaba merges/rango, asi que esa "basura" de estilo de la plantilla pasaba intacta al archivo final.
+- **Fix**: `AsistenciaProgramadaClient.tsx` (`exportarExcel()`) recorta la hoja a `A1:K{ultimaFilaConDatos}` antes de `XLSX.writeFile` — borra celdas fuera de rango, filtra `!merges`/`!cols`/`!rows` y reescribe `!ref`. Verificado reproduciendo el recorte sobre `...-redes.xlsx`: el resultado queda identico en forma (`A1:K73`, 1 merge) a los archivos que WinBo acepta.
+- Doc actualizada: `Obsidian/App Redes/Arquitectura/Diagramas/Home instalaciones asistencia-programada.md`.
+- No se modifico Firestore rules, API routes, Cloud Functions, package files, lockfiles, credenciales ni binarios.
+
 ## 2026-06-22 - Feature: toast feedback en /admin/usuarios/[uid] + mejora visual
 
 - **Problema**: los formularios de edición de usuario (`/admin/usuarios/{uid}`) no daban feedback al guardar — `SubmitActionButton` solo mostraba un ciclo visual idle→spinner→✓ pero nunca lanzaba toast.

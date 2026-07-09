@@ -6,6 +6,7 @@ import customParseFormat from "dayjs/plugin/customParseFormat";
 import "dayjs/locale/es";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 dayjs.extend(customParseFormat);
 dayjs.locale("es");
@@ -85,6 +86,8 @@ type Row = {
   numeroCuadrilla?: number;
   coordinadorUid?: string;
   coordinadorNombre?: string;
+  zonaNombre?: string;
+  tecnicoResponsableNombre?: string;
 };
 
 type CoordinadorEstado = {
@@ -1349,13 +1352,183 @@ export default function AsistenciaProgramadaClient() {
         });
       });
 
-      // 4. Descargar
+      // 4. Recortar el rango real de la hoja: la plantilla de WinBo suele traer
+      // celdas de estilo "fantasma" (sin valor, solo relleno) mas alla de la
+      // tabla de datos, que WinBo rechaza al reimportar. Se recorta a A1:K con
+      // la ultima fila que realmente tiene un nombre de cuadrilla (columna B).
+      const LAST_COL_WINBO = 10; // K
+      let lastDataRow = range.s.r;
+      for (let r = range.s.r; r <= range.e.r; r++) {
+        const cellB = ws[XLSX.utils.encode_cell({ r, c: 1 })];
+        if (cellB && String(cellB.v ?? "").trim() !== "") lastDataRow = r;
+      }
+      Object.keys(ws).forEach((addr) => {
+        if (addr.startsWith("!")) return;
+        const { r, c } = XLSX.utils.decode_cell(addr);
+        if (r > lastDataRow || c > LAST_COL_WINBO) delete ws[addr];
+      });
+      if (ws["!merges"]) {
+        ws["!merges"] = ws["!merges"].filter((m: any) => m.e.r <= lastDataRow && m.e.c <= LAST_COL_WINBO);
+      }
+      if (ws["!cols"]) ws["!cols"] = ws["!cols"].slice(0, LAST_COL_WINBO + 1);
+      if (ws["!rows"]) ws["!rows"] = ws["!rows"].slice(0, lastDataRow + 1);
+      ws["!ref"] = XLSX.utils.encode_range({ s: { r: range.s.r, c: range.s.c }, e: { r: lastDataRow, c: LAST_COL_WINBO } });
+
+      // 5. Descargar
       XLSX.writeFile(wb, `asistencia_programada_${startYmd}_a_${endYmd}.xlsx`);
       if (noEncontradas.length > 0) {
         toast.warning(`${noEncontradas.length} cuadrilla(s) no encontradas en la plantilla: ${noEncontradas.slice(0, 3).join(", ")}${noEncontradas.length > 3 ? "…" : ""}`);
       }
     } catch (e: any) {
       toast.error(e?.message || "No se pudo exportar la plantilla");
+    }
+  };
+
+  // Excel "Descanso Semanal M&D" para correo: una fila por cada N° de cuadrilla
+  // de 1 hasta el maximo activo por categoria (K1..Kmax M&D, K1..Kmax MOTOWIN
+  // M&D), con fila en blanco (Total=0) donde no hay cuadrilla activa para ese
+  // numero. No depende de la plantilla WinBo: se arma solo con datos de REDES.
+  // Usa ExcelJS (no `xlsx`) porque la libreria `xlsx` (SheetJS community) no
+  // soporta escribir colores/bordes de celda — se pierden al reescribir el archivo.
+  const exportarCorreoExcel = async () => {
+    try {
+      if (rows.length === 0 || weekDays.length === 0) throw new Error("No hay datos para exportar.");
+
+      const dayFullUpper: Record<number, string> = {
+        0: "DOMINGO", 1: "LUNES", 2: "MARTES", 3: "MIÉRCOLES", 4: "JUEVES", 5: "VIERNES", 6: "SÁBADO",
+      };
+
+      // Mismos colores que usa la app para Asistencia (verde) / Descanso (ámbar)
+      // en la grilla, más el rojo del encabezado "DOMINGO" tal como viene en el
+      // excel de referencia de WinBo (Descanso Semanal M&D).
+      const FILL_HEADER = "FF767171";
+      const FILL_DOMINGO = "FFFF0000";
+      const FILL_ASISTENCIA = "FFD1FAE5";
+      const FONT_ASISTENCIA = "FF065F46";
+      const FILL_DESCANSO = "FFFDE68A";
+      const FONT_DESCANSO = "FF92400E";
+      const thinBorder = {
+        top: { style: "thin" as const, color: { argb: "FFB0B0B0" } },
+        bottom: { style: "thin" as const, color: { argb: "FFB0B0B0" } },
+        left: { style: "thin" as const, color: { argb: "FFB0B0B0" } },
+        right: { style: "thin" as const, color: { argb: "FFB0B0B0" } },
+      };
+
+      type FilaSeccion = {
+        valores: (string | number)[];
+        diaEstados: ("asistencia" | "descanso" | null)[];
+      };
+
+      const buildSeccion = (categoria: "RESIDENCIAL" | "MOTO", partner: string): FilaSeccion[] => {
+        const filas = rows.filter((r) => categoriaCuadrilla(r) === categoria);
+        const porNumero = new Map<number, Row>();
+        let maxNum = 0;
+        filas.forEach((r) => {
+          const n = extractNumCuadrilla(r);
+          if (n) {
+            porNumero.set(n, r);
+            if (n > maxNum) maxNum = n;
+          }
+        });
+
+        const seccion: FilaSeccion[] = [];
+        for (let n = 1; n <= maxNum; n++) {
+          const fuente = `K ${n} ${partner}`;
+          const codigo = `K${n}`;
+          const r = porNumero.get(n);
+          if (!r) {
+            seccion.push({
+              valores: [n, fuente, partner, codigo, "", "", "", "", "", "", "", "", "", "", 0],
+              diaEstados: weekDays.map(() => null),
+            });
+            continue;
+          }
+          const tecnico = (r.tecnicoResponsableNombre || "").toUpperCase();
+          const cuadrillas = tecnico ? `${fuente} SGI ${tecnico}` : fuente;
+          let total = 0;
+          const diaEstados: ("asistencia" | "descanso")[] = [];
+          const dias = weekDays.map((d) => {
+            const estado = String(items?.[r.id]?.[d] || "asistencia").toLowerCase() === "asistencia" ? "asistencia" : "descanso";
+            diaEstados.push(estado);
+            if (estado === "asistencia") total++;
+            return estado === "asistencia" ? "A" : "D";
+          });
+          seccion.push({ valores: [n, fuente, partner, codigo, cuadrillas, r.zonaNombre || "", "", ...dias, total], diaEstados });
+        }
+        return seccion;
+      };
+
+      const seccionResidencial = buildSeccion("RESIDENCIAL", "M&D");
+      const seccionMoto = buildSeccion("MOTO", "MOTOWIN M&D");
+
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("Hoja1");
+
+      // Fila 1: nombre de los dias en H-N, domingo en rojo
+      const fila1 = ws.addRow(["", "", "", "", "", "", "", ...weekDays.map((d) => dayFullUpper[dayjs(d, "YYYY-MM-DD").day()] || ""), ""]);
+      fila1.eachCell({ includeEmpty: true }, (cell) => { cell.border = thinBorder; });
+      weekDays.forEach((d, i) => {
+        const cell = fila1.getCell(8 + i); // H=8
+        const esDomingo = dayjs(d, "YYYY-MM-DD").day() === 0;
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: esDomingo ? FILL_DOMINGO : FILL_HEADER } };
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        cell.alignment = { horizontal: "center", vertical: "middle" };
+      });
+
+      // Fila 2: encabezados de columna
+      const header2Values = [
+        "ITEM", "FUENTE", "PARTNER", "CODIGO", "CUADRILLAS", "ZONA 1", "OBSERVACION",
+        ...weekDays.map((d) => dayjs(d, "YYYY-MM-DD").format("M/D/YY")),
+        "Total Asistencia",
+      ];
+      const fila2 = ws.addRow(header2Values);
+      fila2.eachCell({ includeEmpty: true }, (cell) => {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: FILL_HEADER } };
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        cell.alignment = { horizontal: "center", vertical: "middle" };
+        cell.border = thinBorder;
+      });
+
+      const addSeccion = (seccion: FilaSeccion[]) => {
+        seccion.forEach(({ valores, diaEstados }) => {
+          const row = ws.addRow(valores);
+          row.eachCell({ includeEmpty: true }, (cell) => { cell.border = thinBorder; });
+          diaEstados.forEach((estado, i) => {
+            if (!estado) return;
+            const cell = row.getCell(8 + i); // H=8
+            cell.fill = {
+              type: "pattern",
+              pattern: "solid",
+              fgColor: { argb: estado === "asistencia" ? FILL_ASISTENCIA : FILL_DESCANSO },
+            };
+            cell.font = { bold: true, color: { argb: estado === "asistencia" ? FONT_ASISTENCIA : FONT_DESCANSO } };
+            cell.alignment = { horizontal: "center" };
+          });
+        });
+      };
+      addSeccion(seccionResidencial);
+      addSeccion(seccionMoto);
+
+      ws.columns = [
+        { width: 6 }, { width: 20 }, { width: 16 }, { width: 8 }, { width: 42 }, { width: 12 }, { width: 14 },
+        ...weekDays.map(() => ({ width: 10 })),
+        { width: 14 },
+      ];
+
+      const desde = dayjs(weekDays[0], "YYYY-MM-DD").format("DD.MM");
+      const hasta = dayjs(weekDays[weekDays.length - 1], "YYYY-MM-DD").format("DD.MM");
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Descanso Semanal M&D del ${desde} al ${hasta}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo exportar el correo");
     }
   };
 
@@ -2244,6 +2417,13 @@ export default function AsistenciaProgramadaClient() {
                   className="rounded-lg bg-[#254b87] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#1c3a68] disabled:opacity-50"
                 >
                   Descargar Excel
+                </button>
+                <button
+                  onClick={exportarCorreoExcel}
+                  disabled={rows.length === 0}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  Descargar correo
                 </button>
                 <div className="h-4 w-px self-center bg-slate-200 dark:bg-slate-700" />
                 <button

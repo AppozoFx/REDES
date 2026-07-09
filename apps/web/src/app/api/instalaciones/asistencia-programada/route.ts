@@ -140,6 +140,7 @@ export async function GET(req: Request) {
       .get();
     const cuadrillasRaw = cuadrillasSnap.docs.map((d) => {
       const data = d.data() as any;
+      const tecnicosUids = Array.isArray(data?.tecnicosUids) ? data.tecnicosUids.map((u: any) => String(u || "").trim()).filter(Boolean) : [];
       return {
         id: d.id,
         nombre: String(data?.nombre || d.id),
@@ -147,20 +148,40 @@ export async function GET(req: Request) {
         vehiculo: String(data?.vehiculo || "").trim(),
         numeroCuadrilla: Number(data?.numeroCuadrilla || 0) || 0,
         coordinadorUid: String(data?.coordinadorUid || data?.coordinador || "").trim(),
+        zonaId: String(data?.zonaId || "").trim(),
+        // Responsable de la cuadrilla para el export "Descargar correo": el conductor
+        // (residencial) o, si no hay, el primer tecnico asignado (moto).
+        responsableUid: String(data?.conductorUid || "").trim() || tecnicosUids[0] || "",
       };
     });
 
     const coordUids = Array.from(new Set(cuadrillasRaw.map((c) => c.coordinadorUid).filter(Boolean)));
-    const coordSnaps = await Promise.all(
-      coordUids.map(async (uid) => {
+    const responsableUids = Array.from(new Set(cuadrillasRaw.map((c) => c.responsableUid).filter(Boolean)));
+    const personaUids = Array.from(new Set([...coordUids, ...responsableUids]));
+    const personaSnaps = await Promise.all(
+      personaUids.map(async (uid) => {
         const snap = await db.collection("usuarios").doc(uid).get();
         return { uid, data: snap.exists ? (snap.data() as any) : null };
       })
     );
     const coordMap = new Map<string, string>();
-    coordSnaps.forEach(({ uid, data }) => {
+    const displayNameMap = new Map<string, string>();
+    personaSnaps.forEach(({ uid, data }) => {
       const nombre = shortName(`${data?.nombres || ""} ${data?.apellidos || ""}`.trim(), uid);
       coordMap.set(uid, nombre || uid);
+      displayNameMap.set(uid, String(data?.displayName || nombre || uid).trim());
+    });
+
+    const zonaIds = Array.from(new Set(cuadrillasRaw.map((c) => c.zonaId).filter(Boolean)));
+    const zonaSnaps = await Promise.all(
+      zonaIds.map(async (zonaId) => {
+        const snap = await db.collection("zonas").doc(zonaId).get();
+        return { zonaId, data: snap.exists ? (snap.data() as any) : null };
+      })
+    );
+    const zonaMap = new Map<string, string>();
+    zonaSnaps.forEach(({ zonaId, data }) => {
+      zonaMap.set(zonaId, String(data?.nombre || data?.zona || zonaId).trim());
     });
 
     const cuadrillas = cuadrillasRaw
@@ -172,6 +193,8 @@ export async function GET(req: Request) {
         numeroCuadrilla: c.numeroCuadrilla,
         coordinadorUid: c.coordinadorUid || "",
         coordinadorNombre: coordMap.get(c.coordinadorUid || "") || (c.coordinadorUid ? c.coordinadorUid : "-"),
+        zonaNombre: zonaMap.get(c.zonaId || "") || "",
+        tecnicoResponsableNombre: displayNameMap.get(c.responsableUid || "") || "",
       }))
       .sort((a, b) => {
         const groupDiff = cuadrillaGroupOrder(a) - cuadrillaGroupOrder(b);

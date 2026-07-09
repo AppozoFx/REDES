@@ -17,6 +17,7 @@
     "@babel/runtime": "^7.28.6",
     "@zxing/library": "^0.21.3",
     "dayjs": "^1.11.12",
+    "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
     "firebase": "^12.8.0",
     "firebase-admin": "^13.6.0",

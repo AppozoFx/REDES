@@ -204,22 +204,6 @@ export default function CierreWinboClient() {
     setProcesoIds([]);
   }
 
-  async function cerrarUna(id: string) {
-    const validacion = resultados[id]?.validacion;
-    if (!validacion?.ok) return;
-    const seguro = window.confirm(
-      `¿Cerrar la cuadrilla en WinBo?\n\n${validacion.nombreWinbo}\nDía: ${DIAS[validacion.dia ?? 0] || validacion.dia}\nMotivo: RETIRO DE CAMPO\n\nSe enviará la solicitud al proveedor para aprobación.`
-    );
-    if (!seguro) return;
-    setProcesoTipo("cerrar");
-    setProcesoIds([id]);
-    patchResultado(id, { cerrando: true });
-    const data = await llamarWinbo(id, false);
-    patchResultado(id, { cerrando: false, cierre: data });
-    setProcesoTipo(null);
-    setProcesoIds([]);
-  }
-
   async function cerrarValidadas() {
     const pendientes = seleccionadas.filter(
       (id) => resultados[id]?.validacion?.ok && !resultados[id]?.cierre?.ok
@@ -243,7 +227,7 @@ export default function CierreWinboClient() {
     setProcesoIds([]);
   }
 
-  const hayValidadasPendientes = seleccionadas.some(
+  const validadasPendientes = seleccionadas.filter(
     (id) => resultados[id]?.validacion?.ok && !resultados[id]?.cierre?.ok
   );
 
@@ -311,14 +295,14 @@ export default function CierreWinboClient() {
               : `Validar ${seleccionadas.length || ""} en WinBo (dry run)`.trim()}
           </button>
 
-          {hayValidadasPendientes ? (
+          {validadasPendientes.length > 0 ? (
             <button
               type="button"
               disabled={loteEnCurso}
               onClick={() => void cerrarValidadas()}
               className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
             >
-              {procesoTipo === "cerrar" ? "Cerrando…" : "Cerrar todas las validadas"}
+              {procesoTipo === "cerrar" ? "Cerrando…" : `Cerrar ${validadasPendientes.length} validada(s) en WinBo`}
             </button>
           ) : null}
         </div>
@@ -389,17 +373,6 @@ export default function CierreWinboClient() {
                     </dd>
                   </div>
                 </dl>
-              ) : null}
-
-              {r?.validacion?.ok && !r?.cierre?.ok ? (
-                <button
-                  type="button"
-                  disabled={loteEnCurso}
-                  onClick={() => void cerrarUna(id)}
-                  className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                >
-                  Cerrar cuadrilla en WinBo
-                </button>
               ) : null}
 
               {r?.cierre?.ok ? (

@@ -1,6 +1,10 @@
 import { z } from "zod";
+import { AVATAR_HAIR_KEYS, AVATAR_SKIN_KEYS } from "@/domain/presencia/avatarPalette";
 
 export const UidSchema = z.string().min(10).max(128);
+
+export const AvatarSkinSchema = z.enum(AVATAR_SKIN_KEYS as [string, ...string[]]);
+export const AvatarHairSchema = z.enum(AVATAR_HAIR_KEYS as [string, ...string[]]);
 
 export const EstadoAccesoSchema = z.enum(["HABILITADO", "INHABILITADO"]);
 export const EstadoPerfilSchema = z.enum(["ACTIVO", "INACTIVO"]);
@@ -131,6 +135,9 @@ export const UserSelfUpdateSchema = z.object({
 
   tipoDoc: TipoDocSchema.optional().or(z.literal("")),
   nroDoc: z.string().min(6).max(15).trim().optional().or(z.literal("")),
+
+  avatarSkin: AvatarSkinSchema.optional().or(z.literal("")),
+  avatarHair: AvatarHairSchema.optional().or(z.literal("")),
 });
 
 export type UserSelfUpdateInput = z.infer<typeof UserSelfUpdateSchema>;

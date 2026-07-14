@@ -39,6 +39,10 @@ export default async function PerfilPage() {
     roles: session.access.roles ?? [],
     areas: session.access.areas ?? [],
     estadoAcceso: session.access.estadoAcceso,
+    genero: String(profile?.genero ?? "NO_ESPECIFICA"),
+    avatarSkin: String(profile?.avatar?.skin ?? ""),
+    avatarHair: String(profile?.avatar?.hair ?? ""),
+    uid: session.uid,
   };
 
   return (

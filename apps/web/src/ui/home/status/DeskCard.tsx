@@ -3,10 +3,8 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { StatusPerson } from "@/domain/presencia/statusBoard";
-
-const SKINS = ["#e8b487", "#c98a58", "#8a5a35"];
-const HAIRS = ["#2b2338", "#5c3a21", "#1c1c1c", "#7a4a2b"];
-const OUTLINE = "#14121f";
+import { resolveAvatarHex } from "@/domain/presencia/avatarPalette";
+import { PixelCharacter } from "@/ui/common/PixelCharacter";
 
 function hashCode(value: string): number {
   let h = 0;
@@ -14,33 +12,10 @@ function hashCode(value: string): number {
   return h;
 }
 
-function Character({ roleColor, uid, genero }: { roleColor: string; uid: string; genero: string }) {
-  const skin = SKINS[hashCode(uid) % SKINS.length];
-  const hair = HAIRS[hashCode(`${uid}-hair`) % HAIRS.length];
+function Character({ roleColor, uid, genero, avatarSkin, avatarHair }: { roleColor: string; uid: string; genero: string; avatarSkin?: string; avatarHair?: string }) {
+  const { skin, hair } = resolveAvatarHex(uid, avatarSkin, avatarHair);
   const longHair = genero === "F";
-
-  return (
-    <svg viewBox="0 0 24 32" shapeRendering="crispEdges" aria-hidden="true" className="h-[69px] w-[51px]">
-      {longHair ? (
-        <>
-          <rect x="3" y="5" width="3" height="11" fill={hair} stroke={OUTLINE} strokeWidth="1" />
-          <rect x="18" y="5" width="3" height="11" fill={hair} stroke={OUTLINE} strokeWidth="1" />
-        </>
-      ) : (
-        <>
-          <rect x="4" y="5" width="2" height="3" fill={hair} stroke={OUTLINE} strokeWidth="1" />
-          <rect x="18" y="5" width="2" height="3" fill={hair} stroke={OUTLINE} strokeWidth="1" />
-        </>
-      )}
-      <rect x="6" y={longHair ? 2 : 3} width="12" height={longHair ? 4 : 3} fill={hair} stroke={OUTLINE} strokeWidth="1" />
-      <rect x="6" y="6" width="12" height="8" fill={skin} stroke={OUTLINE} strokeWidth="1" />
-      <rect x="9" y="11" width="2" height="2" fill={OUTLINE} />
-      <rect x="15" y="11" width="2" height="2" fill={OUTLINE} />
-      <rect x="4" y="14" width="16" height="12" fill={roleColor} stroke={OUTLINE} strokeWidth="1" />
-      <rect x="0" y="15" width="4" height="10" fill={roleColor} stroke={OUTLINE} strokeWidth="1" />
-      <rect x="20" y="15" width="4" height="10" fill={roleColor} stroke={OUTLINE} strokeWidth="1" />
-    </svg>
-  );
+  return <PixelCharacter roleColor={roleColor} skin={skin} hair={hair} longHair={longHair} className="h-[69px] w-[51px]" />;
 }
 
 const REFRIGERIO_PHASES = ["comiendo", "durmiendo", "celular"] as const;
@@ -275,7 +250,13 @@ export function DeskCard({ person, roleColor }: { person: StatusPerson; roleColo
               }
               style={{ transformOrigin: "50% 100%" }}
             >
-              <Character roleColor={roleColor} uid={person.uid} genero={person.genero} />
+              <Character
+                roleColor={roleColor}
+                uid={person.uid}
+                genero={person.genero}
+                avatarSkin={person.avatarSkin}
+                avatarHair={person.avatarHair}
+              />
               {isRefrigerio && <Overlay reduceMotion={reduceMotion} />}
               {isLlamada && <LlamadaOverlay reduceMotion={reduceMotion} />}
             </motion.div>

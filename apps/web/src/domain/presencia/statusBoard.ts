@@ -1,6 +1,7 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { listUsuariosAccess } from "@/domain/usuarios/service";
 import type { Genero } from "@/types/usuarios";
+import { isAvatarHairKey, isAvatarSkinKey } from "@/domain/presencia/avatarPalette";
 
 export type StatusPersonState =
   | "online"
@@ -16,6 +17,8 @@ export type StatusPerson = {
   uid: string;
   nombre: string;
   genero: Genero;
+  avatarSkin?: string;
+  avatarHair?: string;
   roles: string[];
   state: StatusPersonState;
   lastSeenAt: string | null;
@@ -144,10 +147,15 @@ export async function getStatusBoard(): Promise<StatusBoardData> {
       }
     }
 
+    const avatarSkin = isAvatarSkinKey(profile?.avatar?.skin) ? profile.avatar.skin : undefined;
+    const avatarHair = isAvatarHairKey(profile?.avatar?.hair) ? profile.avatar.hair : undefined;
+
     return {
       uid,
       nombre: shortName(profile?.nombres, profile?.apellidos, uid),
       genero: (profile?.genero as Genero) || "NO_ESPECIFICA",
+      avatarSkin,
+      avatarHair,
       roles,
       state,
       lastSeenAt: lastSeenMs > 0 ? new Date(lastSeenMs).toISOString() : null,

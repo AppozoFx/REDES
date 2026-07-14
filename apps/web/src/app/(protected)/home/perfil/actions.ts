@@ -22,6 +22,8 @@ export async function updateMyProfileAction(
     fNacimiento: String(formData.get("fNacimiento") ?? "").trim(),
     tipoDoc: String(formData.get("tipoDoc") ?? "").trim(),
     nroDoc: String(formData.get("nroDoc") ?? "").trim(),
+    avatarSkin: String(formData.get("avatarSkin") ?? "").trim(),
+    avatarHair: String(formData.get("avatarHair") ?? "").trim(),
   };
 
   const parsed = UserSelfUpdateSchema.safeParse(raw);

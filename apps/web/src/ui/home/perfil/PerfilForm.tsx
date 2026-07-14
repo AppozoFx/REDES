@@ -10,6 +10,8 @@ import {
 import type { PerfilUpdateState } from "@/app/(protected)/home/perfil/actions";
 import { updateMyProfileAction } from "@/app/(protected)/home/perfil/actions";
 import { getFirebaseAuth } from "@/lib/firebase/client";
+import { AVATAR_HAIRS, AVATAR_SKINS, fallbackAvatarKeys } from "@/domain/presencia/avatarPalette";
+import { PixelCharacter } from "@/ui/common/PixelCharacter";
 
 type PerfilDefaults = {
   celular: string;
@@ -24,6 +26,10 @@ type PerfilDefaults = {
   roles: string[];
   areas: string[];
   estadoAcceso: "HABILITADO" | "INHABILITADO";
+  genero: string;
+  avatarSkin: string;
+  avatarHair: string;
+  uid: string;
 };
 
 function firstLetter(v: string) {
@@ -36,6 +42,11 @@ export default function PerfilForm({ defaults }: { defaults: PerfilDefaults }) {
     updateMyProfileAction,
     null
   );
+
+  const fallbackAvatar = fallbackAvatarKeys(defaults.uid);
+  const [selectedSkin, setSelectedSkin] = useState(defaults.avatarSkin || fallbackAvatar.skin);
+  const [selectedHair, setSelectedHair] = useState(defaults.avatarHair || fallbackAvatar.hair);
+  const longHair = defaults.genero === "F";
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -186,6 +197,74 @@ export default function PerfilForm({ defaults }: { defaults: PerfilDefaults }) {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Fecha de nacimiento</label>
               <input name="fNacimiento" type="date" defaultValue={defaults.fNacimientoInput} className="ui-input" />
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <div>
+            <h2 className="text-base font-semibold">Avatar</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Así te va a ver el equipo en la Sala de estado.
+            </p>
+          </div>
+
+          <input type="hidden" name="avatarSkin" value={selectedSkin} />
+          <input type="hidden" name="avatarHair" value={selectedHair} />
+
+          <div className="mt-4 flex flex-wrap items-start gap-6">
+            <div className="flex h-20 w-16 shrink-0 items-end justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60">
+              <PixelCharacter
+                roleColor="#5b9be0"
+                skin={AVATAR_SKINS[selectedSkin]}
+                hair={AVATAR_HAIRS[selectedHair]}
+                longHair={longHair}
+                className="h-[69px] w-[51px]"
+              />
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">Tono de piel</p>
+                <div className="flex gap-2">
+                  {Object.entries(AVATAR_SKINS).map(([key, hex]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setSelectedSkin(key)}
+                      aria-label={`Tono de piel ${key}`}
+                      aria-pressed={selectedSkin === key}
+                      className={`h-8 w-8 rounded-full border-2 transition ${
+                        selectedSkin === key
+                          ? "border-slate-900 ring-2 ring-offset-2 ring-slate-400 dark:border-white dark:ring-offset-slate-900"
+                          : "border-slate-300 hover:border-slate-400 dark:border-slate-600"
+                      }`}
+                      style={{ backgroundColor: hex }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">Color de cabello</p>
+                <div className="flex gap-2">
+                  {Object.entries(AVATAR_HAIRS).map(([key, hex]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setSelectedHair(key)}
+                      aria-label={`Color de cabello ${key}`}
+                      aria-pressed={selectedHair === key}
+                      className={`h-8 w-8 rounded-full border-2 transition ${
+                        selectedHair === key
+                          ? "border-slate-900 ring-2 ring-offset-2 ring-slate-400 dark:border-white dark:ring-offset-slate-900"
+                          : "border-slate-300 hover:border-slate-400 dark:border-slate-600"
+                      }`}
+                      style={{ backgroundColor: hex }}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </section>

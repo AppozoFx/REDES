@@ -80,6 +80,14 @@ export async function updateUsuarioSelfProfile(
     const nroDoc = String((patch as any).nroDoc ?? "").trim();
     if (nroDoc) clean.nroDoc = nroDoc;
   }
+  if ("avatarSkin" in patch) {
+    const v = String((patch as any).avatarSkin ?? "").trim();
+    if (v) clean["avatar.skin"] = v;
+  }
+  if ("avatarHair" in patch) {
+    const v = String((patch as any).avatarHair ?? "").trim();
+    if (v) clean["avatar.hair"] = v;
+  }
 
   clean["audit.updatedAt"] = new Date();
   clean["audit.updatedBy"] = actorUid;

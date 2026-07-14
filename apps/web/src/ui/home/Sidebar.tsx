@@ -179,14 +179,16 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
   }, [itemsRaw]);
 
   const fixedTop = useMemo(() => {
-    return items.filter((it) => it.href === "/home" || it.href === "/home/comunicados");
+    return items.filter(
+      (it) => it.href === "/home" || it.href === "/home/comunicados" || it.href === "/home/status"
+    );
   }, [items]);
 
   const grouped = useMemo(() => {
     const out = new Map<GroupKey, typeof items>();
     for (const g of GROUP_ORDER) out.set(g, []);
     for (const it of items) {
-      if (it.href === "/home" || it.href === "/home/comunicados") continue;
+      if (it.href === "/home" || it.href === "/home/comunicados" || it.href === "/home/status") continue;
       const g = getGroup(it.href);
       out.set(g, [...(out.get(g) || []), it]);
     }
@@ -207,7 +209,7 @@ export default function HomeSidebar({ session }: { session: ServerSession }) {
   // Auto-seleccionar el grupo activo cuando cambia la ruta (no cuando cambia items)
   useEffect(() => {
     const nonFixed = itemsRaw.filter(
-      (it) => it.href !== "/home" && it.href !== "/home/comunicados"
+      (it) => it.href !== "/home" && it.href !== "/home/comunicados" && it.href !== "/home/status"
     );
     const active = nonFixed.find((it) => isPathActive(pathname, it.href));
     if (active) setOpenGroup(getGroup(active.href));

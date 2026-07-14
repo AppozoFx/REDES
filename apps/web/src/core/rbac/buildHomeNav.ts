@@ -35,6 +35,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     const items: NavItem[] = [
       { key: "HOME", label: "Inicio", href: "/home" },
       { key: "COMUNICADOS", label: "Comunicados", href: "/home/comunicados" },
+      { key: "STATUS", label: "Sala de estado", href: "/home/status" },
       { key: "INSTALACIONES_ASISTENCIA", label: "Asistencia Cuadrillas", href: "/home/instalaciones/asistencia" },
       { key: "CUADRILLAS_GESTION", label: "Cuadrillas Gestion", href: "/home/cuadrillas/gestion" },
       { key: "TECNICOS_GESTION", label: "Tecnicos Gestion", href: "/home/tecnicos/gestion" },
@@ -69,6 +70,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
   const items: NavItem[] = [
     { key: "HOME", label: "Inicio", href: "/home" },
     { key: "COMUNICADOS", label: "Comunicados", href: "/home/comunicados" },
+    { key: "STATUS", label: "Sala de estado", href: "/home/status" },
   ];
 
   if (hasArea(session, "INSTALACIONES") || isCoord || isRrhh || isSupervisor || isSeguridad) {
@@ -357,6 +359,7 @@ export function buildHomeNav(session: ServerSession): NavItem[] {
     const limitedAllowed = new Set([
       "/home",
       "/home/comunicados",
+      "/home/status",
       "/home/instalaciones/dashboard",
       "/home/instalaciones/asignacion-supervisores",
       "/home/instalaciones/distribucion-zonas",

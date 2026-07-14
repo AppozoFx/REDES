@@ -165,6 +165,44 @@ function truncateLabel(s: string, max = 16) {
   return v.length > max ? `${v.slice(0, max - 1)}…` : v;
 }
 
+function diasEntreInclusive(fromYmd: string, toYmd: string) {
+  const from = new Date(`${fromYmd}T00:00:00Z`).getTime();
+  const to = new Date(`${toYmd}T00:00:00Z`).getTime();
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return 1;
+  return Math.round((to - from) / 86400000) + 1;
+}
+
+function clamp01(n: number) {
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(1, Math.max(0, n));
+}
+
+function polarToCartesian(cx: number, cy: number, r: number, percent: number) {
+  const angleDeg = 180 - percent * 180;
+  const angleRad = (angleDeg * Math.PI) / 180;
+  return { x: cx + r * Math.cos(angleRad), y: cy - r * Math.sin(angleRad) };
+}
+
+function describeArc(cx: number, cy: number, r: number, startPercent: number, endPercent: number) {
+  const start = polarToCartesian(cx, cy, r, startPercent);
+  const end = polarToCartesian(cx, cy, r, endPercent);
+  // El medidor nunca supera 180 grados (medio circulo), asi que el tramo
+  // pedido siempre es el "arco corto": large-arc-flag debe ser 0 siempre.
+  return `M ${start.x} ${start.y} A ${r} ${r} 0 0 1 ${end.x} ${end.y}`;
+}
+
+function valueToGaugePercent(value: number, metaConservadora: number, metaOptima: number) {
+  if (metaOptima <= 0) return 0;
+  if (metaConservadora <= 0) return clamp01(value / metaOptima);
+  // Meta 2 se ancla siempre al 50% del medidor (tramo 1), y de meta 2 a
+  // meta 3 ocupa el otro 50% (tramo 2) — asi el umbral queda visualmente
+  // en el medio sin importar que 2 no sea matematicamente la mitad de 3.
+  if (value <= metaConservadora) return 0.5 * clamp01(value / metaConservadora);
+  const rango = metaOptima - metaConservadora;
+  if (rango <= 0) return 1;
+  return 0.5 + 0.5 * clamp01((value - metaConservadora) / rango);
+}
+
 function StatCard({
   title,
   value,
@@ -206,6 +244,70 @@ function StatCard({
         </span>
       </div>
       {hint ? <div className="mt-1 text-xs text-slate-500">{hint}</div> : null}
+    </div>
+  );
+}
+
+function PressureGauge({
+  value,
+  metaConservadora,
+  metaOptima,
+  enRitmo,
+  className = "",
+}: {
+  value: number;
+  metaConservadora: number;
+  metaOptima: number;
+  enRitmo: boolean;
+  className?: string;
+}) {
+  const cx = 120;
+  const cy = 112;
+  const r = 92;
+  const strokeWidth = 16;
+  const fillPercent = valueToGaugePercent(value, metaConservadora, metaOptima);
+  const tickPercent = metaOptima > 0 ? 0.5 : 0;
+  const tickInner = polarToCartesian(cx, cy, r - strokeWidth / 2 - 5, tickPercent);
+  const tickOuter = polarToCartesian(cx, cy, r + strokeWidth / 2 + 5, tickPercent);
+  const fillColorClass = enRitmo ? "stroke-emerald-500" : "stroke-red-500";
+  const badgeClass = enRitmo ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700";
+
+  return (
+    <div className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900 ${className}`}>
+      <div className="text-sm font-medium text-slate-500 dark:text-slate-300">Presion de meta</div>
+      <svg viewBox="0 0 240 128" className="mx-auto mt-1 block w-full max-w-[220px]">
+        <path
+          d={describeArc(cx, cy, r, 0, 1)}
+          fill="none"
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          className="stroke-slate-200 dark:stroke-slate-700"
+        />
+        <path
+          d={describeArc(cx, cy, r, 0, fillPercent)}
+          fill="none"
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          className={fillColorClass}
+        />
+        <line
+          x1={tickInner.x}
+          y1={tickInner.y}
+          x2={tickOuter.x}
+          y2={tickOuter.y}
+          strokeWidth={2}
+          className="stroke-slate-400 dark:stroke-slate-500"
+        />
+      </svg>
+      <div className="-mt-2 flex flex-col items-center">
+        <div className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">{Math.round(value)}</div>
+        <span className={`mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${badgeClass}`}>
+          {enRitmo ? "● En ritmo" : "● Bajo ritmo"}
+        </span>
+      </div>
+      <div className="mt-1 text-center text-xs text-slate-500 dark:text-slate-300">
+        Meta 2/cuadrilla: {Math.round(metaConservadora)} · Meta ideal 3/cuadrilla: {Math.round(metaOptima)}
+      </div>
     </div>
   );
 }
@@ -459,6 +561,21 @@ export default function DashboardInstalacionesClient() {
       avanceMetaMensualPct,
     };
   }, [data]);
+  const kpiPresionMeta = useMemo(() => {
+    if (!data) {
+      return { cuadrillasActivas: 0, diasEnPeriodo: 0, metaConservadora: 0, metaOptima: 0, valorActual: 0, enRitmo: false };
+    }
+    const cuadrillasActivas = data.filtersMeta.cuadrillas.length;
+    let diasEnPeriodo = 1;
+    if (mode === "week") diasEnPeriodo = 7;
+    else if (mode === "month") diasEnPeriodo = kpiMetaProyeccion.diasMes || 1;
+    else if (mode === "range") diasEnPeriodo = diasEntreInclusive(data.period.fromYmd, data.period.toYmd);
+    const metaConservadora = cuadrillasActivas * 2 * diasEnPeriodo;
+    const metaOptima = cuadrillasActivas * 3 * diasEnPeriodo;
+    const valorActual = Number(data.kpi.finalizadas || 0);
+    const enRitmo = valorActual >= metaConservadora;
+    return { cuadrillasActivas, diasEnPeriodo, metaConservadora, metaOptima, valorActual, enRitmo };
+  }, [data, mode, kpiMetaProyeccion]);
   const labelByKey = useMemo(() => {
     const m = new Map<string, string>();
     for (const r of chartCuadrillas.data) {
@@ -744,7 +861,7 @@ export default function DashboardInstalacionesClient() {
 
       {!error && data ? (
         <>
-          <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-8">
             <StatCard title="Finalizadas" value={data.kpi.finalizadas} tone="emerald" delta={kpiDelta.finalizadas} hint={data.periodPrev?.label ? `Vs ${data.periodPrev.label}` : undefined} />
             <StatCard
               title={mode === "month" ? "Meta diaria" : "Meta del dia"}
@@ -771,6 +888,13 @@ export default function DashboardInstalacionesClient() {
                 hint="Finalizadas del periodo / Meta del dia"
               />
             )}
+            <PressureGauge
+              value={kpiPresionMeta.valorActual}
+              metaConservadora={kpiPresionMeta.metaConservadora}
+              metaOptima={kpiPresionMeta.metaOptima}
+              enRitmo={kpiPresionMeta.enRitmo}
+              className="md:col-span-2 xl:col-span-2"
+            />
             <StatCard title="Efectividad" value={`${data.kpi.efectividadPct.toFixed(1)}%`} tone="indigo" delta={kpiDelta.efectividadPct} deltaMode="pp" />
             <StatCard title="Liquidadas" value={data.kpi.liquidadas} tone="slate" delta={kpiDelta.liquidadas} />
             <StatCard title="Pendientes de liquidar" value={data.kpi.pendientesLiquidar} tone="rose" hint="Finalizadas aun no liquidadas" delta={kpiDelta.pendientesLiquidar} />

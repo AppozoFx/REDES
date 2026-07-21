@@ -32,16 +32,21 @@ type Row = {
   horaFinLlamada: string;
   observacionLlamada: string;
   icCount: number;
+  icCortas: number;
   icLatest: {
     usuaruioInconcert: string;
     inicioLlamadaInconcert: string;
     entraLlamadaInconcert: string;
     finLlamadaInconcert: string;
     duracion: string;
+    duracionSeg: number;
+    corta: boolean;
     bo: string;
     observacionInconcert: string;
   } | null;
 };
+
+const CORTA_UMBRAL_SEG = 11;
 
 function normalizePhone(value: unknown): string {
   const raw = String(value || "").trim();
@@ -72,6 +77,23 @@ function parseIcTs(r: any) {
     if (!Number.isNaN(t)) return t;
   }
   return 0;
+}
+
+// Fecha (YYYY-MM-DD) de la llamada, tomada del texto tal cual viene del CSV InConcert
+// (evita reinterpretar zona horaria via Date.parse, que puede correr el dia).
+function parseIcYmd(r: any): string {
+  const cands = [r?.inicioLlamadaInconcert, r?.entraLlamadaInconcert, r?.finLlamadaInconcert];
+  for (const c of cands) {
+    const m = String(c || "").trim().match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) return m[1];
+  }
+  return "";
+}
+
+function parseDuracionSeg(v: unknown): number {
+  const m = String(v || "").trim().match(/^(\d{1,2}):(\d{2}):(\d{2})$/);
+  if (!m) return 0;
+  return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
 }
 
 function tramoName(tramoRaw: string) {
@@ -155,6 +177,7 @@ export async function GET(req: Request) {
           codigoCliente: String(x.codiSeguiClien || ""),
           documento: String(x.numeroDocumento || ""),
           telefono: String(x.telefono || ""),
+          fSoliYmd: String(x.fSoliYmd || ""),
           cuadrillaNombre: String(x.cuadrillaNombre || x.cuadrillaId || ""),
           tipoServicio: String(x.tipoTraba || x.tipoOrden || ""),
           tramo: String(x.fSoliHm || x.fechaFinVisiHm || ""),
@@ -191,7 +214,9 @@ export async function GET(req: Request) {
     );
 
     const tels = Array.from(new Set(ordenesRaw.map((r) => normalizePhone(r.telefono)).filter(Boolean)));
-    const inconcertByTel = new Map<string, any[]>();
+    // Clave "telefono|fecha" para que una orden solo cruce con llamadas InConcert
+    // hechas el mismo dia de esa orden (antes cruzaba por telefono sin importar el dia).
+    const inconcertByTelDia = new Map<string, any[]>();
 
     for (let i = 0; i < tels.length; i += 30) {
       const chunk = tels.slice(i, i + 30);
@@ -207,21 +232,26 @@ export async function GET(req: Request) {
         const x = d.data() as any;
         const tel = normalizePhone(x?._telNorm || x?.telefonoCliente || x?._dirCrudo);
         if (!tel) continue;
-        const list = inconcertByTel.get(tel) || [];
-        list.push({ id: d.id, ...x, _ts: parseIcTs(x) });
-        inconcertByTel.set(tel, list);
+        const ymd = parseIcYmd(x);
+        if (!ymd) continue;
+        const key = `${tel}|${ymd}`;
+        const list = inconcertByTelDia.get(key) || [];
+        list.push({ id: d.id, ...x, _ts: parseIcTs(x), _duracionSeg: parseDuracionSeg(x?.duracion) });
+        inconcertByTelDia.set(key, list);
       }
     }
 
-    for (const [k, list] of inconcertByTel.entries()) {
+    for (const [k, list] of inconcertByTelDia.entries()) {
       list.sort((a, b) => (b._ts || 0) - (a._ts || 0));
-      inconcertByTel.set(k, list);
+      inconcertByTelDia.set(k, list);
     }
 
     const items: Row[] = ordenesRaw.map((r) => {
       const telNorm = normalizePhone(r.telefono);
-      const list = telNorm ? inconcertByTel.get(telNorm) || [] : [];
+      const key = telNorm && r.fSoliYmd ? `${telNorm}|${r.fSoliYmd}` : "";
+      const list = key ? inconcertByTelDia.get(key) || [] : [];
       const latest = list[0] || null;
+      const cortas = list.filter((x) => x._duracionSeg < CORTA_UMBRAL_SEG).length;
       return {
         id: r.id,
         ordenId: r.ordenId,
@@ -246,6 +276,7 @@ export async function GET(req: Request) {
         horaFinLlamada: r.horaFinLlamada || "-",
         observacionLlamada: r.observacionLlamada || "-",
         icCount: list.length,
+        icCortas: cortas,
         icLatest: latest
           ? {
               usuaruioInconcert: String(latest.usuaruioInconcert || "-"),
@@ -253,6 +284,8 @@ export async function GET(req: Request) {
               entraLlamadaInconcert: String(latest.entraLlamadaInconcert || "-"),
               finLlamadaInconcert: String(latest.finLlamadaInconcert || "-"),
               duracion: String(latest.duracion || "-"),
+              duracionSeg: latest._duracionSeg || 0,
+              corta: (latest._duracionSeg || 0) < CORTA_UMBRAL_SEG,
               bo: String(latest.bo || "-"),
               observacionInconcert: String(latest.observacionInconcert || "-"),
             }

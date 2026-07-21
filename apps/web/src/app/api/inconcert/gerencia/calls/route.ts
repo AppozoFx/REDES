@@ -28,6 +28,23 @@ function parseIcTs(r: any) {
   return 0;
 }
 
+function parseIcYmd(r: any): string {
+  const cands = [r?.inicioLlamadaInconcert, r?.entraLlamadaInconcert, r?.finLlamadaInconcert];
+  for (const c of cands) {
+    const m = String(c || "").trim().match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) return m[1];
+  }
+  return "";
+}
+
+function parseDuracionSeg(v: unknown): number {
+  const m = String(v || "").trim().match(/^(\d{1,2}):(\d{2}):(\d{2})$/);
+  if (!m) return 0;
+  return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+}
+
+const CORTA_UMBRAL_SEG = 11;
+
 export async function GET(req: Request) {
   try {
     const session = await getServerSession();
@@ -59,13 +76,17 @@ export async function GET(req: Request) {
       })
       .map((d) => {
         const x = d.data() as any;
+        const duracionSeg = parseDuracionSeg(x?.duracion);
         return {
           id: d.id,
+          fecha: parseIcYmd(x) || "-",
           usuaruioInconcert: String(x.usuaruioInconcert || "-"),
           inicioLlamadaInconcert: String(x.inicioLlamadaInconcert || "-"),
           entraLlamadaInconcert: String(x.entraLlamadaInconcert || "-"),
           finLlamadaInconcert: String(x.finLlamadaInconcert || "-"),
           duracion: String(x.duracion || "-"),
+          duracionSeg,
+          corta: duracionSeg < CORTA_UMBRAL_SEG,
           espera: String(x.espera || "-"),
           timbrado: String(x.timbrado || "-"),
           atencion: String(x.atencion || "-"),

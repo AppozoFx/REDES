@@ -29,12 +29,15 @@ type Row = {
   horaFinLlamada: string;
   observacionLlamada: string;
   icCount: number;
+  icCortas: number;
   icLatest: {
     usuaruioInconcert: string;
     inicioLlamadaInconcert: string;
     entraLlamadaInconcert: string;
     finLlamadaInconcert: string;
     duracion: string;
+    duracionSeg: number;
+    corta: boolean;
     bo: string;
     observacionInconcert: string;
   } | null;
@@ -203,7 +206,8 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
       const byAlerta =
         !filters.alerta ||
         (filters.alerta === "tolerancia" && outsideTolerance(r)) ||
-        (filters.alerta === "sinaction" && noGestion(r));
+        (filters.alerta === "sinaction" && noGestion(r)) ||
+        (filters.alerta === "cortas" && r.icCortas > 0);
       return byGestor && byCoord && byCuad && byEstado && byTramo && byEstadoLlamada && byAccion && byAlerta;
     });
   }, [rows, filters]);
@@ -227,6 +231,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
   const totalSinAccion = filtered.length - totalConAccion;
   const totalFueraTolerancia = filtered.filter(outsideTolerance).length;
   const totalSinGestion = filtered.filter(noGestion).length;
+  const totalLlamadasCortas = filtered.reduce((acc, r) => acc + (r.icCortas || 0), 0);
   const pctConAccion = filtered.length ? Math.round((totalConAccion * 100) / filtered.length) : 0;
 
   async function openCalls(row: Row) {
@@ -262,6 +267,8 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
       INC_Duracion: r.icLatest?.duracion || "",
       INC_BO: r.icLatest?.bo || "",
       INC_Observacion: r.icLatest?.observacionInconcert || "",
+      INC_LlamadasDia: r.icCount,
+      INC_LlamadasCortasDia: r.icCortas,
       TieneAccionIC: hasAccion(r) ? "Si" : "No",
     }));
     const ranking = rankingData.map((r) => ({
@@ -419,6 +426,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
                   <option value="">Todas</option>
                   <option value="tolerancia">Fuera de tolerancia</option>
                   <option value="sinaction">Sin gestion</option>
+                  <option value="cortas">Con llamadas cortas (&lt;11s)</option>
                 </select>
                 <ChevronIcon />
               </div>
@@ -460,7 +468,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
 
       {/* ── KPIs ── */}
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Total</div>
             <div className="text-lg font-bold">{filtered.length}</div>
@@ -480,6 +488,10 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Sin llamadas (IC)</div>
             <div className="text-lg font-bold">{totalSinAccion}</div>
+          </div>
+          <div className="rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm text-orange-700 dark:border-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
+            <div className="text-[11px] font-semibold uppercase tracking-wide">Llamadas cortas (&lt;11s)</div>
+            <div className="text-lg font-bold">{totalLlamadasCortas}</div>
           </div>
         </div>
 
@@ -589,6 +601,14 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
                       <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${r.icCount ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"}`}>
                         {r.icCount ? "Con llamadas" : "Sin llamadas"}
                       </span>
+                      {r.icCortas > 0 ? (
+                        <span
+                          title="Llamadas de menos de 11 segundos ese dia"
+                          className="rounded-full bg-orange-100 px-2 py-1 text-[10px] font-semibold text-orange-800 dark:bg-orange-900/30 dark:text-orange-300"
+                        >
+                          {r.icCortas} corta{r.icCortas !== 1 ? "s" : ""}
+                        </span>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
@@ -607,7 +627,12 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="mx-4 w-full max-w-5xl rounded-2xl bg-white shadow-2xl dark:bg-slate-900 dark:text-slate-100">
             <div className="flex items-center justify-between border-b p-4 dark:border-slate-700">
-              <h3 className="text-lg font-semibold">Llamadas InConcert - Tel: <span className="font-mono">{modal.tel}</span></h3>
+              <div>
+                <h3 className="text-lg font-semibold">Llamadas InConcert - Tel: <span className="font-mono">{modal.tel}</span></h3>
+                <p className="text-xs text-muted-foreground dark:text-slate-400">
+                  Filas en naranja: duracion menor a 11 segundos (posible intento sin contacto real)
+                </p>
+              </div>
               <button type="button" className="rounded-lg bg-slate-700 px-3 py-1 text-white transition hover:bg-slate-800" onClick={() => setModal(null)}>
                 Cerrar
               </button>
@@ -616,14 +641,15 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
               <table className="w-full border text-xs md:text-sm dark:border-slate-700">
                 <thead className="bg-slate-100 dark:bg-slate-800 dark:text-slate-200">
                   <tr>
-                    {["Usuario","Inicio","Entra","Fin","Duracion","Espera","Timbrado","Atencion","BO","Observacion"].map((h) => (
+                    {["Fecha","Usuario","Inicio","Entra","Fin","Duracion","Espera","Timbrado","Atencion","BO","Observacion"].map((h) => (
                       <th key={h} className="p-2 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {modal.list.map((r: any) => (
-                    <tr key={r.id} className="border-b border-slate-200 dark:border-slate-700">
+                    <tr key={r.id} className={`border-b border-slate-200 dark:border-slate-700 ${r.corta ? "bg-orange-50 dark:bg-orange-900/20" : ""}`}>
+                      <td className="p-2 whitespace-nowrap">{r.fecha || "-"}</td>
                       <td className="p-2">{r.usuaruioInconcert || "-"}</td>
                       <td className="p-2">{soloHora(r.inicioLlamadaInconcert)}</td>
                       <td className="p-2">{soloHora(r.entraLlamadaInconcert)}</td>
@@ -638,7 +664,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
                   ))}
                   {!modal.list.length ? (
                     <tr>
-                      <td colSpan={10} className="p-4 text-center text-muted-foreground dark:text-slate-400">Sin llamadas</td>
+                      <td colSpan={11} className="p-4 text-center text-muted-foreground dark:text-slate-400">Sin llamadas</td>
                     </tr>
                   ) : null}
                 </tbody>

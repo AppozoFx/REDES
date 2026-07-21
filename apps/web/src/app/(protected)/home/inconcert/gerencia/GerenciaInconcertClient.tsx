@@ -51,6 +51,8 @@ type Filters = {
   acciones: "" | "con" | "sin";
 };
 
+type Mode = "dia" | "mes";
+
 const initialFilters: Filters = {
   gestor: "",
   coordinador: "",
@@ -72,8 +74,45 @@ function currentLimaHms() {
   }).format(new Date());
 }
 
+function monthFromYmd(ymd: string) {
+  return String(ymd || "").slice(0, 7);
+}
+
+function soloHora(value?: string | null) {
+  const s = String(value || "").trim();
+  if (!s || s === "-") return s || "-";
+  const m = s.match(/(\d{2}:\d{2}:\d{2})/);
+  return m ? m[1] : s;
+}
+
+const inputCls =
+  "h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-blue-900/40";
+const selectCls = inputCls + " appearance-none pr-8 cursor-pointer";
+const labelCls = "block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400";
+
+function CalendarIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  );
+}
+
+function ChevronIcon() {
+  return (
+    <svg className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
 export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) {
+  const [mode, setMode] = useState<Mode>("dia");
   const [ymd, setYmd] = useState(initialYmd);
+  const [month, setMonth] = useState(monthFromYmd(initialYmd));
   const [clock, setClock] = useState(currentLimaHms());
   const [rows, setRows] = useState<Row[]>([]);
   const [gestores, setGestores] = useState<OptionItem[]>([]);
@@ -97,7 +136,8 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
       setLoading(true);
       setError("");
       try {
-        const res = await fetch(`/api/inconcert/gerencia/list?ymd=${encodeURIComponent(ymd)}`, {
+        const qs = mode === "mes" ? `month=${encodeURIComponent(month)}` : `ymd=${encodeURIComponent(ymd)}`;
+        const res = await fetch(`/api/inconcert/gerencia/list?${qs}`, {
           cache: "no-store",
           signal: ctrl.signal,
         });
@@ -123,7 +163,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
       cancelled = true;
       ctrl.abort();
     };
-  }, [ymd]);
+  }, [mode, ymd, month]);
 
   function outsideTolerance(inst: Row) {
     if (!inst.horaEnCamino || !inst.tramo || inst.tramo === "-") return false;
@@ -216,9 +256,9 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
       FinLlamada: r.horaFinLlamada,
       ObservacionLlamada: r.observacionLlamada,
       INC_Usuario: r.icLatest?.usuaruioInconcert || "",
-      INC_Inicio: r.icLatest?.inicioLlamadaInconcert || "",
-      INC_Entra: r.icLatest?.entraLlamadaInconcert || "",
-      INC_Fin: r.icLatest?.finLlamadaInconcert || "",
+      INC_Inicio: soloHora(r.icLatest?.inicioLlamadaInconcert),
+      INC_Entra: soloHora(r.icLatest?.entraLlamadaInconcert),
+      INC_Fin: soloHora(r.icLatest?.finLlamadaInconcert),
       INC_Duracion: r.icLatest?.duracion || "",
       INC_BO: r.icLatest?.bo || "",
       INC_Observacion: r.icLatest?.observacionInconcert || "",
@@ -235,207 +275,340 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), "Reporte Gerencia");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ranking), "Cumplimiento Gestor");
-    XLSX.writeFile(wb, `REPORTE-GERENCIA-${ymd}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ranking), "Auditoria Gestor");
+    const suffix = mode === "mes" ? month : ymd;
+    XLSX.writeFile(wb, `REPORTE-GERENCIA-${suffix}.xlsx`);
   }
 
-  return (
-    <div className="space-y-4 text-slate-900 dark:text-slate-100">
-      <h1 className="text-center text-xl font-semibold">InConcert - Vista Gerencia</h1>
-      <p className="text-center text-sm text-muted-foreground dark:text-slate-400">Hora actual Lima: {clock}</p>
+  const periodoLabel = mode === "mes" ? `Mes: ${month || "—"}` : `Día: ${ymd || "—"}`;
 
-      <div className="flex flex-wrap justify-center gap-2 text-xs font-semibold">
-        <div className="rounded bg-slate-100 px-3 py-2 dark:bg-slate-800">Total: {filtered.length}</div>
-        <div className="rounded bg-slate-100 px-3 py-2 dark:bg-slate-800">Fuera tolerancia: {totalFueraTolerancia}</div>
-        <div className="rounded bg-slate-100 px-3 py-2 dark:bg-slate-800">Sin gestion: {totalSinGestion}</div>
-        <div className="rounded bg-slate-100 px-3 py-2 dark:bg-slate-800">Con llamadas: {totalConAccion}</div>
-        <div className="rounded bg-slate-100 px-3 py-2 dark:bg-slate-800">Sin llamadas: {totalSinAccion}</div>
+  return (
+    <div className="w-full space-y-4 text-slate-900 dark:text-slate-100">
+      <div className="text-center">
+        <h1 className="text-xl font-semibold">InConcert - Vista Gerencial</h1>
+        <p className="text-sm text-muted-foreground dark:text-slate-400">Hora actual Lima: {clock}</p>
       </div>
 
-      <div className="mx-auto w-full max-w-5xl">
-        <div className="flex items-center justify-between text-xs font-semibold mb-1">
-          <span>Porcentaje con llamadas (registros IC)</span>
-          <div className="flex items-center gap-2">
+      {/* ── Panel de control ── */}
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="border-b border-slate-100 px-4 py-3 dark:border-slate-700">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <label className={labelCls}>Vista</label>
+              <div className="inline-flex rounded-xl border border-slate-200 p-1 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setMode("dia")}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                    mode === "dia" ? "bg-slate-800 text-white dark:bg-slate-600" : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  Día
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode("mes")}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                    mode === "mes" ? "bg-slate-800 text-white dark:bg-slate-600" : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  Mes
+                </button>
+              </div>
+            </div>
+
+            {mode === "dia" ? (
+              <div className="space-y-1">
+                <label className={labelCls}>Fecha (Lima)</label>
+                <input type="date" value={ymd} onChange={(e) => setYmd(e.target.value)} className={inputCls} />
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <label className={labelCls}>Mes (Lima)</label>
+                <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className={inputCls} />
+              </div>
+            )}
+
+            <div className="min-w-40 space-y-1">
+              <label className={labelCls}>Gestor</label>
+              <div className="relative">
+                <select value={filters.gestor} onChange={(e) => setFilters((f) => ({ ...f, gestor: e.target.value }))} className={selectCls + " w-full"}>
+                  <option value="">Todos</option>
+                  {gestores.map((g) => (
+                    <option key={g.uid} value={g.uid}>{g.nombre}</option>
+                  ))}
+                </select>
+                <ChevronIcon />
+              </div>
+            </div>
+
+            <div className="min-w-40 space-y-1">
+              <label className={labelCls}>Coordinador</label>
+              <div className="relative">
+                <select value={filters.coordinador} onChange={(e) => setFilters((f) => ({ ...f, coordinador: e.target.value }))} className={selectCls + " w-full"}>
+                  <option value="">Todos</option>
+                  {coordinadores.map((c) => (
+                    <option key={c.uid} value={c.uid}>{c.nombre}</option>
+                  ))}
+                </select>
+                <ChevronIcon />
+              </div>
+            </div>
+
+            <div className="min-w-36 space-y-1">
+              <label className={labelCls}>Tramo</label>
+              <div className="relative">
+                <select value={filters.tramo} onChange={(e) => setFilters((f) => ({ ...f, tramo: e.target.value }))} className={selectCls + " w-full"}>
+                  <option value="">Todos</option>
+                  <option value="Primer Tramo">Primer Tramo</option>
+                  <option value="Segundo Tramo">Segundo Tramo</option>
+                  <option value="Tercer Tramo">Tercer Tramo</option>
+                </select>
+                <ChevronIcon />
+              </div>
+            </div>
+
+            <div className="min-w-36 space-y-1">
+              <label className={labelCls}>Estado</label>
+              <div className="relative">
+                <select value={filters.estado} onChange={(e) => setFilters((f) => ({ ...f, estado: e.target.value }))} className={selectCls + " w-full"}>
+                  <option value="">Todos</option>
+                  <option value="Agendada">Agendada</option>
+                  <option value="En camino">En camino</option>
+                  <option value="Cancelada">Cancelada</option>
+                  <option value="Finalizada">Finalizada</option>
+                  <option value="Reprogramada">Reprogramada</option>
+                  <option value="Iniciada">Iniciada</option>
+                  <option value="Regestion">Regestion</option>
+                  <option value="Regestión">Regestion (con tilde)</option>
+                </select>
+                <ChevronIcon />
+              </div>
+            </div>
+
+            <div className="min-w-44 space-y-1">
+              <label className={labelCls}>Estado llamada</label>
+              <div className="relative">
+                <select value={filters.estadoLlamada} onChange={(e) => setFilters((f) => ({ ...f, estadoLlamada: e.target.value }))} className={selectCls + " w-full"}>
+                  <option value="">Todos</option>
+                  <option value="Contesto">Contesto</option>
+                  <option value="No Contesto">No Contesto</option>
+                  <option value="No se Registro">No se Registro</option>
+                  <option value="noLlamo">No se llamo</option>
+                </select>
+                <ChevronIcon />
+              </div>
+            </div>
+
+            <div className="min-w-44 space-y-1">
+              <label className={labelCls}>Acciones IC</label>
+              <div className="relative">
+                <select value={filters.acciones} onChange={(e) => setFilters((f) => ({ ...f, acciones: e.target.value as any }))} className={selectCls + " w-full"}>
+                  <option value="">Todas</option>
+                  <option value="con">Con llamadas</option>
+                  <option value="sin">Sin llamadas</option>
+                </select>
+                <ChevronIcon />
+              </div>
+            </div>
+
+            <div className="min-w-40 space-y-1">
+              <label className={labelCls}>Alertas</label>
+              <div className="relative">
+                <select value={filters.alerta} onChange={(e) => setFilters((f) => ({ ...f, alerta: e.target.value }))} className={selectCls + " w-full"}>
+                  <option value="">Todas</option>
+                  <option value="tolerancia">Fuera de tolerancia</option>
+                  <option value="sinaction">Sin gestion</option>
+                </select>
+                <ChevronIcon />
+              </div>
+            </div>
+
+            <div className="min-w-44 space-y-1">
+              <label className={labelCls}>Buscar cuadrilla</label>
+              <input
+                value={filters.cuadrilla}
+                onChange={(e) => setFilters((f) => ({ ...f, cuadrilla: e.target.value }))}
+                placeholder="Nombre de cuadrilla"
+                className={inputCls + " w-full"}
+              />
+            </div>
+
             <button
               type="button"
-              onClick={() => setShowRanking((v) => !v)}
-              className="rounded bg-slate-800 px-3 py-1.5 text-white dark:bg-slate-700"
+              onClick={exportExcel}
+              className="h-9 rounded-xl bg-emerald-600 px-3 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700"
             >
-              {showRanking ? "Ocultar cumplimiento" : "Mostrar cumplimiento"}
+              Exportar Excel
             </button>
-            <span>{pctConAccion}% ({totalConAccion}/{filtered.length || 0})</span>
           </div>
         </div>
-        <div className="h-3 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-          <div className="h-full bg-gradient-to-r from-slate-700 to-orange-500" style={{ width: `${pctConAccion}%` }} />
-        </div>
-      </div>
 
-      {showRanking ? (
-        <div className="mx-auto w-full max-w-5xl space-y-2">
-          {rankingData.length === 0 ? (
-            <div className="text-xs text-muted-foreground dark:text-slate-400">No hay datos para ranking.</div>
-          ) : (
-            rankingData.map((g) => (
-              <div key={g.gestor} className="rounded border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
-                <div className="flex items-center justify-between text-xs mb-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold">{g.nombre}</span>
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">{g.con}/{g.total} con llamadas</span>
-                  </div>
-                  <span className="font-bold">{g.pct}%</span>
-                </div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-                  <div className="h-full bg-gradient-to-r from-emerald-500 to-blue-500" style={{ width: `${g.pct}%` }} />
-                </div>
-              </div>
-            ))
-          )}
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3 text-xs">
+          <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+            <CalendarIcon />
+            {periodoLabel}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            {filtered.length} registro{filtered.length !== 1 ? "s" : ""}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            No incluye ordenes de garantia
+          </span>
         </div>
+      </section>
+
+      {/* ── KPIs ── */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Total</div>
+            <div className="text-lg font-bold">{filtered.length}</div>
+          </div>
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-900/30 dark:text-rose-300">
+            <div className="text-[11px] font-semibold uppercase tracking-wide">Fuera tolerancia</div>
+            <div className="text-lg font-bold">{totalFueraTolerancia}</div>
+          </div>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+            <div className="text-[11px] font-semibold uppercase tracking-wide">Sin gestion</div>
+            <div className="text-lg font-bold">{totalSinGestion}</div>
+          </div>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+            <div className="text-[11px] font-semibold uppercase tracking-wide">Con llamadas (IC)</div>
+            <div className="text-lg font-bold">{totalConAccion}</div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Sin llamadas (IC)</div>
+            <div className="text-lg font-bold">{totalSinAccion}</div>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <div className="flex items-center justify-between text-xs font-semibold mb-1">
+            <span>Porcentaje con llamadas reales (INCONCERT)</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowRanking((v) => !v)}
+                className="rounded-lg bg-slate-800 px-3 py-1.5 text-white transition hover:bg-slate-700 dark:bg-slate-700"
+              >
+                {showRanking ? "Ocultar auditoria por gestor" : "Ver auditoria por gestor"}
+              </button>
+              <span>{pctConAccion}% ({totalConAccion}/{filtered.length || 0})</span>
+            </div>
+          </div>
+          <div className="h-3 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+            <div className="h-full bg-gradient-to-r from-slate-700 to-orange-500" style={{ width: `${pctConAccion}%` }} />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Auditoria por gestor ── */}
+      {showRanking ? (
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <h2 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+            Auditoria por gestor — {periodoLabel} <span className="font-normal text-slate-400">(basado en llamadas reales de INCONCERT)</span>
+          </h2>
+          <div className="space-y-2">
+            {rankingData.length === 0 ? (
+              <div className="text-xs text-muted-foreground dark:text-slate-400">No hay datos para auditoria.</div>
+            ) : (
+              rankingData.map((g) => (
+                <div key={g.gestor} className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold">{g.nombre}</span>
+                      <span className="rounded-full bg-white px-2 py-0.5 dark:bg-slate-900">{g.con}/{g.total} con llamadas</span>
+                    </div>
+                    <span className="font-bold">{g.pct}%</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                    <div className="h-full bg-gradient-to-r from-emerald-500 to-blue-500" style={{ width: `${g.pct}%` }} />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
       ) : null}
 
-      <div className="flex flex-wrap gap-2 justify-center">
-        <input type="date" value={ymd} onChange={(e) => setYmd(e.target.value)} className="ui-input-inline rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
-
-        <select value={filters.gestor} onChange={(e) => setFilters((f) => ({ ...f, gestor: e.target.value }))} className="ui-select-inline rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
-          <option value="">Todos los gestores</option>
-          {gestores.map((g) => (
-            <option key={g.uid} value={g.uid}>{g.nombre}</option>
-          ))}
-        </select>
-
-        <select value={filters.coordinador} onChange={(e) => setFilters((f) => ({ ...f, coordinador: e.target.value }))} className="ui-select-inline rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
-          <option value="">Todos los coordinadores</option>
-          {coordinadores.map((c) => (
-            <option key={c.uid} value={c.uid}>{c.nombre}</option>
-          ))}
-        </select>
-
-        <select value={filters.tramo} onChange={(e) => setFilters((f) => ({ ...f, tramo: e.target.value }))} className="ui-select-inline rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
-          <option value="">Todos los tramos</option>
-          <option value="Primer Tramo">Primer Tramo</option>
-          <option value="Segundo Tramo">Segundo Tramo</option>
-          <option value="Tercer Tramo">Tercer Tramo</option>
-        </select>
-
-        <select value={filters.estado} onChange={(e) => setFilters((f) => ({ ...f, estado: e.target.value }))} className="ui-select-inline rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
-          <option value="">Todos los estados</option>
-          <option value="Agendada">Agendada</option>
-          <option value="En camino">En camino</option>
-          <option value="Cancelada">Cancelada</option>
-          <option value="Finalizada">Finalizada</option>
-          <option value="Reprogramada">Reprogramada</option>
-          <option value="Iniciada">Iniciada</option>
-          <option value="Regestion">Regestion</option>
-          <option value="Regestión">Regestion (con tilde)</option>
-        </select>
-
-        <select value={filters.estadoLlamada} onChange={(e) => setFilters((f) => ({ ...f, estadoLlamada: e.target.value }))} className="ui-select-inline rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
-          <option value="">Todos los estados llamada</option>
-          <option value="Contesto">Contesto</option>
-          <option value="No Contesto">No Contesto</option>
-          <option value="No se Registro">No se Registro</option>
-          <option value="noLlamo">No se llamo</option>
-        </select>
-
-        <select value={filters.acciones} onChange={(e) => setFilters((f) => ({ ...f, acciones: e.target.value as any }))} className="ui-select-inline rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
-          <option value="">Acciones: Todas</option>
-          <option value="con">Acciones: Con llamadas</option>
-          <option value="sin">Acciones: Sin llamadas</option>
-        </select>
-
-        <select value={filters.alerta} onChange={(e) => setFilters((f) => ({ ...f, alerta: e.target.value }))} className="ui-select-inline rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
-          <option value="">Todas las alertas</option>
-          <option value="tolerancia">Fuera de tolerancia</option>
-          <option value="sinaction">Sin gestion</option>
-        </select>
-
-        <input
-          value={filters.cuadrilla}
-          onChange={(e) => setFilters((f) => ({ ...f, cuadrilla: e.target.value }))}
-          placeholder="Buscar cuadrilla"
-          className="rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-        />
-
-        <button type="button" onClick={exportExcel} className="rounded bg-slate-800 px-3 py-2 text-white dark:bg-slate-700">
-          Exportar Excel
-        </button>
-      </div>
-
-      {error ? <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
+      {error ? <div className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
       {loading ? <div className="text-center text-sm text-muted-foreground dark:text-slate-400">Cargando datos...</div> : null}
 
-      <div className="relative max-h-[70vh] overflow-auto rounded border border-slate-200 dark:border-slate-700">
-        <table className="w-full text-xs md:text-sm min-w-[2100px]">
-          <thead className="sticky top-0 bg-slate-800 text-white z-10">
-            <tr>
-              {[
-                "Cliente","Codigo","Documento","Telefono","Cuadrilla","Tipo Servicio","Tramo","Estado",
-                "En Camino","Inicio","Fin","Gestor","Estado Llamada","Inicio Llamada","Fin Llamada","Observacion",
-                "INC Usuario","INC Inicio","INC Entra","INC Fin","INC Duracion","INC BO","INC Observacion","Acciones",
-              ].map((h) => (
-                <th key={h} className="p-2 whitespace-nowrap">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((r) => (
-              <tr key={r.id} className={`border-b border-slate-200 dark:border-slate-700 ${r.icCount > 0 ? "" : "bg-yellow-50 dark:bg-yellow-900/20"}`}>
-                <td className="p-2">{r.cliente}</td>
-                <td className="p-2">{r.codigoCliente}</td>
-                <td className="p-2">{r.documento}</td>
-                <td className="p-2">{r.telefono}</td>
-                <td className="p-2">{r.cuadrillaNombre}</td>
-                <td className="p-2">{r.tipoServicio}</td>
-                <td className="p-2">{r.tramo}</td>
-                <td className="p-2">{r.estado}</td>
-                <td className="p-2">{r.horaEnCamino}</td>
-                <td className="p-2">{r.horaInicio}</td>
-                <td className="p-2">{r.horaFin}</td>
-                <td className="p-2">{r.gestorNombre}</td>
-                <td className="p-2">{r.estadoLlamada}</td>
-                <td className="p-2">{r.horaInicioLlamada}</td>
-                <td className="p-2">{r.horaFinLlamada}</td>
-                <td className="p-2">{r.observacionLlamada}</td>
-                <td className="p-2">{r.icLatest?.usuaruioInconcert || "-"}</td>
-                <td className="p-2">{r.icLatest?.inicioLlamadaInconcert || "-"}</td>
-                <td className="p-2">{r.icLatest?.entraLlamadaInconcert || "-"}</td>
-                <td className="p-2">{r.icLatest?.finLlamadaInconcert || "-"}</td>
-                <td className="p-2">{r.icLatest?.duracion || "-"}</td>
-                <td className="p-2">{r.icLatest?.bo || "-"}</td>
-                <td className="p-2">{r.icLatest?.observacionInconcert || "-"}</td>
-                <td className="p-2">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => openCalls(r)}
-                      disabled={!r.icCount}
-                      className={`rounded px-2 py-1 text-white ${r.icCount ? "bg-indigo-700" : "bg-indigo-400"}`}
-                    >
-                      Ver llamadas ({r.icCount})
-                    </button>
-                    <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${r.icCount ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"}`}>
-                      {r.icCount ? "Con llamadas" : "Sin llamadas"}
-                    </span>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {!loading && filtered.length === 0 ? (
+      {/* ── Detalle ── */}
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="relative max-h-[70vh] overflow-auto">
+          <table className="w-full text-xs md:text-sm min-w-[2100px]">
+            <thead className="sticky top-0 bg-slate-800 text-white z-10">
               <tr>
-                  <td colSpan={24} className="py-4 text-center text-muted-foreground dark:text-slate-400">No hay resultados con los filtros aplicados</td>
+                {[
+                  "Cliente","Codigo","Documento","Telefono","Cuadrilla","Tipo Servicio","Tramo","Estado",
+                  "En Camino","Inicio","Fin","Gestor","Estado Llamada","Inicio Llamada","Fin Llamada","Observacion",
+                  "INC Usuario","INC Inicio","INC Entra","INC Fin","INC Duracion","INC BO","INC Observacion","Acciones",
+                ].map((h) => (
+                  <th key={h} className="p-2 whitespace-nowrap">{h}</th>
+                ))}
               </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {filtered.map((r) => (
+                <tr key={r.id} className={`border-b border-slate-200 dark:border-slate-700 ${r.icCount > 0 ? "" : "bg-yellow-50 dark:bg-yellow-900/20"}`}>
+                  <td className="p-2">{r.cliente}</td>
+                  <td className="p-2">{r.codigoCliente}</td>
+                  <td className="p-2">{r.documento}</td>
+                  <td className="p-2">{r.telefono}</td>
+                  <td className="p-2">{r.cuadrillaNombre}</td>
+                  <td className="p-2">{r.tipoServicio}</td>
+                  <td className="p-2">{r.tramo}</td>
+                  <td className="p-2">{r.estado}</td>
+                  <td className="p-2">{r.horaEnCamino}</td>
+                  <td className="p-2">{r.horaInicio}</td>
+                  <td className="p-2">{r.horaFin}</td>
+                  <td className="p-2">{r.gestorNombre}</td>
+                  <td className="p-2">{r.estadoLlamada}</td>
+                  <td className="p-2">{r.horaInicioLlamada}</td>
+                  <td className="p-2">{r.horaFinLlamada}</td>
+                  <td className="p-2">{r.observacionLlamada}</td>
+                  <td className="p-2">{r.icLatest?.usuaruioInconcert || "-"}</td>
+                  <td className="p-2">{soloHora(r.icLatest?.inicioLlamadaInconcert)}</td>
+                  <td className="p-2">{soloHora(r.icLatest?.entraLlamadaInconcert)}</td>
+                  <td className="p-2">{soloHora(r.icLatest?.finLlamadaInconcert)}</td>
+                  <td className="p-2">{r.icLatest?.duracion || "-"}</td>
+                  <td className="p-2">{r.icLatest?.bo || "-"}</td>
+                  <td className="p-2">{r.icLatest?.observacionInconcert || "-"}</td>
+                  <td className="p-2">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openCalls(r)}
+                        disabled={!r.icCount}
+                        className={`rounded-lg px-2 py-1 text-white transition ${r.icCount ? "bg-indigo-700 hover:bg-indigo-800" : "bg-indigo-400"}`}
+                      >
+                        Ver llamadas ({r.icCount})
+                      </button>
+                      <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${r.icCount ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"}`}>
+                        {r.icCount ? "Con llamadas" : "Sin llamadas"}
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {!loading && filtered.length === 0 ? (
+                <tr>
+                    <td colSpan={24} className="py-4 text-center text-muted-foreground dark:text-slate-400">No hay resultados con los filtros aplicados</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {modal ? (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center">
-          <div className="mx-4 w-full max-w-5xl rounded-xl bg-white shadow-xl dark:bg-slate-900 dark:text-slate-100">
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="mx-4 w-full max-w-5xl rounded-2xl bg-white shadow-2xl dark:bg-slate-900 dark:text-slate-100">
             <div className="flex items-center justify-between border-b p-4 dark:border-slate-700">
               <h3 className="text-lg font-semibold">Llamadas InConcert - Tel: <span className="font-mono">{modal.tel}</span></h3>
-              <button type="button" className="rounded bg-slate-700 px-3 py-1 text-white" onClick={() => setModal(null)}>
+              <button type="button" className="rounded-lg bg-slate-700 px-3 py-1 text-white transition hover:bg-slate-800" onClick={() => setModal(null)}>
                 Cerrar
               </button>
             </div>
@@ -452,9 +625,9 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
                   {modal.list.map((r: any) => (
                     <tr key={r.id} className="border-b border-slate-200 dark:border-slate-700">
                       <td className="p-2">{r.usuaruioInconcert || "-"}</td>
-                      <td className="p-2">{r.inicioLlamadaInconcert || "-"}</td>
-                      <td className="p-2">{r.entraLlamadaInconcert || "-"}</td>
-                      <td className="p-2">{r.finLlamadaInconcert || "-"}</td>
+                      <td className="p-2">{soloHora(r.inicioLlamadaInconcert)}</td>
+                      <td className="p-2">{soloHora(r.entraLlamadaInconcert)}</td>
+                      <td className="p-2">{soloHora(r.finLlamadaInconcert)}</td>
                       <td className="p-2">{r.duracion || "-"}</td>
                       <td className="p-2">{r.espera || "-"}</td>
                       <td className="p-2">{r.timbrado || "-"}</td>

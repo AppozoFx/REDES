@@ -15,7 +15,7 @@ const PERM = "INCONCERT_IMPORT";
 type ImportResult =
   | {
       ok: true;
-      resumen: { nuevos: number; existentes: number; batches: number };
+      resumen: { nuevos: number; actualizados: number; existentes: number; batches: number };
     }
   | {
       ok: false;
@@ -31,7 +31,7 @@ function resolveFormData(a: any, b?: any): FormData {
 function asRows(sheet: XLSX.WorkSheet): Record<string, unknown>[] {
   return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     defval: "",
-    raw: false,
+    raw: true,
   });
 }
 
@@ -59,9 +59,12 @@ export async function importInconcertAction(arg1: any, arg2?: any): Promise<Impo
     if (!file || typeof file === "string") {
       return { ok: false, error: { formErrors: ["FILE_REQUIRED"] } };
     }
+    const forceUpdate = String(formData.get("forceUpdate") || "") === "true";
 
     const arrayBuf = await (file as File).arrayBuffer();
-    const wb = XLSX.read(arrayBuf, { type: "array", cellDates: false, raw: false });
+    // raw:true evita que SheetJS interprete "Fecha de inicio"/"Fecha inicio atencion"/"Fecha final"
+    // como fechas y las reformatee sin hora (ej. "7/20/26"); asi se conserva el texto original con hora.
+    const wb = XLSX.read(arrayBuf, { type: "array", raw: true });
     const sheet = wb.Sheets[wb.SheetNames[0]];
     if (!sheet) return { ok: false, error: { formErrors: ["SHEET_NOT_FOUND"] } };
 
@@ -87,6 +90,7 @@ export async function importInconcertAction(arg1: any, arg2?: any): Promise<Impo
     }
 
     let nuevos = 0;
+    let actualizados = 0;
     let omitidos = 0;
     let batches = 0;
     let ops = 0;
@@ -96,8 +100,9 @@ export async function importInconcertAction(arg1: any, arg2?: any): Promise<Impo
       const mapped = mappedRows[i];
       const raw = rawRows[i] || {};
       const idc = String(mapped._idConversacion || "").trim() || null;
+      const yaExiste = !!idc && existentes.has(idc);
 
-      if (idc && existentes.has(idc)) {
+      if (yaExiste && !forceUpdate) {
         omitidos++;
         continue;
       }
@@ -115,7 +120,8 @@ export async function importInconcertAction(arg1: any, arg2?: any): Promise<Impo
 
       const ref = idc ? colRef.doc(idc) : colRef.doc();
       batch.set(ref, payload, { merge: true });
-      nuevos++;
+      if (yaExiste) actualizados++;
+      else nuevos++;
       ops++;
 
       if (ops >= 450) {
@@ -135,7 +141,7 @@ export async function importInconcertAction(arg1: any, arg2?: any): Promise<Impo
       const actor = await actorDisplay(session.uid);
       await addGlobalNotification({
         title: "Importacion InConcert",
-        message: `${actor} importó INCONCERT. Nuevos: ${nuevos}, Omitidos: ${omitidos}`,
+        message: `${actor} importó INCONCERT. Nuevos: ${nuevos}, Actualizados: ${actualizados}, Omitidos: ${omitidos}`,
         type: "success",
         scope: "ALL",
         createdBy: session.uid,
@@ -149,7 +155,7 @@ export async function importInconcertAction(arg1: any, arg2?: any): Promise<Impo
     revalidatePath("/home/inconcert/importar");
     revalidatePath("/home/inconcert/gerencia");
 
-    return { ok: true, resumen: { nuevos, existentes: omitidos, batches } };
+    return { ok: true, resumen: { nuevos, actualizados, existentes: omitidos, batches } };
   } catch (e: any) {
     return { ok: false, error: { formErrors: [String(e?.message || "ERROR")] } };
   }

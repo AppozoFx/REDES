@@ -18,7 +18,8 @@ export default function ImportarInconcertClient() {
   const [rawCount, setRawCount] = useState(0);
   const [parsing, setParsing] = useState(false);
   const [notice, setNotice] = useState("");
-  const [summary, setSummary] = useState<null | { nuevos: number; existentes: number; batches: number }>(null);
+  const [forceUpdate, setForceUpdate] = useState(false);
+  const [summary, setSummary] = useState<null | { nuevos: number; actualizados: number; existentes: number; batches: number }>(null);
   const [result, action, pending] = useActionState(importInconcertAction as any, null as any);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -48,10 +49,12 @@ export default function ImportarInconcertClient() {
     setRawCount(0);
     try {
       const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array", cellDates: false, raw: false });
+      // raw:true evita que SheetJS interprete las columnas de fecha como fechas
+      // y las reformatee sin hora (ej. "7/20/26"); conserva el texto original con hora.
+      const wb = XLSX.read(buf, { type: "array", raw: true });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       if (!sheet) throw new Error("SHEET_NOT_FOUND");
-      const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: false });
+      const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: true });
       const filtered = rawRows.filter(hasMinimumData);
       const mapped = filtered.map(mapCsvRow);
       setRawCount(filtered.length);
@@ -125,6 +128,7 @@ export default function ImportarInconcertClient() {
               if (!file) return;
               const fd = new FormData();
               fd.set("file", file);
+              fd.set("forceUpdate", forceUpdate ? "true" : "false");
               startTransition(() => (action as any)(fd));
             }}
           >
@@ -137,6 +141,22 @@ export default function ImportarInconcertClient() {
             </button>
           ) : null}
         </div>
+
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={forceUpdate}
+            onChange={(e) => setForceUpdate(e.target.checked)}
+            className="mt-0.5 h-4 w-4"
+          />
+          <span>
+            Corregir registros ya importados (misma Id de conversacion)
+            <span className="block text-xs text-muted-foreground">
+              Usalo solo para re-subir archivos antiguos y actualizar sus datos (por ejemplo, fecha/hora de llamada). Si lo dejas
+              desmarcado, el comportamiento es el de siempre: los registros ya existentes se omiten.
+            </span>
+          </span>
+        </label>
 
         {notice ? <div className="text-sm">{notice}</div> : null}
         {rawCount > 0 && !summary ? (
@@ -181,6 +201,7 @@ export default function ImportarInconcertClient() {
         <div className="rounded-lg border p-4 bg-emerald-50">
           <h3 className="font-semibold mb-2">Resumen de importacion</h3>
           <div className="text-sm">Nuevos insertados: <b>{summary.nuevos}</b></div>
+          <div className="text-sm">Actualizados (corregidos): <b>{summary.actualizados}</b></div>
           <div className="text-sm">Omitidos por duplicidad: <b>{summary.existentes}</b></div>
           <div className="text-sm">Batches ejecutados: <b>{summary.batches}</b></div>
         </div>

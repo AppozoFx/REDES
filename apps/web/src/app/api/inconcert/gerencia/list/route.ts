@@ -91,6 +91,18 @@ function todayLimaYmd() {
   }).format(new Date());
 }
 
+function monthRange(monthRaw: string): { start: string; end: string } | null {
+  const m = String(monthRaw || "").trim().match(/^(\d{4})-(\d{2})$/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(y) || !Number.isFinite(mm) || mm < 1 || mm > 12) return null;
+  const start = `${String(y).padStart(4, "0")}-${String(mm).padStart(2, "0")}-01`;
+  const lastDay = new Date(y, mm, 0).getDate();
+  const end = `${String(y).padStart(4, "0")}-${String(mm).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  return { start, end };
+}
+
 export async function GET(req: Request) {
   try {
     const session = await getServerSession();
@@ -106,15 +118,34 @@ export async function GET(req: Request) {
     if (!canView) return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
     const { searchParams } = new URL(req.url);
-    const ymd = String(searchParams.get("ymd") || todayLimaYmd());
+    const monthParam = String(searchParams.get("month") || "").trim();
+    const monthParsed = monthRange(monthParam);
+    const ymd = String(searchParams.get("ymd") || (monthParsed ? "" : todayLimaYmd()));
 
-    const ordenesSnap = await adminDb()
-      .collection("ordenes")
-      .where("fSoliYmd", "==", ymd)
-      .limit(1200)
-      .get();
+    const ordenesCol = adminDb().collection("ordenes");
+    const ordenesDocs: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>[] = [];
 
-    const ordenesRaw = ordenesSnap.docs
+    if (monthParsed) {
+      let cursor: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData> | undefined;
+      while (true) {
+        let query = ordenesCol
+          .where("fSoliYmd", ">=", monthParsed.start)
+          .where("fSoliYmd", "<=", monthParsed.end)
+          .orderBy("fSoliYmd")
+          .limit(2000);
+        if (cursor) query = query.startAfter(cursor);
+        const snap = await query.get();
+        if (snap.empty) break;
+        ordenesDocs.push(...snap.docs);
+        if (snap.size < 2000) break;
+        cursor = snap.docs[snap.docs.length - 1];
+      }
+    } else {
+      const ordenesSnap = await ordenesCol.where("fSoliYmd", "==", ymd).limit(1200).get();
+      ordenesDocs.push(...ordenesSnap.docs);
+    }
+
+    const ordenesRaw = ordenesDocs
       .map((d) => {
         const x = d.data() as any;
         return {
@@ -238,7 +269,13 @@ export async function GET(req: Request) {
       .map(([uid, nombre]) => ({ uid, nombre }))
       .sort((a, b) => a.nombre.localeCompare(b.nombre));
 
-    return NextResponse.json({ ok: true, ymd, items, options: { gestores, coordinadores } });
+    return NextResponse.json({
+      ok: true,
+      ymd: monthParsed ? "" : ymd,
+      month: monthParsed ? monthParam : "",
+      items,
+      options: { gestores, coordinadores },
+    });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: String(e?.message || "ERROR") }, { status: 500 });
   }

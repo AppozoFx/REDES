@@ -5,6 +5,18 @@ import * as XLSX from "xlsx";
 
 type OptionItem = { uid: string; nombre: string };
 
+type IcCallDetail = {
+  usuaruioInconcert: string;
+  inicioLlamadaInconcert: string;
+  entraLlamadaInconcert: string;
+  finLlamadaInconcert: string;
+  duracion: string;
+  duracionSeg: number;
+  corta: boolean;
+  bo: string;
+  observacionInconcert: string;
+};
+
 type Row = {
   id: string;
   ordenId: string;
@@ -13,6 +25,7 @@ type Row = {
   documento: string;
   telefono: string;
   telNorm: string;
+  fSoliYmd: string;
   cuadrillaNombre: string;
   tipoServicio: string;
   tramo: string;
@@ -30,17 +43,8 @@ type Row = {
   observacionLlamada: string;
   icCount: number;
   icCortas: number;
-  icLatest: {
-    usuaruioInconcert: string;
-    inicioLlamadaInconcert: string;
-    entraLlamadaInconcert: string;
-    finLlamadaInconcert: string;
-    duracion: string;
-    duracionSeg: number;
-    corta: boolean;
-    bo: string;
-    observacionInconcert: string;
-  } | null;
+  icLatest: IcCallDetail | null;
+  icList: IcCallDetail[];
 };
 
 type Filters = {
@@ -244,6 +248,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
 
   function exportExcel() {
     const detail = filtered.map((r) => ({
+      Fecha: r.fSoliYmd || (mode === "mes" ? month : ymd),
       Cliente: r.cliente,
       CodigoCliente: r.codigoCliente,
       Documento: r.documento,
@@ -270,6 +275,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
       INC_LlamadasDia: r.icCount,
       INC_LlamadasCortasDia: r.icCortas,
       TieneAccionIC: hasAccion(r) ? "Si" : "No",
+      EfectivaDelDia: r.icCount - r.icCortas > 0 ? "Si" : "No",
     }));
     const ranking = rankingData.map((r) => ({
       GestorRef: r.gestor,
@@ -279,10 +285,146 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
       SinLlamadas: r.sin,
       Porcentaje: `${r.pct}%`,
     }));
+    // Una fila por llamada individual (no solo la ultima), para poder sustentar ante
+    // el cliente casos donde hubo intentos cortos pero SI hubo una llamada efectiva.
+    const detalleLlamadas = filtered.flatMap((r) =>
+      (r.icList || []).map((c, idx) => ({
+        Fecha: r.fSoliYmd || (mode === "mes" ? month : ymd),
+        Cliente: r.cliente,
+        Telefono: r.telefono,
+        Gestor: r.gestorNombre,
+        Cuadrilla: r.cuadrillaNombre,
+        NroLlamadaDelDia: idx + 1,
+        TotalLlamadasDelDia: r.icList.length,
+        HoraInicio: soloHora(c.inicioLlamadaInconcert),
+        HoraEntra: soloHora(c.entraLlamadaInconcert),
+        HoraFin: soloHora(c.finLlamadaInconcert),
+        Duracion: c.duracion,
+        DuracionSeg: c.duracionSeg,
+        LlamadaCorta: c.corta ? "Si" : "No",
+        Usuario: c.usuaruioInconcert,
+        Disposicion: c.observacionInconcert,
+        BO: c.bo,
+      }))
+    );
+
+    // Resumen agrupado por cliente (telefono) a lo largo de todo el periodo filtrado,
+    // para ver cuantas veces se llama a un mismo cliente y detectar por que.
+    const porCliente = new Map<
+      string,
+      {
+        cliente: string;
+        telefono: string;
+        dias: Set<string>;
+        totalLlamadas: number;
+        totalCortas: number;
+        gestores: Set<string>;
+        coordinadores: Set<string>;
+        usuariosInc: Set<string>;
+      }
+    >();
+    for (const r of filtered) {
+      const key = r.telNorm || r.telefono;
+      if (!key || key === "-") continue;
+      const fecha = r.fSoliYmd || (mode === "mes" ? month : ymd);
+      const hit = porCliente.get(key) || {
+        cliente: r.cliente,
+        telefono: r.telefono,
+        dias: new Set<string>(),
+        totalLlamadas: 0,
+        totalCortas: 0,
+        gestores: new Set<string>(),
+        coordinadores: new Set<string>(),
+        usuariosInc: new Set<string>(),
+      };
+      hit.dias.add(fecha);
+      hit.totalLlamadas += r.icCount;
+      hit.totalCortas += r.icCortas;
+      if (r.gestorNombre) hit.gestores.add(r.gestorNombre);
+      if (r.coordinadorNombre) hit.coordinadores.add(r.coordinadorNombre);
+      for (const c of r.icList || []) {
+        const u = String(c.usuaruioInconcert || "").trim();
+        if (u && u !== "-") hit.usuariosInc.add(u);
+      }
+      porCliente.set(key, hit);
+    }
+    const resumenCliente = Array.from(porCliente.values())
+      .map((h) => ({
+        Cliente: h.cliente,
+        Telefono: h.telefono,
+        OrdenesODias: h.dias.size,
+        TotalLlamadas: h.totalLlamadas,
+        TotalCortas: h.totalCortas,
+        TotalEfectivas: h.totalLlamadas - h.totalCortas,
+        Gestores: Array.from(h.gestores).join(", "),
+        Coordinadores: Array.from(h.coordinadores).join(", "),
+        INC_Usuarios: Array.from(h.usuariosInc).join(", "),
+        Fechas: Array.from(h.dias).sort().join(", "),
+      }))
+      .sort((a, b) => b.TotalLlamadas - a.TotalLlamadas);
+
+    // Igual que "Resumen por Cliente" pero separado por gestor y por dia, para ver
+    // puntualmente si un mismo cliente fue llamado el mismo dia por mas de un gestor,
+    // o cuantas veces lo llamo cada gestor en cada dia especifico.
+    const porClienteGestorDia = new Map<
+      string,
+      {
+        fecha: string;
+        cliente: string;
+        telefono: string;
+        gestor: string;
+        coordinador: string;
+        totalLlamadas: number;
+        totalCortas: number;
+        usuariosInc: Set<string>;
+      }
+    >();
+    for (const r of filtered) {
+      const tel = r.telNorm || r.telefono;
+      if (!tel || tel === "-") continue;
+      const fecha = r.fSoliYmd || (mode === "mes" ? month : ymd);
+      const key = `${tel}|${fecha}|${r.gestorUid || "SIN_GESTOR"}`;
+      const hit = porClienteGestorDia.get(key) || {
+        fecha,
+        cliente: r.cliente,
+        telefono: r.telefono,
+        gestor: r.gestorNombre,
+        coordinador: r.coordinadorNombre,
+        totalLlamadas: 0,
+        totalCortas: 0,
+        usuariosInc: new Set<string>(),
+      };
+      hit.totalLlamadas += r.icCount;
+      hit.totalCortas += r.icCortas;
+      for (const c of r.icList || []) {
+        const u = String(c.usuaruioInconcert || "").trim();
+        if (u && u !== "-") hit.usuariosInc.add(u);
+      }
+      porClienteGestorDia.set(key, hit);
+    }
+    const detalleClienteGestorDia = Array.from(porClienteGestorDia.values())
+      .map((h) => ({
+        Fecha: h.fecha,
+        Cliente: h.cliente,
+        Telefono: h.telefono,
+        Gestor: h.gestor,
+        Coordinador: h.coordinador,
+        TotalLlamadas: h.totalLlamadas,
+        TotalCortas: h.totalCortas,
+        TotalEfectivas: h.totalLlamadas - h.totalCortas,
+        INC_Usuarios: Array.from(h.usuariosInc).join(", "),
+      }))
+      .sort(
+        (a, b) =>
+          a.Cliente.localeCompare(b.Cliente) || a.Fecha.localeCompare(b.Fecha) || a.Gestor.localeCompare(b.Gestor)
+      );
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), "Reporte Gerencia");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ranking), "Auditoria Gestor");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detalleLlamadas), "Detalle Llamadas");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumenCliente), "Resumen por Cliente");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detalleClienteGestorDia), "Cliente-Gestor-Dia");
     const suffix = mode === "mes" ? month : ymd;
     XLSX.writeFile(wb, `REPORTE-GERENCIA-${suffix}.xlsx`);
   }
@@ -554,7 +696,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
             <thead className="sticky top-0 bg-slate-800 text-white z-10">
               <tr>
                 {[
-                  "Cliente","Codigo","Documento","Telefono","Cuadrilla","Tipo Servicio","Tramo","Estado",
+                  "Fecha","Cliente","Codigo","Documento","Telefono","Cuadrilla","Tipo Servicio","Tramo","Estado",
                   "En Camino","Inicio","Fin","Gestor","Estado Llamada","Inicio Llamada","Fin Llamada","Observacion",
                   "INC Usuario","INC Inicio","INC Entra","INC Fin","INC Duracion","INC BO","INC Observacion","Acciones",
                 ].map((h) => (
@@ -565,6 +707,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
             <tbody>
               {filtered.map((r) => (
                 <tr key={r.id} className={`border-b border-slate-200 dark:border-slate-700 ${r.icCount > 0 ? "" : "bg-yellow-50 dark:bg-yellow-900/20"}`}>
+                  <td className="p-2 whitespace-nowrap">{r.fSoliYmd || "-"}</td>
                   <td className="p-2">{r.cliente}</td>
                   <td className="p-2">{r.codigoCliente}</td>
                   <td className="p-2">{r.documento}</td>
@@ -615,7 +758,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
               ))}
               {!loading && filtered.length === 0 ? (
                 <tr>
-                    <td colSpan={24} className="py-4 text-center text-muted-foreground dark:text-slate-400">No hay resultados con los filtros aplicados</td>
+                    <td colSpan={25} className="py-4 text-center text-muted-foreground dark:text-slate-400">No hay resultados con los filtros aplicados</td>
                 </tr>
               ) : null}
             </tbody>

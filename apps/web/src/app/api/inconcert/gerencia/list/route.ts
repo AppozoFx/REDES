@@ -8,6 +8,18 @@ export const runtime = "nodejs";
 const PERM_VIEW = "INCONCERT_GERENCIA_VIEW";
 const PERM_EDIT = "INCONCERT_GERENCIA_EDIT";
 
+type IcCallDetail = {
+  usuaruioInconcert: string;
+  inicioLlamadaInconcert: string;
+  entraLlamadaInconcert: string;
+  finLlamadaInconcert: string;
+  duracion: string;
+  duracionSeg: number;
+  corta: boolean;
+  bo: string;
+  observacionInconcert: string;
+};
+
 type Row = {
   id: string;
   ordenId: string;
@@ -16,6 +28,7 @@ type Row = {
   documento: string;
   telefono: string;
   telNorm: string;
+  fSoliYmd: string;
   cuadrillaNombre: string;
   tipoServicio: string;
   tramo: string;
@@ -33,17 +46,8 @@ type Row = {
   observacionLlamada: string;
   icCount: number;
   icCortas: number;
-  icLatest: {
-    usuaruioInconcert: string;
-    inicioLlamadaInconcert: string;
-    entraLlamadaInconcert: string;
-    finLlamadaInconcert: string;
-    duracion: string;
-    duracionSeg: number;
-    corta: boolean;
-    bo: string;
-    observacionInconcert: string;
-  } | null;
+  icLatest: IcCallDetail | null;
+  icList: IcCallDetail[];
 };
 
 const CORTA_UMBRAL_SEG = 11;
@@ -94,6 +98,21 @@ function parseDuracionSeg(v: unknown): number {
   const m = String(v || "").trim().match(/^(\d{1,2}):(\d{2}):(\d{2})$/);
   if (!m) return 0;
   return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+}
+
+function toIcCallDetail(x: any): IcCallDetail {
+  const duracionSeg = x._duracionSeg || 0;
+  return {
+    usuaruioInconcert: String(x.usuaruioInconcert || "-"),
+    inicioLlamadaInconcert: String(x.inicioLlamadaInconcert || "-"),
+    entraLlamadaInconcert: String(x.entraLlamadaInconcert || "-"),
+    finLlamadaInconcert: String(x.finLlamadaInconcert || "-"),
+    duracion: String(x.duracion || "-"),
+    duracionSeg,
+    corta: duracionSeg < CORTA_UMBRAL_SEG,
+    bo: String(x.bo || "-"),
+    observacionInconcert: String(x.observacionInconcert || "-"),
+  };
 }
 
 function tramoName(tramoRaw: string) {
@@ -260,6 +279,7 @@ export async function GET(req: Request) {
         documento: r.documento,
         telefono: r.telefono || "-",
         telNorm,
+        fSoliYmd: r.fSoliYmd || "",
         cuadrillaNombre: r.cuadrillaNombre || "-",
         tipoServicio: r.tipoServicio || "-",
         tramo: tramoName(r.tramo),
@@ -277,19 +297,8 @@ export async function GET(req: Request) {
         observacionLlamada: r.observacionLlamada || "-",
         icCount: list.length,
         icCortas: cortas,
-        icLatest: latest
-          ? {
-              usuaruioInconcert: String(latest.usuaruioInconcert || "-"),
-              inicioLlamadaInconcert: String(latest.inicioLlamadaInconcert || "-"),
-              entraLlamadaInconcert: String(latest.entraLlamadaInconcert || "-"),
-              finLlamadaInconcert: String(latest.finLlamadaInconcert || "-"),
-              duracion: String(latest.duracion || "-"),
-              duracionSeg: latest._duracionSeg || 0,
-              corta: (latest._duracionSeg || 0) < CORTA_UMBRAL_SEG,
-              bo: String(latest.bo || "-"),
-              observacionInconcert: String(latest.observacionInconcert || "-"),
-            }
-          : null,
+        icLatest: latest ? toIcCallDetail(latest) : null,
+        icList: list.map(toIcCallDetail),
       };
     });
 

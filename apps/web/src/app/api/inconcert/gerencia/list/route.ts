@@ -9,6 +9,7 @@ const PERM_VIEW = "INCONCERT_GERENCIA_VIEW";
 const PERM_EDIT = "INCONCERT_GERENCIA_EDIT";
 
 type IcCallDetail = {
+  id: string;
   usuaruioInconcert: string;
   inicioLlamadaInconcert: string;
   entraLlamadaInconcert: string;
@@ -103,6 +104,7 @@ function parseDuracionSeg(v: unknown): number {
 function toIcCallDetail(x: any): IcCallDetail {
   const duracionSeg = x._duracionSeg || 0;
   return {
+    id: String(x.id || ""),
     usuaruioInconcert: String(x.usuaruioInconcert || "-"),
     inicioLlamadaInconcert: String(x.inicioLlamadaInconcert || "-"),
     entraLlamadaInconcert: String(x.entraLlamadaInconcert || "-"),

@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from "recharts";
 
 type OptionItem = { uid: string; nombre: string };
 
 type IcCallDetail = {
+  id: string;
   usuaruioInconcert: string;
   inicioLlamadaInconcert: string;
   entraLlamadaInconcert: string;
@@ -116,6 +118,23 @@ function ChevronIcon() {
   );
 }
 
+function cortaBarColor(pct: number) {
+  if (pct >= 50) return "#ef4444";
+  if (pct >= 25) return "#f59e0b";
+  return "#10b981";
+}
+
+function CortasTooltip({ active, payload }: any) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload;
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-2 text-xs shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+      <div className="font-semibold">{d.nombre}</div>
+      <div>{d.cortas}/{d.total} llamadas cortas ({d.pct}%)</div>
+    </div>
+  );
+}
+
 export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) {
   const [mode, setMode] = useState<Mode>("dia");
   const [ymd, setYmd] = useState(initialYmd);
@@ -128,7 +147,9 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showRanking, setShowRanking] = useState(false);
+  const [showCortasChart, setShowCortasChart] = useState(false);
   const [modal, setModal] = useState<{ tel: string; list: any[] } | null>(null);
+  const [umbralCorta, setUmbralCorta] = useState<number>(11);
 
   useEffect(() => {
     const t = setInterval(() => setClock(currentLimaHms()), 1000);
@@ -191,6 +212,28 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
     return (inst.icCount || 0) > 0;
   }
 
+  function esCorta(seg: number) {
+    return (seg || 0) < umbralCorta;
+  }
+
+  function icCortasReal(inst: Row) {
+    return (inst.icList || []).filter((c) => esCorta(c.duracionSeg)).length;
+  }
+
+  // Cuenta llamadas reales sin duplicar: cuando un cliente tiene mas de una
+  // orden el mismo dia, el mismo bloque de llamadas queda pegado a cada orden.
+  // Aca se deduplica por el id real de la llamada en InConcert.
+  function uniqueCalls(list: Row[]) {
+    const map = new Map<string, number>();
+    for (const r of list) {
+      for (const c of r.icList || []) {
+        if (!c.id || map.has(c.id)) continue;
+        map.set(c.id, c.duracionSeg);
+      }
+    }
+    return map;
+  }
+
   const filtered = useMemo(() => {
     const cuad = filters.cuadrilla.toLowerCase();
     return rows.filter((r) => {
@@ -211,10 +254,10 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
         !filters.alerta ||
         (filters.alerta === "tolerancia" && outsideTolerance(r)) ||
         (filters.alerta === "sinaction" && noGestion(r)) ||
-        (filters.alerta === "cortas" && r.icCortas > 0);
+        (filters.alerta === "cortas" && icCortasReal(r) > 0);
       return byGestor && byCoord && byCuad && byEstado && byTramo && byEstadoLlamada && byAccion && byAlerta;
     });
-  }, [rows, filters]);
+  }, [rows, filters, umbralCorta]);
 
   const rankingData = useMemo(() => {
     const map = new Map<string, { gestor: string; nombre: string; total: number; con: number; sin: number; pct: number }>();
@@ -231,11 +274,60 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
       .sort((a, b) => b.pct - a.pct || b.con - a.con);
   }, [filtered]);
 
+  // % de llamadas cortas por gestor: llamadas deduplicadas por id dentro de las
+  // ordenes de cada gestor (si el gestor tiene 2 ordenes el mismo dia con el
+  // mismo cliente, no se cuenta doble).
+  const cortasPorGestor = useMemo(() => {
+    const map = new Map<string, { nombre: string; callsById: Map<string, number> }>();
+    for (const r of filtered) {
+      const key = r.gestorUid || "SIN_GESTOR";
+      const hit = map.get(key) || { nombre: r.gestorNombre || key, callsById: new Map<string, number>() };
+      for (const c of r.icList || []) {
+        if (c.id && !hit.callsById.has(c.id)) hit.callsById.set(c.id, c.duracionSeg);
+      }
+      map.set(key, hit);
+    }
+    return Array.from(map.values())
+      .map((h) => {
+        const total = h.callsById.size;
+        const cortas = Array.from(h.callsById.values()).filter(esCorta).length;
+        return { nombre: h.nombre, total, cortas, pct: total ? Math.round((cortas * 100) / total) : 0 };
+      })
+      .filter((x) => x.total > 0)
+      .sort((a, b) => b.pct - a.pct || b.cortas - a.cortas);
+  }, [filtered, umbralCorta]);
+
+  // % de llamadas cortas por usuario de InConcert (el agente que marco la llamada).
+  // Aca cada llamada tiene un unico dueno (el usuario que la hizo), asi que se
+  // deduplica globalmente por id sin ambiguedad.
+  const cortasPorUsuario = useMemo(() => {
+    const map = new Map<string, { nombre: string; total: number; cortas: number }>();
+    const seen = new Set<string>();
+    for (const r of filtered) {
+      for (const c of r.icList || []) {
+        if (!c.id || seen.has(c.id)) continue;
+        seen.add(c.id);
+        const usuario = c.usuaruioInconcert && c.usuaruioInconcert !== "-" ? c.usuaruioInconcert : "SIN_USUARIO";
+        const hit = map.get(usuario) || { nombre: usuario, total: 0, cortas: 0 };
+        hit.total += 1;
+        if (esCorta(c.duracionSeg)) hit.cortas += 1;
+        map.set(usuario, hit);
+      }
+    }
+    return Array.from(map.values())
+      .map((h) => ({ ...h, pct: h.total ? Math.round((h.cortas * 100) / h.total) : 0 }))
+      .sort((a, b) => b.pct - a.pct || b.cortas - a.cortas);
+  }, [filtered, umbralCorta]);
+
   const totalConAccion = filtered.filter(hasAccion).length;
   const totalSinAccion = filtered.length - totalConAccion;
   const totalFueraTolerancia = filtered.filter(outsideTolerance).length;
   const totalSinGestion = filtered.filter(noGestion).length;
-  const totalLlamadasCortas = filtered.reduce((acc, r) => acc + (r.icCortas || 0), 0);
+  const totalLlamadasCortas = useMemo(() => {
+    let count = 0;
+    for (const seg of uniqueCalls(filtered).values()) if (esCorta(seg)) count++;
+    return count;
+  }, [filtered, umbralCorta]);
   const pctConAccion = filtered.length ? Math.round((totalConAccion * 100) / filtered.length) : 0;
 
   async function openCalls(row: Row) {
@@ -273,9 +365,9 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
       INC_BO: r.icLatest?.bo || "",
       INC_Observacion: r.icLatest?.observacionInconcert || "",
       INC_LlamadasDia: r.icCount,
-      INC_LlamadasCortasDia: r.icCortas,
+      INC_LlamadasCortasDia: icCortasReal(r),
       TieneAccionIC: hasAccion(r) ? "Si" : "No",
-      EfectivaDelDia: r.icCount - r.icCortas > 0 ? "Si" : "No",
+      EfectivaDelDia: r.icCount - icCortasReal(r) > 0 ? "Si" : "No",
     }));
     const ranking = rankingData.map((r) => ({
       GestorRef: r.gestor,
@@ -301,7 +393,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
         HoraFin: soloHora(c.finLlamadaInconcert),
         Duracion: c.duracion,
         DuracionSeg: c.duracionSeg,
-        LlamadaCorta: c.corta ? "Si" : "No",
+        LlamadaCorta: esCorta(c.duracionSeg) ? "Si" : "No",
         Usuario: c.usuaruioInconcert,
         Disposicion: c.observacionInconcert,
         BO: c.bo,
@@ -310,14 +402,16 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
 
     // Resumen agrupado por cliente (telefono) a lo largo de todo el periodo filtrado,
     // para ver cuantas veces se llama a un mismo cliente y detectar por que.
+    // Las llamadas se deduplican por su id real de InConcert: si el cliente tuvo
+    // mas de una orden el mismo dia, el mismo bloque de llamadas queda pegado a
+    // cada orden y no debe contarse dos veces aca.
     const porCliente = new Map<
       string,
       {
         cliente: string;
         telefono: string;
         dias: Set<string>;
-        totalLlamadas: number;
-        totalCortas: number;
+        callsById: Map<string, number>;
         gestores: Set<string>;
         coordinadores: Set<string>;
         usuariosInc: Set<string>;
@@ -331,36 +425,37 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
         cliente: r.cliente,
         telefono: r.telefono,
         dias: new Set<string>(),
-        totalLlamadas: 0,
-        totalCortas: 0,
+        callsById: new Map<string, number>(),
         gestores: new Set<string>(),
         coordinadores: new Set<string>(),
         usuariosInc: new Set<string>(),
       };
       hit.dias.add(fecha);
-      hit.totalLlamadas += r.icCount;
-      hit.totalCortas += r.icCortas;
       if (r.gestorNombre) hit.gestores.add(r.gestorNombre);
       if (r.coordinadorNombre) hit.coordinadores.add(r.coordinadorNombre);
       for (const c of r.icList || []) {
+        if (c.id && !hit.callsById.has(c.id)) hit.callsById.set(c.id, c.duracionSeg);
         const u = String(c.usuaruioInconcert || "").trim();
         if (u && u !== "-") hit.usuariosInc.add(u);
       }
       porCliente.set(key, hit);
     }
     const resumenCliente = Array.from(porCliente.values())
-      .map((h) => ({
-        Cliente: h.cliente,
-        Telefono: h.telefono,
-        OrdenesODias: h.dias.size,
-        TotalLlamadas: h.totalLlamadas,
-        TotalCortas: h.totalCortas,
-        TotalEfectivas: h.totalLlamadas - h.totalCortas,
-        Gestores: Array.from(h.gestores).join(", "),
-        Coordinadores: Array.from(h.coordinadores).join(", "),
-        INC_Usuarios: Array.from(h.usuariosInc).join(", "),
-        Fechas: Array.from(h.dias).sort().join(", "),
-      }))
+      .map((h) => {
+        const totalCortas = Array.from(h.callsById.values()).filter(esCorta).length;
+        return {
+          Cliente: h.cliente,
+          Telefono: h.telefono,
+          OrdenesODias: h.dias.size,
+          TotalLlamadas: h.callsById.size,
+          TotalCortas: totalCortas,
+          TotalEfectivas: h.callsById.size - totalCortas,
+          Gestores: Array.from(h.gestores).join(", "),
+          Coordinadores: Array.from(h.coordinadores).join(", "),
+          INC_Usuarios: Array.from(h.usuariosInc).join(", "),
+          Fechas: Array.from(h.dias).sort().join(", "),
+        };
+      })
       .sort((a, b) => b.TotalLlamadas - a.TotalLlamadas);
 
     // Igual que "Resumen por Cliente" pero separado por gestor y por dia, para ver
@@ -374,8 +469,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
         telefono: string;
         gestor: string;
         coordinador: string;
-        totalLlamadas: number;
-        totalCortas: number;
+        callsById: Map<string, number>;
         usuariosInc: Set<string>;
       }
     >();
@@ -390,34 +484,48 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
         telefono: r.telefono,
         gestor: r.gestorNombre,
         coordinador: r.coordinadorNombre,
-        totalLlamadas: 0,
-        totalCortas: 0,
+        callsById: new Map<string, number>(),
         usuariosInc: new Set<string>(),
       };
-      hit.totalLlamadas += r.icCount;
-      hit.totalCortas += r.icCortas;
       for (const c of r.icList || []) {
+        if (c.id && !hit.callsById.has(c.id)) hit.callsById.set(c.id, c.duracionSeg);
         const u = String(c.usuaruioInconcert || "").trim();
         if (u && u !== "-") hit.usuariosInc.add(u);
       }
       porClienteGestorDia.set(key, hit);
     }
     const detalleClienteGestorDia = Array.from(porClienteGestorDia.values())
-      .map((h) => ({
-        Fecha: h.fecha,
-        Cliente: h.cliente,
-        Telefono: h.telefono,
-        Gestor: h.gestor,
-        Coordinador: h.coordinador,
-        TotalLlamadas: h.totalLlamadas,
-        TotalCortas: h.totalCortas,
-        TotalEfectivas: h.totalLlamadas - h.totalCortas,
-        INC_Usuarios: Array.from(h.usuariosInc).join(", "),
-      }))
+      .map((h) => {
+        const totalCortas = Array.from(h.callsById.values()).filter(esCorta).length;
+        return {
+          Fecha: h.fecha,
+          Cliente: h.cliente,
+          Telefono: h.telefono,
+          Gestor: h.gestor,
+          Coordinador: h.coordinador,
+          TotalLlamadas: h.callsById.size,
+          TotalCortas: totalCortas,
+          TotalEfectivas: h.callsById.size - totalCortas,
+          INC_Usuarios: Array.from(h.usuariosInc).join(", "),
+        };
+      })
       .sort(
         (a, b) =>
           a.Cliente.localeCompare(b.Cliente) || a.Fecha.localeCompare(b.Fecha) || a.Gestor.localeCompare(b.Gestor)
       );
+
+    const cortasGestorSheet = cortasPorGestor.map((g) => ({
+      Gestor: g.nombre,
+      TotalLlamadas: g.total,
+      LlamadasCortas: g.cortas,
+      PorcentajeCortas: `${g.pct}%`,
+    }));
+    const cortasUsuarioSheet = cortasPorUsuario.map((u) => ({
+      UsuarioInConcert: u.nombre,
+      TotalLlamadas: u.total,
+      LlamadasCortas: u.cortas,
+      PorcentajeCortas: `${u.pct}%`,
+    }));
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), "Reporte Gerencia");
@@ -425,6 +533,8 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detalleLlamadas), "Detalle Llamadas");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumenCliente), "Resumen por Cliente");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detalleClienteGestorDia), "Cliente-Gestor-Dia");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(cortasGestorSheet), "Cortas por Gestor");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(cortasUsuarioSheet), "Cortas por Usuario IC");
     const suffix = mode === "mes" ? month : ymd;
     XLSX.writeFile(wb, `REPORTE-GERENCIA-${suffix}.xlsx`);
   }
@@ -568,7 +678,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
                   <option value="">Todas</option>
                   <option value="tolerancia">Fuera de tolerancia</option>
                   <option value="sinaction">Sin gestion</option>
-                  <option value="cortas">Con llamadas cortas (&lt;11s)</option>
+                  <option value="cortas">{`Con llamadas cortas (<${umbralCorta}s)`}</option>
                 </select>
                 <ChevronIcon />
               </div>
@@ -580,6 +690,17 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
                 value={filters.cuadrilla}
                 onChange={(e) => setFilters((f) => ({ ...f, cuadrilla: e.target.value }))}
                 placeholder="Nombre de cuadrilla"
+                className={inputCls + " w-full"}
+              />
+            </div>
+
+            <div className="w-32 space-y-1">
+              <label className={labelCls}>Umbral corta (seg)</label>
+              <input
+                type="number"
+                min={1}
+                value={umbralCorta}
+                onChange={(e) => setUmbralCorta(Math.max(1, Number(e.target.value) || 1))}
                 className={inputCls + " w-full"}
               />
             </div>
@@ -632,7 +753,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
             <div className="text-lg font-bold">{totalSinAccion}</div>
           </div>
           <div className="rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm text-orange-700 dark:border-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
-            <div className="text-[11px] font-semibold uppercase tracking-wide">Llamadas cortas (&lt;11s)</div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide">{`Llamadas cortas (<${umbralCorta}s, sin duplicar)`}</div>
             <div className="text-lg font-bold">{totalLlamadasCortas}</div>
           </div>
         </div>
@@ -647,6 +768,13 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
                 className="rounded-lg bg-slate-800 px-3 py-1.5 text-white transition hover:bg-slate-700 dark:bg-slate-700"
               >
                 {showRanking ? "Ocultar auditoria por gestor" : "Ver auditoria por gestor"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCortasChart((v) => !v)}
+                className="rounded-lg bg-orange-600 px-3 py-1.5 text-white transition hover:bg-orange-700"
+              >
+                {showCortasChart ? "Ocultar llamadas cortas por gestor/usuario" : "Ver llamadas cortas por gestor/usuario"}
               </button>
               <span>{pctConAccion}% ({totalConAccion}/{filtered.length || 0})</span>
             </div>
@@ -682,6 +810,62 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
                 </div>
               ))
             )}
+          </div>
+        </section>
+      ) : null}
+
+      {/* ── Llamadas cortas por gestor / usuario ── */}
+      {showCortasChart ? (
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <h2 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+            {`Llamadas cortas (<${umbralCorta}s) por Gestor y Usuario InConcert — ${periodoLabel}`}{" "}
+            <span className="font-normal text-slate-400">(llamadas unicas, sin duplicar por orden)</span>
+          </h2>
+          <div className="grid gap-6 xl:grid-cols-2">
+            <div>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Por Gestor</h3>
+              {cortasPorGestor.length === 0 ? (
+                <div className="text-xs text-muted-foreground dark:text-slate-400">No hay datos.</div>
+              ) : (
+                <div style={{ height: Math.max(160, cortasPorGestor.length * 34) }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={cortasPorGestor} layout="vertical" margin={{ top: 4, right: 24, left: 8, bottom: 4 }}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-slate-200 dark:stroke-slate-700" />
+                      <XAxis type="number" domain={[0, 100]} unit="%" />
+                      <YAxis type="category" dataKey="nombre" width={130} tick={{ fontSize: 11 }} />
+                      <Tooltip content={<CortasTooltip />} />
+                      <Bar dataKey="pct" name="% cortas" radius={[0, 6, 6, 0]}>
+                        {cortasPorGestor.map((d, i) => (
+                          <Cell key={i} fill={cortaBarColor(d.pct)} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+            <div>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Por Usuario InConcert</h3>
+              {cortasPorUsuario.length === 0 ? (
+                <div className="text-xs text-muted-foreground dark:text-slate-400">No hay datos.</div>
+              ) : (
+                <div style={{ height: Math.max(160, cortasPorUsuario.length * 34) }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={cortasPorUsuario} layout="vertical" margin={{ top: 4, right: 24, left: 8, bottom: 4 }}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-slate-200 dark:stroke-slate-700" />
+                      <XAxis type="number" domain={[0, 100]} unit="%" />
+                      <YAxis type="category" dataKey="nombre" width={130} tick={{ fontSize: 11 }} />
+                      <Tooltip content={<CortasTooltip />} />
+                      <Bar dataKey="pct" name="% cortas" radius={[0, 6, 6, 0]}>
+                        {cortasPorUsuario.map((d, i) => (
+                          <Cell key={i} fill={cortaBarColor(d.pct)} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
           </div>
         </section>
       ) : null}
@@ -744,12 +928,12 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
                       <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${r.icCount ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"}`}>
                         {r.icCount ? "Con llamadas" : "Sin llamadas"}
                       </span>
-                      {r.icCortas > 0 ? (
+                      {icCortasReal(r) > 0 ? (
                         <span
-                          title="Llamadas de menos de 11 segundos ese dia"
+                          title={`Llamadas de menos de ${umbralCorta} segundos ese dia`}
                           className="rounded-full bg-orange-100 px-2 py-1 text-[10px] font-semibold text-orange-800 dark:bg-orange-900/30 dark:text-orange-300"
                         >
-                          {r.icCortas} corta{r.icCortas !== 1 ? "s" : ""}
+                          {icCortasReal(r)} corta{icCortasReal(r) !== 1 ? "s" : ""}
                         </span>
                       ) : null}
                     </div>
@@ -773,7 +957,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
               <div>
                 <h3 className="text-lg font-semibold">Llamadas InConcert - Tel: <span className="font-mono">{modal.tel}</span></h3>
                 <p className="text-xs text-muted-foreground dark:text-slate-400">
-                  Filas en naranja: duracion menor a 11 segundos (posible intento sin contacto real)
+                  {`Filas en naranja: duracion menor a ${umbralCorta} segundos (posible intento sin contacto real)`}
                 </p>
               </div>
               <button type="button" className="rounded-lg bg-slate-700 px-3 py-1 text-white transition hover:bg-slate-800" onClick={() => setModal(null)}>
@@ -791,7 +975,7 @@ export function GerenciaInconcertClient({ initialYmd }: { initialYmd: string }) 
                 </thead>
                 <tbody>
                   {modal.list.map((r: any) => (
-                    <tr key={r.id} className={`border-b border-slate-200 dark:border-slate-700 ${r.corta ? "bg-orange-50 dark:bg-orange-900/20" : ""}`}>
+                    <tr key={r.id} className={`border-b border-slate-200 dark:border-slate-700 ${esCorta(r.duracionSeg) ? "bg-orange-50 dark:bg-orange-900/20" : ""}`}>
                       <td className="p-2 whitespace-nowrap">{r.fecha || "-"}</td>
                       <td className="p-2">{r.usuaruioInconcert || "-"}</td>
                       <td className="p-2">{soloHora(r.inicioLlamadaInconcert)}</td>
